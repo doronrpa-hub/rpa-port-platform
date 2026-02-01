@@ -1,0 +1,30 @@
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Credentials - NEVER commit these
+firebase-credentials.json
+*-credentials.json
+*.key
+*.pem
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node
+node_modules/

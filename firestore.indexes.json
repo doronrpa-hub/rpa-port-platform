@@ -1,0 +1,53 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "agent_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "classifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "companyId", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "classifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "inbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "companyId", "order": "ASCENDING"},
+        {"fieldPath": "processed_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "pending_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "priority", "order": "ASCENDING"},
+        {"fieldPath": "created", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "knowledge_base",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "category", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    }
+  ]
+}

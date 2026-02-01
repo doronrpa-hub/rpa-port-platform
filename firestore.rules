@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Knowledge base - read by all authenticated, write by admin/system
+    match /knowledge_base/{document} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        (request.auth.token.admin == true || request.auth.token.system == true);
+    }
+    
+    // Company-specific data - only their own
+    match /companies/{companyId}/{document=**} {
+      allow read, write: if request.auth != null && 
+        (request.auth.token.companyId == companyId || request.auth.token.admin == true);
+    }
+    
+    // Classifications - company can read/write their own
+    match /classifications/{classId} {
+      allow read: if request.auth != null && 
+        (resource.data.companyId == request.auth.token.companyId || request.auth.token.admin == true);
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && 
+        (resource.data.companyId == request.auth.token.companyId || request.auth.token.admin == true);
+    }
+    
+    // Inbox - company-specific
+    match /inbox/{emailId} {
+      allow read, write: if request.auth != null && 
+        (resource.data.companyId == request.auth.token.companyId || request.auth.token.admin == true);
+    }
+    
+    // Sellers - shared knowledge, anyone can read, admin writes
+    match /sellers/{sellerId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Config - admin only
+    match /config/{document} {
+      allow read, write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Agent tasks - system and admin
+    match /agent_tasks/{taskId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        (request.auth.token.admin == true || request.auth.token.system == true);
+    }
+    
+    // Pending tasks - company sees their own
+    match /pending_tasks/{taskId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
