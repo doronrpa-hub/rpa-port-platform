@@ -1,0 +1,412 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPA-PORT Master Hub - Command Center</title>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<style>
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+}
+
+body {
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+height: 100vh;
+overflow: hidden;
+color: #fff;
+}
+
+.hub-container {
+display: flex;
+flex-direction: column;
+height: 100vh;
+}
+
+/* STICKY HEADER */
+.hub-header {
+background: rgba(0, 0, 0, 0.2);
+backdrop-filter: blur(10px);
+border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+padding: 10px 20px;
+position: sticky;
+top: 0;
+z-index: 1000;
+flex-shrink: 0;
+}
+
+.hub-title {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 10px;
+}
+
+.hub-title h1 {
+font-size: 24px;
+background: linear-gradient(45deg, #ffd700, #ffed4e);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+background-clip: text;
+}
+
+.hub-status {
+font-size: 12px;
+opacity: 0.8;
+}
+
+.hub-nav {
+display: flex;
+gap: 15px;
+}
+
+.nav-btn {
+padding: 8px 16px;
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.2);
+border-radius: 20px;
+color: #fff;
+cursor: pointer;
+transition: all 0.3s ease;
+font-size: 13px;
+}
+
+.nav-btn:hover, .nav-btn.active {
+background: rgba(255, 255, 255, 0.2);
+border-color: rgba(255, 255, 255, 0.4);
+transform: translateY(-2px);
+}
+
+/* MAIN CONTENT AREA */
+.hub-content {
+flex: 1;
+display: flex;
+overflow: hidden;
+}
+
+.sidebar {
+width: 300px;
+background: rgba(0, 0, 0, 0.3);
+border-right: 1px solid rgba(255, 255, 255, 0.1);
+padding: 20px;
+overflow-y: auto;
+flex-shrink: 0;
+}
+
+.sidebar h3 {
+margin-bottom: 15px;
+color: #ffd700;
+font-size: 16px;
+}
+
+.status-item {
+background: rgba(255, 255, 255, 0.05);
+border: 1px solid rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+padding: 10px;
+margin-bottom: 10px;
+font-size: 12px;
+}
+
+.status-label {
+color: #ccc;
+font-weight: bold;
+}
+
+.status-value {
+color: #fff;
+margin-top: 5px;
+}
+
+/* CHAT AREA */
+.chat-container {
+flex: 1;
+display: flex;
+flex-direction: column;
+background: rgba(255, 255, 255, 0.05);
+}
+
+.chat-messages {
+flex: 1;
+overflow-y: auto;
+padding: 20px;
+scroll-behavior: smooth;
+}
+
+.message {
+margin-bottom: 20px;
+max-width: 80%;
+}
+
+.message.user {
+margin-left: auto;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+border-radius: 18px 18px 4px 18px;
+padding: 12px 18px;
+}
+
+.message.assistant {
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.2);
+border-radius: 18px 18px 18px 4px;
+padding: 12px 18px;
+}
+
+.message-time {
+font-size: 11px;
+opacity: 0.6;
+margin-top: 5px;
+}
+
+/* CHAT INPUT */
+.chat-input-area {
+background: rgba(0, 0, 0, 0.4);
+border-top: 1px solid rgba(255, 255, 255, 0.1);
+padding: 15px 20px;
+flex-shrink: 0;
+}
+
+.chat-input {
+display: flex;
+gap: 10px;
+align-items: flex-end;
+}
+
+.chat-textarea {
+flex: 1;
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.2);
+border-radius: 20px;
+padding: 12px 18px;
+color: #fff;
+font-family: inherit;
+font-size: 14px;
+resize: none;
+min-height: 44px;
+max-height: 120px;
+}
+
+.chat-textarea::placeholder {
+color: rgba(255, 255, 255, 0.5);
+}
+
+.chat-textarea:focus {
+outline: none;
+border-color: #ffd700;
+box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.3);
+}
+
+.send-btn {
+background: linear-gradient(135deg, #ffd700, #ffed4e);
+color: #000;
+border: none;
+border-radius: 50%;
+width: 44px;
+height: 44px;
+cursor: pointer;
+font-size: 18px;
+display: flex;
+align-items: center;
+justify-content: center;
+transition: transform 0.2s ease;
+}
+
+.send-btn:hover {
+transform: scale(1.1);
+}
+
+.send-btn:disabled {
+opacity: 0.5;
+cursor: not-allowed;
+transform: none;
+}
+
+/* STATUS INDICATORS */
+.backup-status {
+background: rgba(0, 255, 0, 0.1);
+border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.backup-status.error {
+background: rgba(255, 0, 0, 0.1);
+border-color: rgba(255, 0, 0, 0.3);
+}
+
+.tasks-status {
+background: rgba(255, 215, 0, 0.1);
+border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.agent-status {
+background: rgba(0, 150, 255, 0.1);
+border: 1px solid rgba(0, 150, 255, 0.3);
+}
+
+/* SCROLLBAR STYLING */
+::-webkit-scrollbar {
+width: 6px;
+}
+
+::-webkit-scrollbar-track {
+background: rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+background: rgba(255, 255, 255, 0.3);
+border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+background: rgba(255, 255, 255, 0.5);
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+.sidebar {
+display: none;
+}
+
+.hub-nav {
+flex-wrap: wrap;
+gap: 8px;
+}
+
+.nav-btn {
+padding: 6px 12px;
+font-size: 12px;
+}
+}
+
+/* LOADING ANIMATION */
+.typing-indicator {
+display: none;
+align-items: center;
+gap: 8px;
+padding: 12px 18px;
+background: rgba(255, 255, 255, 0.1);
+border-radius: 18px 18px 18px 4px;
+margin-bottom: 20px;
+max-width: 80px;
+}
+
+.typing-dot {
+width: 8px;
+height: 8px;
+background: #fff;
+border-radius: 50%;
+animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing {
+0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+40% { transform: scale(1); opacity: 1; }
+}
+
+/* TASK DISPLAY */
+.task-item {
+background: rgba(255, 255, 255, 0.05);
+border-left: 3px solid #ffd700;
+padding: 8px 12px;
+margin-bottom: 8px;
+font-size: 11px;
+border-radius: 0 4px 4px 0;
+}
+
+.task-high { border-left-color: #ff4444; }
+.task-medium { border-left-color: #ffaa00; }
+.task-low { border-left-color: #44ff44; }
+</style>
+</head>
+<body>
+<div class="hub-container">
+<!-- STICKY HEADER -->
+<div class="hub-header">
+<div class="hub-title">
+<h1>🚀 RPA-PORT MASTER HUB</h1>
+<div class="hub-status">
+<span id="connection-status">🔴 Connecting...</span>
+<span id="backup-status">💾 Backup: Unknown</span>
+</div>
+</div>
+<div class="hub-nav">
+<div class="nav-btn active" onclick="showTab('command')">💬 COMMAND</div>
+<div class="nav-btn" onclick="showTab('intelligence')">🧠 INTELLIGENCE</div>
+<div class="nav-btn" onclick="showTab('agents')">🤖 AGENTS</div>
+<div class="nav-btn" onclick="showTab('files')">📁 FILES</div>
+<div class="nav-btn" onclick="showTab('logs')">📋 LOGS</div>
+<div class="nav-btn" onclick="showTab('tools')">🛠️ TOOLS</div>
+</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="hub-content">
+<!-- SIDEBAR -->
+<div class="sidebar">
+<h3>📊 System Status</h3>
+
+<div class="status-item backup-status" id="backup-indicator">
+<div class="status-label">🔄 Auto Backup</div>
+<div class="status-value" id="backup-time">Initializing...</div>
+</div>
+
+<div class="status-item agent-status">
+<div class="status-label">🤖 Python Agent</div>
+<div class="status-value" id="agent-status">Checking...</div>
+</div>
+
+<div class="status-item tasks-status">
+<div class="status-label">📋 Pending Tasks</div>
+<div class="status-value" id="task-count">Loading...</div>
+</div>
+
+<h3 style="margin-top: 25px;">🎯 Active Missions</h3>
+<div id="missions-list">
+<div class="task-item task-high">Master Hub Created ✅</div>
+<div class="task-item task-medium">Test Chat Interface</div>
+<div class="task-item task-medium">Configure Firebase Backup</div>
+</div>
+
+<h3 style="margin-top: 25px;">📈 Quick Stats</h3>
+<div class="status-item">
+<div class="status-label">📧 Emails Today</div>
+<div class="status-value" id="emails-today">-</div>
+</div>
+
+<div class="status-item">
+<div class="status-label">🏷️ Classifications</div>
+<div class="status-value" id="classifications-pending">-</div>
+</div>
+</div>
+
+<!-- CHAT AREA -->
+<div class="chat-container">
+<div class="chat-messages" id="chat-messages">
+<div class="message assistant">
+<div>🚀 <strong>RPA-PORT Master Hub Online!</strong></div>
+<div style="margin-top: 8px;">
+Welcome to your command center! I'm Claude, integrated into the RPA-PORT system.
+<ul style="margin: 8px 0; padding-left: 20px;">
+<li><strong>Task Management</strong> - Describe work naturally, I'll structure it</li>
+<li><strong>Code Development</strong> - Debug, build features, review code</li>
+<li><strong>System Status</strong> - Check agents, backups, processing status</li>
+<li><strong>Architecture Decisions</strong> - Help plan technical choices</li>
+</ul>
+<strong>System Status:</strong><br>
+• Firebase: <code>rpa-port-customs</code><br>
+• Python Agent: Monitoring <code>airpaport@gmail.com</code><br>
+• Auto-Backup: Every 3 hours<br>
+• Stack: React/JSX, Firebase, Node.js, Python
+</div>
+<div class="message-time" id="welcome-time"></div>
+</div>
