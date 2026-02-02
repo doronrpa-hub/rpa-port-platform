@@ -1,3 +1,4 @@
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -61,11 +62,14 @@ background-clip: text;
 .hub-status {
 font-size: 12px;
 opacity: 0.8;
+display: flex;
+gap: 15px;
 }
 
 .hub-nav {
 display: flex;
 gap: 15px;
+flex-wrap: wrap;
 }
 
 .nav-btn {
@@ -77,11 +81,12 @@ color: #fff;
 cursor: pointer;
 transition: all 0.3s ease;
 font-size: 13px;
+border: none;
 }
 
 .nav-btn:hover, .nav-btn.active {
 background: rgba(255, 255, 255, 0.2);
-border-color: rgba(255, 255, 255, 0.4);
+border: 1px solid rgba(255, 255, 255, 0.4);
 transform: translateY(-2px);
 }
 
@@ -144,6 +149,12 @@ scroll-behavior: smooth;
 .message {
 margin-bottom: 20px;
 max-width: 80%;
+animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+from { opacity: 0; transform: translateY(20px); }
+to { opacity: 1; transform: translateY(0); }
 }
 
 .message.user {
@@ -151,6 +162,7 @@ margin-left: auto;
 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 border-radius: 18px 18px 4px 18px;
 padding: 12px 18px;
+box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 
 .message.assistant {
@@ -158,6 +170,7 @@ background: rgba(255, 255, 255, 0.1);
 border: 1px solid rgba(255, 255, 255, 0.2);
 border-radius: 18px 18px 18px 4px;
 padding: 12px 18px;
+box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 .message-time {
@@ -271,17 +284,36 @@ background: rgba(255, 255, 255, 0.5);
 /* RESPONSIVE */
 @media (max-width: 768px) {
 .sidebar {
-display: none;
+width: 250px;
 }
 
 .hub-nav {
-flex-wrap: wrap;
 gap: 8px;
 }
 
 .nav-btn {
 padding: 6px 12px;
 font-size: 12px;
+}
+
+.message {
+max-width: 90%;
+}
+}
+
+@media (max-width: 600px) {
+.sidebar {
+display: none;
+}
+
+.hub-title h1 {
+font-size: 18px;
+}
+
+.hub-status {
+font-size: 10px;
+flex-direction: column;
+gap: 5px;
 }
 }
 
@@ -295,6 +327,10 @@ background: rgba(255, 255, 255, 0.1);
 border-radius: 18px 18px 18px 4px;
 margin-bottom: 20px;
 max-width: 80px;
+}
+
+.typing-indicator.show {
+display: flex;
 }
 
 .typing-dot {
@@ -321,11 +357,40 @@ padding: 8px 12px;
 margin-bottom: 8px;
 font-size: 11px;
 border-radius: 0 4px 4px 0;
+transition: all 0.3s ease;
+}
+
+.task-item:hover {
+background: rgba(255, 255, 255, 0.1);
+transform: translateX(5px);
 }
 
 .task-high { border-left-color: #ff4444; }
 .task-medium { border-left-color: #ffaa00; }
 .task-low { border-left-color: #44ff44; }
+.task-completed {
+border-left-color: #00ff00;
+opacity: 0.7;
+text-decoration: line-through;
+}
+
+/* CONNECTION STATUS */
+.connection-dot {
+width: 8px;
+height: 8px;
+border-radius: 50%;
+display: inline-block;
+margin-right: 5px;
+}
+
+.connection-dot.connected { background: #00ff00; }
+.connection-dot.connecting { background: #ffaa00; animation: pulse 1s infinite; }
+.connection-dot.error { background: #ff4444; }
+
+@keyframes pulse {
+0%, 100% { opacity: 1; }
+50% { opacity: 0.3; }
+}
 </style>
 </head>
 <body>
@@ -335,17 +400,19 @@ border-radius: 0 4px 4px 0;
 <div class="hub-title">
 <h1>🚀 RPA-PORT MASTER HUB</h1>
 <div class="hub-status">
-<span id="connection-status">🔴 Connecting...</span>
+<span id="connection-status">
+<span class="connection-dot connecting"></span>Connecting...
+</span>
 <span id="backup-status">💾 Backup: Unknown</span>
 </div>
 </div>
 <div class="hub-nav">
-<div class="nav-btn active" onclick="showTab('command')">💬 COMMAND</div>
-<div class="nav-btn" onclick="showTab('intelligence')">🧠 INTELLIGENCE</div>
-<div class="nav-btn" onclick="showTab('agents')">🤖 AGENTS</div>
-<div class="nav-btn" onclick="showTab('files')">📁 FILES</div>
-<div class="nav-btn" onclick="showTab('logs')">📋 LOGS</div>
-<div class="nav-btn" onclick="showTab('tools')">🛠️ TOOLS</div>
+<button class="nav-btn active" onclick="showTab('command')">💬 COMMAND</button>
+<button class="nav-btn" onclick="showTab('intelligence')">🧠 INTELLIGENCE</button>
+<button class="nav-btn" onclick="showTab('agents')">🤖 AGENTS</button>
+<button class="nav-btn" onclick="showTab('files')">📁 FILES</button>
+<button class="nav-btn" onclick="showTab('logs')">📋 LOGS</button>
+<button class="nav-btn" onclick="showTab('tools')">🛠️ TOOLS</button>
 </div>
 </div>
 
@@ -372,41 +439,5 @@ border-radius: 0 4px 4px 0;
 
 <h3 style="margin-top: 25px;">🎯 Active Missions</h3>
 <div id="missions-list">
-<div class="task-item task-high">Master Hub Created ✅</div>
-<div class="task-item task-medium">Test Chat Interface</div>
-<div class="task-item task-medium">Configure Firebase Backup</div>
-</div>
-
-<h3 style="margin-top: 25px;">📈 Quick Stats</h3>
-<div class="status-item">
-<div class="status-label">📧 Emails Today</div>
-<div class="status-value" id="emails-today">-</div>
-</div>
-
-<div class="status-item">
-<div class="status-label">🏷️ Classifications</div>
-<div class="status-value" id="classifications-pending">-</div>
-</div>
-</div>
-
-<!-- CHAT AREA -->
-<div class="chat-container">
-<div class="chat-messages" id="chat-messages">
-<div class="message assistant">
-<div>🚀 <strong>RPA-PORT Master Hub Online!</strong></div>
-<div style="margin-top: 8px;">
-Welcome to your command center! I'm Claude, integrated into the RPA-PORT system.
-<ul style="margin: 8px 0; padding-left: 20px;">
-<li><strong>Task Management</strong> - Describe work naturally, I'll structure it</li>
-<li><strong>Code Development</strong> - Debug, build features, review code</li>
-<li><strong>System Status</strong> - Check agents, backups, processing status</li>
-<li><strong>Architecture Decisions</strong> - Help plan technical choices</li>
-</ul>
-<strong>System Status:</strong><br>
-• Firebase: <code>rpa-port-customs</code><br>
-• Python Agent: Monitoring <code>airpaport@gmail.com</code><br>
-• Auto-Backup: Every 3 hours<br>
-• Stack: React/JSX, Firebase, Node.js, Python
-</div>
-<div class="message-time" id="welcome-time"></div>
-</div>
+<div class="task-item task-completed">✅ Master Hub Created</div>
+<div class="task-item task-high">Configure Firebase Backup</div>
