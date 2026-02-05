@@ -318,7 +318,7 @@ def build_classification_email(results, sender_name, invoice_validation=None):
         color = "#28a745" if conf == "גבוהה" else "#ffc107" if conf == "בינונית" else "#dc3545"
         html += f'''<tr>
             <td style="padding:10px;border:1px solid #ddd">{c.get("item", "")[:40]}</td>
-            <td style="padding:10px;border:1px solid #ddd;font-family:monospace;font-weight:bold">{c.get("hs_code", "")}</td>
+            <td style="padding:10px;border:1px solid #ddd;font-family:monospace;font-weight:bold">{get_israeli_hs_format(c.get("hs_code", ""))}</td>
             <td style="padding:10px;border:1px solid #ddd">{c.get("duty_rate", "")}</td>
             <td style="padding:10px;border:1px solid #ddd;color:{color}">{conf}</td>
         </tr>'''
@@ -327,7 +327,7 @@ def build_classification_email(results, sender_name, invoice_validation=None):
     if regulatory:
         html += '<h2 style="color:#1e3a5f;margin-top:25px">⚖️ רגולציה</h2>'
         for r in regulatory:
-            html += f'<p><strong>{r.get("hs_code", "")}</strong>: '
+            html += f'<p><strong>{get_israeli_hs_format(r.get("hs_code", ""))}</strong>: '
             for m in r.get("ministries", []):
                 if m.get("required"):
                     html += f'{m.get("name")} ({m.get("regulation", "")}) | '
@@ -375,7 +375,7 @@ def build_excel_report(results):
             ws2.cell(1, i, h).font = Font(bold=True)
         for row, c in enumerate(results.get("agents", {}).get("classification", {}).get("classifications", []), 2):
             ws2.cell(row, 1, c.get("item", ""))
-            ws2.cell(row, 2, c.get("hs_code", ""))
+            ws2.cell(row, 2, get_israeli_hs_format(c.get("hs_code", "")))
             ws2.cell(row, 3, c.get("duty_rate", ""))
             ws2.cell(row, 4, c.get("confidence", ""))
             ws2.cell(row, 5, c.get("reasoning", ""))
