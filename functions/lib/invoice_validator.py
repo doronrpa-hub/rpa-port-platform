@@ -5,13 +5,34 @@ Validates commercial invoices according to Israeli customs regulations.
 Based on תקנות (מס' 2) תשל"ג-1972 סעיף 6
 
 Author: RCB System
-Version: 1.0
+Version: 1.1 - Session 11 update
 """
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 from enum import Enum
 from datetime import datetime
+
+# =============================================================================
+# ISRAELI TAX CONSTANTS (Session 11)
+# =============================================================================
+
+# Israeli VAT rate - updated January 2024
+# Source: רשות המיסים
+ISRAEL_VAT_RATE = 0.18  # 18%
+ISRAEL_VAT_PERCENT = 18  # For display
+
+# Purchase tax rates (מס קנייה) - varies by product
+PURCHASE_TAX_RATES = {
+    "vehicles": 0.83,      # 83% for private vehicles
+    "tobacco": 0.95,       # 95% for cigarettes
+    "alcohol": 0.50,       # ~50% average for alcohol
+    "electronics": 0.00,   # No purchase tax on most electronics
+    "default": 0.00,
+}
+
+# Minimum threshold for customs declaration (de minimis)
+CUSTOMS_DE_MINIMIS_USD = 75  # Below this - no customs duty on most items
 
 
 class InvoiceField(Enum):
@@ -358,15 +379,3 @@ if __name__ == "__main__":
     print(result.get_missing_fields_request())
     
     print("\n" + "=" * 60)
-
-
-def quick_validate(data):
-    """
-    Quick validation returning just validity, score, and missing field names.
-    
-    Returns:
-        Tuple of (is_valid, score, list of missing field names in Hebrew)
-    """
-    result = validate_invoice(data)
-    missing_names = [FIELD_DEFINITIONS[f]["name_he"] for f in result.missing_fields]
-    return result.is_valid, result.score, missing_names

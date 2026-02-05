@@ -4,13 +4,21 @@ Queries Firestore for Israeli tariff data, ministry requirements, and rules
 Outputs: HTML email + Excel
 
 UPDATED: Session 10 - Integrated with Module 4, 5, 6
+UPDATED: Session 11 - HS code validation against tariff database
 """
 import json
 import requests
 import base64
 import io
 from datetime import datetime
-from lib.librarian import search_all_knowledge, search_extended_knowledge, full_knowledge_search, build_classification_context, get_israeli_hs_format
+from lib.librarian import (
+    search_all_knowledge, 
+    search_extended_knowledge, 
+    full_knowledge_search, 
+    build_classification_context, 
+    get_israeli_hs_format,
+    validate_and_correct_classifications,  # Session 11: HS validation
+)
 
 # Session 10: Import new modules
 try:
@@ -201,13 +209,32 @@ def run_risk_agent(api_key, invoice_data, classifications):
 
 
 def run_synthesis_agent(api_key, all_results):
-    """Agent 6: Final synthesis"""
-    system = """אתה סוכן סיכום. כתוב סיכום קצר בעברית (3-4 משפטים) של:
-1. מה נמצא
-2. המלצות עיקריות
-3. אזהרות אם יש
+    """Agent 6: Final synthesis with proper Hebrew formatting"""
+    system = """אתה סוכן סיכום מקצועי. כתוב סיכום מעוצב היטב בעברית.
 
-טקסט בלבד, לא JSON."""
+חובה לעקוב אחר הפורמט הבא בדיוק:
+
+📋 מה נמצא:
+[כתוב 2-3 משפטים המתארים את תוכן החשבונית, המוצרים, ארץ המקור, והערך. כל משפט בשורה חדשה.]
+
+📌 המלצות עיקריות:
+• [המלצה ראשונה]
+• [המלצה שנייה]
+• [המלצה שלישית אם רלוונטי]
+
+⚠️ אזהרות:
+• [אזהרה ראשונה אם יש]
+• [אזהרה שנייה אם יש]
+
+כללי עיצוב חשובים:
+- השתמש בשורה ריקה בין כל קטע
+- השתמש בנקודות (•) לרשימות
+- סיים כל משפט בנקודה
+- אל תשתמש בכוכביות (**) או בסימני עיצוב אחרים
+- כתוב בעברית תקנית וברורה
+- אם אין אזהרות, השמט את הקטע הזה לחלוטין
+
+טקסט מעוצב בלבד, לא JSON."""
     
     return call_claude(api_key, system, json.dumps(all_results, ensure_ascii=False)[:4000]) or "לא ניתן לייצר סיכום."
 
@@ -238,6 +265,19 @@ def run_full_classification(api_key, doc_text, db):
         # Agent 2: Classify
         print("    🏷️ Agent 2: Classifying...")
         classification = run_classification_agent(api_key, items, tariff, rules, knowledge_context)
+        
+        # Session 11: Validate HS codes against tariff database
+        print("    ✅ Validating HS codes against tariff database...")
+        raw_classifications = classification.get("classifications", [])
+        validated_classifications = validate_and_correct_classifications(db, raw_classifications)
+        classification["classifications"] = validated_classifications
+        
+        # Log validation results
+        for c in validated_classifications:
+            if c.get('hs_corrected'):
+                print(f"    ⚠️ HS corrected: {c.get('original_hs_code')} → {c.get('hs_code')}")
+            elif c.get('hs_warning'):
+                print(f"    ⚠️ {c.get('hs_warning')}")
         
         # Agent 3: Regulatory
         print("    ⚖️ Agent 3: Regulatory...")
@@ -316,9 +356,20 @@ def build_classification_email(results, sender_name, invoice_validation=None):
     for c in classifications:
         conf = c.get("confidence", "בינונית")
         color = "#28a745" if conf == "גבוהה" else "#ffc107" if conf == "בינונית" else "#dc3545"
+        
+        # Session 11: Show HS code with validation status
+        hs_display = get_israeli_hs_format(c.get("hs_code", ""))
+        hs_note = ""
+        if c.get('hs_corrected'):
+            hs_note = f'<br><small style="color:#856404">⚠️ תוקן מ-{get_israeli_hs_format(c.get("original_hs_code", ""))}</small>'
+        elif c.get('hs_warning'):
+            hs_note = f'<br><small style="color:#dc3545">⚠️ לא אומת</small>'
+        elif c.get('hs_validated') and c.get('hs_exact_match'):
+            hs_note = '<br><small style="color:#28a745">✅ אומת</small>'
+        
         html += f'''<tr>
             <td style="padding:10px;border:1px solid #ddd">{c.get("item", "")[:40]}</td>
-            <td style="padding:10px;border:1px solid #ddd;font-family:monospace;font-weight:bold">{get_israeli_hs_format(c.get("hs_code", ""))}</td>
+            <td style="padding:10px;border:1px solid #ddd;font-family:monospace;font-weight:bold">{hs_display}{hs_note}</td>
             <td style="padding:10px;border:1px solid #ddd">{c.get("duty_rate", "")}</td>
             <td style="padding:10px;border:1px solid #ddd;color:{color}">{conf}</td>
         </tr>'''
@@ -357,7 +408,7 @@ def build_classification_email(results, sender_name, invoice_validation=None):
     return html
 
 def build_excel_report(results):
-    """Build Excel report"""
+    """Build Excel report - Updated Session 11 with validation status"""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill
@@ -370,7 +421,7 @@ def build_excel_report(results):
         ws['A3'] = results.get("synthesis", "")
         
         ws2 = wb.create_sheet("סיווגים")
-        headers = ["פריט", "קוד HS", "מכס", "ודאות", "נימוק"]
+        headers = ["פריט", "קוד HS", "מכס", "ודאות", "סטטוס אימות", "נימוק"]
         for i, h in enumerate(headers, 1):
             ws2.cell(1, i, h).font = Font(bold=True)
         for row, c in enumerate(results.get("agents", {}).get("classification", {}).get("classifications", []), 2):
@@ -378,7 +429,20 @@ def build_excel_report(results):
             ws2.cell(row, 2, get_israeli_hs_format(c.get("hs_code", "")))
             ws2.cell(row, 3, c.get("duty_rate", ""))
             ws2.cell(row, 4, c.get("confidence", ""))
-            ws2.cell(row, 5, c.get("reasoning", ""))
+            
+            # Session 11: Add validation status
+            validation_status = ""
+            if c.get('hs_corrected'):
+                validation_status = f"תוקן מ-{get_israeli_hs_format(c.get('original_hs_code', ''))}"
+            elif c.get('hs_warning'):
+                validation_status = "לא נמצא במאגר"
+            elif c.get('hs_validated') and c.get('hs_exact_match'):
+                validation_status = "אומת ✓"
+            elif c.get('hs_validated'):
+                validation_status = "התאמה חלקית"
+            ws2.cell(row, 5, validation_status)
+            
+            ws2.cell(row, 6, c.get("reasoning", ""))
         
         output = io.BytesIO()
         wb.save(output)
@@ -508,6 +572,74 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if helper_graph_send(access_token, rcb_email, to_email, subject_line, html, msg_id, attachments):
             print(f"  ✅ Sent to {to_email}")
             
+            # Session 11: Auto-send clarification request if score < 70
+            clarification_sent = False
+            if MODULES_AVAILABLE and invoice_validation and invoice_validation['score'] < 70:
+                try:
+                    from lib.clarification_generator import (
+                        generate_missing_docs_request,
+                        DocumentType,
+                        UrgencyLevel,
+                    )
+                    
+                    # Map missing fields to document types
+                    missing_docs = []
+                    field_to_doc = {
+                        'ארץ המקור': DocumentType.CERTIFICATE_OF_ORIGIN,
+                        'פרטי אריזות': DocumentType.PACKING_LIST,
+                        'משקלים': DocumentType.PACKING_LIST,
+                        'תנאי מכר': DocumentType.INVOICE,
+                        'מחיר': DocumentType.INVOICE,
+                        'תיאור הטובין': DocumentType.INVOICE,
+                    }
+                    
+                    for field_name in invoice_validation.get('missing_fields', []):
+                        if field_name in field_to_doc:
+                            doc = field_to_doc[field_name]
+                            if doc not in missing_docs:
+                                missing_docs.append(doc)
+                    
+                    if missing_docs:
+                        # Determine urgency based on score
+                        urgency = UrgencyLevel.HIGH if invoice_validation['score'] < 50 else UrgencyLevel.MEDIUM
+                        
+                        # Generate clarification request
+                        clarification = generate_missing_docs_request(
+                            missing_docs=missing_docs,
+                            invoice_number=invoice_data.get('invoice_number') or invoice_data.get('invoice_date'),
+                            supplier_name=invoice_data.get('seller'),
+                            recipient_name=sender_name,
+                            urgency=urgency,
+                            sender_name="מערכת RCB",
+                        )
+                        
+                        # Build clarification email HTML
+                        clarification_html = f'''<div dir="rtl" style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto">
+                        <div style="background:#1e3a5f;color:white;padding:20px;text-align:center">
+                            <h1 style="margin:0">📋 בקשה להשלמת מסמכים</h1>
+                        </div>
+                        <div style="padding:25px;background:#fff">
+                            <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;direction:rtl;text-align:right">{clarification.body}</pre>
+                        </div>
+                        <hr style="margin:25px 0">
+                        <table><tr>
+                            <td><img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:70px"></td>
+                            <td style="border-right:3px solid #1e3a5f;padding-right:15px">
+                                <strong style="color:#1e3a5f">🤖 RCB - AI Customs Broker</strong><br>
+                                R.P.A. PORT LTD | rcb@rpa-port.co.il
+                            </td>
+                        </tr></table>
+                        </div>'''
+                        
+                        # Send clarification email
+                        clarification_subject = f"📋 {clarification.subject}"
+                        if helper_graph_send(access_token, rcb_email, to_email, clarification_subject, clarification_html, None, []):
+                            print(f"  📋 Clarification request sent (score: {invoice_validation['score']}/100)")
+                            clarification_sent = True
+                        
+                except Exception as ce:
+                    print(f"  ⚠️ Clarification generation error: {ce}")
+            
             # Save to Firestore with validation data
             save_data = {
                 "subject": subject,
@@ -520,6 +652,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 save_data["invoice_score"] = invoice_validation['score']
                 save_data["invoice_valid"] = invoice_validation['is_valid']
                 save_data["missing_fields"] = invoice_validation['missing_fields']
+                save_data["clarification_sent"] = clarification_sent
             
             db.collection("rcb_classifications").add(save_data)
             return True

@@ -1,6 +1,8 @@
 """
 RCB Smart Librarian - Phased Knowledge Search
 Searches intelligently, expands if needed, never misses critical data
+
+Session 11: Added HS code validation to prevent non-existent codes
 """
 
 def extract_search_keywords(item_description):
@@ -303,6 +305,184 @@ def get_israeli_hs_format(hs_code):
     if len(code) >= 8:
         return f"{code[:2]}.{code[2:4]}.{code[4:10]}/{code[9] if len(code) > 9 else '0'}"
     return hs_code
+
+
+def normalize_hs_code(hs_code):
+    """Normalize HS code to 10 digits for comparison"""
+    code = str(hs_code).replace('.', '').replace(' ', '').replace('/', '')
+    return code.ljust(10, '0')[:10]
+
+
+def validate_hs_code(db, hs_code):
+    """
+    Validate that an HS code exists in the tariff database.
+    Returns: dict with {valid: bool, exact_match: bool, suggested_code: str, description: str}
+    
+    Session 11: Added to prevent agents from generating non-existent codes
+    """
+    normalized = normalize_hs_code(hs_code)
+    chapter = normalized[:2]
+    heading = normalized[:4]
+    subheading = normalized[:6]
+    
+    result = {
+        "valid": False,
+        "exact_match": False,
+        "input_code": hs_code,
+        "normalized": normalized,
+        "suggested_code": None,
+        "suggested_description": None,
+        "confidence": "none"
+    }
+    
+    try:
+        # 1. Check exact match in tariff_chapters
+        print(f"    🔍 Validating HS code: {get_israeli_hs_format(normalized)}")
+        
+        exact_matches = []
+        partial_matches = []
+        
+        # Search tariff_chapters for exact match
+        chapters_ref = db.collection('tariff_chapters').limit(1000).stream()
+        for doc in chapters_ref:
+            data = doc.to_dict()
+            doc_code = normalize_hs_code(data.get('code', data.get('hs_code', '')))
+            
+            if doc_code == normalized:
+                # Exact match!
+                result["valid"] = True
+                result["exact_match"] = True
+                result["suggested_code"] = doc_code
+                result["suggested_description"] = data.get('description_he', data.get('description_en', ''))
+                result["confidence"] = "high"
+                print(f"    ✅ Exact match found: {get_israeli_hs_format(doc_code)}")
+                return result
+            
+            # Check for partial matches (same chapter/heading)
+            if doc_code[:6] == subheading:
+                partial_matches.append({
+                    "code": doc_code,
+                    "description": data.get('description_he', data.get('description_en', '')),
+                    "match_level": "subheading"
+                })
+            elif doc_code[:4] == heading:
+                partial_matches.append({
+                    "code": doc_code,
+                    "description": data.get('description_he', data.get('description_en', '')),
+                    "match_level": "heading"
+                })
+        
+        # 2. Check tariff collection
+        tariff_ref = db.collection('tariff').limit(500).stream()
+        for doc in tariff_ref:
+            data = doc.to_dict()
+            doc_code = normalize_hs_code(data.get('hs_code', ''))
+            
+            if doc_code == normalized:
+                result["valid"] = True
+                result["exact_match"] = True
+                result["suggested_code"] = doc_code
+                result["suggested_description"] = data.get('description_he', '')
+                result["confidence"] = "high"
+                print(f"    ✅ Exact match in tariff: {get_israeli_hs_format(doc_code)}")
+                return result
+            
+            if doc_code[:6] == subheading:
+                partial_matches.append({
+                    "code": doc_code,
+                    "description": data.get('description_he', ''),
+                    "match_level": "subheading"
+                })
+        
+        # 3. Check hs_code_index
+        hs_index_ref = db.collection('hs_code_index').limit(500).stream()
+        for doc in hs_index_ref:
+            data = doc.to_dict()
+            doc_code = normalize_hs_code(data.get('code', data.get('hs_code', '')))
+            
+            if doc_code == normalized:
+                result["valid"] = True
+                result["exact_match"] = True
+                result["suggested_code"] = doc_code
+                result["suggested_description"] = data.get('description_he', data.get('description', ''))
+                result["confidence"] = "high"
+                print(f"    ✅ Exact match in hs_code_index: {get_israeli_hs_format(doc_code)}")
+                return result
+        
+        # 4. If no exact match, suggest best partial match
+        if partial_matches:
+            # Prefer subheading matches over heading matches
+            subheading_matches = [m for m in partial_matches if m["match_level"] == "subheading"]
+            if subheading_matches:
+                best = subheading_matches[0]
+                result["valid"] = True
+                result["exact_match"] = False
+                result["suggested_code"] = best["code"]
+                result["suggested_description"] = best["description"]
+                result["confidence"] = "medium"
+                print(f"    ⚠️ No exact match. Suggested: {get_israeli_hs_format(best['code'])}")
+            else:
+                best = partial_matches[0]
+                result["valid"] = True
+                result["exact_match"] = False
+                result["suggested_code"] = best["code"]
+                result["suggested_description"] = best["description"]
+                result["confidence"] = "low"
+                print(f"    ⚠️ Partial match only. Suggested: {get_israeli_hs_format(best['code'])}")
+        else:
+            print(f"    ❌ HS code not found in database: {get_israeli_hs_format(normalized)}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"    ❌ Error validating HS code: {e}")
+        return result
+
+
+def validate_and_correct_classifications(db, classifications):
+    """
+    Validate all HS codes in a classification result and correct if needed.
+    
+    Args:
+        db: Firestore database reference
+        classifications: List of classification dicts with 'hs_code' field
+        
+    Returns:
+        List of validated/corrected classifications with validation info
+    """
+    validated = []
+    
+    for classification in classifications:
+        hs_code = classification.get('hs_code', '')
+        if not hs_code:
+            validated.append(classification)
+            continue
+        
+        validation = validate_hs_code(db, hs_code)
+        
+        # Add validation info to classification
+        classification['hs_validated'] = validation['valid']
+        classification['hs_exact_match'] = validation['exact_match']
+        classification['validation_confidence'] = validation['confidence']
+        
+        # If not exact match but we have a suggestion, note it
+        if not validation['exact_match'] and validation['suggested_code']:
+            classification['original_hs_code'] = hs_code
+            classification['hs_code'] = validation['suggested_code']
+            classification['hs_corrected'] = True
+            classification['correction_note'] = f"קוד מקורי {get_israeli_hs_format(hs_code)} תוקן ל-{get_israeli_hs_format(validation['suggested_code'])}"
+            
+            # Lower confidence if code was corrected
+            if classification.get('confidence') == 'גבוהה':
+                classification['confidence'] = 'בינונית'
+        
+        if not validation['valid']:
+            classification['hs_warning'] = f"⚠️ קוד HS לא נמצא במאגר: {get_israeli_hs_format(hs_code)}"
+            classification['confidence'] = 'נמוכה'
+        
+        validated.append(classification)
+    
+    return validated
 
 
 def build_classification_context(librarian_results):

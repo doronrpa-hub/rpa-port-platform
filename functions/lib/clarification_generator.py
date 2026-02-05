@@ -168,6 +168,95 @@ DOCUMENT_TYPE_MAP = {
 
 
 # =============================================================================
+# TEMPLATES - ENGLISH (Session 11)
+# =============================================================================
+
+GREETINGS_EN = {
+    "formal": "Dear {recipient},",
+    "semi_formal": "Hello {recipient},",
+    "informal": "Hi {recipient},",
+}
+
+CLOSINGS_EN = {
+    "formal": "Best regards,\n{sender}",
+    "semi_formal": "Kind regards,\n{sender}",
+    "informal": "Thanks,\n{sender}",
+}
+
+URGENCY_PHRASES_EN = {
+    UrgencyLevel.LOW: "",
+    UrgencyLevel.MEDIUM: "We would appreciate receiving this information at your earliest convenience.",
+    UrgencyLevel.HIGH: "⚠️ URGENT: Please respond as soon as possible - the shipment is awaiting clearance.",
+    UrgencyLevel.URGENT: "🚨 VERY URGENT: The shipment is held at port and incurring storage charges.",
+    UrgencyLevel.CRITICAL: "🚨🚨 CRITICAL: Immediate response required!",
+}
+
+# Document type descriptions in English
+DOCUMENT_DESCRIPTIONS_EN = {
+    "invoice": {
+        "name": "Commercial Invoice",
+        "description": "Original supplier invoice signed by the seller",
+    },
+    "packing_list": {
+        "name": "Packing List",
+        "description": "Details of packages, contents, and weights",
+    },
+    "bill_of_lading": {
+        "name": "Bill of Lading (B/L)",
+        "description": "Original signed shipping document",
+    },
+    "certificate_of_origin": {
+        "name": "Certificate of Origin",
+        "description": "Official document certifying the country of origin",
+    },
+    "eur1": {
+        "name": "EUR.1 Certificate",
+        "description": "Certificate of origin for EU preferential duty rates",
+    },
+    "atr": {
+        "name": "A.TR Certificate",
+        "description": "Certificate of origin for Turkey preferential duty rates",
+    },
+    "msds": {
+        "name": "Material Safety Data Sheet (MSDS)",
+        "description": "Safety specifications for hazardous materials",
+    },
+    "spec_sheet": {
+        "name": "Technical Specification Sheet",
+        "description": "Detailed product technical specifications",
+    },
+    "insurance": {
+        "name": "Insurance Certificate",
+        "description": "Cargo insurance confirmation",
+    },
+    "freight_invoice": {
+        "name": "Freight Invoice",
+        "description": "Invoice for shipping/transportation costs",
+    },
+    "bank_transfer": {
+        "name": "Bank Transfer Confirmation",
+        "description": "Proof of payment from bank",
+    },
+    "import_license": {
+        "name": "Import License",
+        "description": "Government approval for import",
+    },
+    "health_certificate": {
+        "name": "Health Certificate",
+        "description": "Ministry of Health approval",
+    },
+    "phytosanitary": {
+        "name": "Phytosanitary Certificate",
+        "description": "Certificate for plant and plant products",
+    },
+    "conformity": {
+        "name": "Certificate of Conformity",
+        "description": "Compliance with standards certification",
+    },
+}
+
+
+# =============================================================================
 # DATA CLASSES
 # =============================================================================
 
@@ -272,6 +361,83 @@ def generate_missing_docs_request(
         subject=subject,
         body="\n".join(lines),
         urgency=urgency,
+        missing_documents=missing_doc_names,
+        reference_number=invoice_number,
+    )
+
+
+def generate_missing_docs_request_en(
+    missing_docs: List[DocumentType],
+    invoice_number: Optional[str] = None,
+    invoice_date: Optional[str] = None,
+    supplier_name: Optional[str] = None,
+    recipient_name: str = "Valued Customer",
+    urgency: UrgencyLevel = UrgencyLevel.MEDIUM,
+    sender_name: str = "RCB System",
+    existing_docs: Optional[List[str]] = None,
+) -> ClarificationRequest:
+    """Generate a request for missing documents - English version (Session 11)"""
+    
+    # Build subject
+    doc_count = len(missing_docs)
+    subject = f"Request for {doc_count} Missing Document(s)"
+    if invoice_date:
+        subject += f" | Invoice {invoice_date}"
+    elif invoice_number:
+        subject += f" | Invoice {invoice_number}"
+    
+    # Build body
+    lines = [f"Dear {recipient_name},"]
+    lines.append("")
+    
+    # Reference info
+    if invoice_number or supplier_name or existing_docs:
+        lines.append("We have received the following documents:")
+        if invoice_number:
+            lines.append(f"  • Invoice Number: {invoice_number}")
+        if invoice_date:
+            lines.append(f"  • Date: {invoice_date}")
+        if supplier_name:
+            lines.append(f"  • Supplier: {supplier_name}")
+        if existing_docs:
+            for doc in existing_docs:
+                lines.append(f"  • {doc}")
+        lines.append("")
+    
+    # Missing documents
+    lines.append("📋 To proceed with customs clearance, please provide the following documents:")
+    lines.append("")
+    missing_doc_names = []
+    for doc in missing_docs:
+        doc_key = DOCUMENT_TYPE_MAP.get(doc, doc.value if isinstance(doc, DocumentType) else str(doc))
+        doc_info = DOCUMENT_DESCRIPTIONS_EN.get(doc_key, {"name": str(doc), "description": ""})
+        doc_name = doc_info["name"]
+        doc_desc = doc_info["description"]
+        missing_doc_names.append(doc_name)
+        lines.append(f"  ☐ {doc_name}")
+        if doc_desc:
+            lines.append(f"     ({doc_desc})")
+    
+    lines.append("")
+    
+    # Urgency
+    urgency_phrase = URGENCY_PHRASES_EN.get(urgency, "")
+    if urgency_phrase:
+        lines.append(urgency_phrase)
+        lines.append("")
+    
+    lines.append("📩 Please reply with the requested documents and information.")
+    lines.append("")
+    lines.append("Best regards,")
+    lines.append(sender_name)
+    lines.append("R.P.A. Port Ltd.")
+    
+    return ClarificationRequest(
+        request_type=RequestType.MISSING_DOCUMENT,
+        subject=subject,
+        body="\n".join(lines),
+        urgency=urgency,
+        language=RequestLanguage.ENGLISH,
         missing_documents=missing_doc_names,
         reference_number=invoice_number,
     )
