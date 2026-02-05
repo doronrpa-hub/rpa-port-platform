@@ -1,383 +1,336 @@
 """
-RCB Invoice Validator - חשבון מכר
-Validates commercial invoices per תקנות (מס' 2) תשל"ג-1972
+RCB Module 5: Invoice Validator
+===============================
+Validates commercial invoices according to Israeli customs regulations.
+Based on תקנות (מס' 2) תשל"ג-1972 סעיף 6
 
-File: functions/lib/invoice_validator.py
-Project: RCB (Robotic Customs Bot)
-Session: 10
+Author: RCB System
+Version: 1.0
 """
 
-from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any
 from enum import Enum
+from datetime import datetime
 
-
-# =============================================================================
-# REQUIRED FIELDS - פרק רביעי סעיף 6
-# =============================================================================
 
 class InvoiceField(Enum):
-    """Required invoice fields per תקנות (מס' 2) תשל"ג-1972 סעיף 6"""
-    
-    ORIGIN = "origin"                    # (1) ארץ המקור
-    PLACE_DATE = "place_date"            # (2) המקום והתאריך
-    SELLER_BUYER = "seller_buyer"        # (3) שם ומען המוכר והקונה
-    PACKAGES = "packages"                # (4) כמות אריזות, תיאור, סימון, מספרים
-    GOODS_DESC = "goods_description"     # (5) תיאור הטובין
-    QUANTITY = "quantity"                # (6) כמות לפי יחידה מסחרית
-    WEIGHTS = "weights"                  # (7) משקל ברוטו, נטו, נט נטו
-    PRICE = "price"                      # (8) המחיר המוסכם
-    TERMS = "terms"                      # (9) תנאי משלוח, שיגור, תשלום
+    """Required fields per תקנות (מס' 2) תשל"ג-1972 סעיף 6"""
+    ORIGIN = "origin"              # 6(1) - ארץ המקור
+    PLACE_DATE = "place_date"      # 6(2) - מקום ותאריך
+    SELLER_BUYER = "seller_buyer"  # 6(3) - מוכר וקונה
+    PACKAGES = "packages"          # 6(4) - פרטי אריזות
+    DESCRIPTION = "description"    # 6(5) - תיאור הטובין
+    QUANTITY = "quantity"          # 6(6) - כמות
+    WEIGHTS = "weights"            # 6(7) - משקלים
+    PRICE = "price"                # 6(8) - מחיר
+    TERMS = "terms"                # 6(9) - תנאי מכר
 
 
-# Field definitions with Hebrew names and descriptions
+# Field definitions with Hebrew names and requirements
 FIELD_DEFINITIONS = {
     InvoiceField.ORIGIN: {
+        "section": "6(1)",
         "name_he": "ארץ המקור",
         "name_en": "Country of Origin",
-        "section": "6(1)",
-        "description": "ארץ בה הסתיים תהליך העיבוד (מעובדים) או גדלו/הופקו (אחרים)",
-        "keywords": ["origin", "country of origin", "made in", "מקור", "ארץ מקור"],
+        "description_he": "ארץ בה הסתיים תהליך העיבוד (מעובדים) או גדלו/הופקו (אחרים)",
+        "required": True,
+        "weight": 15,  # Importance weight for scoring
     },
     InvoiceField.PLACE_DATE: {
-        "name_he": "מקום ותאריך החשבון",
-        "name_en": "Invoice Place & Date",
         "section": "6(2)",
-        "description": "המקום והתאריך בהם הוכן החשבון",
-        "keywords": ["date", "invoice date", "תאריך", "place"],
+        "name_he": "מקום ותאריך החשבון",
+        "name_en": "Place and Date",
+        "description_he": "המקום והתאריך בהם הוכן החשבון",
+        "required": True,
+        "weight": 10,
     },
     InvoiceField.SELLER_BUYER: {
-        "name_he": "פרטי מוכר וקונה",
-        "name_en": "Seller & Buyer Details",
         "section": "6(3)",
-        "description": "השם והמען של המוכר והקונה",
-        "keywords": ["seller", "buyer", "consignee", "shipper", "מוכר", "קונה", "יבואן", "יצואן"],
+        "name_he": "פרטי מוכר וקונה",
+        "name_en": "Seller and Buyer",
+        "description_he": "השם והמען של המוכר והקונה",
+        "required": True,
+        "weight": 15,
     },
     InvoiceField.PACKAGES: {
+        "section": "6(4)",
         "name_he": "פרטי אריזות",
         "name_en": "Package Details",
-        "section": "6(4)",
-        "description": "כמות האריזות, תיאורם, סימונם ומספריהם",
-        "keywords": ["packages", "cartons", "boxes", "pallets", "marks", "אריזות", "קרטונים"],
+        "description_he": "כמות האריזות, תיאורם, סימונם ומספריהם",
+        "required": True,
+        "weight": 10,
     },
-    InvoiceField.GOODS_DESC: {
+    InvoiceField.DESCRIPTION: {
+        "section": "6(5)",
         "name_he": "תיאור הטובין",
         "name_en": "Goods Description",
-        "section": "6(5)",
-        "description": "תיאור לפי סוג, מהות, טיב + תכונות מיוחדות + הרכב חומרים באחוזים",
-        "keywords": ["description", "goods", "commodity", "תיאור", "סחורה", "פריט"],
+        "description_he": "תיאור לפי סוג, מהות, טיב + תכונות מיוחדות + הרכב חומרים באחוזים",
+        "required": True,
+        "weight": 15,
     },
     InvoiceField.QUANTITY: {
+        "section": "6(6)",
         "name_he": "כמות",
         "name_en": "Quantity",
-        "section": "6(6)",
-        "description": "כמות הטובין לפי היחידה המסחרית המקובלת",
-        "keywords": ["quantity", "qty", "units", "pcs", "כמות", "יחידות"],
+        "description_he": "כמות הטובין לפי היחידה המסחרית המקובלת",
+        "required": True,
+        "weight": 10,
     },
     InvoiceField.WEIGHTS: {
+        "section": "6(7)",
         "name_he": "משקלים",
         "name_en": "Weights",
-        "section": "6(7)",
-        "description": "משקל ברוטו, נטו ונט נטו - לכל אריזה + סה\"כ",
-        "keywords": ["weight", "gross", "net", "g.w", "n.w", "משקל", "ברוטו", "נטו"],
+        "description_he": "משקל ברוטו, נטו ונט נטו - לכל אריזה + סה\"כ",
+        "required": True,
+        "weight": 10,
     },
     InvoiceField.PRICE: {
+        "section": "6(8)",
         "name_he": "מחיר",
         "name_en": "Price",
-        "section": "6(8)",
-        "description": "המחיר המוסכם של הטובין",
-        "keywords": ["price", "amount", "total", "value", "מחיר", "סכום", "ערך"],
+        "description_he": "המחיר המוסכם של הטובין",
+        "required": True,
+        "weight": 10,
     },
     InvoiceField.TERMS: {
+        "section": "6(9)",
         "name_he": "תנאי מכר",
         "name_en": "Terms",
-        "section": "6(9)",
-        "description": "תנאי משלוח, שיגור ותשלום (FOB, CIF, וכו') + הנחות",
-        "keywords": ["terms", "incoterms", "fob", "cif", "exw", "payment", "תנאים", "תנאי תשלום"],
+        "description_he": "תנאי משלוח, שיגור ותשלום (FOB, CIF, וכו') + הנחות",
+        "required": True,
+        "weight": 5,
     },
 }
 
+# Field mappings - different ways fields might appear in invoice data
+FIELD_MAPPINGS = {
+    InvoiceField.ORIGIN: ["origin", "country_of_origin", "country", "מקור", "ארץ_מקור", "ארץ"],
+    InvoiceField.PLACE_DATE: ["date", "invoice_date", "place", "place_date", "תאריך", "מקום"],
+    InvoiceField.SELLER_BUYER: ["seller", "buyer", "vendor", "customer", "shipper", "consignee", 
+                                 "מוכר", "קונה", "ספק", "לקוח"],
+    InvoiceField.PACKAGES: ["packages", "cartons", "pallets", "boxes", "package_details",
+                            "אריזות", "קרטונים", "משטחים"],
+    InvoiceField.DESCRIPTION: ["description", "goods", "product", "item", "commodity",
+                               "תיאור", "סחורה", "מוצר", "פריט"],
+    InvoiceField.QUANTITY: ["quantity", "qty", "units", "pieces", "pcs", "כמות", "יחידות"],
+    InvoiceField.WEIGHTS: ["weight", "gross_weight", "net_weight", "weight_gross", "weight_net",
+                           "משקל", "ברוטו", "נטו"],
+    InvoiceField.PRICE: ["price", "total", "amount", "value", "unit_price", "total_amount",
+                         "מחיר", "סכום", "ערך"],
+    InvoiceField.TERMS: ["terms", "incoterms", "payment_terms", "delivery_terms", "fob", "cif",
+                         "תנאים", "תנאי_מכר"],
+}
 
-# =============================================================================
-# DATA CLASSES
-# =============================================================================
 
 @dataclass
-class FieldStatus:
-    """Status of a single field"""
+class FieldValidation:
+    """Validation result for a single field"""
     field: InvoiceField
-    found: bool
+    present: bool
     value: Optional[str] = None
-    confidence: float = 0.0  # 0-1
+    quality: str = "unknown"  # "good", "partial", "missing"
     notes: Optional[str] = None
 
 
 @dataclass
-class ValidationResult:
-    """Complete validation result"""
+class InvoiceValidationResult:
+    """Complete validation result for an invoice"""
     is_valid: bool
-    score: float  # 0-100
-    found_fields: List[InvoiceField]
-    missing_fields: List[InvoiceField]
-    field_details: Dict[InvoiceField, FieldStatus]
+    score: int  # 0-100
+    fields_present: int
+    fields_required: int
+    field_results: List[FieldValidation] = field(default_factory=list)
+    missing_fields: List[InvoiceField] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    validated_at: datetime = field(default_factory=datetime.now)
     
     def summary_he(self) -> str:
-        """Hebrew summary of validation"""
-        lines = []
-        lines.append(f"{'✅ חשבון תקין' if self.is_valid else '❌ חשבון לא שלם'}")
-        lines.append(f"ציון: {self.score:.0f}/100")
-        lines.append(f"שדות קיימים: {len(self.found_fields)}/9")
-        
-        if self.missing_fields:
-            lines.append("")
-            lines.append("📋 שדות חסרים:")
-            for f in self.missing_fields:
-                info = FIELD_DEFINITIONS[f]
-                lines.append(f"  ☐ {info['name_he']} - סעיף {info['section']}")
-        
-        if self.warnings:
-            lines.append("")
-            lines.append("⚠️ הערות:")
-            for w in self.warnings:
-                lines.append(f"  • {w}")
-        
-        return "\n".join(lines)
-
-
-# =============================================================================
-# VALIDATOR CLASS
-# =============================================================================
-
-class InvoiceValidator:
-    """
-    Validates commercial invoices per Israeli customs regulations.
+        """Generate Hebrew summary"""
+        if self.is_valid:
+            return f"✅ חשבון תקין\nציון: {self.score}/100\nשדות קיימים: {self.fields_present}/{self.fields_required}"
+        else:
+            lines = [
+                f"❌ חשבון לא שלם",
+                f"ציון: {self.score}/100",
+                f"שדות קיימים: {self.fields_present}/{self.fields_required}",
+            ]
+            if self.missing_fields:
+                lines.append("📋 שדות חסרים:")
+                for f in self.missing_fields:
+                    defn = FIELD_DEFINITIONS[f]
+                    lines.append(f"  ☐ {defn['name_he']} - סעיף {defn['section']}")
+            return "\n".join(lines)
     
-    Usage:
-        validator = InvoiceValidator()
-        result = validator.validate(invoice_data)
-        print(result.summary_he())
-    """
-    
-    def __init__(self):
-        self.field_definitions = FIELD_DEFINITIONS
-    
-    def validate(self, invoice_data: Dict) -> ValidationResult:
-        """
-        Validate invoice data against required fields.
+    def get_missing_fields_request(self) -> str:
+        """Generate a Hebrew request for missing fields"""
+        if not self.missing_fields:
+            return ""
         
-        Args:
-            invoice_data: Dictionary with invoice field values
-            
-        Returns:
-            ValidationResult with complete analysis
-        """
-        field_details = {}
-        found_fields = []
-        missing_fields = []
-        warnings = []
-        
-        # Check each required field
-        for inv_field in InvoiceField:
-            status = self._check_field(inv_field, invoice_data)
-            field_details[inv_field] = status
-            
-            if status.found:
-                found_fields.append(inv_field)
-            else:
-                missing_fields.append(inv_field)
-        
-        # Special validations
-        warnings.extend(self._check_special_rules(invoice_data, field_details))
-        
-        # Calculate score
-        score = (len(found_fields) / len(InvoiceField)) * 100
-        
-        # Valid if all fields present (or 8/9 with minor missing)
-        is_valid = len(missing_fields) == 0
-        
-        return ValidationResult(
-            is_valid=is_valid,
-            score=score,
-            found_fields=found_fields,
-            missing_fields=missing_fields,
-            field_details=field_details,
-            warnings=warnings,
-        )
-    
-    def _check_field(self, inv_field: InvoiceField, data: Dict) -> FieldStatus:
-        """Check if a specific field exists in data"""
-        
-        # Map field to possible keys in data
-        field_mappings = {
-            InvoiceField.ORIGIN: ["origin", "country_of_origin", "made_in", "ארץ_מקור"],
-            InvoiceField.PLACE_DATE: ["date", "invoice_date", "place", "תאריך"],
-            InvoiceField.SELLER_BUYER: ["seller", "buyer", "consignee", "shipper", "מוכר", "קונה"],
-            InvoiceField.PACKAGES: ["packages", "cartons", "marks", "אריזות"],
-            InvoiceField.GOODS_DESC: ["description", "goods", "items", "תיאור"],
-            InvoiceField.QUANTITY: ["quantity", "qty", "units", "כמות"],
-            InvoiceField.WEIGHTS: ["weight", "gross_weight", "net_weight", "משקל"],
-            InvoiceField.PRICE: ["price", "amount", "total", "value", "מחיר"],
-            InvoiceField.TERMS: ["terms", "incoterms", "payment_terms", "תנאים"],
-        }
-        
-        possible_keys = field_mappings.get(inv_field, [])
-        
-        # Check if any key exists and has value
-        for key in possible_keys:
-            if key in data and data[key]:
-                return FieldStatus(
-                    field=inv_field,
-                    found=True,
-                    value=str(data[key]),
-                    confidence=1.0,
-                )
-        
-        # Also check with lowercase
-        data_lower = {k.lower(): v for k, v in data.items()}
-        for key in possible_keys:
-            if key.lower() in data_lower and data_lower[key.lower()]:
-                return FieldStatus(
-                    field=inv_field,
-                    found=True,
-                    value=str(data_lower[key.lower()]),
-                    confidence=0.9,
-                )
-        
-        return FieldStatus(
-            field=inv_field,
-            found=False,
-            confidence=0.0,
-        )
-    
-    def _check_special_rules(self, data: Dict, details: Dict) -> List[str]:
-        """Check special validation rules"""
-        warnings = []
-        
-        # Rule 6(5): If goods are composite, must have material percentages
-        if details[InvoiceField.GOODS_DESC].found:
-            desc = details[InvoiceField.GOODS_DESC].value or ""
-            composite_keywords = ["composite", "mixed", "blend", "מורכב", "תערובת"]
-            if any(kw in desc.lower() for kw in composite_keywords):
-                if "%" not in desc:
-                    warnings.append("סעיף 6(5): טובין מורכבים - חסר פירוט אחוזי חומרים")
-        
-        # Rule 6(7): Should have both gross and net weights
-        if details[InvoiceField.WEIGHTS].found:
-            weight_val = details[InvoiceField.WEIGHTS].value or ""
-            has_gross = any(x in weight_val.lower() for x in ["gross", "g.w", "ברוטו"])
-            has_net = any(x in weight_val.lower() for x in ["net", "n.w", "נטו"])
-            if not (has_gross and has_net):
-                warnings.append("סעיף 6(7): מומלץ לציין משקל ברוטו וגם נטו")
-        
-        # Check for Incoterms in terms
-        if details[InvoiceField.TERMS].found:
-            terms_val = details[InvoiceField.TERMS].value or ""
-            incoterms = ["FOB", "CIF", "CFR", "EXW", "DDP", "DAP", "FCA", "CPT", "CIP"]
-            if not any(term in terms_val.upper() for term in incoterms):
-                warnings.append("סעיף 6(9): לא זוהו תנאי מסירה (Incoterms)")
-        
-        return warnings
-    
-    def get_required_fields_list(self) -> str:
-        """Return formatted list of all required fields"""
-        lines = ["📋 שדות נדרשים בחשבון מכר - תקנות (מס' 2) תשל\"ג-1972:", ""]
-        
-        for inv_field in InvoiceField:
-            info = self.field_definitions[inv_field]
-            lines.append(f"  {info['section']} {info['name_he']}")
-            lines.append(f"      {info['description']}")
-            lines.append("")
-        
-        return "\n".join(lines)
-
-
-# =============================================================================
-# FACTORY FUNCTIONS
-# =============================================================================
-
-def create_validator() -> InvoiceValidator:
-    """Create an InvoiceValidator instance"""
-    return InvoiceValidator()
-
-
-def validate_invoice(invoice_data: Dict) -> ValidationResult:
-    """
-    Quick function to validate an invoice.
-    
-    Example:
-        result = validate_invoice({
-            "origin": "China",
-            "date": "2026-02-01",
-            "seller": "XUZHOU DRAGON",
-            "buyer": "RPA Port Ltd",
-            "description": "Machine parts",
-            "quantity": "100 pcs",
-            "weight": "500 kg gross",
-            "price": "10,000 USD",
-            "terms": "FOB Shanghai"
-        })
-        print(result.summary_he())
-    """
-    validator = InvoiceValidator()
-    return validator.validate(invoice_data)
-
-
-def get_missing_fields_request(result: ValidationResult) -> str:
-    """
-    Generate a request for missing fields based on validation result.
-    
-    Returns Hebrew text ready to send to customer.
-    """
-    if result.is_valid:
-        return "✅ החשבון מכיל את כל השדות הנדרשים"
-    
-    lines = []
-    lines.append("📋 בהתאם לתקנות (מס' 2) תשל\"ג-1972, חסרים בחשבון המכר הפרטים הבאים:")
-    lines.append("")
-    
-    for f in result.missing_fields:
-        info = FIELD_DEFINITIONS[f]
-        lines.append(f"  ☐ {info['name_he']} ({info['name_en']})")
-        lines.append(f"     {info['description']}")
+        lines = ["📋 בהתאם לתקנות (מס' 2) תשל\"ג-1972, חסרים בחשבון המכר הפרטים הבאים:"]
+        for f in self.missing_fields:
+            defn = FIELD_DEFINITIONS[f]
+            lines.append(f"  ☐ {defn['name_he']} ({defn['name_en']})")
+            lines.append(f"     {defn['description_he']}")
         lines.append("")
+        lines.append("נא להשלים פרטים אלו בחשבון מתוקן או במסמך נפרד.")
+        return "\n".join(lines)
     
-    lines.append("נא להשלים פרטים אלו בחשבון מתוקן או במסמך נפרד.")
+    def to_dict(self) -> Dict:
+        return {
+            "is_valid": self.is_valid,
+            "score": self.score,
+            "fields_present": self.fields_present,
+            "fields_required": self.fields_required,
+            "missing_fields": [f.value for f in self.missing_fields],
+            "warnings": self.warnings,
+            "validated_at": self.validated_at.isoformat(),
+        }
+
+
+def _check_field_present(data: Dict[str, Any], field: InvoiceField) -> tuple[bool, Optional[str]]:
+    """Check if a field is present in the invoice data"""
+    mappings = FIELD_MAPPINGS.get(field, [])
     
-    return "\n".join(lines)
+    for key in mappings:
+        # Check exact key
+        if key in data and data[key]:
+            return True, str(data[key])
+        
+        # Check lowercase
+        key_lower = key.lower()
+        for data_key in data:
+            if data_key.lower() == key_lower and data[data_key]:
+                return True, str(data[data_key])
+    
+    # Special handling for composite fields
+    if field == InvoiceField.PLACE_DATE:
+        has_date = any(k in str(data).lower() for k in ["date", "תאריך"])
+        has_place = any(k in str(data).lower() for k in ["place", "מקום"])
+        if has_date or has_place:
+            return True, "partial"
+    
+    if field == InvoiceField.SELLER_BUYER:
+        has_seller = any(k in str(data).lower() for k in ["seller", "vendor", "shipper", "מוכר", "ספק"])
+        has_buyer = any(k in str(data).lower() for k in ["buyer", "customer", "consignee", "קונה", "לקוח"])
+        if has_seller or has_buyer:
+            return True, "partial"
+    
+    if field == InvoiceField.WEIGHTS:
+        has_weight = any(k in str(data).lower() for k in ["weight", "gross", "net", "משקל", "ברוטו", "נטו"])
+        if has_weight:
+            return True, "partial"
+    
+    return False, None
 
 
-# =============================================================================
-# TEST
-# =============================================================================
+def validate_invoice(data: Dict[str, Any]) -> InvoiceValidationResult:
+    """
+    Validate an invoice against Israeli customs requirements.
+    
+    Args:
+        data: Dictionary containing invoice fields
+        
+    Returns:
+        InvoiceValidationResult with validation details
+    """
+    field_results = []
+    missing_fields = []
+    total_weight = 0
+    present_weight = 0
+    warnings = []
+    
+    for field_enum, definition in FIELD_DEFINITIONS.items():
+        present, value = _check_field_present(data, field_enum)
+        weight = definition["weight"]
+        total_weight += weight
+        
+        quality = "missing"
+        if present:
+            if value == "partial":
+                quality = "partial"
+                present_weight += weight * 0.5
+                warnings.append(f"{definition['name_he']} - מידע חלקי")
+            else:
+                quality = "good"
+                present_weight += weight
+        else:
+            missing_fields.append(field_enum)
+        
+        field_results.append(FieldValidation(
+            field=field_enum,
+            present=present,
+            value=value if value != "partial" else None,
+            quality=quality,
+        ))
+    
+    # Calculate score
+    score = int((present_weight / total_weight) * 100) if total_weight > 0 else 0
+    
+    # Determine validity (need at least 70% and no critical fields missing)
+    critical_fields = [InvoiceField.ORIGIN, InvoiceField.DESCRIPTION, InvoiceField.PRICE]
+    critical_missing = [f for f in missing_fields if f in critical_fields]
+    is_valid = score >= 70 and len(critical_missing) == 0
+    
+    return InvoiceValidationResult(
+        is_valid=is_valid,
+        score=score,
+        fields_present=len([f for f in field_results if f.present]),
+        fields_required=len(FIELD_DEFINITIONS),
+        field_results=field_results,
+        missing_fields=missing_fields,
+        warnings=warnings,
+    )
 
+
+def quick_validate(data: Dict[str, Any]) -> tuple[bool, int, List[str]]:
+    """
+    Quick validation returning just validity, score, and missing field names.
+    
+    Returns:
+        Tuple of (is_valid, score, list of missing field names in Hebrew)
+    """
+    result = validate_invoice(data)
+    missing_names = [FIELD_DEFINITIONS[f]["name_he"] for f in result.missing_fields]
+    return result.is_valid, result.score, missing_names
+
+
+def print_requirements():
+    """Print all field requirements"""
+    print("📋 שדות נדרשים בחשבון מכר - תקנות (מס' 2) תשל\"ג-1972:")
+    for field_enum, definition in FIELD_DEFINITIONS.items():
+        print(f"  {definition['section']} {definition['name_he']}")
+        print(f"      {definition['description_he']}")
+
+
+# Test
 if __name__ == "__main__":
     print("=" * 60)
     print("RCB Invoice Validator - חשבון מכר")
     print("תקנות (מס' 2) תשל\"ג-1972 סעיף 6")
     print("=" * 60)
     
-    validator = create_validator()
-    
-    # Print required fields
-    print("\n" + validator.get_required_fields_list())
+    # Print requirements
+    print_requirements()
     
     # Test 1: Complete invoice
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("📧 Test 1: Complete Invoice")
     print("-" * 40)
     
     complete_invoice = {
         "origin": "China",
         "date": "2026-02-01",
-        "seller": "XUZHOU DRAGON GUAR CO., LTD",
-        "buyer": "RPA Port Ltd, Israel",
-        "packages": "10 cartons, marks: DG-2026",
-        "description": "Machine parts for anti-scaling system",
-        "quantity": "100 pcs",
-        "weight": "Gross: 520 kg, Net: 480 kg",
-        "price": "USD 10,000.00",
-        "terms": "FOB Shanghai, T/T 30 days",
+        "place": "Shanghai",
+        "seller": "ABC Trading Co., 123 Main St, Shanghai",
+        "buyer": "XYZ Import Ltd, Tel Aviv",
+        "packages": "10 cartons, marked 1-10",
+        "description": "Electronic components - capacitors, resistors",
+        "quantity": "10,000 pieces",
+        "weight_gross": "500 kg",
+        "weight_net": "450 kg",
+        "price": "USD 10,000",
+        "terms": "FOB Shanghai",
     }
     
     result = validate_invoice(complete_invoice)
@@ -390,19 +343,30 @@ if __name__ == "__main__":
     
     incomplete_invoice = {
         "date": "2026-02-01",
-        "seller": "Some Company",
-        "description": "Various goods",
+        "seller": "ABC Trading Co.",
+        "description": "Electronic parts",
         "price": "USD 5,000",
     }
     
     result = validate_invoice(incomplete_invoice)
     print(result.summary_he())
     
-    # Test 3: Generate missing fields request
+    # Test 3: Get missing fields request
     print("\n" + "=" * 60)
     print("📧 Test 3: Missing Fields Request")
     print("-" * 40)
-    
-    print(get_missing_fields_request(result))
+    print(result.get_missing_fields_request())
     
     print("\n" + "=" * 60)
+
+
+def quick_validate(data):
+    """
+    Quick validation returning just validity, score, and missing field names.
+    
+    Returns:
+        Tuple of (is_valid, score, list of missing field names in Hebrew)
+    """
+    result = validate_invoice(data)
+    missing_names = [FIELD_DEFINITIONS[f]["name_he"] for f in result.missing_fields]
+    return result.is_valid, result.score, missing_names

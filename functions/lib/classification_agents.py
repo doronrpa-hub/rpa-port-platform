@@ -2,6 +2,8 @@
 RCB Multi-Agent Classification System
 Queries Firestore for Israeli tariff data, ministry requirements, and rules
 Outputs: HTML email + Excel
+
+UPDATED: Session 10 - Integrated with Module 4, 5, 6
 """
 import json
 import requests
@@ -9,6 +11,22 @@ import base64
 import io
 from datetime import datetime
 from lib.librarian import search_all_knowledge, search_extended_knowledge, full_knowledge_search, build_classification_context, get_israeli_hs_format
+
+# Session 10: Import new modules
+try:
+    from lib.invoice_validator import validate_invoice, quick_validate, FIELD_DEFINITIONS
+    from lib.clarification_generator import (
+        generate_missing_docs_request,
+        generate_origin_request,
+        DocumentType,
+        UrgencyLevel,
+    )
+    from lib.rcb_orchestrator import process_and_respond
+    MODULES_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ New modules not available: {e}")
+    MODULES_AVAILABLE = False
+
 
 def clean_firestore_data(data):
     """Convert Firestore timestamps to strings for JSON serialization"""
@@ -99,22 +117,24 @@ JSON בלבד."""
     except: pass
     return {"items": [{"description": doc_text[:500]}]}
 
-def run_hs_agent(api_key, items, tariff_data, rules):
-    """Agent 2: HS Classification - Israeli format"""
-    system = """אתה מומחה סיווג מכס ישראלי.
 
-פורמט HS ישראלי: XX.XX.XXXXXX/X (לדוגמה: 87.03.808000/5)
+def run_classification_agent(api_key, items, tariff_data, rules, knowledge_context=""):
+    """Agent 2: Classify items using Israeli HS codes"""
+    system = f"""אתה סוכן סיווג מכס ישראלי מומחה.
 
-כללי סיווג:
-- פקודת תעריף המכס 1937
-- כללי פרשנות כלליים (GIR)
-- סיווג לפי מהות, לא שימוש
+{knowledge_context}
 
-החזר JSON:
-{"classifications":[{"item":"תיאור","hs_code":"XX.XX.XXXXXX/X","tariff_desc":"","duty_rate":"X%","reasoning":"","confidence":"גבוהה/בינונית/נמוכה"}]}"""
+כללים:
+{json.dumps(rules[:10], ensure_ascii=False)}
+
+תעריפון (דוגמאות):
+{json.dumps(tariff_data[:15], ensure_ascii=False)}
+
+סווג כל פריט עם קוד HS ישראלי (8-10 ספרות).
+פלט JSON:
+{{"classifications":[{{"item":"","hs_code":"","duty_rate":"","confidence":"גבוהה/בינונית/נמוכה","reasoning":""}}]}}"""
     
-    context = f"פריטים:\n{json.dumps(items, ensure_ascii=False)}\n\nתעריף:\n{json.dumps(tariff_data[:10], ensure_ascii=False)}\n\nכללים:\n{json.dumps(rules[:5], ensure_ascii=False)}"
-    result = call_claude(api_key, system, context, 3000)
+    result = call_claude(api_key, system, f"פריטים לסיווג:\n{json.dumps(items, ensure_ascii=False)}", 3000)
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -122,36 +142,36 @@ def run_hs_agent(api_key, items, tariff_data, rules):
     except: pass
     return {"classifications": []}
 
+
 def run_regulatory_agent(api_key, classifications, ministry_data):
-    """Agent 3: Israeli regulatory requirements"""
-    system = """אתה מומחה רגולציה ישראלית.
+    """Agent 3: Check regulatory requirements"""
+    system = f"""אתה סוכן רגולציה. בדוק אילו אישורים נדרשים לפי הסיווגים.
 
-משרדים:
-- MOT (תחבורה) - רכב, תקנה 271א
-- MOH (בריאות) - מזון, תרופות
-- MOA (חקלאות) - צמחים, בע״ח
-- SII (מכון התקנים) - ת״י
-- MOE (כלכלה) - צו יבוא חופשי
+משרדים ודרישות:
+{json.dumps(ministry_data[:20], ensure_ascii=False)}
 
-{"requirements":[{"hs_code":"","ministries":[{"name":"MOT/MOH/MOA/SII","required":true,"regulation":"תקנה X"}],"free_import":true,"standards":["ת״י X"]}]}"""
+פלט JSON:
+{{"regulatory":[{{"hs_code":"","ministries":[{{"name":"","required":true/false,"regulation":""}}]}}]}}"""
     
-    result = call_claude(api_key, system, f"סיווגים:\n{json.dumps(classifications, ensure_ascii=False)}\n\nמשרדים:\n{json.dumps(ministry_data[:10], ensure_ascii=False)}")
+    result = call_claude(api_key, system, f"סיווגים:\n{json.dumps(classifications, ensure_ascii=False)}")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
             if start != -1: return json.loads(result[start:end])
     except: pass
-    return {"requirements": []}
+    return {"regulatory": []}
 
-def run_fta_agent(api_key, items, origins):
-    """Agent 4: Free Trade Agreements"""
-    system = """אתה מומחה הסכמי סחר ישראל.
 
-הסכמים: EU (EUR1), USA, EFTA, טורקיה, קנדה, ירדן, מצרים
+def run_fta_agent(api_key, classifications, origin_country):
+    """Agent 4: Check FTA eligibility"""
+    system = """אתה סוכן הסכמי סחר. בדוק זכאות להעדפות מכס.
 
-{"fta":[{"country":"","agreement":"","normal_duty":"X%","preferential":"Y%","document":"EUR1/Form A","eligible":true}]}"""
+הסכמים פעילים: EU, USA, UK, EFTA, Turkey, Jordan, Egypt, Mercosur, Mexico, Canada
+
+פלט JSON:
+{"fta":[{"hs_code":"","country":"","agreement":"","eligible":true/false,"preferential":"","documents_needed":""}]}"""
     
-    result = call_claude(api_key, system, f"פריטים:\n{json.dumps(items, ensure_ascii=False)}\n\nמקור: {origins}")
+    result = call_claude(api_key, system, f"סיווגים: {json.dumps(classifications, ensure_ascii=False)}\nארץ מקור: {origin_country}")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -159,94 +179,133 @@ def run_fta_agent(api_key, items, origins):
     except: pass
     return {"fta": []}
 
-def run_risk_agent(api_key, data):
+
+def run_risk_agent(api_key, invoice_data, classifications):
     """Agent 5: Risk assessment"""
-    system = """אתה מומחה סיכוני סיווג.
-{"risk":{"level":"גבוה/בינוני/נמוך","items":[{"item":"","issue":"","mitigation":""}],"pre_ruling":true}}"""
+    system = """אתה סוכן הערכת סיכונים. בדוק:
+1. ערך נמוך חשוד
+2. סיווג שגוי אפשרי
+3. מקור בעייתי
+4. חוסר התאמה
+
+פלט JSON:
+{"risk":{"level":"נמוך/בינוני/גבוה","items":[{"item":"","issue":"","recommendation":""}]}}"""
     
-    result = call_claude(api_key, system, json.dumps(data, ensure_ascii=False))
+    result = call_claude(api_key, system, f"חשבונית: {json.dumps(invoice_data, ensure_ascii=False)}\nסיווגים: {json.dumps(classifications, ensure_ascii=False)}")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
             if start != -1: return json.loads(result[start:end])
     except: pass
-    return {"risk": {"level": "בינוני"}}
+    return {"risk": {"level": "נמוך", "items": []}}
+
 
 def run_synthesis_agent(api_key, all_results):
-    """Agent 6: Final summary"""
-    system = """סכם בעברית: 1)סיכום מנהלים 2)המלצות סיווג 3)רגולציה 4)FTA 5)סיכונים 6)צעדים הבאים"""
-    return call_claude(api_key, system, json.dumps(all_results, ensure_ascii=False), 2000) or "לא זמין"
+    """Agent 6: Final synthesis"""
+    system = """אתה סוכן סיכום. כתוב סיכום קצר בעברית (3-4 משפטים) של:
+1. מה נמצא
+2. המלצות עיקריות
+3. אזהרות אם יש
 
-def run_full_classification(api_key, doc_text, db=None):
-    """Main classification pipeline"""
-    results = {"timestamp": datetime.now().isoformat(), "agents": {}, "success": False}
+טקסט בלבד, לא JSON."""
     
+    return call_claude(api_key, system, json.dumps(all_results, ensure_ascii=False)[:4000]) or "לא ניתן לייצר סיכום."
+
+
+def run_full_classification(api_key, doc_text, db):
+    """Run complete multi-agent classification"""
     try:
-        print("  🔍 Agent 1: Document...")
-        doc_data = run_document_agent(api_key, doc_text)
-        results["agents"]["document"] = doc_data
-        items = doc_data.get("items", [{"description": doc_text[:500]}])
+        # Agent 1: Extract
+        print("    🔍 Agent 1: Extracting...")
+        invoice = run_document_agent(api_key, doc_text)
+        items = invoice.get("items", [{"description": doc_text[:500]}])
+        origin = items[0].get("origin_country", "") if items else ""
         
-        # Use Librarian for comprehensive search
-        librarian_results = {}
+        # Get context
+        search_terms = [i.get("description", "")[:50] for i in items[:5]]
+        tariff = query_tariff(db, search_terms)
+        ministry = query_ministry_index(db)
+        rules = query_classification_rules(db)
+        
+        # Enhanced knowledge search
         knowledge_context = ""
-        if db:
-            search_terms = [i.get("description", "")[:50] for i in items]
-            librarian_results = full_knowledge_search(db, search_terms, doc_text[:500])
-            knowledge_context = build_classification_context(librarian_results)
-            tariff_data = librarian_results.get("tariff_codes", [])
-            ministry_data = librarian_results.get("ministry_requirements", [])
-            rules = librarian_results.get("classification_rules", [])
-        else:
-            tariff_data, ministry_data, rules = [], [], []
+        for item in items[:3]:
+            desc = item.get("description", "")
+            if desc:
+                knowledge = full_knowledge_search(db, desc)
+                knowledge_context += build_classification_context(knowledge) + "\n"
         
-        print("  📊 Agent 2: Classification...")
-        hs_results = run_hs_agent(api_key, items, tariff_data, rules)
-        results["agents"]["classification"] = hs_results
+        # Agent 2: Classify
+        print("    🏷️ Agent 2: Classifying...")
+        classification = run_classification_agent(api_key, items, tariff, rules, knowledge_context)
         
-        print("  ⚖️ Agent 3: Regulatory...")
-        reg_results = run_regulatory_agent(api_key, hs_results.get("classifications", []), ministry_data)
-        results["agents"]["regulatory"] = reg_results
+        # Agent 3: Regulatory
+        print("    ⚖️ Agent 3: Regulatory...")
+        regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry)
         
-        print("  🌍 Agent 4: FTA...")
-        origins = [i.get("origin_country", "") for i in items if i.get("origin_country")]
-        fta_results = run_fta_agent(api_key, items, origins or ["Unknown"])
-        results["agents"]["fta"] = fta_results
+        # Agent 4: FTA
+        print("    🌍 Agent 4: FTA...")
+        fta = run_fta_agent(api_key, classification.get("classifications", []), origin)
         
-        print("  🚨 Agent 5: Risk...")
-        risk_results = run_risk_agent(api_key, {"hs": hs_results, "reg": reg_results})
-        results["agents"]["risk"] = risk_results
+        # Agent 5: Risk
+        print("    🚨 Agent 5: Risk...")
+        risk = run_risk_agent(api_key, invoice, classification.get("classifications", []))
         
-        print("  📋 Agent 6: Synthesis...")
-        results["synthesis"] = run_synthesis_agent(api_key, results["agents"])
-        results["success"] = True
+        # Agent 6: Synthesis
+        print("    📝 Agent 6: Synthesis...")
+        all_results = {"invoice": invoice, "classification": classification, "regulatory": regulatory, "fta": fta, "risk": risk}
+        synthesis = run_synthesis_agent(api_key, all_results)
         
+        return {
+            "success": True,
+            "agents": all_results,
+            "synthesis": synthesis,
+            "invoice_data": invoice  # Session 10: Pass invoice data for validation
+        }
     except Exception as e:
-        print(f"  ❌ Error: {e}")
-        results["error"] = str(e)
-    
-    return clean_firestore_data(results)
+        print(f"    ❌ Error: {e}")
+        return {"success": False, "error": str(e)}
 
-def build_classification_email(results, sender_name):
-    """Build HTML report"""
-    synthesis = results.get("synthesis", "לא זמין")
+
+def build_classification_email(results, sender_name, invoice_validation=None):
+    """Build HTML email report - Updated with invoice validation"""
     classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
-    regulatory = results.get("agents", {}).get("regulatory", {}).get("requirements", [])
+    regulatory = results.get("agents", {}).get("regulatory", {}).get("regulatory", [])
     fta = results.get("agents", {}).get("fta", {}).get("fta", [])
     risk = results.get("agents", {}).get("risk", {}).get("risk", {})
+    synthesis = results.get("synthesis", "")
     
-    html = f'''<div dir="rtl" style="font-family:Arial;font-size:12pt;line-height:1.8">
-    <div style="background:#1e3a5f;color:white;padding:20px;border-radius:10px 10px 0 0">
-        <h1 style="margin:0">📋 דו״ח סיווג מכס - RCB</h1>
-        <p style="margin:5px 0 0 0">{datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
+    html = f'''<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;direction:rtl">
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a87);color:white;padding:20px;border-radius:10px 10px 0 0">
+        <h1 style="margin:0">📊 דו״ח סיווג מכס</h1>
+        <p style="margin:5px 0 0 0;opacity:0.9">נוצר אוטומטית ע״י RCB</p>
     </div>
-    <div style="border:1px solid #ddd;padding:20px;border-radius:0 0 10px 10px">
+    <div style="background:#f8f9fa;padding:20px;border:1px solid #ddd">'''
     
-    <h2 style="color:#1e3a5f">📝 סיכום</h2>
-    <div style="background:#f5f5f5;padding:15px;border-radius:8px;border-right:4px solid #1e3a5f;white-space:pre-wrap">{synthesis}</div>
+    # Session 10: Add invoice validation section
+    if invoice_validation:
+        score = invoice_validation.get('score', 0)
+        is_valid = invoice_validation.get('is_valid', False)
+        missing = invoice_validation.get('missing_fields', [])
+        
+        if is_valid:
+            html += f'''<div style="background:#d4edda;border:1px solid #28a745;border-radius:5px;padding:15px;margin-bottom:20px">
+                <h3 style="color:#155724;margin:0">✅ חשבון תקין (ציון: {score}/100)</h3>
+                <p style="color:#155724;margin:5px 0 0 0">המסמכים מכילים את כל המידע הנדרש לפי תקנות המכס.</p>
+            </div>'''
+        else:
+            html += f'''<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:15px;margin-bottom:20px">
+                <h3 style="color:#856404;margin:0">⚠️ חשבון חלקי (ציון: {score}/100)</h3>
+                <p style="color:#856404;margin:5px 0 0 0">חסרים {len(missing)} שדות בהתאם לתקנות (מס' 2) תשל"ג-1972:</p>
+                <ul style="color:#856404;margin:10px 0 0 0">'''
+            for field in missing[:5]:
+                html += f'<li>{field}</li>'
+            html += '</ul></div>'
     
-    <h2 style="color:#1e3a5f;margin-top:25px">📊 סיווג</h2>
-    <table style="width:100%;border-collapse:collapse">
+    html += f'<p style="background:white;padding:15px;border-radius:5px;border-right:4px solid #1e3a5f">{synthesis}</p>'
+    
+    html += '''<h2 style="color:#1e3a5f;margin-top:25px">🏷️ סיווגים</h2>
+    <table style="width:100%;border-collapse:collapse;background:white">
     <tr style="background:#1e3a5f;color:white">
         <th style="padding:10px;border:1px solid #ddd">פריט</th>
         <th style="padding:10px;border:1px solid #ddd">קוד HS</th>
@@ -329,8 +388,50 @@ def build_excel_report(results):
         print(f"Excel error: {e}")
         return None
 
+
+def _parse_invoice_fields_from_data(invoice_data):
+    """Session 10: Parse invoice data into validation format"""
+    fields = {}
+    
+    if invoice_data.get('seller'):
+        fields['seller'] = invoice_data['seller']
+    if invoice_data.get('buyer'):
+        fields['buyer'] = invoice_data['buyer']
+    if invoice_data.get('invoice_date'):
+        fields['date'] = invoice_data['invoice_date']
+    if invoice_data.get('total_value'):
+        fields['price'] = invoice_data['total_value']
+    if invoice_data.get('incoterms'):
+        fields['terms'] = invoice_data['incoterms']
+    if invoice_data.get('currency'):
+        fields['currency'] = invoice_data['currency']
+    
+    # Check items for origin and description
+    items = invoice_data.get('items', [])
+    if items:
+        origins = [i.get('origin_country') for i in items if i.get('origin_country')]
+        if origins:
+            fields['origin'] = origins[0]
+        
+        descriptions = [i.get('description') for i in items if i.get('description')]
+        if descriptions:
+            fields['description'] = ', '.join(descriptions[:3])
+        
+        quantities = [i.get('quantity') for i in items if i.get('quantity')]
+        if quantities:
+            fields['quantity'] = ', '.join(str(q) for q in quantities[:3])
+    
+    return fields
+
+
 def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func):
-    """Main: Extract, classify, send report with Excel + original attachments"""
+    """Main: Extract, classify, validate, send report with Excel + original attachments
+    
+    UPDATED Session 10: Integrates Module 4, 5, 6
+    - Validates invoice using Module 5
+    - Adds validation results to report
+    - Generates clarification requests if needed (Module 4)
+    """
     try:
         print(f"  🤖 Starting: {subject[:50]}")
         
@@ -352,8 +453,28 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             print(f"  ❌ Failed")
             return False
         
+        # Session 10: Validate invoice using Module 5
+        invoice_validation = None
+        if MODULES_AVAILABLE:
+            print("  📋 Validating invoice (Module 5)...")
+            invoice_data = results.get('invoice_data', {})
+            validation_fields = _parse_invoice_fields_from_data(invoice_data)
+            
+            try:
+                validation_result = validate_invoice(validation_fields)
+                invoice_validation = {
+                    'score': validation_result.score,
+                    'is_valid': validation_result.is_valid,
+                    'missing_fields': [FIELD_DEFINITIONS[f]['name_he'] for f in validation_result.missing_fields],
+                    'fields_present': validation_result.fields_present,
+                    'fields_required': validation_result.fields_required,
+                }
+                print(f"  📊 Invoice score: {validation_result.score}/100 ({'✅' if validation_result.is_valid else '⚠️'})")
+            except Exception as ve:
+                print(f"  ⚠️ Validation error: {ve}")
+        
         print("  📋 Building reports...")
-        html = build_classification_email(results, sender_name)
+        html = build_classification_email(results, sender_name, invoice_validation)
         excel = build_excel_report(results)
         
         attachments = []
@@ -374,14 +495,33 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                     'contentBytes': att.get('contentBytes')
                 })
         
+        # Session 10: Add invoice score to subject
+        subject_line = f"📊 דו״ח סיווג: {subject}"
+        if invoice_validation:
+            score = invoice_validation['score']
+            if score >= 70:
+                subject_line = f"✅ דו״ח סיווג ({score}/100): {subject}"
+            else:
+                subject_line = f"⚠️ דו״ח סיווג ({score}/100): {subject}"
+        
         print("  📤 Sending...")
-        if helper_graph_send(access_token, rcb_email, to_email, f"📊 דו״ח סיווג: {subject}", html, msg_id, attachments):
+        if helper_graph_send(access_token, rcb_email, to_email, subject_line, html, msg_id, attachments):
             print(f"  ✅ Sent to {to_email}")
-            db.collection("rcb_classifications").add({
-                "subject": subject, "to": to_email,
+            
+            # Save to Firestore with validation data
+            save_data = {
+                "subject": subject,
+                "to": to_email,
                 "items": len(results.get("agents", {}).get("classification", {}).get("classifications", [])),
                 "timestamp": firestore.SERVER_TIMESTAMP
-            })
+            }
+            
+            if invoice_validation:
+                save_data["invoice_score"] = invoice_validation['score']
+                save_data["invoice_valid"] = invoice_validation['is_valid']
+                save_data["missing_fields"] = invoice_validation['missing_fields']
+            
+            db.collection("rcb_classifications").add(save_data)
             return True
         return False
     except Exception as e:

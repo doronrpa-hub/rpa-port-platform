@@ -46,113 +46,12 @@ db = firestore.client()
 bucket = storage.bucket()
 
 
-
-# ============================================================
-# HELPER FUNCTIONS FOR EMAIL PROCESSING
-# ============================================================
-
-def extract_reply_email(from_str):
-    """Extract email address from 'Name <email>' format"""
-    import re
-    match = re.search(r'<([^>]+)>', from_str)
-    if match:
-        return match.group(1)
-    if '@' in from_str:
-        return from_str.strip()
-    return None
-
-
-def send_ack_email(email_addr, email_pass, to_email, original_subject, attachments):
-    """Send acknowledgment email immediately"""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    
-    try:
-        att_list = "\n".join([f"  • {a['filename']}" for a in attachments])
-        
-        body = f"""שלום,
-
-קיבלנו את המסמכים שלך ומתחילים בעיבוד.
-
-📎 מסמכים שהתקבלו:
-{att_list}
-
-⏱️ זמן עיבוד משוער: 2-5 דקות
-
-נשלח דוח מפורט בסיום העיבוד.
-
-בברכה,
-מערכת RCB
-ר.פ.א - פורט בע"מ
-"""
-        
-        msg = MIMEMultipart()
-        msg["From"] = email_addr
-        msg["To"] = to_email
-        msg["Subject"] = f"✅ התקבל: {original_subject}"
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(email_addr, email_pass)
-            server.send_message(msg)
-        
-        print(f"✅ ACK sent to {to_email}")
-        
-    except Exception as e:
-        print(f"ACK email error: {e}")
-
-
-def send_classification_report(email_addr, email_pass, to_email, original_subject, classifications, doc_id):
-    """Send classification report email"""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    
-    try:
-        # Try to use existing report builder
-        try:
-            from lib.classification_agents import build_classification_email
-            body = build_classification_email(classifications)
-        except:
-            # Fallback: simple report
-            lines = ["שלום,", "", "להלן תוצאות הסיווג:", ""]
-            for i, c in enumerate(classifications, 1):
-                if isinstance(c, dict):
-                    lines.append(f"📦 פריט {i}:")
-                    lines.append(f"   תיאור: {c.get('product_description', 'N/A')[:50]}")
-                    lines.append(f"   פרט מכס: {c.get('suggested_hs', c.get('hs_code', 'ממתין'))}")
-                    lines.append("")
-            lines.extend(["בברכה,", "מערכת RCB", "ר.פ.א - פורט בע\"מ"])
-            body = "\n".join(lines)
-        
-        msg = MIMEMultipart()
-        msg["From"] = email_addr
-        msg["To"] = to_email
-        msg["Subject"] = f"📋 דוח סיווג: {original_subject}"
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(email_addr, email_pass)
-            server.send_message(msg)
-        
-        print(f"✅ Report sent to {to_email}")
-        
-        # Update Firestore
-        db.collection("inbox").document(doc_id).update({"report_sent": True})
-        
-    except Exception as e:
-        print(f"Report email error: {e}")
-
-
 # ============================================================
 # FUNCTION 1: CHECK EMAIL (runs every 5 minutes)
 # ============================================================
-@scheduler_fn.on_schedule(schedule="every 5 minutes", memory=options.MemoryOption.GB_1, timeout_sec=300)
+@scheduler_fn.on_schedule(schedule="every 5 minutes", memory=options.MemoryOption.MB_512)
 def check_email_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
-    """Check emails using RCB Email Processor - Production Ready"""
-    
-    print("🚀 RCB Email Processor Starting...")
+    """Check airpaport@gmail.com for new emails every 5 minutes"""
     
     # Get email config
     try:
@@ -160,180 +59,79 @@ def check_email_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
         email_addr = config["email"]
         email_pass = config["app_password"]
     except Exception as e:
-        print(f"❌ Email config error: {e}")
+        print(f"Email config error: {e}")
         return
-    
-    # Use RCB Email Processor
-    try:
-        from lib.rcb_email_processor import process_emails
-        result = process_emails(db, bucket, email_addr, email_pass)
-        print(f"✅ Processing complete: {result.get('stats', {})}")
-    except ImportError as ie:
-        print(f"⚠️ Module import error: {ie}")
-        print("Falling back to simple processor...")
-        _simple_email_check(email_addr, email_pass)
-    except Exception as e:
-        print(f"❌ Processing error: {e}")
-        import traceback
-        traceback.print_exc()
-        _simple_email_check(email_addr, email_pass)
 
-
-def _simple_email_check(email_addr: str, email_pass: str):
-    """Fallback simple email check (no dependencies)"""
-    import imaplib
-    import email as email_lib
-    from datetime import datetime
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    
-    print("📧 Running simple email check...")
-    
-    # Get processed IDs
+    # Get already processed IDs
     processed_ids = set()
     for doc in db.collection("inbox").stream():
         processed_ids.add(doc.id)
-    
-    # Connect
+
+    # Connect to Gmail
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_addr, email_pass)
         mail.select("inbox")
     except Exception as e:
-        print(f"❌ Gmail connection error: {e}")
+        print(f"Gmail connection failed: {e}")
         return
-    
-    # Search only today's emails
-    today = datetime.now().strftime("%d-%b-%Y")
-    status, messages = mail.search(None, f'(SINCE "{today}")')
+
+    status, messages = mail.search(None, "ALL")
     email_ids = messages[0].split() if messages[0] else []
-    
-    print(f"📬 Found {len(email_ids)} emails from {today}")
-    
     new_count = 0
-    for eid in email_ids[:10]:  # Max 10 per run
+
+    for eid in email_ids:
         try:
-            # Fetch headers first
-            status, header_data = mail.fetch(eid, "(BODY.PEEK[HEADER])")
-            msg = email_lib.message_from_bytes(header_data[0][1])
-            
+            status, msg_data = mail.fetch(eid, "(RFC822)")
+            msg = email_lib.message_from_bytes(msg_data[0][1])
             msg_id = msg.get("Message-ID", str(eid))
-            safe_id = re.sub(r'[/\\\.\[\]\*~<>]', '_', str(msg_id))[:100]
-            
+            safe_id = re.sub(r'[/\\\.\[\]\*~]', '_', str(msg_id))[:100]
+
             if safe_id in processed_ids:
                 continue
-            
+
             new_count += 1
+
+            # Decode headers
             subject = decode_email_header(msg.get("Subject", ""))
             from_str = decode_email_header(msg.get("From", ""))
             date_str = msg.get("Date", "")
-            
-            print(f"  📨 New: {subject[:40]}...")
-            
-            # Fetch full content
-            status, msg_data = mail.fetch(eid, "(RFC822)")
-            full_msg = email_lib.message_from_bytes(msg_data[0][1])
-            
+
             # Extract body
-            body_text = extract_body(full_msg)
-            
-            # Extract attachments
-            attachments = extract_attachments(full_msg, body_text, subject)
-            
+            body_text = extract_body(msg)
+
+            # Extract and process attachments
+            attachments = extract_attachments(msg, body_text, subject)
+
             # Store email
             db.collection("inbox").document(safe_id).set({
                 "from": from_str,
                 "subject": subject,
                 "date": date_str,
-                "body": body_text[:10000] if body_text else "",
+                "body": body_text[:10000],
                 "message_id": msg_id,
                 "attachment_count": len(attachments),
                 "attachments": [{
                     "filename": a["filename"],
                     "size": a["size"],
                     "type": a["type"],
-                    "doc_type": a.get("doc_type", ""),
+                    "doc_type": a["doc_type"],
                     "storage_path": a.get("storage_path", "")
                 } for a in attachments],
-                "status": "received",
-                "received_at": firestore.SERVER_TIMESTAMP,
-                "ack_sent": False,
+                "status": "processed",
+                "processed_at": firestore.SERVER_TIMESTAMP
             })
-            
-            # Send ACK if has attachments
-            if attachments:
-                from_email = _extract_email(from_str)
-                if from_email:
-                    _send_ack(email_addr, email_pass, from_email, subject, attachments)
-                    db.collection("inbox").document(safe_id).update({"ack_sent": True})
-            
-            # Process attachments
+
+            # Classify each attachment (triggers Firestore listener)
             for att in attachments:
-                try:
-                    classify_and_store(att, from_str, subject, date_str, body_text)
-                except Exception as ce:
-                    print(f"    ⚠️ Classification error: {ce}")
-            
-            # Update status
-            db.collection("inbox").document(safe_id).update({
-                "status": "completed",
-                "processed_at": firestore.SERVER_TIMESTAMP,
-            })
-            
+                classify_and_store(att, from_str, subject, date_str, body_text)
+
         except Exception as e:
-            print(f"  ❌ Error processing {eid}: {e}")
-    
+            print(f"Error processing email {eid}: {e}")
+            continue
+
     mail.logout()
-    print(f"✅ Processed {new_count} new emails")
-
-
-def _extract_email(from_str: str) -> str:
-    """Extract email address from From header"""
-    match = re.search(r'<([^>]+)>', from_str)
-    if match:
-        return match.group(1)
-    if '@' in from_str:
-        return from_str.strip()
-    return ""
-
-
-def _send_ack(email_addr: str, email_pass: str, to_email: str, subject: str, attachments: list):
-    """Send acknowledgment email"""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    
-    try:
-        att_list = "\n".join([f"  • {a['filename']}" for a in attachments])
-        
-        body = f"""שלום,
-
-✅ קיבלנו את המסמכים שלך ומתחילים בעיבוד.
-
-📎 מסמכים שהתקבלו ({len(attachments)}):
-{att_list}
-
-⏱️ זמן עיבוד משוער: 2-5 דקות
-
-בברכה,
-מערכת RCB - ר.פ.א פורט בע"מ
-"""
-        
-        msg = MIMEMultipart()
-        msg["From"] = email_addr
-        msg["To"] = to_email
-        msg["Subject"] = f"✅ התקבל: {subject}"
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(email_addr, email_pass)
-            server.send_message(msg)
-        
-        print(f"    📤 ACK sent to {to_email}")
-        
-    except Exception as e:
-        print(f"    ⚠️ ACK error: {e}")
+    print(f"Email check complete: {new_count} new emails")
 
 
 # ============================================================

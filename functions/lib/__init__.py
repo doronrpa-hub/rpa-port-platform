@@ -1,36 +1,33 @@
 """
-RCB Library - Robotic Customs Bot
-==================================
-
-All modules for customs document processing.
+RCB Library Modules
+===================
+Complete library for RCB customs processing system.
 
 Modules:
-- clarification_generator: Generate Hebrew request emails (Module 4)
-- invoice_validator: Validate invoice fields per תקנות (Module 5)
-- rcb_orchestrator: Integration layer connecting all modules (Module 6)
-- incoterms_calculator: Calculate CIF values
-- product_classifier: Classify products with HS codes
-- document_tracker: Track document status
-- classification_agents: AI classification agents
-- librarian: Knowledge base management
+- clarification_generator (Module 4): Hebrew request emails
+- invoice_validator (Module 5): Invoice field validation
+- rcb_orchestrator (Module 6): Integration layer
+- rcb_email_processor: Smart email processing
+- classification_agents: AI classification
+- librarian: Knowledge base
+- document_tracker: Status tracking
+- incoterms_calculator: CIF calculations
+- product_classifier: HS code classification
 - rcb_helpers: Utility functions
-- pdf_creator: Generate PDF reports
-
-Usage:
-    from lib.rcb_orchestrator import create_orchestrator, quick_check
-    from lib.clarification_generator import generate_missing_docs_request
-    from lib.invoice_validator import validate_invoice
+- pdf_creator: PDF generation
 """
 
 # Module 4: Clarification Generator
 try:
     from .clarification_generator import (
-        create_generator,
         generate_missing_docs_request,
+        generate_classification_request,
+        generate_cif_completion_request,
+        generate_origin_verification_request,
         generate_origin_request,
-        ClarificationGenerator,
-        ShipmentInfo,
-        ClassificationDilemma,
+        generate_generic_request,
+        ClarificationRequest,
+        DocumentType,
         UrgencyLevel,
         RequestType,
     )
@@ -41,82 +38,93 @@ except ImportError:
 try:
     from .invoice_validator import (
         validate_invoice,
-        get_missing_fields_request,
-        create_validator,
-        InvoiceValidator,
+        quick_validate,
+        InvoiceValidationResult,
         InvoiceField,
-        ValidationResult,
+        FIELD_DEFINITIONS,
     )
 except ImportError:
     pass
 
-# Module 6: Orchestrator
+# Module 6: RCB Orchestrator
 try:
     from .rcb_orchestrator import (
-        create_orchestrator,
-        process_shipment,
-        quick_check,
         RCBOrchestrator,
-        ProcessingStage,
-        ProcessingResult,
+        create_orchestrator,
+        process_and_respond,
+        ShipmentStatus,
+        ShipmentStage,
+        ProcessingAction,
     )
 except ImportError:
     pass
 
-# Other modules
+# Email Processor
 try:
-    from .incoterms_calculator import calculate_cif, IncotermsCalculator
+    from .rcb_email_processor import (
+        RCBEmailProcessor,
+        create_processor,
+        build_ack_email,
+        build_report_email,
+    )
 except ImportError:
     pass
 
+# Classification Agents
 try:
-    from .product_classifier import classify_product, ProductClassifier
+    from .classification_agents import (
+        run_full_classification,
+        build_classification_email,
+        process_and_send_report,
+    )
 except ImportError:
     pass
 
+# RCB Helpers
 try:
-    from .document_tracker import DocumentTracker, track_document
+    from .rcb_helpers import (
+        helper_get_graph_token,
+        helper_graph_messages,
+        helper_graph_attachments,
+        helper_graph_mark_read,
+        helper_graph_send,
+        to_hebrew_name,
+        build_rcb_reply,
+        get_rcb_secrets_internal,
+        extract_text_from_attachments,
+    )
 except ImportError:
     pass
 
-try:
-    from .classification_agents import run_full_classification, build_classification_email
-except ImportError:
-    pass
-
+# Librarian
 try:
     from .librarian import Librarian
 except ImportError:
     pass
 
+# Document Tracker
 try:
-    from .rcb_helpers import extract_text_from_attachments, build_rcb_reply
+    from .document_tracker import DocumentTracker
 except ImportError:
     pass
 
-__version__ = "0.6.0"
-__all__ = [
-    # Module 4
-    "create_generator",
-    "generate_missing_docs_request", 
-    "generate_origin_request",
-    "ClarificationGenerator",
-    "ShipmentInfo",
-    "UrgencyLevel",
-    # Module 5
-    "validate_invoice",
-    "get_missing_fields_request",
-    "InvoiceValidator",
-    "InvoiceField",
-    # Module 6
-    "create_orchestrator",
-    "process_shipment",
-    "quick_check",
-    "RCBOrchestrator",
-    "ProcessingStage",
-    # Others
-    "calculate_cif",
-    "classify_product",
-    "DocumentTracker",
-    "run_full_classification",
-]
+# Incoterms Calculator
+try:
+    from .incoterms_calculator import calculate_cif
+except ImportError:
+    pass
+
+# Product Classifier
+try:
+    from .product_classifier import classify_product
+except ImportError:
+    pass
+
+# PDF Creator
+try:
+    from .pdf_creator import create_pdf
+except ImportError:
+    pass
+
+__version__ = "2.0.0"
+__author__ = "RCB System"
