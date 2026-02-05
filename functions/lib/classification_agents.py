@@ -5,11 +5,14 @@ Outputs: HTML email + Excel
 
 UPDATED: Session 10 - Integrated with Module 4, 5, 6
 UPDATED: Session 11 - HS code validation against tariff database
+UPDATED: Session 11 - Standardized English subject line format
 """
 import json
 import requests
 import base64
 import io
+import random
+import string
 from datetime import datetime
 from lib.librarian import (
     search_all_knowledge, 
@@ -34,6 +37,102 @@ try:
 except ImportError as e:
     print(f"⚠️ New modules not available: {e}")
     MODULES_AVAILABLE = False
+
+
+# =============================================================================
+# SESSION 11: Tracking Code & Subject Line Builder
+# =============================================================================
+
+def generate_tracking_code():
+    """Generate unique RCB tracking code: RCB-YYYYMMDD-XXXXX"""
+    date_part = datetime.now().strftime("%Y%m%d")
+    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+    return f"RCB-{date_part}-{random_part}"
+
+
+def build_rcb_subject(invoice_data, status="ACK", invoice_score=None):
+    """
+    Build standardized RCB email subject line in English.
+    
+    Format: [TRACKING] Direction | RPA: XXX | Seller: XXX | Buyer: XXX | Freight | BL/AWB | STATUS
+    
+    Args:
+        invoice_data: Dict from Agent 1 extraction
+        status: "ACK" (acknowledged), "FINAL" (complete), "CLARIFICATION" (needs info)
+        invoice_score: Optional invoice validation score
+        
+    Returns:
+        Formatted subject line string
+    """
+    # Generate tracking code
+    tracking = generate_tracking_code()
+    
+    # Direction
+    direction = invoice_data.get('direction', 'unknown')
+    if direction == 'import':
+        direction_text = "Import to IL"
+    elif direction == 'export':
+        direction_text = "Export from IL"
+    else:
+        direction_text = "Direction TBD"
+    
+    # RPA file number
+    rpa_file = invoice_data.get('rpa_file_number', '')
+    rpa_text = f"RPA:{rpa_file}" if rpa_file else "RPA:TBD"
+    
+    # Seller (truncate to 20 chars)
+    seller = invoice_data.get('seller', '')
+    if seller:
+        # Extract company name (first part before comma or address)
+        seller = seller.split(',')[0].strip()[:20]
+    seller_text = f"S:{seller}" if seller else "S:Unknown"
+    
+    # Buyer (truncate to 20 chars)
+    buyer = invoice_data.get('buyer', '')
+    if buyer:
+        buyer = buyer.split(',')[0].strip()[:20]
+    buyer_text = f"B:{buyer}" if buyer else "B:Unknown"
+    
+    # Freight type
+    freight_type = invoice_data.get('freight_type', 'unknown')
+    if freight_type == 'sea':
+        freight_text = "SEA"
+    elif freight_type == 'air':
+        freight_text = "AIR"
+    else:
+        freight_text = "FRT:TBD"
+    
+    # BL or AWB number
+    bl_number = invoice_data.get('bl_number', '')
+    awb_number = invoice_data.get('awb_number', '')
+    if bl_number:
+        transport_text = f"BL:{bl_number[:15]}"
+    elif awb_number:
+        transport_text = f"AWB:{awb_number[:15]}"
+    else:
+        transport_text = "REF:TBD"
+    
+    # Status with score if available
+    if status == "CLARIFICATION" or (invoice_score is not None and invoice_score < 70):
+        status_text = "⚠️CLARIFICATION"
+    elif status == "FINAL" or (invoice_score is not None and invoice_score >= 70):
+        status_text = "✅FINAL"
+    else:
+        status_text = "📥ACK"
+    
+    # Build subject
+    subject = f"[{tracking}] {direction_text} | {rpa_text} | {seller_text} | {buyer_text} | {freight_text} | {transport_text} | {status_text}"
+    
+    return subject, tracking
+
+
+def extract_tracking_from_subject(subject):
+    """Extract RCB tracking code from existing subject if present"""
+    import re
+    match = re.search(r'\[RCB-\d{8}-[A-Z0-9]{5}\]', subject)
+    if match:
+        return match.group(0)[1:-1]  # Remove brackets
+    return None
 
 
 def clean_firestore_data(data):
@@ -113,9 +212,34 @@ def query_classification_rules(db):
     return rules
 
 def run_document_agent(api_key, doc_text):
-    """Agent 1: Extract invoice data"""
-    system = """אתה סוכן חילוץ מידע. חלץ מהמסמך JSON:
-{"seller":"","buyer":"","items":[{"description":"","quantity":"","unit_price":"","total":"","origin_country":""}],"invoice_number":"","invoice_date":"","total_value":"","currency":"","incoterms":""}
+    """Agent 1: Extract invoice data - Updated Session 11 with shipping details"""
+    system = """אתה סוכן חילוץ מידע. חלץ מהמסמך JSON עם כל השדות הבאים:
+{
+    "seller": "",
+    "buyer": "",
+    "items": [{"description":"","quantity":"","unit_price":"","total":"","origin_country":""}],
+    "invoice_number": "",
+    "invoice_date": "",
+    "total_value": "",
+    "currency": "",
+    "incoterms": "",
+    "direction": "import/export/unknown",
+    "freight_type": "sea/air/unknown",
+    "bl_number": "",
+    "awb_number": "",
+    "rpa_file_number": "",
+    "vessel_name": "",
+    "port_of_loading": "",
+    "port_of_discharge": ""
+}
+
+הנחיות:
+- direction: "import" אם הסחורה מגיעה לישראל, "export" אם יוצאת מישראל
+- freight_type: "sea" אם יש B/L או אונייה, "air" אם יש AWB או טיסה
+- bl_number: מספר שטר מטען ימי (Bill of Lading)
+- awb_number: מספר שטר מטען אווירי (Air Waybill)
+- rpa_file_number: מספר תיק RPA אם מופיע
+
 JSON בלבד."""
     result = call_claude(api_key, system, doc_text[:6000])
     try:
@@ -307,20 +431,45 @@ def run_full_classification(api_key, doc_text, db):
         return {"success": False, "error": str(e)}
 
 
-def build_classification_email(results, sender_name, invoice_validation=None):
-    """Build HTML email report - Updated with invoice validation"""
+def build_classification_email(results, sender_name, invoice_validation=None, tracking_code=None, invoice_data=None):
+    """Build HTML email report - Updated with invoice validation and tracking code"""
     classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
     regulatory = results.get("agents", {}).get("regulatory", {}).get("regulatory", [])
     fta = results.get("agents", {}).get("fta", {}).get("fta", [])
     risk = results.get("agents", {}).get("risk", {}).get("risk", {})
     synthesis = results.get("synthesis", "")
     
+    # Session 11: Generate tracking code if not provided
+    if not tracking_code:
+        tracking_code = generate_tracking_code()
+    
     html = f'''<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;direction:rtl">
     <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a87);color:white;padding:20px;border-radius:10px 10px 0 0">
         <h1 style="margin:0">📊 דו״ח סיווג מכס</h1>
         <p style="margin:5px 0 0 0;opacity:0.9">נוצר אוטומטית ע״י RCB</p>
+        <p style="margin:5px 0 0 0;font-family:monospace;font-size:12px;opacity:0.8">Tracking: {tracking_code}</p>
     </div>
     <div style="background:#f8f9fa;padding:20px;border:1px solid #ddd">'''
+    
+    # Session 11: Add shipment info summary if available
+    if invoice_data:
+        direction = invoice_data.get('direction', 'unknown')
+        direction_text = "יבוא לישראל" if direction == 'import' else "יצוא מישראל" if direction == 'export' else "לא ידוע"
+        freight = invoice_data.get('freight_type', 'unknown')
+        freight_text = "ים 🚢" if freight == 'sea' else "אוויר ✈️" if freight == 'air' else "לא ידוע"
+        seller = invoice_data.get('seller', 'לא ידוע')[:30]
+        buyer = invoice_data.get('buyer', 'לא ידוע')[:30]
+        bl = invoice_data.get('bl_number', '')
+        awb = invoice_data.get('awb_number', '')
+        ref = f"B/L: {bl}" if bl else f"AWB: {awb}" if awb else "אין מספר משלוח"
+        
+        html += f'''<div style="background:#e3f2fd;border:1px solid #2196f3;border-radius:5px;padding:15px;margin-bottom:20px">
+            <table style="width:100%;font-size:14px">
+                <tr><td><strong>כיוון:</strong> {direction_text}</td><td><strong>הובלה:</strong> {freight_text}</td></tr>
+                <tr><td><strong>מוכר:</strong> {seller}</td><td><strong>קונה:</strong> {buyer}</td></tr>
+                <tr><td colspan="2"><strong>מס׳ משלוח:</strong> {ref}</td></tr>
+            </table>
+        </div>'''
     
     # Session 10: Add invoice validation section
     if invoice_validation:
@@ -537,15 +686,30 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             except Exception as ve:
                 print(f"  ⚠️ Validation error: {ve}")
         
+        # Session 11: Build standardized English subject line FIRST (need tracking code for HTML)
+        invoice_data = results.get('invoice_data', {})
+        score = invoice_validation['score'] if invoice_validation else None
+        
+        # Determine status
+        if invoice_validation and invoice_validation['score'] < 70:
+            status = "CLARIFICATION"
+        elif invoice_validation and invoice_validation['score'] >= 70:
+            status = "FINAL"
+        else:
+            status = "ACK"
+        
+        subject_line, tracking_code = build_rcb_subject(invoice_data, status, score)
+        print(f"  🏷️ Tracking: {tracking_code}")
+        
         print("  📋 Building reports...")
-        html = build_classification_email(results, sender_name, invoice_validation)
+        html = build_classification_email(results, sender_name, invoice_validation, tracking_code, invoice_data)
         excel = build_excel_report(results)
         
         attachments = []
         if excel:
             attachments.append({
                 '@odata.type': '#microsoft.graph.fileAttachment',
-                'name': f'RCB_Report_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                'name': f'RCB_{tracking_code}_{datetime.now().strftime("%Y%m%d")}.xlsx',
                 'contentType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'contentBytes': excel
             })
@@ -558,15 +722,6 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                     'contentType': att.get('contentType', 'application/octet-stream'),
                     'contentBytes': att.get('contentBytes')
                 })
-        
-        # Session 10: Add invoice score to subject
-        subject_line = f"📊 דו״ח סיווג: {subject}"
-        if invoice_validation:
-            score = invoice_validation['score']
-            if score >= 70:
-                subject_line = f"✅ דו״ח סיווג ({score}/100): {subject}"
-            else:
-                subject_line = f"⚠️ דו״ח סיווג ({score}/100): {subject}"
         
         print("  📤 Sending...")
         if helper_graph_send(access_token, rcb_email, to_email, subject_line, html, msg_id, attachments):
@@ -631,8 +786,8 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                         </tr></table>
                         </div>'''
                         
-                        # Send clarification email
-                        clarification_subject = f"📋 {clarification.subject}"
+                        # Send clarification email with same tracking code
+                        clarification_subject = f"[{tracking_code}] ⚠️CLARIFICATION | {clarification.subject}"
                         if helper_graph_send(access_token, rcb_email, to_email, clarification_subject, clarification_html, None, []):
                             print(f"  📋 Clarification request sent (score: {invoice_validation['score']}/100)")
                             clarification_sent = True
@@ -640,12 +795,21 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 except Exception as ce:
                     print(f"  ⚠️ Clarification generation error: {ce}")
             
-            # Save to Firestore with validation data
+            # Save to Firestore with validation data and tracking code
             save_data = {
-                "subject": subject,
+                "tracking_code": tracking_code,
+                "subject": subject_line,
+                "original_subject": subject,
                 "to": to_email,
                 "items": len(results.get("agents", {}).get("classification", {}).get("classifications", [])),
-                "timestamp": firestore.SERVER_TIMESTAMP
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                # Session 11: Store extracted shipping info
+                "direction": invoice_data.get('direction', 'unknown'),
+                "freight_type": invoice_data.get('freight_type', 'unknown'),
+                "bl_number": invoice_data.get('bl_number', ''),
+                "awb_number": invoice_data.get('awb_number', ''),
+                "seller": invoice_data.get('seller', ''),
+                "buyer": invoice_data.get('buyer', ''),
             }
             
             if invoice_validation:
