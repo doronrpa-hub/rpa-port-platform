@@ -1736,3 +1736,87 @@ def test_pdf_ocr(req: https_fn.Request) -> https_fn.Response:
         json.dumps(results, ensure_ascii=False, indent=2),
         content_type="application/json; charset=utf-8"
     )
+# Add this to main.py to test PDF generation
+
+# ============================================================
+# TEST: PDF REPORT GENERATION
+# ============================================================
+@https_fn.on_request(memory=options.MemoryOption.GB_1, timeout_sec=60)
+def test_pdf_report(req: https_fn.Request) -> https_fn.Response:
+    """Test PDF report generation - creates a sample classification PDF"""
+    from lib.pdf_creator import create_classification_pdf
+    import base64
+    from datetime import datetime
+    
+    try:
+        # Sample classification data
+        test_data = {
+            'sender_name': 'דורון טסט',
+            'email_subject': 'בקשת סיווג - מייבש שיער',
+            'classification_date': datetime.now().strftime('%d/%m/%Y %H:%M'),
+            'items': [
+                {
+                    'description': 'מייבש שיער חשמלי 2000W',
+                    'hs_code': '8516.31.00.00',
+                    'hs_description_he': 'מייבשי שיער',
+                    'hs_description_en': 'Hair dryers',
+                    'duty_rate': '12%',
+                    'vat_rate': '17%',
+                    'purchase_tax': 'לא חל',
+                    'ministry_requirements': [
+                        {'ministry': 'משרד הכלכלה', 'requirement': 'תקן ישראלי', 'status': 'נדרש'},
+                        {'ministry': 'מכון התקנים', 'requirement': 'בדיקת בטיחות חשמל', 'status': 'נדרש'}
+                    ],
+                    'notes': 'יש לוודא תאימות מתח 220V',
+                    'confidence': 'גבוהה (95%)'
+                },
+                {
+                    'description': 'כבל USB-C לטעינה',
+                    'hs_code': '8544.42.00.00',
+                    'hs_description_he': 'מוליכים חשמליים מצוידים במחברים',
+                    'hs_description_en': 'Electric conductors with connectors',
+                    'duty_rate': '0%',
+                    'vat_rate': '17%',
+                    'purchase_tax': 'לא חל',
+                    'ministry_requirements': [],
+                    'confidence': 'גבוהה (92%)'
+                }
+            ]
+        }
+        
+        # Create PDF
+        pdf_path = create_classification_pdf(test_data, '/tmp/test_report.pdf')
+        
+        # Read PDF and return as base64 (for download)
+        with open(pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
+        
+        # Check if browser request (return PDF) or API request (return JSON)
+        accept = req.headers.get('Accept', '')
+        if 'text/html' in accept:
+            # Return PDF directly for browser viewing
+            return https_fn.Response(
+                pdf_bytes,
+                headers={
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': 'inline; filename="classification_report.pdf"'
+                }
+            )
+        else:
+            # Return JSON with base64 PDF
+            return https_fn.Response(
+                json.dumps({
+                    'status': 'success',
+                    'message': 'PDF created successfully',
+                    'pdf_size': len(pdf_bytes),
+                    'pdf_base64': base64.b64encode(pdf_bytes).decode()
+                }),
+                content_type='application/json'
+            )
+            
+    except Exception as e:
+        return https_fn.Response(
+            json.dumps({'status': 'error', 'error': str(e)}),
+            status=500,
+            content_type='application/json'
+        )
