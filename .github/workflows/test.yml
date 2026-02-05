@@ -1,0 +1,40 @@
+# GitHub Actions - Automatic Testing
+# Runs on every push and pull request
+# Tests all RCB modules
+
+name: RCB Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: 📦 Install dependencies
+      run: |
+        cd functions
+        pip install -r requirements.txt
+        pip install pytest pytest-mock
+    
+    - name: 🧪 Run tests
+      run: |
+        cd functions
+        python -m pytest tests/ -v --tb=short
+    
+    - name: 📊 Test Summary
+      if: always()
+      run: |
+        echo "✅ Tests completed!"
