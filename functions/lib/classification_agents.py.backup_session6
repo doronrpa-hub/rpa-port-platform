@@ -1,0 +1,645 @@
+"""
+RCB Multi-Agent Classification System
+Queries Firestore for Israeli tariff data, ministry requirements, and rules
+Outputs: HTML email + PDF + Excel
+"""
+import json
+import requests
+import base64
+import io
+from datetime import datetime
+
+# ============================================================
+# FIRESTORE QUERIES - Use real Israeli data
+# ============================================================
+
+def query_tariff(db, search_term):
+    """Query tariff collection for Israeli HS codes"""
+    results = []
+    try:
+        # Search by description
+        docs = db.collection('tariff').limit(50).stream()
+        search_lower = search_term.lower()
+        for doc in docs:
+            data = doc.to_dict()
+            desc = data.get('description_he', '') + ' ' + data.get('description_en', '')
+            if search_lower in desc.lower():
+                results.append({
+                    'hs_code': data.get('hs_code', ''),
+                    'description_he': data.get('description_he', ''),
+                    'chapter': data.get('chapter', ''),
+                    'duty_rate': data.get('duty_rate', ''),
+                    'doc_id': doc.id
+                })
+    except Exception as e:
+        print(f"Tariff query error: {e}")
+    return results[:10]
+
+def query_ministry_requirements(db, hs_code):
+    """Query ministry_index for regulatory requirements"""
+    requirements = []
+    try:
+        # Check all ministries
+        ministries = ['transport', 'health', 'agriculture', 'economy', 'standards']
+        for ministry in ministries:
+            docs = db.collection('ministry_index').where('ministry', '==', ministry).stream()
+            for doc in docs:
+                data = doc.to_dict()
+                # Check if this HS code needs this ministry
+                if data.get('hs_codes') and hs_code[:4] in str(data.get('hs_codes')):
+                    requirements.append({
+                        'ministry': ministry,
+                        'references': data.get('references', []),
+                        'count': data.get('count', 0)
+                    })
+    except Exception as e:
+        print(f"Ministry query error: {e}")
+    return requirements
+
+def query_classification_rules(db):
+    """Get classification rules from Firestore"""
+    rules = []
+    try:
+        docs = db.collection('classification_rules').limit(20).stream()
+        for doc in docs:
+            data = doc.to_dict()
+            rules.append({
+                'he': data.get('he', ''),
+                'en': data.get('en', ''),
+                'source': data.get('source', '')
+            })
+    except Exception as e:
+        print(f"Rules query error: {e}")
+    return rules
+
+def query_knowledge_base(db, topic):
+    """Query knowledge_base for relevant documents"""
+    results = []
+    try:
+        docs = db.collection('knowledge_base').limit(30).stream()
+        topic_lower = topic.lower()
+        for doc in docs:
+            data = doc.to_dict()
+            content = str(data.get('content', '')) + str(data.get('title', ''))
+            if topic_lower in content.lower():
+                results.append({
+                    'title': data.get('title', ''),
+                    'content': data.get('content', '')[:500],
+                    'source': data.get('source', ''),
+                    'doc_id': doc.id
+                })
+    except Exception as e:
+        print(f"Knowledge query error: {e}")
+    return results[:5]
+
+# ============================================================
+# CLAUDE API CALL
+# ============================================================
+
+def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
+    """Call Claude API"""
+    try:
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "content-type": "application/json",
+                "anthropic-version": "2023-06-01"
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": max_tokens,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}]
+            },
+            timeout=120
+        )
+        if response.status_code == 200:
+            return response.json()['content'][0]['text']
+        else:
+            print(f"Claude API error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"Claude call error: {e}")
+        return None
+
+# ============================================================
+# CLASSIFICATION AGENTS - Using Israeli Data
+# ============================================================
+
+def run_document_agent(api_key, doc_text):
+    """Agent 1: Extract invoice/document data"""
+    system = """אתה סוכן AI לחילוץ מידע ממסמכי יבוא.
+חלץ בפורמט JSON:
+{
+  "seller": {"name": "", "country": "", "address": ""},
+  "buyer": {"name": "", "address": ""},
+  "items": [{"description": "", "quantity": "", "unit_price": "", "total": "", "origin_country": ""}],
+  "invoice_number": "",
+  "invoice_date": "",
+  "total_value": "",
+  "currency": "",
+  "incoterms": "",
+  "shipping_marks": ""
+}
+החזר JSON בלבד."""
+
+    result = call_claude(api_key, system, f"חלץ מידע:\n\n{doc_text[:8000]}")
+    try:
+        if result:
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end > start:
+                return json.loads(result[start:end])
+    except:
+        pass
+    return {"raw": result, "items": [{"description": doc_text[:500]}]}
+
+def run_hs_classification_agent(api_key, items, tariff_data, rules):
+    """Agent 2: Classify with Israeli HS codes"""
+    system = """אתה מומחה סיווג מכס ישראלי.
+
+הפורמט הישראלי לקוד HS: XX.XX.XXXXXX/X (לדוגמה: 87.03.808000/5)
+
+כללי הסיווג לפי פקודת תעריף המכס 1937:
+1. הסיווג נקבע לפי מהות הטובין ולא לפי שימושם
+2. יש להתחשב בכללי הפרשנות הכלליים (GIR)
+3. בספק - יש לסווג לפי הפרט הספציפי ביותר
+
+החזר JSON:
+{
+  "classifications": [
+    {
+      "item_description": "תיאור הפריט",
+      "hs_code": "XX.XX.XXXXXX/X",
+      "tariff_description": "תיאור מהתעריף",
+      "duty_rate": "X%",
+      "gir_rule": "כלל פרשנות",
+      "reasoning": "נימוק",
+      "confidence": "גבוהה/בינונית/נמוכה",
+      "alternatives": []
+    }
+  ]
+}"""
+
+    context = f"""פריטים לסיווג:
+{json.dumps(items, ensure_ascii=False)}
+
+נתוני תעריף רלוונטיים:
+{json.dumps(tariff_data[:10], ensure_ascii=False)}
+
+כללי סיווג:
+{json.dumps(rules[:5], ensure_ascii=False)}"""
+
+    result = call_claude(api_key, system, context, max_tokens=3000)
+    try:
+        if result:
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end > start:
+                return json.loads(result[start:end])
+    except:
+        pass
+    return {"classifications": [], "raw": result}
+
+def run_regulatory_agent(api_key, classifications, ministry_data):
+    """Agent 3: Check Israeli regulatory requirements"""
+    system = """אתה מומחה רגולציה ליבוא לישראל.
+
+משרדים ורגולטורים:
+- MOT (משרד התחבורה) - רכב, חלקי רכב, תקנה 271א
+- MOH (משרד הבריאות) - מזון, תרופות, קוסמטיקה
+- MOA (משרד החקלאות) - צמחים, בעלי חיים, מזון
+- SII (מכון התקנים) - תקנים ישראליים
+- MOE (משרד הכלכלה) - צו יבוא חופשי
+
+לכל פריט ציין:
+{
+  "requirements": [
+    {
+      "hs_code": "",
+      "item": "",
+      "ministries": [
+        {"name": "MOT", "required": true/false, "regulation": "תקנה XXX", "notes": ""}
+      ],
+      "free_import": true/false,
+      "standards": ["ת״י XXXX"],
+      "quota": "אין/יש"
+    }
+  ]
+}"""
+
+    result = call_claude(api_key, system, f"סיווגים:\n{json.dumps(classifications, ensure_ascii=False)}\n\nנתוני משרדים:\n{json.dumps(ministry_data, ensure_ascii=False)}")
+    try:
+        if result:
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end > start:
+                return json.loads(result[start:end])
+    except:
+        pass
+    return {"requirements": [], "raw": result}
+
+def run_fta_agent(api_key, items, origin_countries):
+    """Agent 4: Free Trade Agreements"""
+    system = """אתה מומחה להסכמי סחר של ישראל.
+
+הסכמי סחר פעילים:
+- EU (EUR1, EUR-MED)
+- USA (אזור סחר חופשי)
+- EFTA
+- טורקיה
+- מקסיקו
+- קנדה (CIFTA)
+- מרקוסור
+- ירדן, מצרים
+
+לכל מדינת מקור:
+{
+  "fta_analysis": [
+    {
+      "origin_country": "",
+      "agreement": "שם ההסכם",
+      "normal_duty": "X%",
+      "preferential_duty": "Y%",
+      "savings": "Z%",
+      "origin_document": "EUR1/EUR-MED/Form A/תעודת מקור",
+      "cumulation_rules": "",
+      "eligible": true/false
+    }
+  ]
+}"""
+
+    result = call_claude(api_key, system, f"פריטים:\n{json.dumps(items, ensure_ascii=False)}\n\nמדינות מקור: {origin_countries}")
+    try:
+        if result:
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end > start:
+                return json.loads(result[start:end])
+    except:
+        pass
+    return {"fta_analysis": [], "raw": result}
+
+def run_risk_agent(api_key, all_data):
+    """Agent 5: Risk assessment"""
+    system = """אתה מומחה לסיכוני סיווג מכס.
+
+זהה:
+1. סיווגים שנויים במחלוקת
+2. פסיקות רלוונטיות
+3. מלכודות סיווג
+4. המלצה לפסיקה מקדמית
+
+{
+  "risk_assessment": {
+    "overall_risk": "גבוה/בינוני/נמוך",
+    "items_at_risk": [
+      {"item": "", "risk": "", "reason": "", "mitigation": ""}
+    ],
+    "recommend_pre_ruling": true/false,
+    "notes": ""
+  }
+}"""
+
+    result = call_claude(api_key, system, f"נתונים:\n{json.dumps(all_data, ensure_ascii=False)}")
+    try:
+        if result:
+            start = result.find('{')
+            end = result.rfind('}') + 1
+            if start != -1 and end > start:
+                return json.loads(result[start:end])
+    except:
+        pass
+    return {"risk_assessment": {"overall_risk": "לא ידוע"}, "raw": result}
+
+def run_synthesis_agent(api_key, all_results):
+    """Agent 6: Final synthesis"""
+    system = """אתה מסכם ראשי. צור סיכום מקצועי בעברית:
+
+1. סיכום מנהלים (3-5 משפטים)
+2. המלצות סיווג עיקריות
+3. דרישות רגולטוריות
+4. הזדמנויות חיסכון
+5. סיכונים ואזהרות
+6. צעדים הבאים
+
+כתוב בעברית ברורה ומקצועית."""
+
+    return call_claude(api_key, system, json.dumps(all_results, ensure_ascii=False), max_tokens=3000)
+
+# ============================================================
+# MAIN CLASSIFICATION PIPELINE
+# ============================================================
+
+def run_full_classification(api_key, doc_text, db=None):
+    """Run complete classification with Firestore data"""
+    results = {
+        "timestamp": datetime.now().isoformat(),
+        "agents": {},
+        "success": False
+    }
+    
+    try:
+        # Agent 1: Document extraction
+        print("  🔍 Agent 1: Document extraction...")
+        doc_data = run_document_agent(api_key, doc_text)
+        results["agents"]["document"] = doc_data
+        
+        items = doc_data.get("items", [{"description": doc_text[:500]}])
+        
+        # Query Firestore for relevant data
+        tariff_data = []
+        ministry_data = []
+        rules = []
+        
+        if db:
+            print("  📚 Querying Firestore...")
+            for item in items[:5]:
+                desc = item.get("description", "")[:100]
+                tariff_data.extend(query_tariff(db, desc))
+            rules = query_classification_rules(db)
+        
+        # Agent 2: HS Classification
+        print("  📊 Agent 2: HS Classification...")
+        hs_results = run_hs_classification_agent(api_key, items, tariff_data, rules)
+        results["agents"]["classification"] = hs_results
+        
+        # Query ministry requirements for classified codes
+        if db:
+            for c in hs_results.get("classifications", []):
+                hs = c.get("hs_code", "")
+                ministry_data.extend(query_ministry_requirements(db, hs))
+        
+        # Agent 3: Regulatory
+        print("  ⚖️ Agent 3: Regulatory...")
+        reg_results = run_regulatory_agent(api_key, hs_results.get("classifications", []), ministry_data)
+        results["agents"]["regulatory"] = reg_results
+        
+        # Agent 4: FTA
+        print("  🌍 Agent 4: FTA...")
+        origins = list(set([i.get("origin_country", "") for i in items if i.get("origin_country")]))
+        fta_results = run_fta_agent(api_key, items, origins or ["Unknown"])
+        results["agents"]["fta"] = fta_results
+        
+        # Agent 5: Risk
+        print("  🚨 Agent 5: Risk...")
+        risk_results = run_risk_agent(api_key, {
+            "classifications": hs_results,
+            "regulatory": reg_results
+        })
+        results["agents"]["risk"] = risk_results
+        
+        # Agent 6: Synthesis
+        print("  📋 Agent 6: Synthesis...")
+        synthesis = run_synthesis_agent(api_key, results["agents"])
+        results["synthesis"] = synthesis or "לא הצלחתי לייצר סיכום"
+        
+        results["success"] = True
+        
+    except Exception as e:
+        print(f"  ❌ Classification error: {e}")
+        results["error"] = str(e)
+        import traceback
+        traceback.print_exc()
+    
+    return results
+
+# ============================================================
+# OUTPUT GENERATORS
+# ============================================================
+
+def build_classification_email(results, sender_name):
+    """Build HTML email body"""
+    synthesis = results.get("synthesis", "לא זמין")
+    classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
+    regulatory = results.get("agents", {}).get("regulatory", {}).get("requirements", [])
+    fta = results.get("agents", {}).get("fta", {}).get("fta_analysis", [])
+    risk = results.get("agents", {}).get("risk", {}).get("risk_assessment", {})
+    
+    html = f'''<div dir="rtl" style="font-family:Arial,sans-serif;font-size:12pt;line-height:1.8;max-width:800px">
+    
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8f);color:white;padding:20px;border-radius:10px 10px 0 0">
+        <h1 style="margin:0;font-size:24pt">📋 דו״ח סיווג מכס - RCB</h1>
+        <p style="margin:5px 0 0 0;opacity:0.9">נוצר: {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
+    </div>
+    
+    <div style="border:1px solid #ddd;border-top:none;padding:20px;border-radius:0 0 10px 10px">
+    
+    <h2 style="color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:10px">📝 סיכום מנהלים</h2>
+    <div style="background:#f8f9fa;padding:15px;border-radius:8px;border-right:4px solid #1e3a5f;white-space:pre-wrap">{synthesis}</div>
+    
+    <h2 style="color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:10px;margin-top:30px">📊 טבלת סיווג</h2>
+    <table style="width:100%;border-collapse:collapse;margin:15px 0">
+        <tr style="background:#1e3a5f;color:white">
+            <th style="padding:12px;border:1px solid #ddd;text-align:right">פריט</th>
+            <th style="padding:12px;border:1px solid #ddd;text-align:center">קוד HS</th>
+            <th style="padding:12px;border:1px solid #ddd;text-align:center">מכס</th>
+            <th style="padding:12px;border:1px solid #ddd;text-align:center">ודאות</th>
+        </tr>'''
+    
+    for i, c in enumerate(classifications):
+        bg = "#f8f9fa" if i % 2 == 0 else "#ffffff"
+        conf = c.get("confidence", "בינונית")
+        conf_color = "#28a745" if conf == "גבוהה" else "#ffc107" if conf == "בינונית" else "#dc3545"
+        html += f'''<tr style="background:{bg}">
+            <td style="padding:12px;border:1px solid #ddd">{c.get("item_description", c.get("item", "N/A"))[:50]}</td>
+            <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:bold;font-family:monospace">{c.get("hs_code", "N/A")}</td>
+            <td style="padding:12px;border:1px solid #ddd;text-align:center">{c.get("duty_rate", "N/A")}</td>
+            <td style="padding:12px;border:1px solid #ddd;text-align:center;color:{conf_color};font-weight:bold">{conf}</td>
+        </tr>'''
+        if c.get("reasoning"):
+            html += f'''<tr style="background:{bg}"><td colspan="4" style="padding:8px 12px;border:1px solid #ddd;font-size:10pt;color:#666">💡 {c.get("reasoning", "")[:200]}</td></tr>'''
+    
+    html += '</table>'
+    
+    # Regulatory
+    if regulatory:
+        html += '''<h2 style="color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:10px;margin-top:30px">⚖️ דרישות רגולטוריות</h2>'''
+        for req in regulatory:
+            html += f'''<div style="background:#fff3cd;padding:10px;border-radius:5px;margin:10px 0">
+                <strong>{req.get("item", req.get("hs_code", ""))}</strong><br>'''
+            for m in req.get("ministries", []):
+                if m.get("required"):
+                    html += f'''<span style="color:#856404">✓ {m.get("name", "")} - {m.get("regulation", "")}</span><br>'''
+            html += '</div>'
+    
+    # FTA
+    fta_eligible = [f for f in fta if f.get("eligible")]
+    if fta_eligible:
+        html += '''<h2 style="color:#28a745;border-bottom:2px solid #28a745;padding-bottom:10px;margin-top:30px">🌍 הטבות הסכמי סחר</h2>
+        <div style="background:#d4edda;padding:15px;border-radius:8px;border-right:4px solid #28a745">'''
+        for f in fta_eligible:
+            html += f'''<p><strong>{f.get("origin_country", "")}</strong> - {f.get("agreement", "")}<br>
+            מכס רגיל: {f.get("normal_duty", "")} → מופחת: <strong style="color:#28a745">{f.get("preferential_duty", "")}</strong><br>
+            מסמך: {f.get("origin_document", "")}</p>'''
+        html += '</div>'
+    
+    # Risk
+    if risk.get("overall_risk") in ["גבוה", "בינוני"]:
+        html += f'''<h2 style="color:#dc3545;border-bottom:2px solid #dc3545;padding-bottom:10px;margin-top:30px">🚨 אזהרות</h2>
+        <div style="background:#f8d7da;padding:15px;border-radius:8px;border-right:4px solid #dc3545">
+        <strong>רמת סיכון: {risk.get("overall_risk", "")}</strong><br>'''
+        for r in risk.get("items_at_risk", []):
+            html += f'''<p>⚠️ {r.get("item", "")}: {r.get("reason", "")}</p>'''
+        if risk.get("recommend_pre_ruling"):
+            html += '<p><strong>💡 מומלץ לבקש פסיקה מקדמית מרשות המכס</strong></p>'
+        html += '</div>'
+    
+    # Signature
+    html += '''
+    <hr style="margin:30px 0;border:none;border-top:2px solid #eee">
+    <table dir="rtl"><tr>
+        <td style="padding-left:15px"><img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:80px"></td>
+        <td style="border-right:3px solid #1e3a5f;padding-right:15px">
+            <strong style="color:#1e3a5f;font-size:14pt">🤖 RCB - AI Customs Broker</strong><br>
+            <strong>R.P.A. PORT LTD</strong><br>
+            <span style="font-size:10pt">📧 rcb@rpa-port.co.il | 🌐 rpa-port.com</span>
+        </td>
+    </tr></table>
+    
+    <p style="font-size:9pt;color:#999;margin-top:25px;padding:15px;background:#f5f5f5;border-radius:5px">
+    ⚠️ דו״ח זה נוצר באמצעות AI ומהווה המלצה ראשונית בלבד.<br>
+    יש לאמת הסיווג עם עמיל מכס מוסמך לפני הגשת רשימון.
+    </p>
+    
+    </div></div>'''
+    
+    return html
+
+def build_excel_report(results):
+    """Build Excel report"""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        
+        wb = Workbook()
+        
+        # Sheet 1: Summary
+        ws = wb.active
+        ws.title = "סיכום"
+        ws['A1'] = "דו״ח סיווג מכס - RCB"
+        ws['A1'].font = Font(size=16, bold=True)
+        ws['A2'] = f"תאריך: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        ws['A4'] = results.get("synthesis", "")
+        
+        # Sheet 2: Classifications
+        ws2 = wb.create_sheet("סיווגים")
+        headers = ["פריט", "קוד HS", "תיאור תעריף", "מכס", "ודאות", "נימוק"]
+        for col, h in enumerate(headers, 1):
+            cell = ws2.cell(row=1, column=col, value=h)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color="1e3a5f", end_color="1e3a5f", fill_type="solid")
+            cell.font = Font(bold=True, color="FFFFFF")
+        
+        classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
+        for row, c in enumerate(classifications, 2):
+            ws2.cell(row=row, column=1, value=c.get("item_description", c.get("item", "")))
+            ws2.cell(row=row, column=2, value=c.get("hs_code", ""))
+            ws2.cell(row=row, column=3, value=c.get("tariff_description", ""))
+            ws2.cell(row=row, column=4, value=c.get("duty_rate", ""))
+            ws2.cell(row=row, column=5, value=c.get("confidence", ""))
+            ws2.cell(row=row, column=6, value=c.get("reasoning", ""))
+        
+        # Sheet 3: Regulatory
+        ws3 = wb.create_sheet("רגולציה")
+        ws3.cell(row=1, column=1, value="פריט").font = Font(bold=True)
+        ws3.cell(row=1, column=2, value="משרד").font = Font(bold=True)
+        ws3.cell(row=1, column=3, value="נדרש").font = Font(bold=True)
+        ws3.cell(row=1, column=4, value="תקנה").font = Font(bold=True)
+        
+        row = 2
+        for req in results.get("agents", {}).get("regulatory", {}).get("requirements", []):
+            for m in req.get("ministries", []):
+                ws3.cell(row=row, column=1, value=req.get("item", req.get("hs_code", "")))
+                ws3.cell(row=row, column=2, value=m.get("name", ""))
+                ws3.cell(row=row, column=3, value="כן" if m.get("required") else "לא")
+                ws3.cell(row=row, column=4, value=m.get("regulation", ""))
+                row += 1
+        
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return base64.b64encode(output.read()).decode('utf-8')
+        
+    except Exception as e:
+        print(f"Excel error: {e}")
+        return None
+
+def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func):
+    """Main function: Extract, classify, send report with attachments"""
+    try:
+        print(f"  🤖 Starting classification for: {subject[:50]}")
+        
+        # Get API key
+        anthropic_key = get_secret_func('ANTHROPIC_API_KEY')
+        if not anthropic_key:
+            print("  ❌ No Anthropic API key")
+            return False
+        
+        # Extract text from PDFs
+        print("  📄 Extracting text from attachments...")
+        doc_text = extract_text_func(raw_attachments)
+        
+        if not doc_text or len(doc_text) < 50:
+            print("  ⚠️ No readable text in attachments")
+            return False
+        
+        print(f"  📝 Extracted {len(doc_text)} characters")
+        
+        # Run classification with Firestore data
+        print("  🔍 Running classification agents...")
+        results = run_full_classification(anthropic_key, doc_text, db)
+        
+        if not results.get('success'):
+            print(f"  ❌ Classification failed: {results.get('error', 'Unknown')}")
+            return False
+        
+        # Build outputs
+        print("  📋 Building reports...")
+        report_html = build_classification_email(results, sender_name)
+        excel_data = build_excel_report(results)
+        
+        # Prepare attachments: Excel + original docs
+        attachments = []
+        
+        # Add Excel report
+        if excel_data:
+            attachments.append({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                'name': f'classification_report_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                'contentType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'contentBytes': excel_data
+            })
+        
+        # Re-attach original documents
+        for att in raw_attachments:
+            if att.get('contentBytes'):
+                attachments.append({
+                    '@odata.type': '#microsoft.graph.fileAttachment',
+                    'name': att.get('name', 'attachment'),
+                    'contentType': att.get('contentType', 'application/octet-stream'),
+                    'contentBytes': att.get('contentBytes')
+                })
+        
+        # Send email
+        print("  📤 Sending classification report...")
+        if helper_graph_send(access_token, rcb_email, to_email, f"📊 דו״ח סיווג: {subject}", report_html, msg_id, attachments):
+            print(f"  ✅ Classification report sent to {to_email}")
+            
+            db.collection("rcb_classifications").add({
+                "subject": subject,
+                "to": to_email,
+                "items_classified": len(results.get("agents", {}).get("classification", {}).get("classifications", [])),
+                "timestamp": firestore.SERVER_TIMESTAMP
+            })
+            return True
+        
+        return False
+        
+    except Exception as e:
+        print(f"  ❌ Classification error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False

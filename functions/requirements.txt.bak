@@ -1,0 +1,20 @@
+# Firebase Functions
+firebase-functions>=0.1.0
+firebase-admin>=6.0.0
+
+# Email handling
+imaplib2>=3.6
+
+# PDF processing
+pdfplumber>=0.9.0
+
+# Google Cloud Secret Manager (for RCB credentials)
+google-cloud-secret-manager>=2.16.0
+
+# Standard library (included for clarity)
+# email - built-in
+# smtplib - built-in
+# json - built-in
+# re - built-in
+# os - built-in
+# datetime - built-in

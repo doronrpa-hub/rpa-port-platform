@@ -1,0 +1,1500 @@
+"""
+RPA-PORT Cloud Functions
+========================
+Serverless functions that run automatically - no server needed.
+
+Functions:
+1. check_email_scheduled - Runs every 5 min, checks Gmail inbox
+2. classify_document - Triggered when new document arrives in Firestore
+3. enrich_knowledge - Runs every hour, fills knowledge gaps
+4. on_classification_correction - Learns when user corrects a classification
+5. api - HTTP API for web app
+6. rcb_check_email - RCB AI Customs Broker email handler (NEW!)
+"""
+
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
+from firebase_functions import scheduler_fn, firestore_fn, https_fn, options
+import json
+import re
+import imaplib
+import smtplib
+import email as email_lib
+from email.header import decode_header
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from datetime import datetime, timedelta
+import os
+
+
+# Initialize Firebase
+firebase_admin.initialize_app()
+db = firestore.client()
+bucket = storage.bucket()
+
+
+# ============================================================
+# RCB CONFIGURATION & HELPERS
+# ============================================================
+
+# Hebrew name mappings
+RCB_NAME_MAP = {
+    "lubna": "לובנה", "rina": "רינה", "rina b": "רינה ב", "riki": "ריקי",
+    "smadar": "סמדר", "moran": "מורן", "ilanit": "אילנית", "nir": "ניר",
+    "rotem": "רותם", "maya": "מאיה", "dana": "דנה", "shira": "שירה",
+    "tali": "טלי", "yael": "יעל", "chen": "חן", "liron": "לירון",
+    "doron": "דורון", "gal": "גל", "tal": "טל", "noa": "נועה",
+    "michal": "מיכל", "adi": "עדי", "ofir": "אופיר", "amit": "עמית",
+    "lior": "ליאור", "yonatan": "יונתן", "david": "דוד", "moshe": "משה",
+    "sarah": "שרה", "rachel": "רחל", "miriam": "מרים", "esther": "אסתר",
+    "amir": "אמיר", "ran": "רן", "oren": "אורן", "eyal": "אייל",
+    "avital": "אביטל", "hila": "הילה", "merav": "מירב", "keren": "קרן"
+}
+
+# Light Hebrew jokes for first email
+RCB_JOKES = [
+    "מה ההבדל בין מכולה לעוגה? עוגה אפשר לחתוך, מכולה צריך לשחרר! 📦🎂",
+    "למה סוכן המכס תמיד שמח? כי הוא יודע לסווג את הרגשות שלו! 😄",
+    "מה אומרים למשלוח שמגיע בזמן? כל הכבוד, אתה יוצא דופן! ⏰",
+    "למה הספינה לא יכלה להיכנס לנמל? כי היא לא הצהירה על הרגשות שלה! 🚢",
+    "מה עושה יבואן כשהוא עצוב? מייבא קצת שמחה! 🌟"
+]
+
+# Document type detection keywords (Hebrew)
+RCB_DOC_TYPES = {
+    "commercial_invoice": ["invoice", "חשבונית", "inv", "factura", "rechnung"],
+    "packing_list": ["packing", "אריזה", "pl"],
+    "bill_of_lading": ["b/l", "bl", "שטר מטען", "awb", "airway"],
+    "certificate_of_origin": ["eur1", "eur.1", "origin", "מקור", "atr", "form a"],
+    "import_license": ["license", "רישיון", "permit", "אישור"],
+    "insurance": ["insurance", "ביטוח", "policy"]
+}
+
+# PDF Request Types for outbound to airpaort@gmail.com
+RCB_PDF_REQUEST_TYPES = {
+    "download": "Download PDF from URL",
+    "ocr": "OCR scanned document",
+    "convert": "Convert to readable format",
+    "extract": "Extract specific pages",
+    "merge": "Merge multiple PDFs",
+    "translate": "Translate document"
+}
+
+
+def get_rcb_secrets():
+    """Get RCB credentials from Google Cloud Secret Manager"""
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        project_id = "rpa-port-customs"
+        
+        secrets = {}
+        secret_names = ["RCB_EMAIL", "RCB_PASSWORD", "RCB_SMTP_SERVER", "RCB_IMAP_SERVER", "RCB_FALLBACK_EMAIL"]
+        
+        for name in secret_names:
+            secret_path = f"projects/{project_id}/secrets/{name}/versions/latest"
+            response = client.access_secret_version(request={"name": secret_path})
+            secrets[name] = response.payload.data.decode("UTF-8")
+        
+        return secrets
+    except Exception as e:
+        print(f"Error getting secrets: {e}")
+        return None
+
+
+def get_hebrew_greeting():
+    """Return time-appropriate Hebrew greeting"""
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        return "בוקר טוב"
+    elif 12 <= hour < 14:
+        return "צהריים טובים"
+    elif 14 <= hour < 17:
+        return "אחר הצהריים טובים"
+    else:
+        return "ערב טוב"
+
+
+def get_hebrew_name(email_or_name):
+    """Convert English name to Hebrew if known"""
+    # Extract name from email or string
+    name = email_or_name.lower()
+    
+    # Try to extract from "Name <email>" format
+    match = re.search(r'^([^<]+)', name)
+    if match:
+        name = match.group(1).strip().lower()
+    
+    # Try to extract from email prefix
+    if '@' in name:
+        name = name.split('@')[0].replace('.', ' ').replace('_', ' ').strip()
+    
+    # Check name map
+    for eng, heb in RCB_NAME_MAP.items():
+        if eng in name:
+            return heb
+    
+    # Return original if no match
+    return name.title()
+
+
+def detect_attachments_types(attachments):
+    """Detect and describe attachment types in Hebrew"""
+    descriptions = []
+    
+    for att in attachments:
+        filename = att.get("filename", "").lower()
+        detected_type = "מסמך"
+        
+        for doc_type, keywords in RCB_DOC_TYPES.items():
+            if any(kw in filename for kw in keywords):
+                type_names = {
+                    "commercial_invoice": "חשבונית מסחרית",
+                    "packing_list": "רשימת אריזה",
+                    "bill_of_lading": "שטר מטען",
+                    "certificate_of_origin": "תעודת מקור",
+                    "import_license": "רישיון יבוא",
+                    "insurance": "תעודת ביטוח"
+                }
+                detected_type = type_names.get(doc_type, "מסמך")
+                break
+        
+        descriptions.append(f"{detected_type} ({att.get('filename', 'קובץ')})")
+    
+    return descriptions
+
+
+def build_rcb_reply(sender_name, attachments, is_first_email=True, include_joke=False):
+    """Build Hebrew reply email body"""
+    greeting = get_hebrew_greeting()
+    hebrew_name = get_hebrew_name(sender_name)
+    
+    # Start with greeting
+    body = f"{greeting} {hebrew_name},\n\n"
+    
+    # Optional joke for first email
+    if is_first_email and include_joke:
+        import random
+        joke = random.choice(RCB_JOKES)
+        body += f"💡 {joke}\n\n"
+    
+    # Acknowledge documents
+    if attachments:
+        doc_descriptions = detect_attachments_types(attachments)
+        body += "אני רואה ששלחת את המסמכים הבאים:\n"
+        for i, desc in enumerate(doc_descriptions, 1):
+            body += f"  {i}. {desc}\n"
+        body += "\nתודה רבה לך! 🙏\n\n"
+    else:
+        body += "קיבלתי את ההודעה שלך.\n\n"
+    
+    # Next steps
+    body += "אני מעבדת את המסמכים ואחזור אליך בהקדם עם פרטי הסיווג והמכס.\n\n"
+    
+    # Sign-off
+    body += "בברכה,\n\n"
+    
+    # Signature
+    body += """═══════════════════════════════════════
+R.P.A.PORT LTD | AI CUSTOMS BROKER
+ר.פ.א. פורט בע"מ | סוכן מכס AI
+───────────────────────────────────────
+📍 Ofer Brothers Building, 3rd Floor
+   Hanamal 2, Haifa, Israel
+📧 rcb@rpa-port.co.il
+🌐 www.rpa-port.com
+═══════════════════════════════════════"""
+    
+    return body
+
+
+def is_email_to_rcb_directly(msg, rcb_email):
+    """Check if email was sent directly TO rcb@rpa-port.co.il (not via CC cluster)"""
+    to_header = msg.get("To", "").lower()
+    cc_header = msg.get("Cc", "").lower()
+    
+    # Must be in TO field
+    if rcb_email.lower() not in to_header:
+        return False
+    
+    # If it's only via cc@rpa-port.co.il cluster, ignore
+    # (The email would appear in TO because of cluster expansion)
+    # Check if the original TO was cc@rpa-port.co.il
+    if "cc@rpa-port.co.il" in to_header and rcb_email.lower() not in to_header.replace("cc@rpa-port.co.il", ""):
+        return False
+    
+    return True
+
+
+def is_internal_sender(sender_email):
+    """Check if sender is from @rpa-port.co.il domain"""
+    sender_lower = sender_email.lower()
+    
+    # Extract email from "Name <email>" format
+    match = re.search(r'<([^>]+)>', sender_lower)
+    if match:
+        sender_lower = match.group(1)
+    
+    return sender_lower.endswith("@rpa-port.co.il")
+
+
+def send_rcb_reply(secrets, to_email, subject, body, original_msg=None):
+    """Send reply email from RCB"""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = secrets['RCB_EMAIL']
+        msg['To'] = to_email
+        msg['Subject'] = f"Re: {subject}"
+        
+        # Add Hebrew content
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # Connect and send
+        server = smtplib.SMTP(secrets['RCB_SMTP_SERVER'], 587)
+        server.starttls()
+        server.login(secrets['RCB_EMAIL'], secrets['RCB_PASSWORD'])
+        server.send_message(msg)
+        server.quit()
+        
+        return True
+    except Exception as e:
+        print(f"Error sending RCB reply: {e}")
+        return False
+
+
+def forward_to_fallback(secrets, original_msg, reason):
+    """Forward unreadable document to airpaort@gmail.com for processing"""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = secrets['RCB_EMAIL']
+        msg['To'] = secrets['RCB_FALLBACK_EMAIL']
+        msg['Subject'] = f"RCB - Document Conversion Request - {reason}"
+        
+        body = f"""RCB Document Conversion Request
+================================
+
+Reason: {reason}
+
+Original Sender: {original_msg.get('From', 'Unknown')}
+Original Subject: {original_msg.get('Subject', 'No Subject')}
+Date: {original_msg.get('Date', '')}
+
+Please process this document and reply with a readable version.
+
+---
+Forwarded by RCB AI Customs Broker
+"""
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # Forward original attachments
+        if original_msg.is_multipart():
+            for part in original_msg.walk():
+                if part.get_content_disposition() == 'attachment':
+                    msg.attach(part)
+        
+        # Send
+        server = smtplib.SMTP(secrets['RCB_SMTP_SERVER'], 587)
+        server.starttls()
+        server.login(secrets['RCB_EMAIL'], secrets['RCB_PASSWORD'])
+        server.send_message(msg)
+        server.quit()
+        
+        return True
+    except Exception as e:
+        print(f"Error forwarding to fallback: {e}")
+        return False
+
+
+def send_pdf_request(request_type, details, callback_id=None):
+    """
+    Send PDF processing request to airpaort@gmail.com via RCB
+    
+    This allows Claude/Internal AI to request:
+    - PDF downloads from URLs
+    - OCR of scanned documents
+    - Document conversion
+    - Page extraction
+    - PDF merging
+    - Translation
+    
+    Args:
+        request_type: 'download', 'ocr', 'convert', 'extract', 'merge', 'translate'
+        details: dict with request-specific info (url, pages, etc.)
+        callback_id: optional ID to track the request
+    
+    Returns:
+        request_id for tracking
+    """
+    secrets = get_rcb_secrets()
+    if not secrets:
+        print("❌ Cannot send PDF request: no secrets")
+        return None
+    
+    # Generate request ID
+    request_id = callback_id or f"pdf_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{request_type}"
+    
+    # Build email subject
+    subject = f"RCB-PDF-REQUEST [{request_id}] - {RCB_PDF_REQUEST_TYPES.get(request_type, request_type)}"
+    
+    # Build request body based on type
+    body = f"""═══════════════════════════════════════
+RCB PDF PROCESSING REQUEST
+═══════════════════════════════════════
+
+Request ID: {request_id}
+Type: {request_type.upper()}
+Timestamp: {datetime.now().isoformat()}
+
+───────────────────────────────────────
+REQUEST DETAILS:
+───────────────────────────────────────
+
+"""
+    
+    if request_type == "download":
+        body += f"""URL to download: {details.get('url', 'NOT PROVIDED')}
+Save as: {details.get('filename', 'document.pdf')}
+Purpose: {details.get('purpose', 'customs classification')}
+"""
+    
+    elif request_type == "ocr":
+        body += f"""Document: {details.get('filename', 'attached')}
+Language: {details.get('language', 'auto-detect')}
+Output format: {details.get('output', 'searchable PDF')}
+"""
+    
+    elif request_type == "convert":
+        body += f"""Source file: {details.get('filename', 'attached')}
+Convert from: {details.get('from_format', 'unknown')}
+Convert to: {details.get('to_format', 'PDF')}
+"""
+    
+    elif request_type == "extract":
+        body += f"""Document: {details.get('filename', 'attached')}
+Pages to extract: {details.get('pages', 'all')}
+"""
+    
+    elif request_type == "merge":
+        body += f"""Files to merge: {', '.join(details.get('files', []))}
+Output filename: {details.get('output', 'merged.pdf')}
+"""
+    
+    elif request_type == "translate":
+        body += f"""Document: {details.get('filename', 'attached')}
+From language: {details.get('from_lang', 'auto')}
+To language: {details.get('to_lang', 'Hebrew')}
+"""
+    
+    body += f"""
+───────────────────────────────────────
+CALLBACK INSTRUCTIONS:
+───────────────────────────────────────
+
+Please reply to rcb@rpa-port.co.il with:
+- Subject containing: {request_id}
+- Processed file attached
+- Brief status note
+
+═══════════════════════════════════════
+RCB AI Customs Broker - Automated Request
+═══════════════════════════════════════
+"""
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = secrets['RCB_EMAIL']
+        msg['To'] = secrets['RCB_FALLBACK_EMAIL']
+        msg['Subject'] = subject
+        msg['X-RCB-Request-ID'] = request_id
+        
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # Attach files if provided
+        if 'attachments' in details:
+            for att_path in details['attachments']:
+                try:
+                    with open(att_path, 'rb') as f:
+                        part = MIMEBase('application', 'octet-stream')
+                        part.set_payload(f.read())
+                        encoders.encode_base64(part)
+                        part.add_header('Content-Disposition', f'attachment; filename="{os.path.basename(att_path)}"')
+                        msg.attach(part)
+                except Exception as e:
+                    print(f"Could not attach {att_path}: {e}")
+        
+        # Send
+        server = smtplib.SMTP(secrets['RCB_SMTP_SERVER'], 587)
+        server.starttls()
+        server.login(secrets['RCB_EMAIL'], secrets['RCB_PASSWORD'])
+        server.send_message(msg)
+        server.quit()
+        
+        # Log the request
+        db.collection("rcb_pdf_requests").document(request_id).set({
+            "type": request_type,
+            "details": details,
+            "status": "sent",
+            "sent_at": firestore.SERVER_TIMESTAMP,
+            "response_received": False
+        })
+        
+        db.collection("rcb_logs").add({
+            "message": f"PDF request sent: {request_type} - {request_id}",
+            "status": "sent",
+            "request_id": request_id,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        
+        print(f"✅ PDF request sent: {request_id}")
+        return request_id
+        
+    except Exception as e:
+        print(f"❌ Error sending PDF request: {e}")
+        db.collection("rcb_logs").add({
+            "message": f"PDF request failed: {str(e)}",
+            "status": "error",
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        return None
+
+
+# ============================================================
+# FUNCTION 6: RCB EMAIL HANDLER (runs every 2 minutes)
+# ============================================================
+@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.MB_512)
+def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    RCB AI Customs Broker - Check rcb@rpa-port.co.il inbox
+    
+    Rules:
+    1. Only reply if email is sent directly TO: rcb@rpa-port.co.il
+    2. Ignore emails received via cc@rpa-port.co.il cluster
+    3. Only reply to senders from @rpa-port.co.il domain
+    4. Ignore external senders
+    5. Forward unreadable docs to airpaort@gmail.com
+    """
+    
+    print("🤖 RCB: Starting email check...")
+    
+    # Get secrets from Secret Manager
+    secrets = get_rcb_secrets()
+    if not secrets:
+        print("❌ RCB: Failed to get secrets")
+        db.collection("rcb_logs").add({
+            "message": "Failed to retrieve secrets from Secret Manager",
+            "status": "error",
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        return
+    
+    rcb_email = secrets['RCB_EMAIL']
+    
+    # Get already processed message IDs
+    processed_ids = set()
+    for doc in db.collection("rcb_processed").stream():
+        processed_ids.add(doc.id)
+    
+    # Connect to IMAP
+    try:
+        mail = imaplib.IMAP4_SSL(secrets['RCB_IMAP_SERVER'])
+        mail.login(rcb_email, secrets['RCB_PASSWORD'])
+        mail.select("inbox")
+        print(f"✅ RCB: Connected to {rcb_email}")
+    except Exception as e:
+        print(f"❌ RCB: IMAP connection failed: {e}")
+        db.collection("rcb_logs").add({
+            "message": f"IMAP connection failed: {str(e)}",
+            "status": "error",
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        return
+    
+    # Search for unread emails
+    status, messages = mail.search(None, "UNSEEN")
+    email_ids = messages[0].split() if messages[0] else []
+    
+    print(f"📬 RCB: Found {len(email_ids)} unread emails")
+    
+    processed_count = 0
+    replied_count = 0
+    ignored_count = 0
+    
+    for eid in email_ids:
+        try:
+            # Fetch email
+            status, msg_data = mail.fetch(eid, "(RFC822)")
+            msg = email_lib.message_from_bytes(msg_data[0][1])
+            
+            # Get message ID
+            msg_id = msg.get("Message-ID", str(eid))
+            safe_id = re.sub(r'[/\\\.\[\]\*~<>]', '_', str(msg_id))[:100]
+            
+            # Skip if already processed
+            if safe_id in processed_ids:
+                continue
+            
+            processed_count += 1
+            
+            # Decode headers
+            subject = decode_email_header(msg.get("Subject", ""))
+            from_str = decode_email_header(msg.get("From", ""))
+            to_str = msg.get("To", "")
+            date_str = msg.get("Date", "")
+            
+            print(f"📧 Processing: {subject[:50]}... from {from_str[:30]}...")
+            
+            # RULE 1 & 2: Check if email was sent directly TO rcb@rpa-port.co.il
+            if not is_email_to_rcb_directly(msg, rcb_email):
+                print(f"  ⏭️ Skipped: Not sent directly to RCB (likely via cluster)")
+                db.collection("rcb_logs").add({
+                    "message": f"Ignored (via cluster): {subject[:50]}",
+                    "from": from_str,
+                    "status": "ignored",
+                    "reason": "received_via_cluster",
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+                ignored_count += 1
+                # Mark as processed so we don't check again
+                db.collection("rcb_processed").document(safe_id).set({
+                    "processed_at": firestore.SERVER_TIMESTAMP,
+                    "action": "ignored_cluster"
+                })
+                continue
+            
+            # RULE 3 & 4: Check if sender is from @rpa-port.co.il
+            if not is_internal_sender(from_str):
+                print(f"  ⏭️ Skipped: External sender")
+                db.collection("rcb_logs").add({
+                    "message": f"Ignored (external): {subject[:50]}",
+                    "from": from_str,
+                    "status": "ignored",
+                    "reason": "external_sender",
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+                ignored_count += 1
+                db.collection("rcb_processed").document(safe_id).set({
+                    "processed_at": firestore.SERVER_TIMESTAMP,
+                    "action": "ignored_external"
+                })
+                continue
+            
+            # Extract attachments
+            attachments = []
+            unreadable_attachments = []
+            
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_disposition() == 'attachment':
+                        filename = part.get_filename()
+                        if filename:
+                            filename = decode_email_header(filename)
+                            file_data = part.get_payload(decode=True)
+                            
+                            att_info = {
+                                "filename": filename,
+                                "size": len(file_data) if file_data else 0,
+                                "type": os.path.splitext(filename)[1].lower()
+                            }
+                            
+                            # Check if readable (basic check)
+                            if file_data:
+                                # Check for password-protected or corrupted PDFs
+                                if att_info["type"] == ".pdf":
+                                    if b"%PDF" not in file_data[:1024]:
+                                        unreadable_attachments.append(att_info)
+                                        continue
+                                
+                                attachments.append(att_info)
+                            else:
+                                unreadable_attachments.append(att_info)
+            
+            # RULE 5: Forward unreadable docs to fallback
+            if unreadable_attachments:
+                print(f"  📤 Forwarding {len(unreadable_attachments)} unreadable docs to fallback")
+                forward_to_fallback(secrets, msg, "Unreadable/corrupted attachments")
+                db.collection("rcb_logs").add({
+                    "message": f"Forwarded unreadable docs: {', '.join([a['filename'] for a in unreadable_attachments])}",
+                    "from": from_str,
+                    "status": "forwarded",
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+            
+            # Check if this is first email from this sender today
+            sender_email = re.search(r'<([^>]+)>', from_str)
+            sender_email = sender_email.group(1) if sender_email else from_str
+            sender_id = re.sub(r'[^a-zA-Z0-9]', '_', sender_email.lower())
+            
+            today = datetime.now().strftime("%Y-%m-%d")
+            first_email_key = f"{sender_id}_{today}"
+            is_first_email = not db.collection("rcb_first_emails").document(first_email_key).get().exists
+            
+            # Build and send reply
+            reply_body = build_rcb_reply(
+                sender_name=from_str,
+                attachments=attachments,
+                is_first_email=is_first_email,
+                include_joke=is_first_email  # Include joke only on first email of the day
+            )
+            
+            if send_rcb_reply(secrets, sender_email, subject, reply_body, msg):
+                print(f"  ✅ Reply sent to {sender_email}")
+                replied_count += 1
+                
+                # Log success
+                db.collection("rcb_logs").add({
+                    "message": f"Replied to: {subject[:50]}",
+                    "from": from_str,
+                    "to": sender_email,
+                    "attachments": len(attachments),
+                    "status": "sent",
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+                
+                # Mark first email
+                if is_first_email:
+                    db.collection("rcb_first_emails").document(first_email_key).set({
+                        "sender": sender_email,
+                        "date": today,
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    })
+                
+                # Store email for classification processing
+                db.collection("rcb_inbox").document(safe_id).set({
+                    "from": from_str,
+                    "subject": subject,
+                    "date": date_str,
+                    "attachments": attachments,
+                    "replied_at": firestore.SERVER_TIMESTAMP,
+                    "status": "pending_classification"
+                })
+            else:
+                print(f"  ❌ Failed to send reply")
+                db.collection("rcb_logs").add({
+                    "message": f"Failed to reply: {subject[:50]}",
+                    "from": from_str,
+                    "status": "error",
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+            
+            # Mark as processed
+            db.collection("rcb_processed").document(safe_id).set({
+                "processed_at": firestore.SERVER_TIMESTAMP,
+                "action": "replied"
+            })
+            
+        except Exception as e:
+            print(f"  ❌ Error processing email: {e}")
+            db.collection("rcb_logs").add({
+                "message": f"Error: {str(e)}",
+                "status": "error",
+                "timestamp": firestore.SERVER_TIMESTAMP
+            })
+    
+    # Cleanup and log summary
+    mail.logout()
+    
+    summary = f"RCB check complete: {processed_count} processed, {replied_count} replied, {ignored_count} ignored"
+    print(f"📊 {summary}")
+    
+    # Update stats
+    db.collection("rcb_stats").document("daily").set({
+        "last_check": firestore.SERVER_TIMESTAMP,
+        "emails_today": firestore.Increment(replied_count),
+        "ignored_today": firestore.Increment(ignored_count)
+    }, merge=True)
+
+
+# ============================================================
+# FUNCTION 7: RCB HTTP API (for manual triggers from UI)
+# ============================================================
+@https_fn.on_request(cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"]))
+def rcb_api(req: https_fn.Request) -> https_fn.Response:
+    """HTTP API for RCB management from the web UI"""
+    
+    path = req.path.strip("/").replace("rcb_api/", "").replace("rcb-api/", "")
+    method = req.method
+    
+    # Get RCB stats
+    if path in ("stats", "") and method == "GET":
+        stats_doc = db.collection("rcb_stats").document("daily").get()
+        stats = stats_doc.to_dict() if stats_doc.exists else {}
+        
+        # Count logs
+        logs_today = len(list(db.collection("rcb_logs")
+            .where("timestamp", ">=", datetime.now().replace(hour=0, minute=0, second=0))
+            .stream()))
+        
+        return https_fn.Response(json.dumps({
+            "status": "active",
+            "emails_today": stats.get("emails_today", 0),
+            "ignored_today": stats.get("ignored_today", 0),
+            "last_check": str(stats.get("last_check", "")),
+            "logs_today": logs_today
+        }), content_type="application/json")
+    
+    # Get recent logs
+    elif path == "logs" and method == "GET":
+        logs = []
+        for doc in db.collection("rcb_logs").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(50).stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            logs.append(d)
+        return https_fn.Response(json.dumps(logs, default=str), content_type="application/json")
+    
+    # Manual check trigger
+    elif path == "check" and method == "POST":
+        # This would trigger the scheduled function manually
+        # For now, just log the request
+        db.collection("rcb_logs").add({
+            "message": "Manual check requested from UI",
+            "status": "received",
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        return https_fn.Response(json.dumps({"ok": True, "message": "Check requested"}), content_type="application/json")
+    
+    # Test connection
+    elif path == "test" and method == "GET":
+        secrets = get_rcb_secrets()
+        if secrets:
+            try:
+                mail = imaplib.IMAP4_SSL(secrets['RCB_IMAP_SERVER'])
+                mail.login(secrets['RCB_EMAIL'], secrets['RCB_PASSWORD'])
+                mail.logout()
+                return https_fn.Response(json.dumps({
+                    "ok": True, 
+                    "email": secrets['RCB_EMAIL'],
+                    "message": "Connection successful"
+                }), content_type="application/json")
+            except Exception as e:
+                return https_fn.Response(json.dumps({
+                    "ok": False, 
+                    "error": str(e)
+                }), content_type="application/json")
+        return https_fn.Response(json.dumps({"ok": False, "error": "No secrets"}), content_type="application/json")
+    
+    # Send PDF request to airpaort@gmail.com
+    elif path == "pdf-request" and method == "POST":
+        try:
+            data = req.get_json()
+            request_type = data.get("type", "download")
+            details = data.get("details", {})
+            callback_id = data.get("callback_id")
+            
+            request_id = send_pdf_request(request_type, details, callback_id)
+            
+            if request_id:
+                return https_fn.Response(json.dumps({
+                    "ok": True,
+                    "request_id": request_id,
+                    "message": f"PDF request sent to airpaort@gmail.com"
+                }), content_type="application/json")
+            else:
+                return https_fn.Response(json.dumps({
+                    "ok": False,
+                    "error": "Failed to send request"
+                }), status=500, content_type="application/json")
+        except Exception as e:
+            return https_fn.Response(json.dumps({
+                "ok": False,
+                "error": str(e)
+            }), status=500, content_type="application/json")
+    
+    # Get PDF request status
+    elif path.startswith("pdf-request/") and method == "GET":
+        request_id = path.split("/")[1]
+        doc = db.collection("rcb_pdf_requests").document(request_id).get()
+        if doc.exists:
+            return https_fn.Response(json.dumps(doc.to_dict(), default=str), content_type="application/json")
+        return https_fn.Response(json.dumps({"error": "Request not found"}), status=404, content_type="application/json")
+    
+    return https_fn.Response(json.dumps({"error": "Not found"}), status=404, content_type="application/json")
+
+
+# ============================================================
+# FUNCTION 1: CHECK EMAIL (runs every 5 minutes)
+# ============================================================
+@scheduler_fn.on_schedule(schedule="every 5 minutes", memory=options.MemoryOption.MB_512)
+def check_email_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
+    """Check airpaport@gmail.com for new emails every 5 minutes"""
+    
+    # Get email config
+    try:
+        config = db.collection("config").document("email").get().to_dict()
+        email_addr = config["email"]
+        email_pass = config["app_password"]
+    except Exception as e:
+        print(f"Email config error: {e}")
+        return
+
+    # Get already processed IDs
+    processed_ids = set()
+    for doc in db.collection("inbox").stream():
+        processed_ids.add(doc.id)
+
+    # Connect to Gmail
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(email_addr, email_pass)
+        mail.select("inbox")
+    except Exception as e:
+        print(f"Gmail connection failed: {e}")
+        return
+
+    status, messages = mail.search(None, "ALL")
+    email_ids = messages[0].split() if messages[0] else []
+    new_count = 0
+
+    for eid in email_ids:
+        try:
+            status, msg_data = mail.fetch(eid, "(RFC822)")
+            msg = email_lib.message_from_bytes(msg_data[0][1])
+            msg_id = msg.get("Message-ID", str(eid))
+            safe_id = re.sub(r'[/\\\.\[\]\*~]', '_', str(msg_id))[:100]
+
+            if safe_id in processed_ids:
+                continue
+
+            new_count += 1
+
+            # Decode headers
+            subject = decode_email_header(msg.get("Subject", ""))
+            from_str = decode_email_header(msg.get("From", ""))
+            date_str = msg.get("Date", "")
+
+            # Extract body
+            body_text = extract_body(msg)
+
+            # Extract and process attachments
+            attachments = extract_attachments(msg, body_text, subject)
+
+            # Store email
+            db.collection("inbox").document(safe_id).set({
+                "from": from_str,
+                "subject": subject,
+                "date": date_str,
+                "body": body_text[:10000],
+                "message_id": msg_id,
+                "attachment_count": len(attachments),
+                "attachments": [{
+                    "filename": a["filename"],
+                    "size": a["size"],
+                    "type": a["type"],
+                    "doc_type": a["doc_type"],
+                    "storage_path": a.get("storage_path", "")
+                } for a in attachments],
+                "status": "processed",
+                "processed_at": firestore.SERVER_TIMESTAMP
+            })
+
+            # Classify each attachment (triggers Firestore listener)
+            for att in attachments:
+                classify_and_store(att, from_str, subject, date_str, body_text)
+
+        except Exception as e:
+            print(f"Error processing email {eid}: {e}")
+            continue
+
+    mail.logout()
+    print(f"Email check complete: {new_count} new emails")
+
+
+# ============================================================
+# FUNCTION 2: AUTO-CLASSIFY ON NEW DOCUMENT
+# ============================================================
+@firestore_fn.on_document_created(document="classifications/{classId}")
+def on_new_classification(event: firestore_fn.Event) -> None:
+    """When a new classification is created, try to auto-classify using knowledge base"""
+    
+    data = event.data.to_dict()
+    if data.get("status") != "pending_classification":
+        return
+
+    class_id = event.params["classId"]
+    product = data.get("product_description", "")
+    seller = data.get("seller", "")
+    supplier_hs = data.get("supplier_hs", "")
+
+    # Step 1: Check if we've seen this seller + product before
+    suggested_hs = None
+    confidence = 0
+
+    # Check seller history
+    if seller:
+        seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
+        seller_doc = db.collection("sellers").document(seller_id).get()
+        if seller_doc.exists:
+            seller_data = seller_doc.to_dict()
+            known_hs = seller_data.get("known_hs_codes", [])
+            if len(known_hs) == 1:
+                suggested_hs = known_hs[0]
+                confidence = 70
+                print(f"Seller match: {seller} -> {suggested_hs}")
+
+    # Check knowledge base for product match
+    if product:
+        kb_docs = db.collection("knowledge_base").where("category", "==", "hs_classifications").stream()
+        for doc in kb_docs:
+            kb = doc.to_dict()
+            content = kb.get("content", {})
+            products_seen = content.get("products", [])
+            for p in products_seen:
+                if any(word.lower() in product.lower() for word in p.split() if len(word) > 3):
+                    suggested_hs = content.get("hs", "")
+                    confidence = max(confidence, 60)
+                    print(f"Product match: {product} -> {suggested_hs}")
+                    break
+
+    # If supplier provided an HS code, validate it
+    if supplier_hs:
+        # Check if supplier HS matches our knowledge
+        kb_match = db.collection("knowledge_base").where("category", "==", "hs_classifications").stream()
+        for doc in kb_match:
+            kb = doc.to_dict()
+            if kb.get("content", {}).get("hs", "").replace(".", "") == supplier_hs.replace(".", ""):
+                suggested_hs = supplier_hs
+                confidence = 80
+                print(f"Supplier HS confirmed: {supplier_hs}")
+                break
+
+    # Update classification with suggestion
+    if suggested_hs and confidence >= 60:
+        db.collection("classifications").document(class_id).update({
+            "suggested_hs": suggested_hs,
+            "suggestion_confidence": confidence,
+            "suggestion_source": "auto_knowledge_base",
+            "status": "pending_review"
+        })
+        print(f"Auto-suggested {suggested_hs} (confidence: {confidence}%) for {class_id}")
+    else:
+        # Need Claude AI for complex classification
+        db.collection("agent_tasks").add({
+            "type": "ai_classification",
+            "classification_id": class_id,
+            "product_description": product,
+            "seller": seller,
+            "supplier_hs": supplier_hs,
+            "status": "pending",
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+        print(f"Created AI classification task for {class_id}")
+
+
+# ============================================================
+# FUNCTION 3: LEARN FROM CORRECTIONS
+# ============================================================
+@firestore_fn.on_document_updated(document="classifications/{classId}")
+def on_classification_correction(event: firestore_fn.Event) -> None:
+    """When user corrects a classification, learn from it"""
+    
+    before = event.data.before.to_dict()
+    after = event.data.after.to_dict()
+
+    # Check if this is a correction (status changed to confirmed/corrected)
+    if after.get("status") not in ("confirmed", "corrected"):
+        return
+    if before.get("status") == after.get("status"):
+        return
+
+    class_id = event.params["classId"]
+    final_hs = after.get("our_hs_code", "")
+    product = after.get("product_description", "")
+    seller = after.get("seller", "")
+    suggested_hs = before.get("suggested_hs", "")
+
+    if not final_hs:
+        return
+
+    print(f"Learning from correction: {class_id}")
+    print(f"  Product: {product}")
+    print(f"  Final HS: {final_hs}")
+    if suggested_hs and suggested_hs != final_hs:
+        print(f"  Was suggested: {suggested_hs} (WRONG)")
+
+    # Update seller knowledge
+    if seller:
+        seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
+        seller_ref = db.collection("sellers").document(seller_id)
+        seller_doc = seller_ref.get()
+        if seller_doc.exists:
+            existing = seller_doc.to_dict()
+            known_hs = existing.get("known_hs_codes", [])
+            if final_hs not in known_hs:
+                known_hs.append(final_hs)
+            seller_ref.update({"known_hs_codes": known_hs, "last_classification": datetime.now().isoformat()})
+        else:
+            seller_ref.set({
+                "name": seller,
+                "known_hs_codes": [final_hs],
+                "last_classification": datetime.now().isoformat()
+            })
+
+    # Update HS knowledge base
+    hs_id = f"hs_{final_hs.replace('.', '_')}"
+    hs_ref = db.collection("knowledge_base").document(hs_id)
+    hs_doc = hs_ref.get()
+    if hs_doc.exists:
+        existing = hs_doc.to_dict()
+        content = existing.get("content", {})
+        products = content.get("products", [])
+        sellers_list = content.get("sellers", [])
+        if product and product not in products:
+            products.append(product[:200])
+        if seller and seller not in sellers_list:
+            sellers_list.append(seller)
+        content["products"] = products
+        content["sellers"] = sellers_list
+        hs_ref.update({"content": content, "last_updated": datetime.now().isoformat()})
+    else:
+        hs_ref.set({
+            "title": f"HS {final_hs} - Learned from classification",
+            "category": "hs_classifications",
+            "content": {
+                "hs": final_hs,
+                "products": [product[:200]] if product else [],
+                "sellers": [seller] if seller else [],
+                "learned_from": [class_id]
+            },
+            "source": "classification_learning",
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+
+    # Log the learning event
+    db.collection("learning_log").add({
+        "type": "classification_correction",
+        "classification_id": class_id,
+        "final_hs": final_hs,
+        "suggested_hs": suggested_hs,
+        "was_correct": suggested_hs == final_hs,
+        "product": product,
+        "seller": seller,
+        "learned_at": firestore.SERVER_TIMESTAMP
+    })
+
+    print(f"  Learned: {product[:50]} -> {final_hs}")
+
+
+# ============================================================
+# FUNCTION 4: ENRICHMENT (runs every hour)
+# ============================================================
+@scheduler_fn.on_schedule(schedule="every 1 hours", memory=options.MemoryOption.MB_256)
+def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
+    """Periodically check and fill knowledge gaps"""
+    
+    # Count by category
+    categories = {}
+    for doc in db.collection("knowledge_base").stream():
+        cat = doc.to_dict().get("category", "unknown")
+        categories[cat] = categories.get(cat, 0) + 1
+
+    total = sum(categories.values())
+    print(f"Knowledge base: {total} documents, {len(categories)} categories")
+
+    # Check for unprocessed documents in storage
+    unprocessed = db.collection("inbox").where("status", "==", "new").limit(10).stream()
+    for doc in unprocessed:
+        print(f"Found unprocessed email: {doc.id}")
+        # Trigger reprocessing
+
+    # Check for stale enrichment sources
+    sources = ["customs_guidance", "free_import", "standards", "food_safety", "fta_updates"]
+    for source in sources:
+        log_doc = db.collection("enrichment_log").document(source).get()
+        if log_doc.exists:
+            data = log_doc.to_dict()
+            last_check = data.get("last_checked", "")
+            if last_check:
+                try:
+                    last_dt = datetime.fromisoformat(str(last_check))
+                    hours_since = (datetime.now() - last_dt).total_seconds() / 3600
+                    if hours_since > 24:
+                        print(f"Source {source} stale ({hours_since:.0f}h) - creating refresh task")
+                        db.collection("agent_tasks").add({
+                            "type": "enrichment_check",
+                            "source": source,
+                            "status": "pending",
+                            "created_at": firestore.SERVER_TIMESTAMP
+                        })
+                except Exception:
+                    pass
+        else:
+            print(f"Source {source} never checked - creating task")
+            db.collection("agent_tasks").add({
+                "type": "enrichment_check",
+                "source": source,
+                "status": "pending",
+                "created_at": firestore.SERVER_TIMESTAMP
+            })
+
+    print("Enrichment check complete")
+
+
+# ============================================================
+# FUNCTION 5: HTTP API FOR WEB APP
+# ============================================================
+@https_fn.on_request(cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"]))
+def api(req: https_fn.Request) -> https_fn.Response:
+    """REST API for the web application"""
+    
+    path = req.path.strip("/").replace("api/", "")
+
+    method = req.method
+
+    # Dashboard stats
+    if path in ("stats", "") and method == "GET":
+        stats = {
+            "knowledge_count": len(list(db.collection("knowledge_base").stream())),
+            "inbox_count": len(list(db.collection("inbox").stream())),
+            "classifications_pending": len(list(db.collection("classifications").where("status", "==", "pending_classification").stream())),
+            "classifications_total": len(list(db.collection("classifications").stream())),
+            "sellers_count": len(list(db.collection("sellers").stream())),
+            "pending_tasks": len(list(db.collection("pending_tasks").where("status", "==", "pending").stream())),
+            "learning_events": len(list(db.collection("learning_log").stream()))
+        }
+        return https_fn.Response(json.dumps(stats), content_type="application/json")
+
+    # Get classifications
+    elif path == "classifications" and method == "GET":
+        result = []
+        for doc in db.collection("classifications").order_by("created_at", direction=firestore.Query.DESCENDING).limit(50).stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            d.pop("extracted_text", None)  # Don't send large text
+            result.append(d)
+        return https_fn.Response(json.dumps(result, default=str), content_type="application/json")
+
+    # Correct a classification (triggers learning)
+    elif path.startswith("classifications/") and method == "POST":
+        class_id = path.split("/")[1]
+        data = req.get_json()
+        db.collection("classifications").document(class_id).update({
+            "our_hs_code": data.get("hs_code"),
+            "status": "corrected" if data.get("is_correction") else "confirmed",
+            "corrected_by": data.get("user", "admin"),
+            "corrected_at": firestore.SERVER_TIMESTAMP
+        })
+        return https_fn.Response(json.dumps({"ok": True}), content_type="application/json")
+
+    # Get knowledge base
+    elif path == "knowledge" and method == "GET":
+        result = []
+        for doc in db.collection("knowledge_base").stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            result.append(d)
+        return https_fn.Response(json.dumps(result, default=str), content_type="application/json")
+
+    # Get inbox
+    elif path == "inbox" and method == "GET":
+        result = []
+        for doc in db.collection("inbox").order_by("processed_at", direction=firestore.Query.DESCENDING).limit(50).stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            d.pop("body", None)
+            result.append(d)
+        return https_fn.Response(json.dumps(result, default=str), content_type="application/json")
+
+    # Get sellers
+    elif path == "sellers" and method == "GET":
+        result = []
+        for doc in db.collection("sellers").stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            result.append(d)
+        return https_fn.Response(json.dumps(result, default=str), content_type="application/json")
+
+    # Get learning log
+    elif path == "learning" and method == "GET":
+        result = []
+        for doc in db.collection("learning_log").order_by("learned_at", direction=firestore.Query.DESCENDING).limit(50).stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            result.append(d)
+        return https_fn.Response(json.dumps(result, default=str), content_type="application/json")
+
+    return https_fn.Response(json.dumps({"error": "Not found"}), status=404, content_type="application/json")
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def decode_email_header(raw):
+    """Decode email header (subject, from, etc.)"""
+    if not raw:
+        return ""
+    decoded = decode_header(raw)
+    return " ".join([
+        part.decode(enc or 'utf-8') if isinstance(part, bytes) else str(part)
+        for part, enc in decoded
+    ])
+
+
+def extract_body(msg):
+    """Extract plain text body from email"""
+    body = ""
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = part.get_content_charset() or 'utf-8'
+                    try:
+                        body += payload.decode(charset, errors='replace')
+                    except:
+                        body += payload.decode('utf-8', errors='replace')
+    else:
+        payload = msg.get_payload(decode=True)
+        if payload:
+            body = payload.decode('utf-8', errors='replace')
+    return body
+
+
+def extract_attachments(msg, body_text, subject):
+    """Extract attachments from email, detect type, upload to storage"""
+    attachments = []
+    if not msg.is_multipart():
+        return attachments
+
+    for part in msg.walk():
+        content_disp = str(part.get("Content-Disposition", ""))
+        if "attachment" not in content_disp and not part.get_filename():
+            continue
+
+        filename = part.get_filename()
+        if not filename:
+            continue
+
+        filename = decode_email_header(filename)
+        file_data = part.get_payload(decode=True)
+        if not file_data:
+            continue
+
+        safe_name = re.sub(r'[^\w\-_\. ]', '_', filename)
+        file_ext = os.path.splitext(filename)[1].lower()
+        doc_type = detect_document_type(filename, body_text, subject)
+
+        # Upload to Firebase Storage
+        storage_path = f"inbox/{datetime.now().strftime('%Y%m%d')}_{safe_name}"
+        try:
+            blob = bucket.blob(storage_path)
+            blob.upload_from_string(file_data)
+        except Exception as e:
+            print(f"Upload failed: {e}")
+            storage_path = ""
+
+        # Extract text from PDF
+        extracted_text = ""
+        if file_ext == '.pdf':
+            try:
+                import pdfplumber
+                import io
+                with pdfplumber.open(io.BytesIO(file_data)) as pdf:
+                    for page in pdf.pages[:30]:
+                        t = page.extract_text()
+                        if t:
+                            extracted_text += t + "\n"
+            except Exception:
+                pass
+
+        attachments.append({
+            "filename": filename,
+            "size": len(file_data),
+            "type": file_ext,
+            "doc_type": doc_type,
+            "storage_path": storage_path,
+            "extracted_text": extracted_text[:50000]
+        })
+
+    return attachments
+
+
+def detect_document_type(filename, body="", subject=""):
+    """Detect document type from filename and content"""
+    fn = filename.lower()
+    body_lower = (body + " " + subject).lower()
+
+    # Commercial Invoice
+    if any(kw in fn for kw in ['invoice', 'inv_', 'inv-', 'facture', 'rechnung', 'faktura', 'commerciale']):
+        return "commercial_invoice"
+    # Packing List
+    if any(kw in fn for kw in ['packing', 'pl_', 'pl-', 'packing_list']):
+        return "packing_list"
+    # Customs Declaration
+    if any(kw in fn for kw in ['wg_', 'imp_dec', 'exp_dec', 'declaration', 'customs_dec']):
+        return "customs_declaration"
+    # Regulatory Certificate
+    if any(kw in fn for kw in ['cert_emc', 'cert_rf', 'cert_safety', '_emc_', '_rf_', '_safety_',
+                                'sii', 'moc_', '_moc', 'polygon', 'intertek', 'sgs', 'tuv']):
+        return "regulatory_certificate"
+    # Certificate of Origin
+    if any(kw in fn for kw in ['eur.1', 'eur1', 'origin', 'co_', 'coo_', 'form_a']):
+        return "certificate_of_origin"
+    if 'certificate' in fn and 'origin' in fn:
+        return "certificate_of_origin"
+    # Bill of Lading
+    if any(kw in fn for kw in ['b/l', 'bl_', 'bl-', 'bill_of_lading', 'awb', 'airway']):
+        return "bill_of_lading"
+    # Insurance
+    if any(kw in fn for kw in ['insurance', 'policy']):
+        return "insurance"
+    # Import Permit
+    if any(kw in fn for kw in ['license', 'licence', 'permit']):
+        return "import_permit"
+    # Lab Report
+    if any(kw in fn for kw in ['lab_', 'test_', 'analysis', 'report_', 'coa_']):
+        return "lab_report"
+    # Proforma
+    if any(kw in fn for kw in ['proforma', 'pro_forma', 'pro-forma']):
+        return "proforma_invoice"
+    # Scanned document
+    if re.match(r'^doc\d{10,}', fn):
+        return "scanned_document"
+
+    # Body clues
+    if 'invoice' in body_lower:
+        if any(fn.endswith(ext) for ext in ['.pdf', '.xlsx']):
+            return "possible_invoice"
+
+    return "unknown"
+
+
+def classify_and_store(att, from_str, subject, date_str, body_text):
+    """Classify attachment and store in appropriate collection"""
+    doc_type = att["doc_type"]
+    text = att.get("extracted_text", "")
+
+    if doc_type in ("commercial_invoice", "possible_invoice", "proforma_invoice"):
+        # Extract invoice fields and create classification
+        invoice_data = extract_invoice_fields(text)
+        if invoice_data:
+            class_id = f"class_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            db.collection("classifications").document(class_id).set({
+                "seller": invoice_data.get("seller", ""),
+                "buyer": invoice_data.get("buyer", ""),
+                "product_description": invoice_data.get("product", ""),
+                "supplier_hs": invoice_data.get("supplier_hs", ""),
+                "total_value": invoice_data.get("total_value", ""),
+                "currency": invoice_data.get("currency", ""),
+                "incoterms": invoice_data.get("incoterms", ""),
+                "origin": invoice_data.get("origin", ""),
+                "our_hs_code": "PENDING",
+                "status": "pending_classification",
+                "source_email": from_str,
+                "attachment_path": att.get("storage_path", ""),
+                "extracted_text": text[:10000],
+                "created_at": firestore.SERVER_TIMESTAMP
+            })
+
+    elif doc_type == "customs_declaration":
+        hs_match = re.search(r'(\d{4}[\.\s]?\d{2}[\.\s]?\d{2,4})', text or "")
+        db.collection("declarations").add({
+            "filename": att["filename"],
+            "hs_code": hs_match.group(1) if hs_match else None,
+            "from_email": from_str,
+            "attachment_path": att.get("storage_path", ""),
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+
+    elif doc_type == "regulatory_certificate":
+        cert_type = "general"
+        fn = att["filename"].lower()
+        if 'emc' in fn: cert_type = "emc"
+        elif 'rf' in fn: cert_type = "rf_radio"
+        elif 'safety' in fn: cert_type = "safety"
+
+        model_match = re.search(r'([A-Z]{2,5}[-_]\d{3,}[-_]?\w*)', att["filename"], re.IGNORECASE)
+        expiry_match = re.search(r'[Ee]xpires?[_\s-]*(\d{1,2}[-_][A-Za-z]{3}[-_]\d{2,4})', att["filename"])
+
+        db.collection("regulatory_certificates").add({
+            "filename": att["filename"],
+            "cert_type": cert_type,
+            "model_number": model_match.group(1) if model_match else "",
+            "expiry_date": expiry_match.group(1) if expiry_match else "",
+            "from_email": from_str,
+            "attachment_path": att.get("storage_path", ""),
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+
+    elif doc_type in ("certificate_of_origin", "packing_list", "bill_of_lading"):
+        collection_map = {
+            "certificate_of_origin": "origin_certificates",
+            "packing_list": "packing_lists",
+            "bill_of_lading": "bills_of_lading"
+        }
+        db.collection(collection_map[doc_type]).add({
+            "filename": att["filename"],
+            "from_email": from_str,
+            "attachment_path": att.get("storage_path", ""),
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+
+
+def extract_invoice_fields(text):
+    """Extract structured data from invoice text"""
+    if not text or len(text) < 50:
+        return None
+
+    data = {}
+    text_upper = text.upper()
+
+    # Seller
+    for pat in [r'(?:SELLER|EXPORTER|SHIPPER|FROM)[:\s]*(.+)', r'(?:Seller|Exporter)[:\s]*(.+)']:
+        m = re.search(pat, text)
+        if m:
+            data["seller"] = m.group(1).strip()[:100]
+            break
+
+    # Buyer
+    for pat in [r'(?:BUYER|CONSIGNEE|TO|IMPORTER)[:\s]*(.+)', r'(?:Buyer|Consignee)[:\s]*(.+)']:
+        m = re.search(pat, text)
+        if m:
+            data["buyer"] = m.group(1).strip()[:100]
+            break
+
+    # HS Code - use all known field names
+    hs_fields = ['H\\.S\\.NUMBER', 'H\\.S\\.CODE', 'HTS CODE', 'STAT\\.Code',
+                  'HS CODE', 'TARIFF CODE', 'CN CODE', 'Commodity Code', 'HSCODE']
+    for field in hs_fields:
+        m = re.search(f'{field}[:\\s]*([\\d\\.]+)', text, re.IGNORECASE)
+        if m:
+            data["supplier_hs"] = m.group(1).strip()
+            break
+    if "supplier_hs" not in data:
+        m = re.search(r'(\d{4}\.\d{2}\.\d{2,4})', text)
+        if m:
+            data["supplier_hs"] = m.group(1)
+
+    # Currency + total
+    for pat in [r'(?:TOTAL|GRAND TOTAL|AMOUNT)[:\s]*([A-Z]{3})\s*([\d,\.]+)',
+                r'([A-Z]{3})\s*([\d,\.]+)\s*(?:TOTAL|CIF|FOB)']:
+        m = re.search(pat, text_upper)
+        if m:
+            data["currency"] = m.group(1)
+            data["total_value"] = m.group(2).replace(",", "")
+            break
+
+    # Incoterms
+    for term in ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP']:
+        if term in text_upper:
+            data["incoterms"] = term
+            break
+
+    # Origin
+    for pat in [r'(?:ORIGIN|COUNTRY OF ORIGIN|MADE IN)[:\s]*([A-Z][a-zA-Z\s]+)']:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            data["origin"] = m.group(1).strip()[:50]
+            break
+
+    # Product
+    lines = text.split('\n')
+    for line in lines:
+        line = line.strip()
+        if len(line) > 20 and not any(kw in line.upper() for kw in ['INVOICE', 'DATE', 'SELLER', 'BUYER', 'TOTAL', 'ADDRESS']):
+            if re.search(r'[A-Za-z]{3,}', line):
+                data["product"] = line[:200]
+                break
+
+    return data if data else None

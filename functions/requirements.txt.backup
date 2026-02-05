@@ -2,14 +2,8 @@
 firebase-functions>=0.5.0
 firebase-admin>=6.2.0
 google-cloud-secret-manager>=2.16.0
-google-cloud-logging>=3.5.0
+pdfplumber>=0.10.0
 requests>=2.31.0
 openpyxl>=3.1.0
-
-# PDF Text Extraction
-pdfplumber>=0.10.0
-pypdf>=3.0.0
-
-# OCR Support (for scanned PDFs)
-google-cloud-vision>=3.4.0
-PyMuPDF>=1.23.0
+google-cloud-logging>=3.5.0
+google-cloud-logging
