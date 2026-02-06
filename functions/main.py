@@ -21,6 +21,7 @@ import imaplib
 import email as email_lib
 from lib.classification_agents import run_full_classification, build_classification_email, process_and_send_report
 from lib.knowledge_query import detect_knowledge_query, handle_knowledge_query
+from lib.rcb_id import generate_rcb_id, RCBType
 from lib.rcb_helpers import extract_text_from_attachments
 from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal, extract_text_from_attachments
 
@@ -1140,7 +1141,11 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         try:
             msg["attachments"] = raw_attachments
             if detect_knowledge_query(msg):
-                print(f"  📚 Knowledge query detected from {from_email}")
+                try:
+                    rcb_id = generate_rcb_id(db, firestore, RCBType.KNOWLEDGE_QUERY)
+                except Exception:
+                    rcb_id = "RCB-UNKNOWN-KQ"
+                print(f"  📚 [{rcb_id}] Knowledge query detected from {from_email}")
                 kq_result = handle_knowledge_query(
                     msg=msg,
                     db=db,
@@ -1149,13 +1154,14 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                     rcb_email=rcb_email,
                     get_secret_func=get_secret,
                 )
-                print(f"  📚 Knowledge query result: {kq_result.get('status')}")
+                print(f"  📚 [{rcb_id}] Knowledge query result: {kq_result.get('status')}")
                 helper_graph_mark_read(access_token, rcb_email, msg_id)
                 db.collection("rcb_processed").document(safe_id).set({
                     "processed_at": firestore.SERVER_TIMESTAMP,
                     "subject": subject,
                     "from": from_email,
                     "type": "knowledge_query",
+                    "rcb_id": rcb_id,
                 })
                 continue
         except Exception as kq_err:
@@ -1163,6 +1169,11 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
 
         
         # Build and send acknowledgment (Email 1)
+        try:
+            rcb_id = generate_rcb_id(db, firestore, RCBType.CLASSIFICATION)
+        except Exception:
+            rcb_id = "RCB-UNKNOWN-CLS"
+        print(f"  🏷️ [{rcb_id}] Processing classification")
         reply_body = build_rcb_reply(
             sender_name=from_name,
             attachments=attachments,
@@ -1172,13 +1183,14 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         )
         
         if helper_graph_send(access_token, rcb_email, from_email, f"Re: {subject}", reply_body, msg_id, raw_attachments):
-            print(f"    ✅ Ack sent to {from_email}")
+            print(f"    ✅ [{rcb_id}] Ack sent to {from_email}")
             
             # Mark as processed
             db.collection("rcb_processed").document(safe_id).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,
                 "subject": subject,
-                "from": from_email
+                "from": from_email,
+                "rcb_id": rcb_id,
             })
             
             # Run classification and send report (Email 2)
@@ -1614,14 +1626,15 @@ def monitor_self_heal(request):
     rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
     
     # 6-HOUR WINDOW
-    six_hours_ago = (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    print(f"⏰ Window: {six_hours_ago} to now")
+    # TEMPORARY: narrowed from 6h to 2h to prevent flood after hash fix
+    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"⏰ Window: {two_hours_ago} to now")
     
     r = requests.get(
         f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
         headers={'Authorization': f'Bearer {access_token}'},
         params={'$top': 50, '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {six_hours_ago}",
+                '$filter': f"receivedDateTime ge {two_hours_ago}",
                 '$select': 'id,subject,from,toRecipients,receivedDateTime'}
     )
     
@@ -1708,13 +1721,14 @@ def monitor_fix_all(request):
     rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
     
     # Get emails from last 6 hours
-    six_hours_ago = (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # TEMPORARY: narrowed from 6h to 2h to prevent flood after hash fix
+    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     
     r = requests.get(
         f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
         headers={'Authorization': f'Bearer {access_token}'},
         params={'$top': 50, '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {six_hours_ago}",
+                '$filter': f"receivedDateTime ge {two_hours_ago}",
                 '$select': 'id,subject,from,toRecipients,receivedDateTime'}
     )
     
@@ -1829,13 +1843,14 @@ def monitor_fix_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
         return
     
     rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
-    six_hours_ago = (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # TEMPORARY: narrowed from 6h to 2h to prevent flood after hash fix
+    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     
     r = requests.get(
         f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
         headers={'Authorization': f'Bearer {access_token}'},
         params={'$top': 50, '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {six_hours_ago}",
+                '$filter': f"receivedDateTime ge {two_hours_ago}",
                 '$select': 'id,subject,from,toRecipients,receivedDateTime'}
     )
     
@@ -2080,3 +2095,60 @@ def rcb_self_test(req: https_fn.Request) -> https_fn.Response:
         )
     except Exception as e:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+"""
+═══════════════════════════════════════════════════════════════
+  INSPECTOR AGENT — Add these to the END of main.py
+  Session 14.01
+═══════════════════════════════════════════════════════════════
+"""
+
+# --- Add this import near the top of main.py ---
+# from lib.rcb_inspector import handle_inspector_http, handle_inspector_daily
+
+
+# ============================================================
+# INSPECTOR AGENT — Manual HTTP Trigger
+# ============================================================
+@https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=300)
+def rcb_inspector(req: https_fn.Request) -> https_fn.Response:
+    """
+    Full system inspection — manual trigger.
+    
+    Usage:
+        curl https://us-central1-rpa-port-customs.cloudfunctions.net/rcb_inspector | python3 -m json.tool
+    """
+    print("🔍 RCB Inspector — Manual trigger")
+    
+    from lib.rcb_inspector import handle_inspector_http
+    
+    result = handle_inspector_http(req, db, get_secret)
+    
+    return https_fn.Response(
+        json.dumps(result, ensure_ascii=False, default=str, indent=2),
+        status=200,
+        headers={"Content-Type": "application/json"}
+    )
+
+
+# ============================================================
+# INSPECTOR AGENT — Daily 15:00 Jerusalem Scheduler
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 15:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=300,
+)
+def rcb_inspector_daily(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    Daily inspection + email report to doron@rpa-port.co.il
+    Runs at 15:00 Jerusalem time every day.
+    """
+    print("🔍 RCB Inspector — Daily 15:00 scheduled run")
+    
+    from lib.rcb_inspector import handle_inspector_daily
+    
+    handle_inspector_daily(db, get_secret)
+    
+    print("✅ RCB Inspector daily run complete")
