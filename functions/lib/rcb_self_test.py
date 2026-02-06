@@ -24,6 +24,7 @@ Session: 13
 import time
 import json
 import traceback
+import hashlib
 import requests
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
@@ -346,10 +347,10 @@ def _cleanup_firestore(db):
 def _guard_rcb_processed(db, firestore_module, msg_id: str, subject: str, rcb_email: str):
     """
     SAFETY: Mark msg_id in rcb_processed so rcb_check_email skips it.
-    Uses SAME key format as main loop: msg_id.replace("/", "_")[:100]
+    Uses SAME key format as main loop: md5(msg_id).hexdigest() # was: msg_id.replace("/", "_")[:100]
     Must be called AFTER we know the real Graph msg_id.
     """
-    safe_id = msg_id.replace("/", "_")[:100]
+    safe_id = hashlib.md5(msg_id.encode()).hexdigest()
     db.collection("rcb_processed").document(safe_id).set({
         "processed_at": firestore_module.SERVER_TIMESTAMP,
         "subject": subject,

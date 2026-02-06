@@ -1068,7 +1068,8 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     
     # Get ALL messages from last 2 days (ignore read/unread)
     from datetime import datetime, timedelta, timezone
-    two_days_ago = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%dT00:00:00Z")
+    # TEMPORARY: 2-hour window to prevent reprocessing old emails after hash fix
+    two_days_ago = (datetime.utcnow() - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     
     url = f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages"
     params = {
@@ -1116,7 +1117,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
             continue
         
         # Check if already processed
-        safe_id = msg_id.replace("/", "_")[:100]
+        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         if db.collection("rcb_processed").document(safe_id).get().exists:
             continue
         
@@ -1533,7 +1534,7 @@ def monitor_self_heal(request):
             pass
         
         # Check if processed
-        safe_id = msg_id.replace("/", "_")[:100]
+        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         if db.collection("rcb_processed").document(safe_id).get().exists:
             continue
         
@@ -1648,7 +1649,7 @@ def monitor_self_heal(request):
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
             continue
         
-        safe_id = msg_id.replace("/", "_")[:100]
+        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         if db.collection("rcb_processed").document(safe_id).get().exists:
             print(f"  EXISTS: {subject[:30]}")
             continue
@@ -1738,7 +1739,7 @@ def monitor_fix_all(request):
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower() or 'alert' in subject.lower():
             continue
         
-        safe_id = msg_id.replace("/", "_")[:100]
+        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         doc = db.collection("rcb_processed").document(safe_id).get()
         
         # CASE 1: Not processed at all - send Ack + Classification
@@ -1857,7 +1858,7 @@ def monitor_fix_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower() or 'alert' in subject.lower():
             continue
         
-        safe_id = msg_id.replace("/", "_")[:100]
+        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         doc = db.collection("rcb_processed").document(safe_id).get()
         
         needs_ack = not doc.exists
