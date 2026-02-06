@@ -327,6 +327,12 @@ def detect_knowledge_query(msg: dict) -> bool:
     if HS_CODE_PATTERN.search(subject):
         return False
 
+    # Safety net: if NO attachments at all, always treat as KQ
+    # (nothing to classify without documents)
+    attachments = msg.get("attachments", [])
+    if not attachments or len(attachments) == 0:
+        return True
+
     body_text = _get_body_text(msg)
     combined = f"{subject} {body_text}"
     return _is_question_like(combined)
