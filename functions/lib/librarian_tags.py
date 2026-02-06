@@ -286,6 +286,68 @@ DOCUMENT_TAGS = {
     "requires_browser": "דורש דפדפן",
     "pdf_file": "קובץ PDF",
     "excel_file": "קובץ אקסל",
+
+    # ── Session 13.1: Missing Tags (50 broken refs → 30 unique tags) ──
+
+    # Chapter 5: FTA Country-Specific Agreements
+    "fta_eu": "הסכם סחר חופשי EU",
+    "fta_us": "הסכם סחר חופשי ארה\"ב",
+    "fta_efta": "הסכם סחר חופשי EFTA",
+    "fta_mercosur": "הסכם סחר חופשי מרקוסור",
+    "fta_jordan": "הסכם סחר חופשי ירדן",
+    "fta_egypt": "הסכם סחר חופשי מצרים",
+    "fta_turkey": "הסכם סחר חופשי טורקיה",
+    "fta_canada": "הסכם סחר חופשי קנדה",
+    "fta_mexico": "הסכם סחר חופשי מקסיקו",
+    "fta_uae": "הסכם סחר חופשי איחוד האמירויות",
+
+    # Chapter 7: Deposits & Guarantees
+    "deposits_guarantees": "ערבויות ופיקדונות",
+
+    # Chapter 8: Payment Collection
+    "payment_collection": "גביית תשלומים",
+
+    # Chapter 20: Smuggling & Enforcement
+    "smuggling_enforcement": "הברחה ואכיפה",
+
+    # Chapter 21: Refund Claims
+    "refund_claims": "תביעות החזר",
+
+    # Chapter 22: Dispute Resolution
+    "dispute_resolution": "יישוב מחלוקות",
+
+    # Chapter 23: Drawback (sub-types)
+    "drawback_import_components": "הישבון רכיבים מיובאים",
+    "drawback_local_components": "הישבון רכיבים מקומיים",
+    "drawback_conditional": "הישבון מותנה",
+
+    # Chapter 24: Warehouses (sub-types)
+    "warehouse_general": "מחסן רישוי כללי",
+    "warehouse_private": "מחסן רישוי פרטי",
+    "warehouse_public": "מחסן רישוי ציבורי",
+
+    # Chapter 25: Declarants (sub-types)
+    "declarants_import": "מצהרים ביבוא",
+    "declarants_export": "מצהרים ביצוא",
+
+    # Chapter 27: Shaar Olami System
+    "shaar_olami_system": "מערכת שער עולמי",
+
+    # Chapter 28: Cargo Tracking (sub-types)
+    "cargo_tracking_sea": "מעקב מטענים ימי",
+    "cargo_tracking_air": "מעקב מטענים אווירי",
+
+    # Chapter 34: Forms
+    "form_a": "טופס A (תעודת מקור)",
+
+    # Chapter 40: Land Crossing
+    "land_crossing": "מעבר יבשתי",
+
+    # Chapter 41: Palestinian Authority
+    "pa_autonomy": "סחר עם הרשות הפלסטינית",
+
+    # Chapter 42: Eilat Port
+    "eilat_port": "נמל אילת",
 }
 
 # ═══════════════════════════════════════════
