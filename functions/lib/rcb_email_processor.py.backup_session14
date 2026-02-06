@@ -15,42 +15,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 import re
 
-# Session 14: Firestore persistence for language learning
-def _save_language_state(db, toolkit):
-    """Save learned language data to Firestore"""
-    try:
-        data = toolkit["learner"].to_dict()
-        db.collection("system_state").document("language_learner").set(data)
-    except Exception:
-        pass
-
-def _load_language_state(db, toolkit):
-    """Load learned language data from Firestore"""
-    try:
-        doc = db.collection("system_state").document("language_learner").get()
-        if doc.exists:
-            from lib.language_tools import LanguageLearner
-            toolkit["learner"] = LanguageLearner.from_dict(doc.to_dict(), toolkit["vocabulary"])
-    except Exception:
-        pass
-
-# Session 14: Language tools - learn from incoming email style
-try:
-    from lib.language_tools import create_language_toolkit
-    _toolkit = None  # Lazy init
-    def _get_toolkit():
-        global _toolkit
-        if _toolkit is None:
-            try:
-                from lib.librarian_tags import DOCUMENT_TAGS, CUSTOMS_HANDBOOK_CHAPTERS, TAG_KEYWORDS
-                _toolkit = create_language_toolkit(DOCUMENT_TAGS, CUSTOMS_HANDBOOK_CHAPTERS, TAG_KEYWORDS)
-            except Exception:
-                _toolkit = create_language_toolkit()
-        return _toolkit
-    LANGUAGE_TOOLS_AVAILABLE = True
-except ImportError:
-    LANGUAGE_TOOLS_AVAILABLE = False
-
 
 class RCBEmailProcessor:
     """
@@ -250,25 +214,6 @@ class RCBEmailProcessor:
                 }
                 
                 results["emails"].append(email_data)
-                
-                # Session 14: Learn sender style from incoming email
-                if LANGUAGE_TOOLS_AVAILABLE:
-                    try:
-                        tk = _get_toolkit()
-                        sender_addr = re.search(r"[\w.-]+@[\w.-]+", email_data.get("from", ""))
-                        if sender_addr and email_data.get("body"):
-                            tk["learner"].learn_from_email_exchange(
-                                sender_addr.group(), email_data["body"][:2000], "incoming")
-                            # Save learned state to Firestore
-                            try:
-                                import firebase_admin
-                                from firebase_admin import firestore as fs
-                                if firebase_admin._apps:
-                                    _save_language_state(fs.client(), tk)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
                 
                 if on_new_email:
                     on_new_email(email_data)

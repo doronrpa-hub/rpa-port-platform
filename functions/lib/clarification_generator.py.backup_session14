@@ -10,13 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-# Session 14: LetterStructure for HTML output
-try:
-    from lib.language_tools import LetterStructure, LetterType, HebrewLanguageChecker
-    LANGUAGE_TOOLS_AVAILABLE = True
-except ImportError:
-    LANGUAGE_TOOLS_AVAILABLE = False
-
 # =============================================================================
 # ENUMS
 # =============================================================================
@@ -292,23 +285,6 @@ class ClarificationRequest:
             "questions": self.questions,
             "created_at": self.created_at.isoformat(),
         }
-
-    def to_html(self) -> str:
-        """Session 14: Render as professional HTML using LetterStructure"""
-        if not LANGUAGE_TOOLS_AVAILABLE:
-            return f"<div dir='rtl' style='font-family:Arial;white-space:pre-line'>{self.body}</div>"
-        try:
-            lang = "he" if self.language == RequestLanguage.HEBREW else "en"
-            letter = LetterStructure(letter_type=LetterType.CLARIFICATION_REQUEST, language=lang)
-            letter.set_greeting()
-            if self.reference_number:
-                letter.set_reference(invoice=self.reference_number)
-            letter.add_section("", self.body.replace("\n", "<br>"), "text")
-            for doc in self.missing_documents:
-                letter.add_action_item(doc)
-            return letter.render_html()
-        except Exception:
-            return f"<div dir='rtl' style='font-family:Arial;white-space:pre-line'>{self.body}</div>"
 
 
 # =============================================================================

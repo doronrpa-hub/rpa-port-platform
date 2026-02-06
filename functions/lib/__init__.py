@@ -9,7 +9,11 @@ Modules:
 - rcb_orchestrator (Module 6): Integration layer
 - rcb_email_processor: Smart email processing
 - classification_agents: AI classification
-- librarian: Knowledge base
+- librarian: Knowledge base (Session 12: Central Brain)
+- librarian_index: Document indexing & inventory
+- librarian_tags: Auto-tagging system
+- librarian_researcher: Enrichment & learning
+- enrichment_agent: Background enrichment agent
 - document_tracker: Status tracking
 - incoterms_calculator: CIF calculations
 - product_classifier: HS code classification
@@ -96,9 +100,83 @@ try:
 except ImportError:
     pass
 
-# Librarian
+# Librarian (Session 12: Enhanced Central Brain)
 try:
-    from .librarian import Librarian
+    from .librarian import (
+        full_knowledge_search,
+        search_all_knowledge,
+        search_extended_knowledge,
+        build_classification_context,
+        validate_hs_code,
+        validate_and_correct_classifications,
+        get_israeli_hs_format,
+        normalize_hs_code,
+        # Session 12: New functions
+        find_by_hs_code,
+        find_by_ministry,
+        find_by_tags,
+        smart_search,
+        get_document_location,
+        get_all_locations_for,
+        scan_all_collections,
+        rebuild_index,
+        get_inventory_stats,
+        get_enrichment_status,
+        get_search_analytics,
+    )
+except ImportError:
+    pass
+
+# Librarian Index (Session 12: NEW)
+try:
+    from .librarian_index import (
+        scan_all_collections,
+        index_collection,
+        rebuild_index,
+        index_single_document,
+        remove_from_index,
+        get_inventory_stats,
+    )
+except ImportError:
+    pass
+
+# Librarian Tags (Session 12: NEW)
+try:
+    from .librarian_tags import (
+        auto_tag_document,
+        suggest_related_tags,
+        get_tags_for_hs_code,
+        add_tags,
+        remove_tags,
+        get_tag_stats,
+        init_tag_definitions,
+        DOCUMENT_TAGS,
+        TAG_HIERARCHY,
+    )
+except ImportError:
+    pass
+
+# Librarian Researcher (Session 12: NEW)
+try:
+    from .librarian_researcher import (
+        learn_from_classification,
+        learn_from_correction,
+        learn_from_email,
+        check_for_updates,
+        find_similar_classifications,
+        get_enrichment_status,
+        get_search_analytics,
+        ENRICHMENT_TASKS,
+    )
+except ImportError:
+    pass
+
+# Enrichment Agent (Session 12: NEW)
+try:
+    from .enrichment_agent import (
+        EnrichmentAgent,
+        create_enrichment_agent,
+    )
 except ImportError:
     pass
 
@@ -126,5 +204,26 @@ try:
 except ImportError:
     pass
 
-__version__ = "2.0.0"
+# PC Agent - Browser-based file downloads
+from .pc_agent import (
+    create_download_task,
+    create_bulk_download_tasks,
+    report_download_complete,
+    report_upload_complete,
+    report_task_failed,
+    get_all_tasks_status as get_agent_status,
+    get_download_queue_for_agent,
+    get_agent_script,
+)
+
+# Knowledge Query Handler (Session 13: NEW)
+try:
+    from .knowledge_query import (
+        detect_knowledge_query,
+        handle_knowledge_query,
+    )
+except ImportError:
+    pass
+
+__version__ = '4.1.0'
 __author__ = "RCB System"

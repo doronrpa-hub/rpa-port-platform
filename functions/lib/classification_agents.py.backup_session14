@@ -39,20 +39,6 @@ except ImportError as e:
     MODULES_AVAILABLE = False
 
 
-# Session 14: Language tools integration
-try:
-    from lib.language_tools import (
-        HebrewLanguageChecker,
-        build_rcb_subject as build_rcb_subject_v2,
-        process_outgoing_text,
-        create_language_toolkit,
-    )
-    _lang_checker = HebrewLanguageChecker()
-    LANGUAGE_TOOLS_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ Language tools not available: {e}")
-    LANGUAGE_TOOLS_AVAILABLE = False
-
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -434,13 +420,6 @@ def run_full_classification(api_key, doc_text, db):
         all_results = {"invoice": invoice, "classification": classification, "regulatory": regulatory, "fta": fta, "risk": risk}
         synthesis = run_synthesis_agent(api_key, all_results)
         
-        # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
-        if LANGUAGE_TOOLS_AVAILABLE:
-            try:
-                synthesis = _lang_checker.fix_all(synthesis)
-            except Exception as e:
-                print(f"    ⚠️ Language fix_all failed: {e}")
-        
         return {
             "success": True,
             "agents": all_results,
@@ -512,12 +491,6 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
                 html += f'<li>{field}</li>'
             html += '</ul></div>'
     
-    # Session 14: Clean synthesis text before rendering
-    if LANGUAGE_TOOLS_AVAILABLE:
-        try:
-            synthesis = _lang_checker.fix_all(synthesis)
-        except Exception:
-            pass
     html += f'<p style="background:white;padding:15px;border-radius:5px;border-right:4px solid #1e3a5f">{synthesis}</p>'
     
     html += '''<h2 style="color:#1e3a5f;margin-top:25px">🏷️ סיווגים</h2>
@@ -725,15 +698,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         else:
             status = "ACK"
         
-        # Session 14: Use improved subject line generator with fallback
-        if LANGUAGE_TOOLS_AVAILABLE:
-            try:
-                subject_line, tracking_code = build_rcb_subject_v2(invoice_data, status, score)
-            except Exception as e:
-                print(f"    ⚠️ Language tools subject failed ({e}), using original")
-                subject_line, tracking_code = build_rcb_subject(invoice_data, status, score)
-        else:
-            subject_line, tracking_code = build_rcb_subject(invoice_data, status, score)
+        subject_line, tracking_code = build_rcb_subject(invoice_data, status, score)
         print(f"  🏷️ Tracking: {tracking_code}")
         
         print("  📋 Building reports...")

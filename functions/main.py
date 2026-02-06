@@ -20,6 +20,7 @@ import re
 import imaplib
 import email as email_lib
 from lib.classification_agents import run_full_classification, build_classification_email, process_and_send_report
+from lib.knowledge_query import detect_knowledge_query, handle_knowledge_query
 from lib.rcb_helpers import extract_text_from_attachments
 from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal, extract_text_from_attachments
 
@@ -1109,6 +1110,10 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         # Skip system emails
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
             continue
+
+        # Skip self-test emails (processed by rcb_self_test, not here)
+        if '[RCB-SELFTEST]' in subject:
+            continue
         
         # Check if already processed
         safe_id = msg_id.replace("/", "_")[:100]
@@ -1127,6 +1132,34 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 attachments.append({'filename': name, 'type': ext})
         
         print(f"    📎 {len(attachments)} attachments")
+
+        # ── Session 13 v4.1.0: Knowledge Query Detection ──
+        # If team member asks a question (no commercial docs), answer it
+        # and skip the classification pipeline entirely.
+        try:
+            msg["attachments"] = raw_attachments
+            if detect_knowledge_query(msg):
+                print(f"  📚 Knowledge query detected from {from_email}")
+                kq_result = handle_knowledge_query(
+                    msg=msg,
+                    db=db,
+                    firestore_module=firestore,
+                    access_token=access_token,
+                    rcb_email=rcb_email,
+                    get_secret_func=get_secret,
+                )
+                print(f"  📚 Knowledge query result: {kq_result.get('status')}")
+                helper_graph_mark_read(access_token, rcb_email, msg_id)
+                db.collection("rcb_processed").document(safe_id).set({
+                    "processed_at": firestore.SERVER_TIMESTAMP,
+                    "subject": subject,
+                    "from": from_email,
+                    "type": "knowledge_query",
+                })
+                continue
+        except Exception as kq_err:
+            print(f"  ⚠️ Knowledge query detection error: {kq_err}")
+
         
         # Build and send acknowledgment (Email 1)
         reply_body = build_rcb_reply(
@@ -2022,3 +2055,27 @@ def test_pdf_report(req: https_fn.Request) -> https_fn.Response:
             status=500,
             content_type='application/json'
         )
+
+# ============================================================
+# SELF-TEST: RCB tests itself (Session 13)
+# ============================================================
+@https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=300)
+def rcb_self_test(req: https_fn.Request) -> https_fn.Response:
+    """RCB Self-Test — sends test emails to itself, verifies, cleans up."""
+    from lib.rcb_self_test import run_all_tests
+    try:
+        secrets = get_rcb_secrets_internal(get_secret)
+        if not secrets:
+            return https_fn.Response(json.dumps({"error": "No secrets"}), status=500)
+        report = run_all_tests(
+            db=db, firestore_module=firestore,
+            secrets=secrets, get_secret_func=get_secret,
+        )
+        status_code = 200 if report.get("all_passed") else 500
+        return https_fn.Response(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            status=status_code,
+            headers={"Content-Type": "application/json"}
+        )
+    except Exception as e:
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
