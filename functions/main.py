@@ -152,33 +152,10 @@ def send_classification_report(email_addr, email_pass, to_email, original_subjec
 # ============================================================
 @scheduler_fn.on_schedule(schedule="every 5 minutes", memory=options.MemoryOption.GB_1, timeout_sec=300)
 def check_email_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
-    """Check emails using RCB Email Processor - Production Ready"""
-    
-    print("🚀 RCB Email Processor Starting...")
-    
-    # Get email config
-    try:
-        config = db.collection("config").document("email").get().to_dict()
-        email_addr = config["email"]
-        email_pass = config["app_password"]
-    except Exception as e:
-        print(f"❌ Email config error: {e}")
-        return
-    
-    # Use RCB Email Processor
-    try:
-        from lib.rcb_email_processor import process_emails
-        result = process_emails(db, bucket, email_addr, email_pass)
-        print(f"✅ Processing complete: {result.get('stats', {})}")
-    except ImportError as ie:
-        print(f"⚠️ Module import error: {ie}")
-        print("Falling back to simple processor...")
-        _simple_email_check(email_addr, email_pass)
-    except Exception as e:
-        print(f"❌ Processing error: {e}")
-        import traceback
-        traceback.print_exc()
-        _simple_email_check(email_addr, email_pass)
+    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was Gmail IMAP fallback."""
+    print("⏸️ check_email_scheduled DISABLED — consolidated into rcb_check_email")
+    return
+
 
 
 def _simple_email_check(email_addr: str, email_pass: str):
@@ -1474,348 +1451,28 @@ def _send_alert_email(issues):
 # ============================================================
 @https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def monitor_self_heal(request):
-    """
-    Self-healing monitor - call manually or via scheduler
-    Processes any emails that rcb_check_email missed
-    """
-    print("🤖 Self-Healing Monitor starting...")
-    
-    from datetime import datetime, timedelta, timezone
-    import requests
-    
-    now = datetime.now(timezone.utc)
-    fixed = []
-    errors = []
-    
-    # Get Graph API access
-    secrets = get_rcb_secrets_internal(get_secret)
-    if not secrets:
-        return {"error": "No secrets configured"}
-    
-    access_token = helper_get_graph_token(secrets)
-    if not access_token:
-        return {"error": "Cannot get token"}
-    
-    rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
-    
-    # Get emails from last 2 hours
-    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    
-    response = requests.get(
-        f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
-        headers={'Authorization': f'Bearer {access_token}'},
-        params={
-            '$top': 30,
-            '$orderby': 'receivedDateTime desc',
-            '$filter': f"receivedDateTime ge {two_hours_ago}",
-            '$select': 'id,subject,from,toRecipients,receivedDateTime'
-        }
-    )
-    
-    if not response.ok:
-        return {"error": f"Mailbox read failed: {response.status_code}"}
-    
-    emails = response.json().get('value', [])
-    print(f"📬 Found {len(emails)} emails")
-    
-    for email in emails:
-        msg_id = email.get('id')
-        subject = email.get('subject', '')
-        from_data = email.get('from', {}).get('emailAddress', {})
-        from_email = from_data.get('address', '')
-        from_name = from_data.get('name', '')
-        to_recipients = email.get('toRecipients', [])
-        received_at = email.get('receivedDateTime', '')
-        
-        # Same filters as rcb_check_email
-        is_direct = any(rcb_email.lower() in r.get('emailAddress', {}).get('address', '').lower() 
-                       for r in to_recipients)
-        if not is_direct:
-            continue
-        if not from_email.lower().endswith('@rpa-port.co.il'):
-            continue
-        if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
-            continue
-        
-        # Skip if < 2 min old
-        try:
-            email_time = datetime.fromisoformat(received_at.replace('Z', '+00:00'))
-            if (now - email_time).total_seconds() < 120:
-                continue
-        except:
-            pass
-        
-        # Check if processed
-        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
-        if db.collection("rcb_processed").document(safe_id).get().exists:
-            continue
-        
-        # FOUND UNPROCESSED EMAIL - FIX IT
-        print(f"🔧 Fixing: {subject[:40]}")
-        
-        try:
-            # Get attachments
-            raw_attachments = helper_graph_attachments(access_token, rcb_email, msg_id)
-            attachments = [{'filename': a.get('name', 'file'), 'type': os.path.splitext(a.get('name', ''))[1].lower()} 
-                          for a in raw_attachments if a.get('@odata.type') == '#microsoft.graph.fileAttachment']
-            
-            # Send Ack
-            reply_body = build_rcb_reply(sender_name=from_name, attachments=attachments, 
-                                         subject=subject, is_first_email=True, include_joke=False)
-            
-            if helper_graph_send(access_token, rcb_email, from_email, f"Re: {subject}", reply_body, msg_id, raw_attachments):
-                print(f"  ✅ Ack sent")
-                
-                # Mark processed
-                db.collection("rcb_processed").document(safe_id).set({
-                    "processed_at": firestore.SERVER_TIMESTAMP,
-                    "subject": subject,
-                    "from": from_email,
-                    "from_name": from_name,
-                    "msg_id": msg_id,
-                    "fixed_by_monitor": True
-                })
-                
-                # Run classification
-                try:
-                    process_and_send_report(
-                        access_token, rcb_email, from_email, subject,
-                        from_name, raw_attachments, msg_id, get_secret,
-                        db, firestore, helper_graph_send, extract_text_from_attachments
-                    )
-                    print(f"  ✅ Classification sent")
-                    fixed.append(subject[:30])
-                except Exception as ce:
-                    print(f"  ⚠️ Classification error: {ce}")
-                    errors.append(f"{subject[:20]}: {str(ce)[:30]}")
-            else:
-                errors.append(f"{subject[:30]}: Ack failed")
-                
-        except Exception as e:
-            print(f"  ❌ Error: {e}")
-            errors.append(f"{subject[:20]}: {str(e)[:30]}")
-    
-    result = {"checked": len(emails), "fixed": len(fixed), "errors": len(errors), "fixed_subjects": fixed}
-    print(f"✅ Done: {result}")
-    return result
+    """DISABLED Session 13.1: Dead code (redefined below). Was self-healer v1."""
+    print("⏸️ monitor_self_heal v1 DISABLED — dead code, redefined below")
+    return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")
 
 
 
-# ============================================================
-# SELF-HEALING MONITOR v2 - 6 hour window, better logging
-# ============================================================
 @https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def monitor_self_heal(request):
-    """Self-healing monitor v2 - 6 hour window, verbose logging"""
-    print("🤖 Monitor v2 starting...")
-    
-    from datetime import datetime, timedelta, timezone
-    import requests
-    
-    now = datetime.now(timezone.utc)
-    fixed, errors, seen = [], [], []
-    
-    secrets = get_rcb_secrets_internal(get_secret)
-    if not secrets:
-        return {"error": "No secrets"}
-    
-    access_token = helper_get_graph_token(secrets)
-    if not access_token:
-        return {"error": "No token"}
-    
-    rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
-    
-    # 6-HOUR WINDOW
-    # TEMPORARY: narrowed from 6h to 2h to prevent flood after hash fix
-    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    print(f"⏰ Window: {two_hours_ago} to now")
-    
-    r = requests.get(
-        f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
-        headers={'Authorization': f'Bearer {access_token}'},
-        params={'$top': 50, '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {two_hours_ago}",
-                '$select': 'id,subject,from,toRecipients,receivedDateTime'}
-    )
-    
-    if not r.ok:
-        return {"error": f"Mailbox: {r.status_code}"}
-    
-    emails = r.json().get('value', [])
-    print(f"📬 Found {len(emails)} emails")
-    
-    for e in emails:
-        msg_id, subject = e.get('id'), e.get('subject', '')
-        from_data = e.get('from', {}).get('emailAddress', {})
-        from_email, from_name = from_data.get('address', ''), from_data.get('name', '')
-        to_list = e.get('toRecipients', [])
-        
-        seen.append(subject[:25])
-        
-        is_direct = any(rcb_email.lower() in t.get('emailAddress', {}).get('address', '').lower() for t in to_list)
-        if not is_direct:
-            print(f"  SKIP(CC): {subject[:30]}")
-            continue
-        if not from_email.lower().endswith('@rpa-port.co.il'):
-            print(f"  SKIP(domain): {subject[:30]}")
-            continue
-        if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
-            continue
-        
-        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
-        if db.collection("rcb_processed").document(safe_id).get().exists:
-            print(f"  EXISTS: {subject[:30]}")
-            continue
-        
-        print(f"🔧 FIX: {subject[:35]}")
-        try:
-            raw_att = helper_graph_attachments(access_token, rcb_email, msg_id)
-            att = [{'filename': a.get('name','f'), 'type': os.path.splitext(a.get('name',''))[1].lower()} 
-                   for a in raw_att if a.get('@odata.type') == '#microsoft.graph.fileAttachment']
-            
-            reply = build_rcb_reply(sender_name=from_name, attachments=att, subject=subject, is_first_email=True, include_joke=False)
-            
-            if helper_graph_send(access_token, rcb_email, from_email, f"Re: {subject}", reply, msg_id, raw_att):
-                db.collection("rcb_processed").document(safe_id).set({
-                    "processed_at": firestore.SERVER_TIMESTAMP, "subject": subject,
-                    "from": from_email, "from_name": from_name, "msg_id": msg_id, "fixed_by_monitor": True
-                })
-                try:
-                    process_and_send_report(access_token, rcb_email, from_email, subject,
-                        from_name, raw_att, msg_id, get_secret, db, firestore, helper_graph_send, extract_text_from_attachments)
-                    fixed.append(subject[:25])
-                    print(f"  ✅ FIXED")
-                except Exception as ce:
-                    errors.append(str(ce)[:30])
-                    print(f"  ⚠️ Class err: {ce}")
-        except Exception as ex:
-            errors.append(str(ex)[:30])
-            print(f"  ❌ {ex}")
-    
-    return {"checked": len(emails), "fixed": len(fixed), "errors": len(errors), "seen": seen[:15], "fixed_list": fixed}
+    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was self-healer v2."""
+    print("⏸️ monitor_self_heal v2 DISABLED — consolidated into rcb_check_email")
+    return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")
 
 
 
-# ============================================================
-# SELF-HEALING MONITOR v3 - Retries failed classifications
-# ============================================================
 @https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def monitor_fix_all(request):
-    """Finds emails with missing classification and retries them"""
-    print("🔧 Monitor Fix All v3")
-    
-    from datetime import datetime, timedelta, timezone
-    import requests
-    
-    now = datetime.now(timezone.utc)
-    fixed, errors = [], []
-    
-    secrets = get_rcb_secrets_internal(get_secret)
-    if not secrets:
-        return {"error": "No secrets"}
-    
-    access_token = helper_get_graph_token(secrets)
-    if not access_token:
-        return {"error": "No token"}
-    
-    rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
-    
-    # Get emails from last 6 hours
-    # TEMPORARY: narrowed from 6h to 2h to prevent flood after hash fix
-    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    
-    r = requests.get(
-        f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
-        headers={'Authorization': f'Bearer {access_token}'},
-        params={'$top': 50, '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {two_hours_ago}",
-                '$select': 'id,subject,from,toRecipients,receivedDateTime'}
-    )
-    
-    if not r.ok:
-        return {"error": f"Mailbox: {r.status_code}"}
-    
-    emails = r.json().get('value', [])
-    print(f"📬 Found {len(emails)} emails")
-    
-    for e in emails:
-        msg_id, subject = e.get('id'), e.get('subject', '')
-        from_data = e.get('from', {}).get('emailAddress', {})
-        from_email, from_name = from_data.get('address', ''), from_data.get('name', '')
-        to_list = e.get('toRecipients', [])
-        
-        # Basic filters
-        is_direct = any(rcb_email.lower() in t.get('emailAddress', {}).get('address', '').lower() for t in to_list)
-        if not is_direct:
-            continue
-        if not from_email.lower().endswith('@rpa-port.co.il'):
-            continue
-        if 'undeliverable' in subject.lower() or 'backup' in subject.lower() or 'alert' in subject.lower():
-            continue
-        
-        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
-        doc = db.collection("rcb_processed").document(safe_id).get()
-        
-        # CASE 1: Not processed at all - send Ack + Classification
-        # CASE 2: Processed but classification_sent != True - retry classification only
-        
-        needs_ack = not doc.exists
-        needs_classification = needs_ack or (doc.exists and not doc.to_dict().get('classification_sent', False))
-        
-        if not needs_classification:
-            print(f"  ✅ OK: {subject[:30]}")
-            continue
-        
-        print(f"🔧 FIXING: {subject[:35]} (ack={not needs_ack}, class=needed)")
-        
-        try:
-            raw_att = helper_graph_attachments(access_token, rcb_email, msg_id)
-            att = [{'filename': a.get('name','f'), 'type': os.path.splitext(a.get('name',''))[1].lower()} 
-                   for a in raw_att if a.get('@odata.type') == '#microsoft.graph.fileAttachment']
-            
-            # Send Ack if needed
-            if needs_ack:
-                reply = build_rcb_reply(sender_name=from_name, attachments=att, subject=subject, is_first_email=True, include_joke=False)
-                if helper_graph_send(access_token, rcb_email, from_email, f"Re: {subject}", reply, msg_id, raw_att):
-                    print(f"  ✅ Ack sent")
-                    db.collection("rcb_processed").document(safe_id).set({
-                        "processed_at": firestore.SERVER_TIMESTAMP, "subject": subject,
-                        "from": from_email, "from_name": from_name, "msg_id": msg_id
-                    })
-                else:
-                    errors.append(f"{subject[:20]}: Ack failed")
-                    continue
-            
-            # Send Classification
-            print(f"  📊 Running classification...")
-            process_and_send_report(access_token, rcb_email, from_email, subject,
-                from_name, raw_att, msg_id, get_secret, db, firestore, helper_graph_send, extract_text_from_attachments)
-            
-            db.collection("rcb_processed").document(safe_id).update({
-                "classification_sent": True,
-                "classification_sent_at": firestore.SERVER_TIMESTAMP,
-                "fixed_by_monitor": True
-            })
-            print(f"  ✅ Classification sent!")
-            fixed.append(subject[:25])
-            
-        except Exception as ex:
-            print(f"  ❌ Error: {ex}")
-            errors.append(f"{subject[:20]}: {str(ex)[:50]}")
-            try:
-                db.collection("rcb_processed").document(safe_id).update({
-                    "classification_error": str(ex)[:200]
-                })
-            except:
-                pass
-    
-    return {"checked": len(emails), "fixed": len(fixed), "errors": errors, "fixed_list": fixed}
+    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was fix-all monitor."""
+    print("⏸️ monitor_fix_all DISABLED — consolidated into rcb_check_email")
+    return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")
 
 
 
-# ============================================================
-# SCHEDULED SELF-HEALING (Runs every 5 minutes automatically)
-# ============================================================
 @scheduler_fn.on_schedule(
     schedule="every 5 minutes",
     region="us-central1",
@@ -1823,101 +1480,12 @@ def monitor_fix_all(request):
     timeout_sec=540
 )
 def monitor_fix_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
-    """Auto-runs every 5 min - fixes any missed classifications"""
-    print("🔧 Scheduled Monitor starting...")
-    
-    from datetime import datetime, timedelta, timezone
-    import requests
-    
-    now = datetime.now(timezone.utc)
-    fixed, errors = [], []
-    
-    secrets = get_rcb_secrets_internal(get_secret)
-    if not secrets:
-        print("❌ No secrets")
-        return
-    
-    access_token = helper_get_graph_token(secrets)
-    if not access_token:
-        print("❌ No token")
-        return
-    
-    rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
-    # TEMPORARY: narrowed from 6h to 2h to prevent flood after hash fix
-    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    
-    r = requests.get(
-        f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages",
-        headers={'Authorization': f'Bearer {access_token}'},
-        params={'$top': 50, '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {two_hours_ago}",
-                '$select': 'id,subject,from,toRecipients,receivedDateTime'}
-    )
-    
-    if not r.ok:
-        print(f"❌ Mailbox error: {r.status_code}")
-        return
-    
-    emails = r.json().get('value', [])
-    print(f"📬 Checking {len(emails)} emails")
-    
-    for e in emails:
-        msg_id, subject = e.get('id'), e.get('subject', '')
-        from_data = e.get('from', {}).get('emailAddress', {})
-        from_email, from_name = from_data.get('address', ''), from_data.get('name', '')
-        to_list = e.get('toRecipients', [])
-        
-        is_direct = any(rcb_email.lower() in t.get('emailAddress', {}).get('address', '').lower() for t in to_list)
-        if not is_direct or not from_email.lower().endswith('@rpa-port.co.il'):
-            continue
-        if 'undeliverable' in subject.lower() or 'backup' in subject.lower() or 'alert' in subject.lower():
-            continue
-        
-        import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
-        doc = db.collection("rcb_processed").document(safe_id).get()
-        
-        needs_ack = not doc.exists
-        needs_classification = needs_ack or (doc.exists and not doc.to_dict().get('classification_sent', False))
-        
-        if not needs_classification:
-            continue
-        
-        print(f"🔧 FIXING: {subject[:35]}")
-        
-        try:
-            raw_att = helper_graph_attachments(access_token, rcb_email, msg_id)
-            att = [{'filename': a.get('name','f'), 'type': os.path.splitext(a.get('name',''))[1].lower()} 
-                   for a in raw_att if a.get('@odata.type') == '#microsoft.graph.fileAttachment']
-            
-            if needs_ack:
-                reply = build_rcb_reply(sender_name=from_name, attachments=att, subject=subject, is_first_email=True, include_joke=False)
-                if helper_graph_send(access_token, rcb_email, from_email, f"Re: {subject}", reply, msg_id, raw_att):
-                    db.collection("rcb_processed").document(safe_id).set({
-                        "processed_at": firestore.SERVER_TIMESTAMP, "subject": subject,
-                        "from": from_email, "from_name": from_name, "msg_id": msg_id
-                    })
-            
-            process_and_send_report(access_token, rcb_email, from_email, subject,
-                from_name, raw_att, msg_id, get_secret, db, firestore, helper_graph_send, extract_text_from_attachments)
-            
-            db.collection("rcb_processed").document(safe_id).update({
-                "classification_sent": True,
-                "classification_sent_at": firestore.SERVER_TIMESTAMP,
-                "fixed_by_monitor": True
-            })
-            fixed.append(subject[:25])
-            print(f"  ✅ Fixed: {subject[:30]}")
-            
-        except Exception as ex:
-            print(f"  ❌ {ex}")
-            errors.append(str(ex)[:30])
-    
-    print(f"✅ Done: {len(fixed)} fixed, {len(errors)} errors")
+    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was scheduled fix monitor."""
+    print("⏸️ monitor_fix_scheduled DISABLED — consolidated into rcb_check_email")
+    return
 
 
-# ============================================================
-# TEST: PDF OCR EXTRACTION
-# ============================================================
+
 @https_fn.on_request(memory=options.MemoryOption.GB_1, timeout_sec=120)
 def test_pdf_ocr(req: https_fn.Request) -> https_fn.Response:
     """Test PDF extraction with OCR - call via browser or curl"""

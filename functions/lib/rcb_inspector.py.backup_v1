@@ -1716,8 +1716,7 @@ def handle_inspector_http(req, db, get_secret_func):
     Called from Cloud Function: rcb_inspector
     """
     try:
-        send = req.args.get("send_email", "false").lower() == "true"
-        results = run_full_inspection(db, get_secret_func, send_email=send)
+        results = run_full_inspection(db, get_secret_func, send_email=False)
 
         # Return JSON summary
         report = results.get("report", {})
