@@ -1,3 +1,4 @@
+# Session 15: Multi-model optimization (Claude + Gemini)
 """
 RCB Multi-Agent Classification System
 Queries Firestore for Israeli tariff data, ministry requirements, and rules
