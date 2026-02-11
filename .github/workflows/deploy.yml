@@ -16,21 +16,18 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     environment: production
-    env:
-      GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa-key.json
     steps:
       - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: '18'
-      - name: Create credentials
-        run: |
-          cat << 'EOF' > /tmp/sa-key.json
-          ${{ secrets.GCP_SA_KEY }}
-          EOF
       - name: Setup Python venv
         run: cd functions && python -m venv venv && . venv/bin/activate && pip install -r requirements.txt
       - name: Install Firebase CLI
