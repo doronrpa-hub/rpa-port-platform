@@ -186,7 +186,7 @@ def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
         if response.status_code == 200:
             return response.json()['content'][0]['text']
         else:
-            print(f"Claude API error: {response.status_code}")
+            print(f"Claude API error: {response.status_code} - {response.text[:200]}")
             return None
     except Exception as e:
         print(f"Claude call error: {e}")
