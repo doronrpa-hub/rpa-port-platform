@@ -21,8 +21,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: cd functions && python3.12 -m venv venv && . venv/bin/activate && pip install -r requirements.txt
-      - run: npm install -g firebase-tools
-      - run: firebase deploy --only functions --token "$FIREBASE_TOKEN" --project rpa-port-customs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: |
+          echo "${{ secrets.GCP_SA_KEY }}" | base64 -d > sa-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/sa-key.json"
+          cd functions && python3.12 -m venv venv && . venv/bin/activate && pip install -r requirements.txt && cd ..
+          npm install -g firebase-tools
+          firebase deploy --only functions --project rpa-port-customs
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          GOOGLE_APPLICATION_CREDENTIALS: sa-key.json
