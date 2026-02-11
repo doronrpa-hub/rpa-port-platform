@@ -44,8 +44,20 @@ from datetime import datetime, timedelta, timezone
 
 # Initialize Firebase
 firebase_admin.initialize_app()
-db = firestore.client()
-bucket = storage.bucket()
+db = None
+bucket = None
+
+def get_db():
+    global db
+    if db is None:
+        db = firestore.client()
+    return db
+
+def get_bucket():
+    global bucket
+    if bucket is None:
+        bucket = storage.bucket()
+    return bucket
 
 
 
@@ -141,7 +153,7 @@ def send_classification_report(email_addr, email_pass, to_email, original_subjec
         print(f"✅ Report sent to {to_email}")
         
         # Update Firestore
-        db.collection("inbox").document(doc_id).update({"report_sent": True})
+        get_db().collection("inbox").document(doc_id).update({"report_sent": True})
         
     except Exception as e:
         print(f"Report email error: {e}")
@@ -171,7 +183,7 @@ def _simple_email_check(email_addr: str, email_pass: str):
     
     # Get processed IDs
     processed_ids = set()
-    for doc in db.collection("inbox").stream():
+    for doc in get_db().collection("inbox").stream():
         processed_ids.add(doc.id)
     
     # Connect
@@ -221,7 +233,7 @@ def _simple_email_check(email_addr: str, email_pass: str):
             attachments = extract_attachments(full_msg, body_text, subject)
             
             # Store email
-            db.collection("inbox").document(safe_id).set({
+            get_db().collection("inbox").document(safe_id).set({
                 "from": from_str,
                 "subject": subject,
                 "date": date_str,
@@ -245,7 +257,7 @@ def _simple_email_check(email_addr: str, email_pass: str):
                 from_email = _extract_email(from_str)
                 if from_email:
                     _send_ack(email_addr, email_pass, from_email, subject, attachments)
-                    db.collection("inbox").document(safe_id).update({"ack_sent": True})
+                    get_db().collection("inbox").document(safe_id).update({"ack_sent": True})
             
             # Process attachments
             for att in attachments:
@@ -255,7 +267,7 @@ def _simple_email_check(email_addr: str, email_pass: str):
                     print(f"    ⚠️ Classification error: {ce}")
             
             # Update status
-            db.collection("inbox").document(safe_id).update({
+            get_db().collection("inbox").document(safe_id).update({
                 "status": "completed",
                 "processed_at": firestore.SERVER_TIMESTAMP,
             })
@@ -338,7 +350,7 @@ def on_new_classification(event: firestore_fn.Event) -> None:
     # Check seller history
     if seller:
         seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
-        seller_doc = db.collection("sellers").document(seller_id).get()
+        seller_doc = get_db().collection("sellers").document(seller_id).get()
         if seller_doc.exists:
             seller_data = seller_doc.to_dict()
             known_hs = seller_data.get("known_hs_codes", [])
@@ -349,7 +361,7 @@ def on_new_classification(event: firestore_fn.Event) -> None:
 
     # Check knowledge base for product match
     if product:
-        kb_docs = db.collection("knowledge_base").where("category", "==", "hs_classifications").stream()
+        kb_docs = get_db().collection("knowledge_base").where("category", "==", "hs_classifications").stream()
         for doc in kb_docs:
             kb = doc.to_dict()
             content = kb.get("content", {})
@@ -364,7 +376,7 @@ def on_new_classification(event: firestore_fn.Event) -> None:
     # If supplier provided an HS code, validate it
     if supplier_hs:
         # Check if supplier HS matches our knowledge
-        kb_match = db.collection("knowledge_base").where("category", "==", "hs_classifications").stream()
+        kb_match = get_db().collection("knowledge_base").where("category", "==", "hs_classifications").stream()
         for doc in kb_match:
             kb = doc.to_dict()
             if kb.get("content", {}).get("hs", "").replace(".", "") == supplier_hs.replace(".", ""):
@@ -375,7 +387,7 @@ def on_new_classification(event: firestore_fn.Event) -> None:
 
     # Update classification with suggestion
     if suggested_hs and confidence >= 60:
-        db.collection("classifications").document(class_id).update({
+        get_db().collection("classifications").document(class_id).update({
             "suggested_hs": suggested_hs,
             "suggestion_confidence": confidence,
             "suggestion_source": "auto_knowledge_base",
@@ -384,7 +396,7 @@ def on_new_classification(event: firestore_fn.Event) -> None:
         print(f"Auto-suggested {suggested_hs} (confidence: {confidence}%) for {class_id}")
     else:
         # Need Claude AI for complex classification
-        db.collection("agent_tasks").add({
+        get_db().collection("agent_tasks").add({
             "type": "ai_classification",
             "classification_id": class_id,
             "product_description": product,
@@ -430,7 +442,7 @@ def on_classification_correction(event: firestore_fn.Event) -> None:
     # Update seller knowledge
     if seller:
         seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
-        seller_ref = db.collection("sellers").document(seller_id)
+        seller_ref = get_db().collection("sellers").document(seller_id)
         seller_doc = seller_ref.get()
         if seller_doc.exists:
             existing = seller_doc.to_dict()
@@ -447,7 +459,7 @@ def on_classification_correction(event: firestore_fn.Event) -> None:
 
     # Update HS knowledge base
     hs_id = f"hs_{final_hs.replace('.', '_')}"
-    hs_ref = db.collection("knowledge_base").document(hs_id)
+    hs_ref = get_db().collection("knowledge_base").document(hs_id)
     hs_doc = hs_ref.get()
     if hs_doc.exists:
         existing = hs_doc.to_dict()
@@ -476,7 +488,7 @@ def on_classification_correction(event: firestore_fn.Event) -> None:
         })
 
     # Log the learning event
-    db.collection("learning_log").add({
+    get_db().collection("learning_log").add({
         "type": "classification_correction",
         "classification_id": class_id,
         "final_hs": final_hs,
@@ -499,7 +511,7 @@ def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
     
     # Count by category
     categories = {}
-    for doc in db.collection("knowledge_base").stream():
+    for doc in get_db().collection("knowledge_base").stream():
         cat = doc.to_dict().get("category", "unknown")
         categories[cat] = categories.get(cat, 0) + 1
 
@@ -507,7 +519,7 @@ def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
     print(f"Knowledge base: {total} documents, {len(categories)} categories")
 
     # Check for unprocessed documents in storage
-    unprocessed = db.collection("inbox").where("status", "==", "new").limit(10).stream()
+    unprocessed = get_db().collection("inbox").where("status", "==", "new").limit(10).stream()
     for doc in unprocessed:
         print(f"Found unprocessed email: {doc.id}")
         # Trigger reprocessing
@@ -515,7 +527,7 @@ def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
     # Check for stale enrichment sources
     sources = ["customs_guidance", "free_import", "standards", "food_safety", "fta_updates"]
     for source in sources:
-        log_doc = db.collection("enrichment_log").document(source).get()
+        log_doc = get_db().collection("enrichment_log").document(source).get()
         if log_doc.exists:
             data = log_doc.to_dict()
             last_check = data.get("last_checked", "")
@@ -525,7 +537,7 @@ def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
                     hours_since = (datetime.now() - last_dt).total_seconds() / 3600
                     if hours_since > 24:
                         print(f"Source {source} stale ({hours_since:.0f}h) - creating refresh task")
-                        db.collection("agent_tasks").add({
+                        get_db().collection("agent_tasks").add({
                             "type": "enrichment_check",
                             "source": source,
                             "status": "pending",
@@ -535,7 +547,7 @@ def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
                     pass
         else:
             print(f"Source {source} never checked - creating task")
-            db.collection("agent_tasks").add({
+            get_db().collection("agent_tasks").add({
                 "type": "enrichment_check",
                 "source": source,
                 "status": "pending",
@@ -559,20 +571,20 @@ def api(req: https_fn.Request) -> https_fn.Response:
     # Dashboard stats
     if path in ("stats", "") and method == "GET":
         stats = {
-            "knowledge_count": len(list(db.collection("knowledge_base").stream())),
-            "inbox_count": len(list(db.collection("inbox").stream())),
-            "classifications_pending": len(list(db.collection("classifications").where("status", "==", "pending_classification").stream())),
-            "classifications_total": len(list(db.collection("classifications").stream())),
-            "sellers_count": len(list(db.collection("sellers").stream())),
-            "pending_tasks": len(list(db.collection("pending_tasks").where("status", "==", "pending").stream())),
-            "learning_events": len(list(db.collection("learning_log").stream()))
+            "knowledge_count": len(list(get_db().collection("knowledge_base").stream())),
+            "inbox_count": len(list(get_db().collection("inbox").stream())),
+            "classifications_pending": len(list(get_db().collection("classifications").where("status", "==", "pending_classification").stream())),
+            "classifications_total": len(list(get_db().collection("classifications").stream())),
+            "sellers_count": len(list(get_db().collection("sellers").stream())),
+            "pending_tasks": len(list(get_db().collection("pending_tasks").where("status", "==", "pending").stream())),
+            "learning_events": len(list(get_db().collection("learning_log").stream()))
         }
         return https_fn.Response(json.dumps(stats), content_type="application/json")
 
     # Get classifications
     elif path == "classifications" and method == "GET":
         result = []
-        for doc in db.collection("classifications").order_by("created_at", direction=firestore.Query.DESCENDING).limit(50).stream():
+        for doc in get_db().collection("classifications").order_by("created_at", direction=firestore.Query.DESCENDING).limit(50).stream():
             d = doc.to_dict()
             d["id"] = doc.id
             d.pop("extracted_text", None)  # Don't send large text
@@ -583,7 +595,7 @@ def api(req: https_fn.Request) -> https_fn.Response:
     elif path.startswith("classifications/") and method == "POST":
         class_id = path.split("/")[1]
         data = req.get_json()
-        db.collection("classifications").document(class_id).update({
+        get_db().collection("classifications").document(class_id).update({
             "our_hs_code": data.get("hs_code"),
             "status": "corrected" if data.get("is_correction") else "confirmed",
             "corrected_by": data.get("user", "admin"),
@@ -594,7 +606,7 @@ def api(req: https_fn.Request) -> https_fn.Response:
     # Get knowledge base
     elif path == "knowledge" and method == "GET":
         result = []
-        for doc in db.collection("knowledge_base").stream():
+        for doc in get_db().collection("knowledge_base").stream():
             d = doc.to_dict()
             d["id"] = doc.id
             result.append(d)
@@ -603,7 +615,7 @@ def api(req: https_fn.Request) -> https_fn.Response:
     # Get inbox
     elif path == "inbox" and method == "GET":
         result = []
-        for doc in db.collection("inbox").order_by("processed_at", direction=firestore.Query.DESCENDING).limit(50).stream():
+        for doc in get_db().collection("inbox").order_by("processed_at", direction=firestore.Query.DESCENDING).limit(50).stream():
             d = doc.to_dict()
             d["id"] = doc.id
             d.pop("body", None)
@@ -613,7 +625,7 @@ def api(req: https_fn.Request) -> https_fn.Response:
     # Get sellers
     elif path == "sellers" and method == "GET":
         result = []
-        for doc in db.collection("sellers").stream():
+        for doc in get_db().collection("sellers").stream():
             d = doc.to_dict()
             d["id"] = doc.id
             result.append(d)
@@ -622,7 +634,7 @@ def api(req: https_fn.Request) -> https_fn.Response:
     # Get learning log
     elif path == "learning" and method == "GET":
         result = []
-        for doc in db.collection("learning_log").order_by("learned_at", direction=firestore.Query.DESCENDING).limit(50).stream():
+        for doc in get_db().collection("learning_log").order_by("learned_at", direction=firestore.Query.DESCENDING).limit(50).stream():
             d = doc.to_dict()
             d["id"] = doc.id
             result.append(d)
@@ -693,7 +705,7 @@ def extract_attachments(msg, body_text, subject):
         # Upload to Firebase Storage
         storage_path = f"inbox/{datetime.now().strftime('%Y%m%d')}_{safe_name}"
         try:
-            blob = bucket.blob(storage_path)
+            blob = get_bucket().blob(storage_path)
             blob.upload_from_string(file_data)
         except Exception as e:
             print(f"Upload failed: {e}")
@@ -785,7 +797,7 @@ def classify_and_store(att, from_str, subject, date_str, body_text):
         invoice_data = extract_invoice_fields(text)
         if invoice_data:
             class_id = f"class_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            db.collection("classifications").document(class_id).set({
+            get_db().collection("classifications").document(class_id).set({
                 "seller": invoice_data.get("seller", ""),
                 "buyer": invoice_data.get("buyer", ""),
                 "product_description": invoice_data.get("product", ""),
@@ -804,7 +816,7 @@ def classify_and_store(att, from_str, subject, date_str, body_text):
 
     elif doc_type == "customs_declaration":
         hs_match = re.search(r'(\d{4}[\.\s]?\d{2}[\.\s]?\d{2,4})', text or "")
-        db.collection("declarations").add({
+        get_db().collection("declarations").add({
             "filename": att["filename"],
             "hs_code": hs_match.group(1) if hs_match else None,
             "from_email": from_str,
@@ -822,7 +834,7 @@ def classify_and_store(att, from_str, subject, date_str, body_text):
         model_match = re.search(r'([A-Z]{2,5}[-_]\d{3,}[-_]?\w*)', att["filename"], re.IGNORECASE)
         expiry_match = re.search(r'[Ee]xpires?[_\s-]*(\d{1,2}[-_][A-Za-z]{3}[-_]\d{2,4})', att["filename"])
 
-        db.collection("regulatory_certificates").add({
+        get_db().collection("regulatory_certificates").add({
             "filename": att["filename"],
             "cert_type": cert_type,
             "model_number": model_match.group(1) if model_match else "",
@@ -838,7 +850,7 @@ def classify_and_store(att, from_str, subject, date_str, body_text):
             "packing_list": "packing_lists",
             "bill_of_lading": "bills_of_lading"
         }
-        db.collection(collection_map[doc_type]).add({
+        get_db().collection(collection_map[doc_type]).add({
             "filename": att["filename"],
             "from_email": from_str,
             "attachment_path": att.get("storage_path", ""),
@@ -954,7 +966,7 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
     # Get logs
     if path == "logs":
         logs = []
-        for doc in db.collection("rcb_logs").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(50).stream():
+        for doc in get_db().collection("rcb_logs").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(50).stream():
             d = doc.to_dict()
             d["id"] = doc.id
             logs.append(d)
@@ -982,7 +994,7 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
             data = req.get_json()
             session_id = data.get("session_id", datetime.now().strftime("%Y%m%d_%H%M%S"))
             backup_content = data.get("content", "")
-            db.collection("session_backups").document(session_id).set({
+            get_db().collection("session_backups").document(session_id).set({
                 "content": backup_content,
                 "created_at": firestore.SERVER_TIMESTAMP,
                 "session_id": session_id
@@ -1003,7 +1015,7 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
     # List backups
     if path == "backups":
         backups = []
-        for doc in db.collection("session_backups").order_by("created_at", direction=firestore.Query.DESCENDING).limit(20).stream():
+        for doc in get_db().collection("session_backups").order_by("created_at", direction=firestore.Query.DESCENDING).limit(20).stream():
             d = doc.to_dict()
             backups.append({"id": doc.id, "session_id": d.get("session_id"), "created_at": str(d.get("created_at"))})
         return https_fn.Response(json.dumps(backups, default=str), content_type="application/json")
@@ -1011,7 +1023,7 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
     # Get backup by ID
     if path.startswith("backup/"):
         bid = path.split("/")[1] if "/" in path else path.replace("backup", "")
-        doc = db.collection("session_backups").document(bid).get()
+        doc = get_db().collection("session_backups").document(bid).get()
         if doc.exists:
             return https_fn.Response(json.dumps(doc.to_dict(), default=str), content_type="application/json")
         return https_fn.Response(json.dumps({"error": "Not found"}), status=404, content_type="application/json")
@@ -1096,7 +1108,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         
         # Check if already processed
         import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
-        if db.collection("rcb_processed").document(safe_id).get().exists:
+        if get_db().collection("rcb_processed").document(safe_id).get().exists:
             continue
         
         print(f"  📧 Processing: {subject[:50]} from {from_email}")
@@ -1119,13 +1131,13 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
             msg["attachments"] = raw_attachments
             if detect_knowledge_query(msg):
                 try:
-                    rcb_id = generate_rcb_id(db, firestore, RCBType.KNOWLEDGE_QUERY)
+                    rcb_id = generate_rcb_id(get_db(), firestore, RCBType.KNOWLEDGE_QUERY)
                 except Exception:
                     rcb_id = "RCB-UNKNOWN-KQ"
                 print(f"  📚 [{rcb_id}] Knowledge query detected from {from_email}")
                 kq_result = handle_knowledge_query(
                     msg=msg,
-                    db=db,
+                    db=get_db(),
                     firestore_module=firestore,
                     access_token=access_token,
                     rcb_email=rcb_email,
@@ -1133,7 +1145,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 )
                 print(f"  📚 [{rcb_id}] Knowledge query result: {kq_result.get('status')}")
                 helper_graph_mark_read(access_token, rcb_email, msg_id)
-                db.collection("rcb_processed").document(safe_id).set({
+                get_db().collection("rcb_processed").document(safe_id).set({
                     "processed_at": firestore.SERVER_TIMESTAMP,
                     "subject": subject,
                     "from": from_email,
@@ -1147,7 +1159,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         
         # Build and send acknowledgment (Email 1)
         try:
-            rcb_id = generate_rcb_id(db, firestore, RCBType.CLASSIFICATION)
+            rcb_id = generate_rcb_id(get_db(), firestore, RCBType.CLASSIFICATION)
         except Exception:
             rcb_id = "RCB-UNKNOWN-CLS"
         print(f"  🏷️ [{rcb_id}] Processing classification")
@@ -1163,7 +1175,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
             print(f"    ✅ [{rcb_id}] Ack sent to {from_email}")
             
             # Mark as processed
-            db.collection("rcb_processed").document(safe_id).set({
+            get_db().collection("rcb_processed").document(safe_id).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,
                 "subject": subject,
                 "from": from_email,
@@ -1175,7 +1187,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 process_and_send_report(
                     access_token, rcb_email, from_email, subject,
                     from_name, raw_attachments, msg_id, get_secret,
-                    db, firestore, helper_graph_send, extract_text_from_attachments
+                    get_db(), firestore, helper_graph_send, extract_text_from_attachments
                 )
             except Exception as ce:
                 print(f"    ⚠️ Classification error: {ce}")
@@ -1208,13 +1220,13 @@ def monitor_agent(event: scheduler_fn.ScheduledEvent) -> None:
     
     try:
         # Check 1: rcb_processed queue stuck (more than 20 docs)
-        processed_count = len(list(db.collection("rcb_processed").limit(25).stream()))
+        processed_count = len(list(get_db().collection("rcb_processed").limit(25).stream()))
         if processed_count > 20:
             print(f"⚠️ Queue large: {processed_count} docs - cleaning old entries")
             # Auto-fix: delete docs older than 3 days
             from datetime import datetime, timedelta, timezone
             cutoff = datetime.now(timezone.utc) - timedelta(days=3)
-            for doc in db.collection("rcb_processed").stream():
+            for doc in get_db().collection("rcb_processed").stream():
                 data = doc.to_dict()
                 if data.get("processed_at") and data.get("processed_at") < cutoff:
                     doc.reference.delete()
@@ -1226,14 +1238,14 @@ def monitor_agent(event: scheduler_fn.ScheduledEvent) -> None:
         yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
         
         processed_recently = {}
-        for doc in db.collection("rcb_processed").stream():
+        for doc in get_db().collection("rcb_processed").stream():
             data = doc.to_dict()
             ts = data.get("processed_at")
             if ts and ts > yesterday:
                 processed_recently[data.get("subject", "")] = doc.id
         
         classified_recently = set()
-        for doc in db.collection("rcb_classifications").stream():
+        for doc in get_db().collection("rcb_classifications").stream():
             data = doc.to_dict()
             ts = data.get("timestamp")
             if ts and ts > yesterday:
@@ -1244,13 +1256,13 @@ def monitor_agent(event: scheduler_fn.ScheduledEvent) -> None:
             print(f"⚠️ {len(failed)} failed classifications - queuing retry")
             for subj in list(failed)[:5]:  # Retry max 5
                 doc_id = processed_recently[subj]
-                db.collection("rcb_processed").document(doc_id).delete()
+                get_db().collection("rcb_processed").document(doc_id).delete()
                 errors_fixed += 1
                 print(f"  🔄 Retry queued: {subj[:30]}")
         
         # Check 3: System status update
         status = "healthy" if errors_fixed == 0 and len(failed) < 3 else "degraded"
-        db.collection("system_status").document("rcb_monitor").set({
+        get_db().collection("system_status").document("rcb_monitor").set({
             "last_check": datetime.now(timezone.utc),
             "status": status,
             "queue_size": processed_count,
@@ -1289,7 +1301,7 @@ def rcb_cleanup_old_processed(event: scheduler_fn.ScheduledEvent) -> None:
     
     deleted = 0
     try:
-        docs = db.collection("rcb_processed").stream()
+        docs = get_db().collection("rcb_processed").stream()
         for doc in docs:
             data = doc.to_dict()
             processed_at = data.get("processed_at")
@@ -1317,7 +1329,7 @@ def rcb_retry_failed(event: scheduler_fn.ScheduledEvent) -> None:
     retried = 0
     try:
         # Find processed emails without classification
-        processed_docs = db.collection("rcb_processed").stream()
+        processed_docs = get_db().collection("rcb_processed").stream()
         processed_subjects = {}
         for doc in processed_docs:
             data = doc.to_dict()
@@ -1326,7 +1338,7 @@ def rcb_retry_failed(event: scheduler_fn.ScheduledEvent) -> None:
         
         # Find classifications
         classified_subjects = set()
-        class_docs = db.collection("rcb_classifications").stream()
+        class_docs = get_db().collection("rcb_classifications").stream()
         for doc in class_docs:
             data = doc.to_dict()
             if data.get("timestamp") and data.get("timestamp") > cutoff:
@@ -1338,7 +1350,7 @@ def rcb_retry_failed(event: scheduler_fn.ScheduledEvent) -> None:
         for subject in failed:
             doc_id = processed_subjects[subject]
             # Delete from processed so it will be retried
-            db.collection("rcb_processed").document(doc_id).delete()
+            get_db().collection("rcb_processed").document(doc_id).delete()
             retried += 1
             print(f"  🔄 Queued for retry: {subject[:40]}")
         
@@ -1365,7 +1377,7 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
     try:
         # Check 1: Any classifications in last 6 hours?
         six_hours_ago = now - timedelta(hours=6)
-        recent_classifications = list(db.collection("rcb_classifications")
+        recent_classifications = list(get_db().collection("rcb_classifications")
             .order_by("timestamp", direction="DESCENDING")
             .limit(1).stream())
         
@@ -1376,7 +1388,7 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
                 issues.append("No classifications in last 6 hours")
         
         # Check 2: Any errors in monitor_errors?
-        recent_errors = list(db.collection("monitor_errors")
+        recent_errors = list(get_db().collection("monitor_errors")
             .order_by("timestamp", direction="DESCENDING")
             .limit(5).stream())
         
@@ -1386,7 +1398,7 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
         
         # Check 3: Queue stuck? (processed but pending > 5)
         pending = 0
-        processed_docs = db.collection("rcb_processed").stream()
+        processed_docs = get_db().collection("rcb_processed").stream()
         for doc in processed_docs:
             data = doc.to_dict()
             if data.get("processed_at") and data.get("processed_at") > six_hours_ago:
@@ -1397,7 +1409,7 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
         
         # Update system status
         status = "healthy" if not issues else "degraded"
-        db.collection("system_status").document("rcb").set({
+        get_db().collection("system_status").document("rcb").set({
             "last_check": now,
             "status": status,
             "issues": issues,
@@ -1652,7 +1664,7 @@ def rcb_self_test(req: https_fn.Request) -> https_fn.Response:
         if not secrets:
             return https_fn.Response(json.dumps({"error": "No secrets"}), status=500)
         report = run_all_tests(
-            db=db, firestore_module=firestore,
+            db=get_db(), firestore_module=firestore,
             secrets=secrets, get_secret_func=get_secret,
         )
         status_code = 200 if report.get("all_passed") else 500
@@ -1689,7 +1701,7 @@ def rcb_inspector(req: https_fn.Request) -> https_fn.Response:
     
     from lib.rcb_inspector import handle_inspector_http
     
-    result = handle_inspector_http(req, db, get_secret)
+    result = handle_inspector_http(req, get_db(), get_secret)
     
     return https_fn.Response(
         json.dumps(result, ensure_ascii=False, default=str, indent=2),
@@ -1717,6 +1729,6 @@ def rcb_inspector_daily(event: scheduler_fn.ScheduledEvent) -> None:
     
     from lib.rcb_inspector import handle_inspector_daily
     
-    handle_inspector_daily(db, get_secret)
+    handle_inspector_daily(get_db(), get_secret)
     
     print("✅ RCB Inspector daily run complete")
