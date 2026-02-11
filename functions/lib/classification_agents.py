@@ -6,6 +6,10 @@ Outputs: HTML email + Excel
 UPDATED: Session 10 - Integrated with Module 4, 5, 6
 UPDATED: Session 11 - HS code validation against tariff database
 UPDATED: Session 11 - Standardized English subject line format
+UPDATED: Session 15 - Multi-model optimization:
+  - Agent 2 (classification): Claude Sonnet 4.5 (best reasoning)
+  - Agent 6 (synthesis): Gemini 2.5 Pro (good Hebrew, lower cost)
+  - Agents 1,3,4,5: Gemini 2.5 Flash (simple tasks, ~95% cheaper)
 """
 import json
 import requests
@@ -161,7 +165,7 @@ def clean_firestore_data(data):
 
 
 def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
-    """Call Claude API"""
+    """Call Claude API - Sonnet 4.5 (Session 15: upgraded from Sonnet 4)"""
     try:
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -171,7 +175,7 @@ def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
                 "anthropic-version": "2023-06-01"
             },
             json={
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-sonnet-4-5-20250929",
                 "max_tokens": max_tokens,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_prompt}]
@@ -186,6 +190,92 @@ def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
     except Exception as e:
         print(f"Claude call error: {e}")
         return None
+
+
+# =============================================================================
+# SESSION 15: Gemini API Integration (cost optimization)
+# =============================================================================
+
+def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="gemini-2.5-flash"):
+    """Call Google Gemini API
+    
+    Session 15: Added for cost optimization.
+    Models:
+      - gemini-2.5-flash: Simple tasks (extraction, regulatory, FTA, risk) ~$0.15/$0.60 per MTok
+      - gemini-2.5-pro: Medium tasks (synthesis) ~$1.25/$10 per MTok
+    
+    Falls back to Claude if Gemini fails or key is missing.
+    """
+    if not gemini_key:
+        return None
+    try:
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}",
+            headers={"content-type": "application/json"},
+            json={
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"parts": [{"text": user_prompt}]}],
+                "generationConfig": {
+                    "maxOutputTokens": max_tokens,
+                    "temperature": 0.3
+                }
+            },
+            timeout=120
+        )
+        if response.status_code == 200:
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text")
+        else:
+            print(f"Gemini API error ({model}): {response.status_code} - {response.text[:200]}")
+            return None
+    except Exception as e:
+        print(f"Gemini call error ({model}): {e}")
+        return None
+
+
+def call_gemini_fast(gemini_key, system_prompt, user_prompt, max_tokens=2000):
+    """Gemini 2.5 Flash - for simple structured tasks (Agents 1,3,4,5)"""
+    return call_gemini(gemini_key, system_prompt, user_prompt, max_tokens, "gemini-2.5-flash")
+
+
+def call_gemini_pro(gemini_key, system_prompt, user_prompt, max_tokens=2000):
+    """Gemini 2.5 Pro - for medium complexity tasks (Agent 6 synthesis)"""
+    return call_gemini(gemini_key, system_prompt, user_prompt, max_tokens, "gemini-2.5-pro")
+
+
+def call_ai(api_key, gemini_key, system_prompt, user_prompt, max_tokens=2000, tier="fast"):
+    """Smart router: picks the right model based on task tier.
+    
+    Session 15: Central routing function with automatic fallback.
+    - tier="smart": Claude Sonnet 4.5 (Agent 2 - classification)
+    - tier="pro": Gemini 2.5 Pro (Agent 6 - synthesis)  
+    - tier="fast": Gemini 2.5 Flash (Agents 1,3,4,5 - simple tasks)
+    
+    If Gemini fails or key is missing, falls back to Claude automatically.
+    """
+    result = None
+    
+    if tier == "smart":
+        # Always use Claude for the hard classification task
+        result = call_claude(api_key, system_prompt, user_prompt, max_tokens)
+    elif tier == "pro":
+        # Try Gemini Pro first, fallback to Claude
+        result = call_gemini_pro(gemini_key, system_prompt, user_prompt, max_tokens)
+        if not result:
+            print("    ↩️ Gemini Pro fallback → Claude")
+            result = call_claude(api_key, system_prompt, user_prompt, max_tokens)
+    else:  # "fast"
+        # Try Gemini Flash first, fallback to Claude
+        result = call_gemini_fast(gemini_key, system_prompt, user_prompt, max_tokens)
+        if not result:
+            print("    ↩️ Gemini Flash fallback → Claude")
+            result = call_claude(api_key, system_prompt, user_prompt, max_tokens)
+    
+    return result
 
 def query_tariff(db, search_terms):
     """Query tariff collection for Israeli HS codes"""
@@ -225,8 +315,9 @@ def query_classification_rules(db):
         print(f"Rules query error: {e}")
     return rules
 
-def run_document_agent(api_key, doc_text):
-    """Agent 1: Extract invoice data - Updated Session 11 with shipping details"""
+def run_document_agent(api_key, doc_text, gemini_key=None):
+    """Agent 1: Extract invoice data - Updated Session 11 with shipping details
+    Session 15: Uses Gemini Flash (simple extraction task)"""
     system = """אתה סוכן חילוץ מידע. חלץ מהמסמך JSON עם כל השדות הבאים:
 {
     "seller": "",
@@ -255,7 +346,7 @@ def run_document_agent(api_key, doc_text):
 - rpa_file_number: מספר תיק RPA אם מופיע
 
 JSON בלבד."""
-    result = call_claude(api_key, system, doc_text[:6000])
+    result = call_ai(api_key, gemini_key, system, doc_text[:6000], tier="fast")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -264,8 +355,9 @@ JSON בלבד."""
     return {"items": [{"description": doc_text[:500]}]}
 
 
-def run_classification_agent(api_key, items, tariff_data, rules, knowledge_context=""):
-    """Agent 2: Classify items using Israeli HS codes"""
+def run_classification_agent(api_key, items, tariff_data, rules, knowledge_context="", gemini_key=None):
+    """Agent 2: Classify items using Israeli HS codes
+    Session 15: STAYS on Claude Sonnet 4.5 (highest quality for core task)"""
     system = f"""אתה סוכן סיווג מכס ישראלי מומחה.
 
 {knowledge_context}
@@ -280,7 +372,7 @@ def run_classification_agent(api_key, items, tariff_data, rules, knowledge_conte
 פלט JSON:
 {{"classifications":[{{"item":"","hs_code":"","duty_rate":"","confidence":"גבוהה/בינונית/נמוכה","reasoning":""}}]}}"""
     
-    result = call_claude(api_key, system, f"פריטים לסיווג:\n{json.dumps(items, ensure_ascii=False)}", 3000)
+    result = call_ai(api_key, gemini_key, system, f"פריטים לסיווג:\n{json.dumps(items, ensure_ascii=False)}", 3000, tier="smart")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -289,8 +381,9 @@ def run_classification_agent(api_key, items, tariff_data, rules, knowledge_conte
     return {"classifications": []}
 
 
-def run_regulatory_agent(api_key, classifications, ministry_data):
-    """Agent 3: Check regulatory requirements"""
+def run_regulatory_agent(api_key, classifications, ministry_data, gemini_key=None):
+    """Agent 3: Check regulatory requirements
+    Session 15: Uses Gemini Flash (structured matching task)"""
     system = f"""אתה סוכן רגולציה. בדוק אילו אישורים נדרשים לפי הסיווגים.
 
 משרדים ודרישות:
@@ -299,7 +392,7 @@ def run_regulatory_agent(api_key, classifications, ministry_data):
 פלט JSON:
 {{"regulatory":[{{"hs_code":"","ministries":[{{"name":"","required":true/false,"regulation":""}}]}}]}}"""
     
-    result = call_claude(api_key, system, f"סיווגים:\n{json.dumps(classifications, ensure_ascii=False)}")
+    result = call_ai(api_key, gemini_key, system, f"סיווגים:\n{json.dumps(classifications, ensure_ascii=False)}", tier="fast")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -308,8 +401,9 @@ def run_regulatory_agent(api_key, classifications, ministry_data):
     return {"regulatory": []}
 
 
-def run_fta_agent(api_key, classifications, origin_country):
-    """Agent 4: Check FTA eligibility"""
+def run_fta_agent(api_key, classifications, origin_country, gemini_key=None):
+    """Agent 4: Check FTA eligibility
+    Session 15: Uses Gemini Flash (country-agreement matching)"""
     system = """אתה סוכן הסכמי סחר. בדוק זכאות להעדפות מכס.
 
 הסכמים פעילים: EU, USA, UK, EFTA, Turkey, Jordan, Egypt, Mercosur, Mexico, Canada
@@ -317,7 +411,7 @@ def run_fta_agent(api_key, classifications, origin_country):
 פלט JSON:
 {"fta":[{"hs_code":"","country":"","agreement":"","eligible":true/false,"preferential":"","documents_needed":""}]}"""
     
-    result = call_claude(api_key, system, f"סיווגים: {json.dumps(classifications, ensure_ascii=False)}\nארץ מקור: {origin_country}")
+    result = call_ai(api_key, gemini_key, system, f"סיווגים: {json.dumps(classifications, ensure_ascii=False)}\nארץ מקור: {origin_country}", tier="fast")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -326,8 +420,9 @@ def run_fta_agent(api_key, classifications, origin_country):
     return {"fta": []}
 
 
-def run_risk_agent(api_key, invoice_data, classifications):
-    """Agent 5: Risk assessment"""
+def run_risk_agent(api_key, invoice_data, classifications, gemini_key=None):
+    """Agent 5: Risk assessment
+    Session 15: Uses Gemini Flash (pattern detection task)"""
     system = """אתה סוכן הערכת סיכונים. בדוק:
 1. ערך נמוך חשוד
 2. סיווג שגוי אפשרי
@@ -337,7 +432,7 @@ def run_risk_agent(api_key, invoice_data, classifications):
 פלט JSON:
 {"risk":{"level":"נמוך/בינוני/גבוה","items":[{"item":"","issue":"","recommendation":""}]}}"""
     
-    result = call_claude(api_key, system, f"חשבונית: {json.dumps(invoice_data, ensure_ascii=False)}\nסיווגים: {json.dumps(classifications, ensure_ascii=False)}")
+    result = call_ai(api_key, gemini_key, system, f"חשבונית: {json.dumps(invoice_data, ensure_ascii=False)}\nסיווגים: {json.dumps(classifications, ensure_ascii=False)}", tier="fast")
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
@@ -346,8 +441,9 @@ def run_risk_agent(api_key, invoice_data, classifications):
     return {"risk": {"level": "נמוך", "items": []}}
 
 
-def run_synthesis_agent(api_key, all_results):
-    """Agent 6: Final synthesis with proper Hebrew formatting"""
+def run_synthesis_agent(api_key, all_results, gemini_key=None):
+    """Agent 6: Final synthesis with proper Hebrew formatting
+    Session 15: Uses Gemini 2.5 Pro (good Hebrew, lower cost than Claude)"""
     system = """אתה סוכן סיכום מקצועי. כתוב סיכום מעוצב היטב בעברית.
 
 חובה לעקוב אחר הפורמט הבא בדיוק:
@@ -374,15 +470,16 @@ def run_synthesis_agent(api_key, all_results):
 
 טקסט מעוצב בלבד, לא JSON."""
     
-    return call_claude(api_key, system, json.dumps(all_results, ensure_ascii=False)[:4000]) or "לא ניתן לייצר סיכום."
+    return call_ai(api_key, gemini_key, system, json.dumps(all_results, ensure_ascii=False)[:4000], tier="pro") or "לא ניתן לייצר סיכום."
 
 
-def run_full_classification(api_key, doc_text, db):
-    """Run complete multi-agent classification"""
+def run_full_classification(api_key, doc_text, db, gemini_key=None):
+    """Run complete multi-agent classification
+    Session 15: Now accepts gemini_key for cost-optimized multi-model routing"""
     try:
-        # Agent 1: Extract
-        print("    🔍 Agent 1: Extracting...")
-        invoice = run_document_agent(api_key, doc_text)
+        # Agent 1: Extract (Gemini Flash)
+        print("    🔍 Agent 1: Extracting... [Gemini Flash]")
+        invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key)
         items = invoice.get("items", [{"description": doc_text[:500]}])
         origin = items[0].get("origin_country", "") if items else ""
         
@@ -400,9 +497,9 @@ def run_full_classification(api_key, doc_text, db):
                 knowledge = full_knowledge_search(db, desc)
                 knowledge_context += build_classification_context(knowledge) + "\n"
         
-        # Agent 2: Classify
-        print("    🏷️ Agent 2: Classifying...")
-        classification = run_classification_agent(api_key, items, tariff, rules, knowledge_context)
+        # Agent 2: Classify (Claude Sonnet 4.5 — core task, best quality)
+        print("    🏷️ Agent 2: Classifying... [Claude Sonnet 4.5]")
+        classification = run_classification_agent(api_key, items, tariff, rules, knowledge_context, gemini_key=gemini_key)
         
         # Session 11: Validate HS codes against tariff database
         print("    ✅ Validating HS codes against tariff database...")
@@ -417,22 +514,22 @@ def run_full_classification(api_key, doc_text, db):
             elif c.get('hs_warning'):
                 print(f"    ⚠️ {c.get('hs_warning')}")
         
-        # Agent 3: Regulatory
-        print("    ⚖️ Agent 3: Regulatory...")
-        regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry)
+        # Agent 3: Regulatory (Gemini Flash)
+        print("    ⚖️ Agent 3: Regulatory... [Gemini Flash]")
+        regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry, gemini_key=gemini_key)
         
-        # Agent 4: FTA
-        print("    🌍 Agent 4: FTA...")
-        fta = run_fta_agent(api_key, classification.get("classifications", []), origin)
+        # Agent 4: FTA (Gemini Flash)
+        print("    🌍 Agent 4: FTA... [Gemini Flash]")
+        fta = run_fta_agent(api_key, classification.get("classifications", []), origin, gemini_key=gemini_key)
         
-        # Agent 5: Risk
-        print("    🚨 Agent 5: Risk...")
-        risk = run_risk_agent(api_key, invoice, classification.get("classifications", []))
+        # Agent 5: Risk (Gemini Flash)
+        print("    🚨 Agent 5: Risk... [Gemini Flash]")
+        risk = run_risk_agent(api_key, invoice, classification.get("classifications", []), gemini_key=gemini_key)
         
-        # Agent 6: Synthesis
-        print("    📝 Agent 6: Synthesis...")
+        # Agent 6: Synthesis (Gemini Pro)
+        print("    📝 Agent 6: Synthesis... [Gemini Pro]")
         all_results = {"invoice": invoice, "classification": classification, "regulatory": regulatory, "fta": fta, "risk": risk}
-        synthesis = run_synthesis_agent(api_key, all_results)
+        synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
         
         # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
         if LANGUAGE_TOOLS_AVAILABLE:
@@ -680,6 +777,17 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             print("  ❌ No API key")
             return False
         
+        # Session 15: Get Gemini key for cost-optimized agents
+        gemini_key = None
+        try:
+            gemini_key = get_secret_func('GEMINI_API_KEY')
+            if gemini_key:
+                print("  🔑 Gemini key loaded (multi-model mode)")
+            else:
+                print("  ℹ️ No Gemini key - all agents will use Claude")
+        except Exception:
+            print("  ℹ️ Gemini key not configured - all agents will use Claude")
+        
         print("  📄 Extracting text...")
         doc_text = extract_text_func(raw_attachments)
         if not doc_text or len(doc_text) < 50:
@@ -688,7 +796,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         
         print(f"  📝 {len(doc_text)} chars")
         
-        results = run_full_classification(api_key, doc_text, db)
+        results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
         if not results.get('success'):
             print(f"  ❌ Failed")
             return False
