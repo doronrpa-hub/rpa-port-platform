@@ -17,5 +17,7 @@ PyMuPDF>=1.23.0
 # PDF Generation
 reportlab>=4.0.0
 
+# Gemini API configured
+
 # Testing
 pytest>=7.0.0
