@@ -77,3 +77,107 @@ If GitHub Actions deploy fails:
 - [ ] Verify deployment works through GitHub Actions
 - [ ] Test email processing with new multi-model routing
 - [ ] Check F
+
+---
+
+# Session 15 Summary v2 — February 11, 2026
+
+## DEPLOYMENT SUCCESS ✅
+GitHub Actions pipeline working end-to-end:
+- Push → Tests → Approve → Deploy to Firebase
+- All 21 functions deployed green
+- Lazy initialization fix solved the Firestore timeout issue
+
+## Fix Applied: Lazy Initialization
+**Problem:** `db = firestore.client()` at line 47 of main.py ran at import time, causing timeout during Firebase CLI's code analysis (both on Windows PC and GitHub Actions).
+
+**Solution:** Changed to lazy initialization:
+```python
+db = None
+bucket = None
+
+def get_db():
+    global db
+    if db is None:
+        db = firestore.client()
+    return db
+
+def get_bucket():
+    global bucket
+    if bucket is None:
+        bucket = storage.bucket()
+    return bucket
+```
+All `db.` calls replaced with `get_db().` and `bucket.` with `get_bucket()`.
+
+## Multi-Model Test Results (First Live Test)
+| Agent | Model | Status |
+|-------|-------|--------|
+| Agent 1 (Extraction) | Gemini Flash | ✅ Working |
+| Agent 2 (HS Classification) | Claude Sonnet 4.5 | ❌ 400 error (model string wrong) |
+| Agent 3 (Regulatory) | Gemini Flash | ✅ Working |
+| Agent 4 (FTA) | Gemini Flash | ✅ Working |
+| Agent 5 (Risk) | Gemini Flash | ✅ Working |
+| Agent 6 (Synthesis) | Gemini Pro | ❌ 429 quota exceeded → fallback to Claude → 400 |
+
+## Fixes Applied After First Test
+1. **Reverted Claude model** from `claude-sonnet-4-5-20250929` back to `claude-sonnet-4-20250514` (working version)
+2. **Added error logging** — Claude errors now show response body, not just status code
+3. **Gemini Pro 429** — free tier quota exceeded, may need to switch Agent 6 to Gemini Flash
+
+## Current Deployment Pipeline
+```
+Edit code (Claude Code on PC)
+  → git push to GitHub
+    → GitHub Actions runs pytest automatically
+      → Tests pass → waits for approval
+        → Doron approves → deploys to Firebase
+```
+
+### GitHub Secrets Configured
+- `GCP_SA_KEY` — raw JSON service account key (for google-github-actions/auth@v2)
+- `FIREBASE_TOKEN` — (legacy, may not be needed anymore)
+
+### Deploy Workflow
+File: `.github/workflows/deploy.yml`
+- Uses `google-github-actions/auth@v2` for authentication
+- Python 3.12 venv for dependencies
+- Firebase CLI via npm
+
+## Files on GitHub (Current State)
+- `functions/main.py` — lazy initialization (get_db, get_bucket)
+- `functions/lib/classification_agents.py` — multi-model routing + error logging
+- `.github/workflows/deploy.yml` — CI/CD pipeline
+- `docs/SESSION15_BACKUP.md` — documentation
+
+## PUPIL and TRACKER (Not Yet Deployed)
+- **Pupil** (`pupil_v05_final.py`): Learning agent that observes all emails, extracts knowledge, finds gaps, challenges the system. Phases A+B+C.
+- **Tracker** (`tracker.py` + `fix_tracker_crash.py`): Tracks shipment process steps. Had a crash when import_proc or export_proc was None.
+- Both exist as library files but are NOT wired into main.py yet.
+- NOT part of current deployment — separate future task.
+
+## Known Issues
+1. **Claude 400 error** — waiting for detailed error message from improved logging
+2. **Gemini Pro 429** — free tier quota. Options: switch to Flash or upgrade Gemini plan
+3. **Pupil/Tracker** — not integrated into main pipeline yet
+4. **IST timezone in logs** — normal, Google Console shows browser timezone
+
+## Pending
+- [ ] See Claude 400 error details from improved logging
+- [ ] Fix Claude 400 error based on details
+- [ ] Resolve Gemini Pro quota (switch to Flash or upgrade)
+- [ ] Test successful end-to-end multi-model email processing
+- [ ] Monitor cost savings
+- [ ] Future: Wire Pupil and Tracker into main.py
+
+## Cost Status
+- Gemini Flash: Working and cheap ✅
+- Gemini Pro: Quota exceeded on free tier ❌
+- Claude Sonnet 4: Should work after model revert (testing now)
+
+## Tools Installed on Windows PC
+- Git for Windows
+- Claude Code (v2.1.39)
+- Google Cloud SDK
+- Firebase CLI (npm)
+- Python venv at C:\Users\doron\rpa-port-platform\functions\venv
