@@ -181,3 +181,61 @@ File: `.github/workflows/deploy.yml`
 - Google Cloud SDK
 - Firebase CLI (npm)
 - Python venv at C:\Users\doron\rpa-port-platform\functions\venv
+
+---
+
+# Session 15 Final Backup — February 11, 2026
+
+## STATUS: Deploying Final Fix
+- Agent 6 switched from Gemini Pro (429 quota) to Gemini Flash
+- Claude credits topped up $10 (should last 2-8 weeks)
+- Waiting for GitHub Actions deploy to complete
+
+## Multi-Model Routing (Final Config)
+| Agent | Task | Model | Cost/call |
+|-------|------|-------|-----------|
+| 1 | Document extraction | Gemini Flash | ~$0.001 |
+| 2 | HS Classification | Claude Sonnet 4 | ~$0.04 |
+| 3 | Regulatory | Gemini Flash | ~$0.001 |
+| 4 | FTA | Gemini Flash | ~$0.001 |
+| 5 | Risk | Gemini Flash | ~$0.001 |
+| 6 | Hebrew synthesis | Gemini Flash | ~$0.001 |
+| **Total** | | | **~$0.05/email** |
+
+## Home PC Setup
+```powershell
+# 1. Install Git
+winget install Git.Git
+
+# 2. Install Claude Code (close & reopen PowerShell after)
+irm https://claude.ai/install.ps1 | iex
+
+# 3. Close and reopen PowerShell, then:
+cd ~
+git clone https://github.com/doronrpa-hub/rpa-port-platform.git
+cd rpa-port-platform
+claude
+```
+
+## GitHub Actions Pipeline (Working ✅)
+Push → Tests → Approve → Deploy
+URL: https://github.com/doronrpa-hub/rpa-port-platform/actions
+
+## Key URLs
+- GitHub repo: https://github.com/doronrpa-hub/rpa-port-platform
+- Firebase console: https://console.firebase.google.com/project/rpa-port-customs
+- Anthropic billing: https://console.anthropic.com/settings/billing
+- Gemini API keys: https://aistudio.google.com/apikey
+- GitHub secrets: https://github.com/doronrpa-hub/rpa-port-platform/settings/secrets/actions
+
+## Problems Found & Fixed Today
+1. ❌ Firestore timeout during deploy → ✅ Lazy initialization (get_db/get_bucket)
+2. ❌ Claude Sonnet 4.5 model string → ✅ Reverted to Claude Sonnet 4
+3. ❌ Claude credits empty ($95 spent in 8 days) → ✅ Added $10
+4. ❌ Gemini Pro 429 quota → ✅ Switched Agent 6 to Gemini Flash
+5. ❌ GitHub Actions credentials → ✅ google-github-actions/auth@v2 with raw JSON key
+
+## PUPIL & TRACKER
+- Both exist as Python files but NOT wired into main.py
+- Pupil: learning agent (observes emails, finds knowledge gaps)
+- Tracker: shipment tracking agent
