@@ -15,6 +15,7 @@ Usage:
     python batch_reprocess.py                  # Full run (AI calls)
     python batch_reprocess.py --dry-run        # Extract + parse only (free)
     python batch_reprocess.py --limit 5        # Process first N items
+    python batch_reprocess.py --trade-only     # Only classify items with commercial invoices
     python batch_reprocess.py --dry-run --limit 3
 """
 
@@ -321,7 +322,7 @@ def dedup_work_items(graph_items, firestore_items):
 #  Process a single Graph API email (has live attachments)
 # ═══════════════════════════════════════════════════════════════
 
-def process_graph_email(msg, access_token, rcb_email, api_key, gemini_key, dry_run=False):
+def process_graph_email(msg, access_token, rcb_email, api_key, gemini_key, dry_run=False, trade_only=False):
     """Process one email from Graph API through the full pipeline."""
     msg_id = msg.get("id", "")
     subject = msg.get("subject", "No Subject")
@@ -366,14 +367,14 @@ def process_graph_email(msg, access_token, rcb_email, api_key, gemini_key, dry_r
         result["skip_reason"] = "insufficient_text"
         return result
 
-    return _run_pipeline(doc_text, result, api_key, gemini_key, dry_run)
+    return _run_pipeline(doc_text, result, api_key, gemini_key, dry_run, trade_only=trade_only)
 
 
 # ═══════════════════════════════════════════════════════════════
 #  Process a single Firestore item (has stored text)
 # ═══════════════════════════════════════════════════════════════
 
-def process_firestore_item(item, api_key, gemini_key, dry_run=False):
+def process_firestore_item(item, api_key, gemini_key, dry_run=False, trade_only=False):
     """Process one Firestore-sourced item through the pipeline."""
     result = {
         "source": item["source"],
@@ -422,7 +423,8 @@ def process_firestore_item(item, api_key, gemini_key, dry_run=False):
     return _run_pipeline(doc_text, result, api_key, gemini_key, dry_run,
                          known_hs=item.get("known_hs"),
                          known_seller=item.get("seller"),
-                         known_origin=item.get("origin"))
+                         known_origin=item.get("origin"),
+                         trade_only=trade_only)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -430,7 +432,8 @@ def process_firestore_item(item, api_key, gemini_key, dry_run=False):
 # ═══════════════════════════════════════════════════════════════
 
 def _run_pipeline(doc_text, result, api_key, gemini_key, dry_run,
-                  known_hs=None, known_seller=None, known_origin=None):
+                  known_hs=None, known_seller=None, known_origin=None,
+                  trade_only=False):
     """
     Run steps 3-9 on extracted text. Shared between graph and firestore items.
     Mutates and returns result dict.
@@ -452,6 +455,17 @@ def _run_pipeline(doc_text, result, api_key, gemini_key, dry_run,
             ]
         except Exception as e:
             result["parser_error"] = str(e)
+
+    # ── Trade-only gate: skip if no commercial invoice found ──
+    if trade_only:
+        has_invoice = any(
+            "commercial invoice" in (d.get("type_info", {}).get("name_en", "") or "").lower()
+            for d in parsed_documents
+        )
+        if not has_invoice:
+            result["skipped"] = True
+            result["skip_reason"] = "no_trade_document"
+            return result
 
     # ── Step 4: Pre-classify from intelligence (free) ──
     intelligence_results = {}
@@ -785,6 +799,8 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="Process only first N items")
     parser.add_argument("--source", choices=["graph", "firestore", "all"], default="all",
                         help="Source: graph (emails only), firestore (stored text only), or all")
+    parser.add_argument("--trade-only", action="store_true",
+                        help="Only run AI on items with a commercial invoice (skip BL-only, packing-list-only, etc.)")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -793,6 +809,8 @@ def main():
     if args.limit:
         print(f"  Limit: {args.limit} items")
     print(f"  Source: {args.source}")
+    if args.trade_only:
+        print(f"  Filter: TRADE-ONLY (commercial invoice required)")
     print("  SENDS NOTHING. Only reads, learns, stores results.")
     print("=" * 60)
 
@@ -898,10 +916,12 @@ def main():
                 result = process_graph_email(
                     item["msg"], access_token, rcb_email,
                     api_key, gemini_key, dry_run=args.dry_run,
+                    trade_only=args.trade_only,
                 )
             else:
                 result = process_firestore_item(
                     item, api_key, gemini_key, dry_run=args.dry_run,
+                    trade_only=args.trade_only,
                 )
 
             if result:
@@ -916,6 +936,9 @@ def main():
                     print(f"  -> VERIFY ONLY: {status}")
                 elif result.get("classification_error"):
                     print(f"  -> FAILED: {result['classification_error'][:80]}")
+                elif result.get("skip_reason") == "no_trade_document":
+                    docs = [d.get("type", "?") for d in result.get("parsed_documents", [])]
+                    print(f"  -> SKIPPED (trade-only): docs = {', '.join(docs) or 'none'}")
                 elif result.get("dry_run_complete"):
                     chars = result.get("extracted_chars", 0)
                     docs = len(result.get("parsed_documents", []))
