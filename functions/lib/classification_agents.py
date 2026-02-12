@@ -736,15 +736,23 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 for hs, r in ministry_routing.items()
             }
 
+        # Include smart questions for synthesis awareness
+        if smart_questions:
+            all_results["smart_questions"] = {
+                "reason": ambiguity_info.get("reason", ""),
+                "questions_count": len(smart_questions),
+                "first_question": smart_questions[0]["question_he"] if smart_questions else "",
+            }
+
         synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
-        
+
         # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
         if LANGUAGE_TOOLS_AVAILABLE:
             try:
                 synthesis = _lang_checker.fix_all(synthesis)
             except Exception as e:
                 print(f"    ⚠️ Language fix_all failed: {e}")
-        
+
         return {
             "success": True,
             "agents": all_results,
@@ -755,6 +763,8 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "free_import_order": free_import_results,  # Session 18: Official API results
             "ministry_routing": ministry_routing,  # Session 18: Phase C ministry routing
             "parsed_documents": parsed_documents,  # Session 19: Per-document parsing
+            "smart_questions": smart_questions,  # Phase E: Elimination-based questions
+            "ambiguity": ambiguity_info,  # Phase E: Ambiguity analysis
         }
     except Exception as e:
         print(f"    ❌ Error: {e}")
@@ -879,7 +889,21 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
         html += f'<h2 style="color:#dc3545;margin-top:25px">🚨 סיכון: {risk.get("level", "")}</h2>'
         for i in risk.get("items", []):
             html += f'<p>⚠️ {i.get("item", "")}: {i.get("issue", "")}</p>'
-    
+
+    # Phase E: Smart questions section (if classification is ambiguous)
+    smart_q = results.get("smart_questions", [])
+    if smart_q and SMART_QUESTIONS_AVAILABLE:
+        try:
+            # Get first item description for context
+            item_desc = ""
+            if classifications:
+                item_desc = classifications[0].get("item", "")
+            questions_html = format_questions_html(smart_q, item_description=item_desc)
+            if questions_html:
+                html += questions_html
+        except Exception:
+            pass
+
     html += '''<hr style="margin:25px 0">
     <table><tr>
         <td><img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:70px"></td>
@@ -1038,7 +1062,10 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         score = invoice_validation['score'] if invoice_validation else None
         
         # Determine status
+        has_smart_questions = bool(results.get("smart_questions"))
         if invoice_validation and invoice_validation['score'] < 70:
+            status = "CLARIFICATION"
+        elif has_smart_questions:
             status = "CLARIFICATION"
         elif invoice_validation and invoice_validation['score'] >= 70:
             status = "FINAL"
@@ -1172,7 +1199,14 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 save_data["invoice_valid"] = invoice_validation['is_valid']
                 save_data["missing_fields"] = invoice_validation['missing_fields']
                 save_data["clarification_sent"] = clarification_sent
-            
+
+            # Phase E: Store smart question info
+            if has_smart_questions:
+                ambiguity = results.get("ambiguity", {})
+                save_data["smart_questions_count"] = len(results["smart_questions"])
+                save_data["ambiguity_reason"] = ambiguity.get("reason", "")
+                save_data["classification_ambiguous"] = True
+
             db.collection("rcb_classifications").add(save_data)
 
             # Phase 2: Learn from this classification
