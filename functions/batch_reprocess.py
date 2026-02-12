@@ -393,6 +393,14 @@ def process_firestore_item(item, api_key, gemini_key, dry_run=False, trade_only=
         result["skip_reason"] = "insufficient_text"
         return result
 
+    # Professional Firestore docs: parse + verify + learn, NO AI classification
+    LEARNING_ONLY_SOURCES = (
+        "firestore_knowledge_base", "firestore_declarations",
+        "firestore_classifications",
+    )
+    if item["source"] in LEARNING_ONLY_SOURCES:
+        return _run_learning_only(doc_text, result, item)
+
     # For verify_only items (declarations with just an HS code), handle specially
     if item.get("verify_only") and VERIFICATION_AVAILABLE:
         hs = item.get("known_hs", "")
@@ -425,6 +433,71 @@ def process_firestore_item(item, api_key, gemini_key, dry_run=False, trade_only=
                          known_seller=item.get("seller"),
                          known_origin=item.get("origin"),
                          trade_only=trade_only)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Learning-only pipeline (Firestore professional docs — no AI)
+# ═══════════════════════════════════════════════════════════════
+
+def _run_learning_only(doc_text, result, item):
+    """
+    Parse, verify known HS, feed learning. NO AI calls.
+    Used for knowledge_base, declarations, classifications from Firestore.
+    """
+    result["learning_only"] = True
+
+    # Parse documents
+    if PARSER_AVAILABLE:
+        try:
+            parsed = parse_all_documents(doc_text)
+            result["parsed_documents"] = [
+                {
+                    "type": d.get("type_info", {}).get("name_en", "unknown"),
+                    "completeness_score": d.get("completeness", {}).get("score", 0),
+                }
+                for d in parsed
+            ]
+        except Exception as e:
+            result["parser_error"] = str(e)
+
+    # Pre-classify from intelligence (free)
+    if INTELLIGENCE_AVAILABLE:
+        try:
+            desc = _extract_description_from_text(doc_text)
+            origin = item.get("origin", "") or _extract_origin_from_text(doc_text)
+            seller = item.get("seller", "") or _extract_seller_from_text(doc_text)
+            pc = pre_classify(db, desc, origin, seller_name=seller)
+            result["intelligence"] = {
+                "candidates_found": pc.get("stats", {}).get("candidates_found", 0),
+                "top_candidate": pc["candidates"][0] if pc.get("candidates") else None,
+            }
+        except Exception as e:
+            result["intelligence_error"] = str(e)
+
+    # Verify known HS code if present
+    known_hs = item.get("known_hs", "")
+    if known_hs and VERIFICATION_AVAILABLE:
+        try:
+            verified = verify_all_classifications(
+                db,
+                [{"hs_code": known_hs, "item": item.get("subject", ""), "confidence": "N/A", "duty_rate": "", "reasoning": ""}],
+                free_import_results={},
+            )
+            result["verification"] = [
+                {"hs_code": c.get("hs_code", ""), "status": c.get("verification_status", "unverified")}
+                for c in verified
+            ]
+            for c in verified:
+                if c.get("verification_status") in ("official", "verified"):
+                    try:
+                        learn_from_verification(db, c)
+                    except Exception:
+                        pass
+        except Exception as e:
+            result["verification_error"] = str(e)
+
+    result["skipped"] = False
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -495,6 +568,9 @@ def _run_pipeline(doc_text, result, api_key, gemini_key, dry_run,
     # ── Step 5: Full AI classification ──
     try:
         classification_results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
+        if not classification_results or not isinstance(classification_results, dict):
+            result["classification_error"] = "run_full_classification returned None"
+            return result
         if not classification_results.get("success"):
             result["classification_error"] = classification_results.get("error", "unknown")
             return result
@@ -684,6 +760,7 @@ def build_summary(all_results):
     processed = total - skipped - failed
     dry_run_only = sum(1 for r in all_results if r.get("dry_run_complete"))
     verify_only = sum(1 for r in all_results if r.get("verify_only"))
+    learning_only = sum(1 for r in all_results if r.get("learning_only"))
 
     # Sources breakdown
     sources = Counter(r.get("source", "unknown") for r in all_results)
@@ -722,6 +799,7 @@ def build_summary(all_results):
         "processed_ai": processed,
         "dry_run_only": dry_run_only,
         "verify_only": verify_only,
+        "learning_only": learning_only,
         "skipped": skipped,
         "failed": failed,
         "sources": dict(sources),
@@ -747,6 +825,7 @@ def print_summary(summary):
     print(f"  Total items:       {summary['total_items']}")
     print(f"  Processed (AI):    {summary['processed_ai']}")
     print(f"  Verify-only:       {summary['verify_only']}")
+    print(f"  Learning-only:     {summary['learning_only']}")
     print(f"  Dry-run only:      {summary['dry_run_only']}")
     print(f"  Skipped:           {summary['skipped']}")
     print(f"  Failed:            {summary['failed']}")
@@ -936,6 +1015,11 @@ def main():
                     print(f"  -> VERIFY ONLY: {status}")
                 elif result.get("classification_error"):
                     print(f"  -> FAILED: {result['classification_error'][:80]}")
+                elif result.get("learning_only"):
+                    cands = result.get("intelligence", {}).get("candidates_found", 0)
+                    verif = [v.get("status", "?") for v in result.get("verification", [])]
+                    verif_str = f", verified: {', '.join(verif)}" if verif else ""
+                    print(f"  -> LEARNED (no AI): {cands} candidates{verif_str}")
                 elif result.get("skip_reason") == "no_trade_document":
                     docs = [d.get("type", "?") for d in result.get("parsed_documents", [])]
                     print(f"  -> SKIPPED (trade-only): docs = {', '.join(docs) or 'none'}")
