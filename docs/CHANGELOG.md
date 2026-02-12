@@ -1,5 +1,37 @@
 # RPA-PORT Changelog
 
+## Session 17 — February 12, 2026
+
+### Knowledge Engine Audit
+- Full code audit of librarian.py, librarian_index.py, librarian_researcher.py, enrichment_agent.py
+- Confirmed `enrich_knowledge` in main.py was a dummy (logged stats, called nothing)
+- Confirmed librarian_index, librarian_researcher, enrichment_agent never wired into main.py
+- Created 6-phase wiring plan (`docs/WIRING_PLAN.md`)
+
+### Phase 1: Build the Index
+- Ran `rebuild_index()` — populated `librarian_index` with 12,595 documents from 20 collections
+- `smart_search()` now hits the index first instead of slow per-collection scanning
+
+### Phase 2: Wire Learning into Pipeline
+- Added `create_enrichment_agent` import to `classification_agents.py` (with try/except)
+- After each classification save, calls `on_classification_complete()` and `on_email_processed()`
+- System now learns HS codes, suppliers, and products from every processed email
+- Zero API cost — Firestore reads/writes only
+
+### Phase 3: Replace Dummy Enrichment Scheduler
+- Replaced no-op `enrich_knowledge` in `main.py` with real `EnrichmentAgent`
+- Now runs: `check_and_tag_completed_downloads()`, `run_scheduled_enrichments()`, `get_learning_stats()`
+- Activates 23 enrichment task types (tariff updates, ministry procedures, FTAs, etc.)
+- Zero API cost — generates tasks and queries, no AI calls
+
+### Documentation
+- Created `docs/SESSION17_BACKUP.md` — session notes
+- Created `docs/WIRING_PLAN.md` — 6-phase wiring plan
+- Created `docs/FIRESTORE_INVENTORY.md` — 16,927 docs across 40 collections
+- Created `docs/SYSTEM.md`, `docs/CHANGELOG.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md`
+
+---
+
 ## Session 15 — February 11, 2026
 
 ### Multi-Model Optimization (Claude + Gemini)
