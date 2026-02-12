@@ -102,6 +102,37 @@
   - Ambiguity info (reason, question count) saved to Firestore `rcb_classifications`
 - Files changed: `smart_questions.py`, `classification_agents.py`
 
+### Phase G: Shipment Tracker Wiring
+- Added `_derive_current_step(import_proc, export_proc)` to `document_tracker.py` — derives latest port process step from date fields
+  - None guards on both args (fixes crash when process dicts are None)
+  - Walks 9 import steps + 9 export steps in reverse to find latest completed
+- Added `feed_parsed_documents(tracker, parsed_documents, invoice_data)` to `document_tracker.py`
+  - Maps 8 document types from parser output to tracker: BL, AWB, DO, invoice, packing list, cert of origin, insurance, health cert
+  - BL notes capture vessel, ports, container numbers
+  - Auto-sets transport mode (sea/air) and incoterms from invoice
+- Created `functions/lib/tracker_email.py` — TaskYam-style HTML progress bar email builder
+  - `build_tracker_status_email(deal, container_statuses)` — consolidated status email per deal
+  - 9 import steps (manifest → cargo exit) + 9 export steps (storage ID → sailing)
+  - Overall progress bar, per-step completion counts, per-container detail table
+  - Table-based inline CSS for Outlook/Gmail/Apple Mail compatibility
+- Wired into `classification_agents.py`:
+  - After document parser identifies docs, creates tracker from BL/AWB number
+  - Feeds all parsed documents (BL fields: vessel, ports, containers; DO fields: BL reference)
+  - Logs phase + document count + missing docs count
+  - `tracker_info` (phase, missing docs, document inventory) included in pipeline return value
+- Files changed: `document_tracker.py`, `tracker_email.py`, `classification_agents.py`
+
+### Deep Knowledge Learning
+- Created `functions/deep_learn.py` — mine ALL professional documents in Firestore, zero AI cost
+- `mine_knowledge_base()` — reads 296 docs (supplier, product, web_research, correction, legacy formats)
+- `mine_declarations()` — reads 53 docs, extracts HS codes, origin countries, product descriptions
+- `mine_classification_knowledge()` — reads 61 docs, extracts patterns with usage count boosting
+- `mine_rcb_classifications()` — reads 84 docs, extracts seller→HS from actual processed emails
+- `write_enriched_indexes()` — merges mined data into existing keyword_index, product_index, supplier_index
+- Strict HS validation: only 6/8/10 digit codes with valid chapters (01-97)
+- Run results: 213 keywords, 37 products, 1 supplier enriched in 21.1s
+- Files changed: `deep_learn.py`
+
 ---
 
 ## Session 17 — February 12, 2026
