@@ -90,6 +90,14 @@ except ImportError as e:
     print(f"Smart questions not available: {e}")
     SMART_QUESTIONS_AVAILABLE = False
 
+# Verification loop: verify, enrich, cache every classification
+try:
+    from lib.verification_loop import verify_all_classifications, learn_from_verification
+    VERIFICATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Verification loop not available: {e}")
+    VERIFICATION_AVAILABLE = False
+
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -621,6 +629,20 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                     except Exception as e:
                         print(f"    ⚠️ Ministry routing error: {e}")
 
+        # ── VERIFICATION LOOP: Verify, enrich, cache every classification ──
+        if VERIFICATION_AVAILABLE:
+            try:
+                validated_classifications = verify_all_classifications(
+                    db, validated_classifications, free_import_results=free_import_results
+                )
+                classification["classifications"] = validated_classifications
+                # Learn from verified items
+                for c in validated_classifications:
+                    if c.get("verification_status") in ("official", "verified"):
+                        learn_from_verification(db, c)
+            except Exception as e:
+                print(f"    ⚠️ Verification loop error: {e}")
+
         # ── SMART QUESTIONS: Detect ambiguity and generate elimination questions ──
         smart_questions = []
         ambiguity_info = {}
@@ -845,27 +867,50 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
         <th style="padding:10px;border:1px solid #ddd">פריט</th>
         <th style="padding:10px;border:1px solid #ddd">קוד HS</th>
         <th style="padding:10px;border:1px solid #ddd">מכס</th>
+        <th style="padding:10px;border:1px solid #ddd">מס קנייה</th>
+        <th style="padding:10px;border:1px solid #ddd">מע"מ</th>
         <th style="padding:10px;border:1px solid #ddd">ודאות</th>
     </tr>'''
-    
+
     for c in classifications:
         conf = c.get("confidence", "בינונית")
         color = "#28a745" if conf == "גבוהה" else "#ffc107" if conf == "בינונית" else "#dc3545"
-        
-        # Session 11: Show HS code with validation status
+
+        # Show HS code with verification status
         hs_display = get_israeli_hs_format(c.get("hs_code", ""))
         hs_note = ""
+        v_status = c.get('verification_status', '')
         if c.get('hs_corrected'):
             hs_note = f'<br><small style="color:#856404">⚠️ תוקן מ-{get_israeli_hs_format(c.get("original_hs_code", ""))}</small>'
+        elif v_status == 'official':
+            hs_note = '<br><small style="color:#28a745">✅ אומת רשמית</small>'
+        elif v_status == 'verified':
+            hs_note = '<br><small style="color:#28a745">✅ אומת</small>'
         elif c.get('hs_warning'):
             hs_note = f'<br><small style="color:#dc3545">⚠️ לא אומת</small>'
         elif c.get('hs_validated') and c.get('hs_exact_match'):
             hs_note = '<br><small style="color:#28a745">✅ אומת</small>'
-        
+
+        # Purchase tax display
+        pt = c.get("purchase_tax", {})
+        if isinstance(pt, dict) and pt.get("applies"):
+            pt_display = pt.get("rate_he", "חל")
+            pt_note = pt.get("note_he", "")
+            pt_html = f'{pt_display}'
+            if pt_note:
+                pt_html += f'<br><small style="color:#666">{pt_note[:30]}</small>'
+        else:
+            pt_html = "לא חל"
+
+        # VAT
+        vat_display = c.get("vat_rate", "18%")
+
         html += f'''<tr>
             <td style="padding:10px;border:1px solid #ddd">{c.get("item", "")[:40]}</td>
             <td style="padding:10px;border:1px solid #ddd;font-family:monospace;font-weight:bold">{hs_display}{hs_note}</td>
             <td style="padding:10px;border:1px solid #ddd">{c.get("duty_rate", "")}</td>
+            <td style="padding:10px;border:1px solid #ddd">{pt_html}</td>
+            <td style="padding:10px;border:1px solid #ddd">{vat_display}</td>
             <td style="padding:10px;border:1px solid #ddd;color:{color}">{conf}</td>
         </tr>'''
     html += '</table>'
@@ -930,18 +975,28 @@ def build_excel_report(results):
         ws['A3'] = results.get("synthesis", "")
         
         ws2 = wb.create_sheet("סיווגים")
-        headers = ["פריט", "קוד HS", "מכס", "ודאות", "סטטוס אימות", "נימוק"]
+        headers = ["פריט", "קוד HS", "מכס", "מס קנייה", "מע\"מ", "ודאות", "סטטוס אימות", "נימוק"]
         for i, h in enumerate(headers, 1):
             ws2.cell(1, i, h).font = Font(bold=True)
         for row, c in enumerate(results.get("agents", {}).get("classification", {}).get("classifications", []), 2):
             ws2.cell(row, 1, c.get("item", ""))
             ws2.cell(row, 2, get_israeli_hs_format(c.get("hs_code", "")))
             ws2.cell(row, 3, c.get("duty_rate", ""))
-            ws2.cell(row, 4, c.get("confidence", ""))
-            
-            # Session 11: Add validation status
-            validation_status = ""
-            if c.get('hs_corrected'):
+
+            # Phase F: Purchase tax + VAT
+            pt = c.get("purchase_tax", {})
+            pt_text = pt.get("rate_he", "לא חל") if isinstance(pt, dict) else "לא חל"
+            ws2.cell(row, 4, pt_text)
+            ws2.cell(row, 5, c.get("vat_rate", "18%"))
+            ws2.cell(row, 6, c.get("confidence", ""))
+
+            # Phase F: Enhanced verification status
+            v_status = c.get('verification_status', '')
+            if v_status == 'official':
+                validation_status = "אומת רשמית ✓"
+            elif v_status == 'verified':
+                validation_status = "אומת ✓"
+            elif c.get('hs_corrected'):
                 validation_status = f"תוקן מ-{get_israeli_hs_format(c.get('original_hs_code', ''))}"
             elif c.get('hs_warning'):
                 validation_status = "לא נמצא במאגר"
@@ -949,9 +1004,11 @@ def build_excel_report(results):
                 validation_status = "אומת ✓"
             elif c.get('hs_validated'):
                 validation_status = "התאמה חלקית"
-            ws2.cell(row, 5, validation_status)
-            
-            ws2.cell(row, 6, c.get("reasoning", ""))
+            else:
+                validation_status = ""
+            ws2.cell(row, 7, validation_status)
+
+            ws2.cell(row, 8, c.get("reasoning", ""))
         
         output = io.BytesIO()
         wb.save(output)
