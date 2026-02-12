@@ -1,0 +1,188 @@
+{
+  "gir_principles": [
+    {
+      "rule": "GIR 1",
+      "title": "Section/Chapter Notes",
+      "title_he": "כלל 1 - פירושים לפי הערות הפרקים והסעיפים",
+      "description": "Classification is determined by the terms of headings and Section/Chapter notes. These are legally binding.",
+      "application": "Always check Section and Chapter notes FIRST. They override everything else."
+    },
+    {
+      "rule": "GIR 2a",
+      "title": "Incomplete/Unfinished Articles",
+      "title_he": "כלל 2א - פריטים לא שלמים או לא גמורים",
+      "description": "Incomplete or unfinished articles are classified as the complete article if they have its essential character.",
+      "application": "An unassembled bicycle is still classified as a bicycle (8712), not as parts."
+    },
+    {
+      "rule": "GIR 2b",
+      "title": "Mixtures and Combinations",
+      "title_he": "כלל 2ב - תערובות ושילובים",
+      "description": "Mixtures and combinations of materials are classified per GIR 3.",
+      "application": "A product made of plastic and metal — determine which material gives essential character."
+    },
+    {
+      "rule": "GIR 3a",
+      "title": "Most Specific Description",
+      "title_he": "כלל 3א - התיאור הספציפי ביותר",
+      "description": "When two or more headings apply, the most specific description wins.",
+      "application": "Electric razor (8510) is more specific than 'electrical machinery' (8509)."
+    },
+    {
+      "rule": "GIR 3b",
+      "title": "Essential Character",
+      "title_he": "כלל 3ב - אופי מהותי",
+      "description": "Mixtures, composite goods, and sets are classified by the component giving essential character.",
+      "application": "A gift set with perfume and soap — perfume gives essential character → 3303."
+    },
+    {
+      "rule": "GIR 3c",
+      "title": "Last in Numerical Order",
+      "title_he": "כלל 3ג - האחרון בסדר המספרי",
+      "description": "When 3a and 3b fail, classify under the last heading in numerical order.",
+      "application": "Rare fallback rule. Used when essential character cannot be determined."
+    },
+    {
+      "rule": "GIR 4",
+      "title": "Most Akin",
+      "title_he": "כלל 4 - הדומה ביותר",
+      "description": "Goods that cannot be classified under GIR 1-3 are classified under the heading for the most similar goods.",
+      "application": "Novel products not yet in the tariff — find the closest match."
+    },
+    {
+      "rule": "GIR 5a",
+      "title": "Cases and Containers",
+      "title_he": "כלל 5א - נרתיקים ומכלים",
+      "description": "Containers specially shaped for specific articles are classified with the article.",
+      "application": "A violin case presented with the violin → classified as violin (9202)."
+    },
+    {
+      "rule": "GIR 5b",
+      "title": "Packing Materials",
+      "title_he": "כלל 5ב - חומרי אריזה",
+      "description": "Packing materials are classified with the goods unless they are clearly reusable.",
+      "application": "Cardboard box around electronics → classified with the electronics."
+    },
+    {
+      "rule": "GIR 6",
+      "title": "Subheading Classification",
+      "title_he": "כלל 6 - סיווג בתת-פרטים",
+      "description": "Classification at subheading level follows the same principles, comparing subheadings at the same level.",
+      "application": "After determining the 4-digit heading, apply GIR 1-5 again at the 6/8/10 digit level."
+    },
+    {
+      "rule": "Israeli Rule",
+      "title": "Israeli 10-digit Format",
+      "title_he": "כלל ישראלי - פורמט 10 ספרות",
+      "description": "Israeli tariff uses XX.XX.XXXXXX format (10 digits). Last 2-4 digits are national subdivisions.",
+      "application": "International HS is 6 digits. Israel adds 4 national digits for duty rate differentiation."
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "pattern": "aluminum profile|aluminium profile|פרופיל אלומיניום|אלומיניום פרופיל",
+      "hs_heading": "7604",
+      "description": "Aluminum bars, rods, and profiles",
+      "confidence": "medium",
+      "notes": "Check if extruded (7604) or structural assembly (7610)"
+    },
+    {
+      "pattern": "laptop|notebook computer|מחשב נייד",
+      "hs_heading": "8471",
+      "description": "Automatic data processing machines (computers)",
+      "confidence": "high",
+      "notes": "Portable computers clearly under 8471.30"
+    },
+    {
+      "pattern": "mobile phone|smartphone|cellular|טלפון נייד|סלולרי|סמארטפון",
+      "hs_heading": "8517",
+      "description": "Telephone sets and other apparatus for transmission of voice/data",
+      "confidence": "high",
+      "notes": "Smartphones under 8517.13. Needs MOC type approval."
+    },
+    {
+      "pattern": "LED light|LED lamp|תאורת LED|נורת LED|מנורת LED",
+      "hs_heading": "9405",
+      "description": "Lamps and lighting fittings",
+      "confidence": "medium",
+      "notes": "LED modules may be 8541. Complete luminaires are 9405. Check if module or fixture."
+    },
+    {
+      "pattern": "electric motor|מנוע חשמלי",
+      "hs_heading": "8501",
+      "description": "Electric motors and generators",
+      "confidence": "high",
+      "notes": "Check power rating for exact subheading"
+    },
+    {
+      "pattern": "solar panel|photovoltaic|פאנל סולארי|תא סולארי",
+      "hs_heading": "8541",
+      "description": "Photosensitive semiconductor devices",
+      "confidence": "high",
+      "notes": "Solar cells and modules under 8541.40"
+    },
+    {
+      "pattern": "olive oil|שמן זית",
+      "hs_heading": "1509",
+      "description": "Olive oil and its fractions",
+      "confidence": "high",
+      "notes": "Virgin (1509.10) vs refined (1509.90). High duty rate."
+    },
+    {
+      "pattern": "wine|יין",
+      "hs_heading": "2204",
+      "description": "Wine of fresh grapes",
+      "confidence": "high",
+      "notes": "Kosher certification needed for retail. Purchase tax applies."
+    },
+    {
+      "pattern": "car parts|auto parts|חלקי רכב|חלפים לרכב",
+      "hs_heading": "8708",
+      "description": "Parts and accessories for motor vehicles",
+      "confidence": "medium",
+      "notes": "Very broad heading. Check if the part has its own specific heading first."
+    },
+    {
+      "pattern": "plastic bag|שקית פלסטיק|שקיות ניילון",
+      "hs_heading": "3923",
+      "description": "Articles for conveyance or packing of goods, of plastics",
+      "confidence": "high",
+      "notes": "Plastic bag tax may apply for consumer bags"
+    },
+    {
+      "pattern": "steel pipe|steel tube|צינור פלדה|צינור ברזל",
+      "hs_heading": "7304",
+      "description": "Tubes, pipes and hollow profiles of iron or steel",
+      "confidence": "medium",
+      "notes": "Seamless (7304) vs welded (7306). Check for anti-dumping duties."
+    },
+    {
+      "pattern": "toy|צעצוע|משחק ילדים",
+      "hs_heading": "9503",
+      "description": "Toys",
+      "confidence": "medium",
+      "notes": "Must meet SI 562 safety standard. Age marking required."
+    },
+    {
+      "pattern": "medical device|מכשיר רפואי|ציוד רפואי",
+      "hs_heading": "9018",
+      "description": "Instruments and appliances used in medical sciences",
+      "confidence": "medium",
+      "notes": "AMAR registration required. Risk class determines process."
+    },
+    {
+      "pattern": "textile|fabric|cloth|בד|טקסטיל|אריג",
+      "hs_heading": "5407",
+      "description": "Woven fabrics of synthetic filament yarn",
+      "confidence": "low",
+      "notes": "Very broad. Fiber composition determines heading (52=cotton, 54=synthetic, 55=staple)."
+    },
+    {
+      "pattern": "cosmetic|cream|lotion|קוסמטיקה|קרם|תחליב",
+      "hs_heading": "3304",
+      "description": "Beauty or make-up preparations",
+      "confidence": "medium",
+      "notes": "MOH notification required. INCI labeling. Distinguish from pharmaceutical (30)."
+    }
+  ]
+}

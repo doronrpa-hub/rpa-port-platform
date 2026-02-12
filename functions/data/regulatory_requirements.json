@@ -1,0 +1,282 @@
+[
+  {
+    "hs_chapters": ["01"],
+    "cargo": "Live animals",
+    "cargo_he": "בעלי חיים חיים",
+    "ministries": ["MOA", "Veterinary Services"],
+    "requirements": ["Import permit from Veterinary Services", "Health certificate from origin country", "Quarantine may be required"],
+    "urls": ["https://www.gov.il/he/departments/Units/veterinary_services"],
+    "free_import_order": true,
+    "notes": "Strict veterinary controls. Pre-arrival notification required."
+  },
+  {
+    "hs_chapters": ["02", "03", "04", "05"],
+    "cargo": "Meat, fish, dairy, animal products",
+    "cargo_he": "בשר, דגים, חלב, מוצרי בעלי חיים",
+    "ministries": ["MOH", "MOA", "Chief Rabbinate"],
+    "requirements": ["Health certificate", "Veterinary certificate", "Kosher certification (for retail)", "MOH food import license"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_health", "https://www.gov.il/he/departments/ministry_of_agriculture"],
+    "free_import_order": true,
+    "notes": "Kosher requirement for retail sale. Health + veterinary certificates mandatory."
+  },
+  {
+    "hs_chapters": ["06", "07", "08", "09", "10", "11", "12", "13", "14"],
+    "cargo": "Plants, vegetables, fruits, cereals, seeds",
+    "cargo_he": "צמחים, ירקות, פירות, דגנים, זרעים",
+    "ministries": ["MOA", "PPIS"],
+    "requirements": ["Phytosanitary certificate", "PPIS import permit", "Fumigation certificate if required"],
+    "urls": ["https://www.gov.il/he/departments/Units/ppis"],
+    "free_import_order": true,
+    "notes": "Plant Protection and Inspection Services (PPIS) controls. Quarantine pests list."
+  },
+  {
+    "hs_chapters": ["15", "16", "17", "18", "19", "20", "21", "22"],
+    "cargo": "Food, beverages, oils",
+    "cargo_he": "מזון, משקאות, שמנים",
+    "ministries": ["MOH"],
+    "requirements": ["MOH food import license", "Hebrew labeling", "Health certificate from origin", "Lab test results if required"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_health"],
+    "free_import_order": true,
+    "notes": "Food labeling regulations. Hebrew language required on consumer products."
+  },
+  {
+    "hs_chapters": ["23"],
+    "cargo": "Animal feed",
+    "cargo_he": "מזון לבעלי חיים",
+    "ministries": ["MOA"],
+    "requirements": ["MOA feed import permit", "Composition certificate", "No prohibited substances declaration"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_agriculture"],
+    "free_import_order": true,
+    "notes": "Regulated by Feedstuffs Supervisor."
+  },
+  {
+    "hs_chapters": ["24"],
+    "cargo": "Tobacco",
+    "cargo_he": "טבק ומוצרי טבק",
+    "ministries": ["MOH", "Tax Authority"],
+    "requirements": ["Special import license", "Health warnings in Hebrew", "Purchase tax payment", "Age restriction labeling"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_health"],
+    "free_import_order": true,
+    "notes": "Heavy regulation. Special purchase tax. Health warning requirements."
+  },
+  {
+    "hs_chapters": ["25", "26", "27"],
+    "cargo": "Minerals, ores, fuels",
+    "cargo_he": "מחצבים, עפרות, דלקים",
+    "ministries": ["Ministry of Energy", "Ministry of Environment"],
+    "requirements": ["Environmental impact assessment if bulk", "Fuel quality standards compliance", "Hazardous materials declaration if applicable"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_energy", "https://www.gov.il/he/departments/ministry_of_environmental_protection"],
+    "free_import_order": false,
+    "notes": "Fuels subject to special tax regime. Environmental controls for bulk minerals."
+  },
+  {
+    "hs_chapters": ["28", "29", "38"],
+    "cargo": "Chemicals",
+    "cargo_he": "כימיקלים",
+    "ministries": ["Ministry of Environment", "Ministry of Economy"],
+    "requirements": ["MSDS (Material Safety Data Sheet)", "Chemical registration", "Hazardous materials permit if classified", "GHS labeling"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_environmental_protection"],
+    "free_import_order": true,
+    "notes": "Stockholm/Rotterdam/Basel convention compliance. REACH-like requirements."
+  },
+  {
+    "hs_chapters": ["30"],
+    "cargo": "Pharmaceuticals",
+    "cargo_he": "תרופות ומוצרים רוקחיים",
+    "ministries": ["MOH Pharmaceutical Division"],
+    "requirements": ["MOH drug registration", "Import permit per shipment", "GMP certificate from manufacturer", "Certificate of Pharmaceutical Product (CPP)"],
+    "urls": ["https://www.gov.il/he/departments/Units/pharmacy_department"],
+    "free_import_order": true,
+    "notes": "Strict regulation. Must be registered in Israeli pharmaceutical registry."
+  },
+  {
+    "hs_chapters": ["31"],
+    "cargo": "Fertilizers",
+    "cargo_he": "דשנים",
+    "ministries": ["MOA"],
+    "requirements": ["MOA fertilizer registration", "Composition analysis", "Heavy metals limits compliance"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_agriculture"],
+    "free_import_order": true,
+    "notes": "Must meet Israeli fertilizer standards."
+  },
+  {
+    "hs_chapters": ["33"],
+    "cargo": "Cosmetics",
+    "cargo_he": "קוסמטיקה",
+    "ministries": ["MOH"],
+    "requirements": ["MOH cosmetics notification", "Ingredient list (INCI)", "Hebrew labeling", "No animal testing declaration (EU origin)"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_health"],
+    "free_import_order": true,
+    "notes": "Cosmetics regulation based on EU model. INCI labeling required."
+  },
+  {
+    "hs_chapters": ["36"],
+    "cargo": "Explosives, pyrotechnics",
+    "cargo_he": "חומרי נפץ, זיקוקין",
+    "ministries": ["Ministry of Defense", "Israel Police"],
+    "requirements": ["Defense Ministry import license", "Police approval", "Storage facility approval", "End-user certificate"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_defense"],
+    "free_import_order": true,
+    "notes": "Highly restricted. Security clearance required."
+  },
+  {
+    "hs_chapters": ["39", "40"],
+    "cargo": "Plastics, rubber",
+    "cargo_he": "פלסטיק, גומי",
+    "ministries": ["SII"],
+    "requirements": ["SII standard compliance for consumer products", "Food-contact materials certificate if applicable"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Consumer products require SII mark. Food-contact plastics have additional requirements."
+  },
+  {
+    "hs_chapters": ["44", "45", "46"],
+    "cargo": "Wood, cork, straw",
+    "cargo_he": "עץ, שעם, קש",
+    "ministries": ["PPIS"],
+    "requirements": ["ISPM 15 compliance (wood packaging)", "Phytosanitary certificate", "Fumigation or heat treatment certificate"],
+    "urls": ["https://www.gov.il/he/departments/Units/ppis"],
+    "free_import_order": false,
+    "notes": "ISPM 15 for ALL wood packaging materials. Solid wood furniture may need phytosanitary cert."
+  },
+  {
+    "hs_chapters": ["50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63"],
+    "cargo": "Textiles, clothing",
+    "cargo_he": "טקסטיל, הלבשה",
+    "ministries": ["SII"],
+    "requirements": ["Fiber composition labeling in Hebrew", "Children's clothing safety standards", "Flammability testing if required", "Care instructions labeling"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Labeling requirements per Israeli Standards. Children's items have strict safety standards."
+  },
+  {
+    "hs_chapters": ["64", "65", "66", "67"],
+    "cargo": "Footwear, headgear",
+    "cargo_he": "הנעלה, כובעים",
+    "ministries": ["SII"],
+    "requirements": ["Material composition labeling", "Size marking", "Children's footwear safety standards"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Labeling requirements for footwear materials."
+  },
+  {
+    "hs_chapters": ["68", "69", "70"],
+    "cargo": "Stone, ceramics, glass",
+    "cargo_he": "אבן, קרמיקה, זכוכית",
+    "ministries": ["SII"],
+    "requirements": ["Safety glass standards (SI 1099) for construction", "Ceramics standards for food contact", "Construction materials approvals"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Construction materials subject to Israeli Standards compliance."
+  },
+  {
+    "hs_chapters": ["71"],
+    "cargo": "Precious stones, diamonds, jewelry",
+    "cargo_he": "אבנים יקרות, יהלומים, תכשיטים",
+    "ministries": ["Diamond Controller", "Israel Diamond Exchange"],
+    "requirements": ["Kimberley Process certificate (rough diamonds)", "Diamond Controller registration", "Hallmarking for precious metals"],
+    "urls": [],
+    "free_import_order": true,
+    "notes": "Diamond trade through IDE (Israel Diamond Exchange) in Ramat Gan."
+  },
+  {
+    "hs_chapters": ["72", "73", "74", "75", "76"],
+    "cargo": "Metals (iron, steel, copper, aluminum)",
+    "cargo_he": "מתכות (ברזל, פלדה, נחושת, אלומיניום)",
+    "ministries": ["SII"],
+    "requirements": ["Construction steel standards (SI 4466)", "Aluminum profiles standards", "Anti-dumping duties may apply"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Construction metals have mandatory SII standards. Check for anti-dumping duties."
+  },
+  {
+    "hs_chapters": ["84"],
+    "cargo": "Machinery, mechanical appliances",
+    "cargo_he": "מכונות, מכשירים מכניים",
+    "ministries": ["SII", "Ministry of Energy"],
+    "requirements": ["Electrical safety for powered machines", "Energy efficiency labeling for appliances", "CE/UL marking recognized"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Consumer appliances need energy labels. Industrial machinery generally exempt from SII."
+  },
+  {
+    "hs_chapters": ["85"],
+    "cargo": "Electronics, telecom equipment",
+    "cargo_he": "אלקטרוניקה, ציוד תקשורת",
+    "ministries": ["MOC", "SII"],
+    "requirements": ["MOC type approval for wireless/telecom devices", "SII electrical safety certification", "EMC compliance", "Energy efficiency labeling"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_communications", "https://www.sii.org.il"],
+    "free_import_order": true,
+    "notes": "WiFi/Bluetooth/cellular devices need MOC approval. All electrical products need SII safety."
+  },
+  {
+    "hs_chapters": ["87"],
+    "cargo": "Vehicles",
+    "cargo_he": "כלי רכב",
+    "ministries": ["MOT", "Ministry of Environment", "SII"],
+    "requirements": ["MOT vehicle type approval", "Emissions compliance (Euro 6)", "Safety standards compliance", "Green tax calculation"],
+    "urls": ["https://www.gov.il/he/departments/ministry_of_transport_and_road_safety"],
+    "free_import_order": true,
+    "notes": "Complex regulation. Green tax based on emissions. Type approval mandatory."
+  },
+  {
+    "hs_chapters": ["88"],
+    "cargo": "Aircraft, drones, spacecraft",
+    "cargo_he": "כלי טיס, רחפנים",
+    "ministries": ["Civil Aviation Authority"],
+    "requirements": ["CAAI type certificate", "Drone registration (over 250g)", "Import permit for aircraft parts"],
+    "urls": ["https://www.gov.il/he/departments/civil_aviation_authority"],
+    "free_import_order": true,
+    "notes": "Drones heavily regulated since 2020. Registration and flight permits required."
+  },
+  {
+    "hs_chapters": ["89"],
+    "cargo": "Ships, boats",
+    "cargo_he": "כלי שיט",
+    "ministries": ["Shipping Authority"],
+    "requirements": ["Vessel registration", "Safety equipment compliance", "Environmental compliance"],
+    "urls": ["https://www.gov.il/he/departments/Units/shipping_and_ports_authority"],
+    "free_import_order": true,
+    "notes": "Pleasure craft and commercial vessels have different requirements."
+  },
+  {
+    "hs_chapters": ["90"],
+    "cargo": "Medical devices, optical instruments",
+    "cargo_he": "מכשירים רפואיים, מכשירים אופטיים",
+    "ministries": ["MOH Medical Devices (AMAR)"],
+    "requirements": ["AMAR registration", "CE marking or FDA clearance", "Hebrew user manual", "Authorized representative in Israel"],
+    "urls": ["https://www.gov.il/he/departments/Units/medical_devices"],
+    "free_import_order": true,
+    "notes": "Risk-based classification (Class I-IV). AMAR registration mandatory before import."
+  },
+  {
+    "hs_chapters": ["93"],
+    "cargo": "Arms, ammunition",
+    "cargo_he": "נשק, תחמושת",
+    "ministries": ["Ministry of Defense SIBAT", "Israel Police"],
+    "requirements": ["Defense export/import license", "End-user certificate", "Police approval for civilian weapons", "Storage facility approval"],
+    "urls": ["https://www.gov.il/he/departments/Units/sibat"],
+    "free_import_order": true,
+    "notes": "Highly restricted. Multiple approvals required. Long processing times."
+  },
+  {
+    "hs_chapters": ["95"],
+    "cargo": "Toys, games, sports equipment",
+    "cargo_he": "צעצועים, משחקים, ציוד ספורט",
+    "ministries": ["SII"],
+    "requirements": ["SII toy safety standard SI 562", "Age marking", "Warning labels in Hebrew", "Small parts testing (under 3 years)", "Chemical content limits"],
+    "urls": ["https://www.sii.org.il"],
+    "free_import_order": false,
+    "notes": "Strict safety standards for children's toys. Based on EN 71 / ASTM F963."
+  },
+  {
+    "hs_chapters": ["97"],
+    "cargo": "Antiques, art",
+    "cargo_he": "עתיקות, אמנות",
+    "ministries": ["Israel Antiquities Authority"],
+    "requirements": ["IAA export permit for antiquities", "Provenance documentation", "Cultural heritage compliance"],
+    "urls": ["https://www.gov.il/he/departments/israel_antiquities_authority"],
+    "free_import_order": false,
+    "notes": "Items over 200 years old classified as antiquities. Export restrictions apply."
+  }
+]
