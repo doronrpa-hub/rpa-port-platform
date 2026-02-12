@@ -1161,10 +1161,19 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
             
             # Run classification and send report (Email 2)
             try:
+                # Extract email body for URL detection and context
+                email_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+                # Strip HTML tags if body is HTML
+                if msg.get('body', {}).get('contentType', '') == 'html' and email_body:
+                    import re as _re
+                    email_body = _re.sub(r'<[^>]+>', ' ', email_body)
+                    email_body = _re.sub(r'\s+', ' ', email_body).strip()
+
                 process_and_send_report(
                     access_token, rcb_email, from_email, subject,
                     from_name, raw_attachments, msg_id, get_secret,
-                    get_db(), firestore, helper_graph_send, extract_text_from_attachments
+                    get_db(), firestore, helper_graph_send, extract_text_from_attachments,
+                    email_body=email_body
                 )
             except Exception as ce:
                 print(f"    ⚠️ Classification error: {ce}")

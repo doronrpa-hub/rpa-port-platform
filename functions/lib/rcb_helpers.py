@@ -34,8 +34,9 @@ def _assess_extraction_quality(text):
     has_currency = bool(re.search(r'(USD|EUR|ILS|NIS|\$|€|₪)', stripped, re.IGNORECASE))
     has_date = bool(re.search(r'\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}', stripped))
 
-    # If we have meaningful length but no numbers at all, probably wrong extraction
-    if len(stripped) > 200 and not has_numbers:
+    # If we have meaningful length but no numbers AND no meaningful text, probably wrong extraction
+    # Don't reject certificates, EUR.1, letters that have text but no numbers
+    if len(stripped) > 200 and not has_numbers and hebrew_chars < 20 and latin_chars < 20:
         return False, "no_numbers"
 
     return True, "ok"
@@ -320,6 +321,17 @@ def _pdf_to_images_fallback(pdf_bytes):
         return []
 
 
+def _try_decode(raw_bytes):
+    """Decode bytes trying Hebrew-friendly encodings.
+    Israeli government files often use Windows-1255, not UTF-8."""
+    for encoding in ('utf-8', 'windows-1255', 'iso-8859-8', 'latin-1'):
+        try:
+            return raw_bytes.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw_bytes.decode('utf-8', errors='replace')
+
+
 def _extract_from_excel(file_bytes):
     """Extract text from Excel files (.xlsx, .xls)"""
     try:
@@ -406,6 +418,38 @@ def _extract_from_eml(file_bytes):
         return ""
 
 
+def _extract_from_msg(file_bytes):
+    """Extract text from Outlook .msg files"""
+    try:
+        import extract_msg
+        msg = extract_msg.Message(io.BytesIO(file_bytes))
+        text_parts = []
+
+        if msg.subject:
+            text_parts.append(f"Subject: {msg.subject}")
+        if msg.sender:
+            text_parts.append(f"From: {msg.sender}")
+        if msg.date:
+            text_parts.append(f"Date: {msg.date}")
+        text_parts.append("")
+
+        if msg.body:
+            text_parts.append(msg.body)
+        elif msg.htmlBody:
+            content = re.sub(r'<[^>]+>', ' ', msg.htmlBody if isinstance(msg.htmlBody, str) else _try_decode(msg.htmlBody))
+            content = re.sub(r'\s+', ' ', content).strip()
+            text_parts.append(content)
+
+        msg.close()
+        return "\n".join(text_parts)
+    except ImportError:
+        print("    extract-msg not installed, cannot read .msg files")
+        return ""
+    except Exception as e:
+        print(f"    MSG extraction error: {e}")
+        return ""
+
+
 def _extract_urls_from_text(text):
     """Detect URLs in text and append them as tagged section"""
     if not text:
@@ -472,10 +516,19 @@ def extract_text_from_attachments(attachments_data, email_body=None):
                 text = _tag_document_structure(text)
                 all_text.append(f"=== {name} ===\n{text}")
 
-        # Email files
-        elif name_lower.endswith(('.eml', '.msg')):
+        # Email files — .eml
+        elif name_lower.endswith('.eml'):
             print(f"    📧 Extracting text from: {name}")
             text = _extract_from_eml(file_bytes)
+            if text:
+                text = _cleanup_hebrew_text(text)
+                text = _extract_urls_from_text(text)
+                all_text.append(f"=== {name} ===\n{text}")
+
+        # Email files — Outlook .msg
+        elif name_lower.endswith('.msg'):
+            print(f"    📧 Extracting text from: {name}")
+            text = _extract_from_msg(file_bytes)
             if text:
                 text = _cleanup_hebrew_text(text)
                 text = _extract_urls_from_text(text)
@@ -490,6 +543,79 @@ def extract_text_from_attachments(attachments_data, email_body=None):
                 text = _cleanup_hebrew_text(text)
                 text = _tag_document_structure(text)
                 all_text.append(f"=== {name} ===\n{text}")
+
+        # TIFF — multi-page image, convert each page then OCR
+        elif name_lower.endswith(('.tiff', '.tif')):
+            print(f"    🖼️ OCR on TIFF: {name}")
+            try:
+                from PIL import Image
+                img = Image.open(io.BytesIO(file_bytes))
+                tiff_parts = []
+                page = 0
+                while True:
+                    try:
+                        img.seek(page)
+                    except EOFError:
+                        break
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    page_bytes = _preprocess_image_for_ocr(buf.getvalue())
+                    page_text = _ocr_image(page_bytes)
+                    if page_text:
+                        tiff_parts.append(f"--- Page {page + 1} ---\n{page_text}")
+                    page += 1
+                if tiff_parts:
+                    text = _cleanup_hebrew_text("\n\n".join(tiff_parts))
+                    text = _tag_document_structure(text)
+                    all_text.append(f"=== {name} ===\n{text}")
+            except Exception as e:
+                print(f"    TIFF extraction error: {e}")
+
+        # CSV / TSV
+        elif name_lower.endswith(('.csv', '.tsv')):
+            print(f"    📊 Extracting text from: {name}")
+            try:
+                text = _try_decode(file_bytes)
+                sep = '\t' if name_lower.endswith('.tsv') else ','
+                lines = text.strip().split('\n')
+                table_parts = [f"[TABLE CSV]"]
+                for line in lines[:500]:  # Cap at 500 rows
+                    cells = line.strip().split(sep)
+                    if any(c.strip() for c in cells):
+                        table_parts.append(" | ".join(c.strip() for c in cells))
+                table_parts.append("[/TABLE]")
+                result_text = "\n".join(table_parts)
+                result_text = _cleanup_hebrew_text(result_text)
+                result_text = _tag_document_structure(result_text)
+                all_text.append(f"=== {name} ===\n{result_text}")
+            except Exception as e:
+                print(f"    CSV extraction error: {e}")
+
+        # HTML
+        elif name_lower.endswith(('.html', '.htm')):
+            print(f"    🌐 Extracting text from: {name}")
+            try:
+                text = _try_decode(file_bytes)
+                text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+                if text:
+                    text = _cleanup_hebrew_text(text)
+                    text = _tag_document_structure(text)
+                    all_text.append(f"=== {name} ===\n{text}")
+            except Exception as e:
+                print(f"    HTML extraction error: {e}")
+
+    # Fix 6: Extraction summary logging
+    print(f"  📊 Extraction summary: {len(all_text)} files, {sum(len(t) for t in all_text)} total chars")
+    for entry in all_text:
+        # Extract filename from "=== filename ===" header
+        header_end = entry.find('\n')
+        header = entry[:header_end] if header_end > 0 else entry[:50]
+        content = entry[header_end+1:] if header_end > 0 else ""
+        preview = content[:100].replace('\n', ' ').strip()
+        print(f"    {header} ({len(content)} chars) -> {preview}...")
 
     return "\n\n".join(all_text)
 

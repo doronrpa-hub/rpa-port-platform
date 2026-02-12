@@ -770,7 +770,7 @@ def _parse_invoice_fields_from_data(invoice_data):
     return fields
 
 
-def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func):
+def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func, email_body=None):
     """Main: Extract, classify, validate, send report with Excel + original attachments
     
     UPDATED Session 10: Integrates Module 4, 5, 6
@@ -798,7 +798,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             print("  ℹ️ Gemini key not configured - all agents will use Claude")
         
         print("  📄 Extracting text...")
-        doc_text = extract_text_func(raw_attachments)
+        doc_text = extract_text_func(raw_attachments, email_body=email_body)
         if not doc_text or len(doc_text) < 50:
             print("  ⚠️ No text")
             return False
