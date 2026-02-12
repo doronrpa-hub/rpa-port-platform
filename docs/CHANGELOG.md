@@ -33,6 +33,19 @@
 - Wired into pipeline: runs after FIO query, results in Agent 6 synthesis context and return value
 - Files changed: `intelligence.py`, `classification_agents.py`
 
+### Phase D: Document Parser
+- Created `functions/lib/document_parser.py` — per-document type identification, structured field extraction, completeness assessment
+- `identify_document_type(text, filename)` — weighted keyword scoring (strong=3, medium=2, weak=1, filename=2 bonus) across 9 document types
+- Document types: commercial_invoice, packing_list, bill_of_lading, air_waybill, certificate_of_origin, eur1, health_certificate, insurance, delivery_order
+- `extract_structured_fields(text, doc_type)` — dedicated regex extractors per type (invoice fields, BL fields, AWB fields, etc.)
+- `assess_document_completeness(extracted_fields, doc_type)` — weighted scoring (critical=3, important=2, optional=1), returns score, missing fields list, Hebrew field names
+- `parse_document(text, filename)` — convenience wrapper combining all 3 steps
+- `parse_all_documents(extracted_text)` — splits multi-document text on `=== filename ===` markers from rcb_helpers, parses each
+- Bilingual patterns (Hebrew + English) for all field extraction
+- Wired into `classification_agents.py`: runs after Agent 1 extraction, before intelligence pre-classify
+- Parsed document types, extracted fields, and completeness warnings included in synthesis context and final return value
+- Files changed: `document_parser.py`, `classification_agents.py`
+
 ---
 
 ## Session 17 — February 12, 2026
