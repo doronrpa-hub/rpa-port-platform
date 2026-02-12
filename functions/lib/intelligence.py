@@ -504,6 +504,290 @@ def validate_documents(extracted_text, direction="import", has_fta=False):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  5. FREE IMPORT ORDER API — official license/permit requirements
+# ═══════════════════════════════════════════════════════════════
+
+_FIO_API = "https://apps.economy.gov.il/Apps/FreeImportServices/FreeImportData"
+_FIO_CACHE_HOURS = 168  # 7 days
+
+
+def query_free_import_order(db, hs_code):
+    """
+    Query the official Free Import Order API for license/permit requirements.
+
+    1. Checks Firestore cache (free_import_cache) first
+    2. If miss or stale, queries the live Ministry of Economy API
+    3. Also queries parent HS codes (requirements can be inherited)
+    4. Caches result in Firestore
+
+    Returns:
+        dict with:
+          hs_code, found: bool,
+          items: [{description, legal_requirements: [{name, authority, url, supplement}]}],
+          authorities: [{name, department, phone, email, website}],
+          decree_version: str,
+          cached: bool, cache_age_hours: float
+    """
+    hs_clean = str(hs_code).replace(".", "").replace(" ", "").replace("/", "")
+    # Pad to 10 digits (Israeli format)
+    hs_10 = hs_clean.ljust(10, "0")[:10]
+
+    print(f"  🏛️ FREE IMPORT ORDER: Querying for HS {hs_10}")
+
+    result = {
+        "hs_code": hs_code,
+        "hs_10": hs_10,
+        "found": False,
+        "items": [],
+        "authorities": [],
+        "decree_version": "",
+        "cached": False,
+        "cache_age_hours": 0,
+    }
+
+    # ── Step 1: Check Firestore cache ──
+    cached = _check_fio_cache(db, hs_10)
+    if cached:
+        age_hours = cached.get("cache_age_hours", 0)
+        if age_hours < _FIO_CACHE_HOURS:
+            print(f"  🏛️ FREE IMPORT ORDER: Cache hit ({age_hours:.0f}h old)")
+            cached["cached"] = True
+            return cached
+
+    # ── Step 2: Query live API ──
+    try:
+        # Main search
+        api_result = _query_fio_api(hs_10)
+        if api_result:
+            result.update(api_result)
+            result["found"] = True
+
+        # Also get parent code requirements (they can apply too)
+        parent_result = _query_fio_parents(hs_10)
+        if parent_result:
+            # Merge parent items that aren't already in result
+            existing_ids = {item.get("id") for item in result["items"]}
+            for item in parent_result.get("items", []):
+                if item.get("id") not in existing_ids:
+                    item["inherited_from_parent"] = True
+                    result["items"].append(item)
+            # Merge parent authorities
+            existing_auths = {a.get("name") for a in result["authorities"]}
+            for auth in parent_result.get("authorities", []):
+                if auth.get("name") not in existing_auths:
+                    result["authorities"].append(auth)
+            if not result["found"] and parent_result.get("items"):
+                result["found"] = True
+
+    except Exception as e:
+        print(f"  🏛️ FREE IMPORT ORDER: API error — {e}")
+        # Fall back to cache even if stale
+        if cached:
+            print(f"  🏛️ FREE IMPORT ORDER: Using stale cache")
+            cached["cached"] = True
+            return cached
+        return result
+
+    # ── Step 3: Cache result ──
+    if result["found"]:
+        _save_fio_cache(db, hs_10, result)
+        count = len(result["items"])
+        auths = ", ".join(a.get("name", "") for a in result["authorities"][:3])
+        print(f"  🏛️ FREE IMPORT ORDER: Found {count} items, authorities: {auths}")
+    else:
+        print(f"  🏛️ FREE IMPORT ORDER: No requirements found for HS {hs_10}")
+        # Cache the "no results" too so we don't re-query
+        _save_fio_cache(db, hs_10, result)
+
+    return result
+
+
+def _query_fio_api(hs_10):
+    """Query the main Free Import Order search endpoint."""
+    url = f"{_FIO_API}/GetImportWaresBySearchParamsAndCA/"
+    payload = {
+        "customNum": hs_10,
+        "freeText": "",
+        "customsAuthoritys": []
+    }
+
+    resp = requests.post(url, json=payload, timeout=15,
+                         headers={"Content-Type": "application/json"})
+    resp.raise_for_status()
+    data = resp.json()
+
+    search_list = data.get("Data", {}).get("FISearchList", [])
+    if not search_list:
+        return None
+
+    items = []
+    authorities_seen = {}
+
+    for entry in search_list:
+        # Only include active entries
+        if not entry.get("fiimw_is_active", True):
+            continue
+
+        # Filter: only include items whose HS code matches our query
+        entry_code = entry.get("fiimw_iware_code", "")
+        if entry_code and not hs_10.startswith(entry_code.rstrip("0")) and not entry_code.startswith(hs_10.rstrip("0")):
+            continue
+
+        item = {
+            "id": entry.get("fiimw_id"),
+            "hs_code": entry_code,
+            "description": entry.get("fiimw_description", ""),
+            "legal_requirements": [],
+        }
+
+        for lr in entry.get("LegalRequirements", []):
+            req = {
+                "name": lr.get("filrq_legal_requirement_name", ""),
+                "supplement": lr.get("filrq_supplement_num", 0),
+                "type": lr.get("filrq_type", 0),
+                "url": lr.get("filrq_url", ""),
+                "description": lr.get("fiwlr_description", ""),
+                "includes_standards": lr.get("filrq_is_including_standards", False),
+            }
+
+            # Extract authority info
+            auth = lr.get("CompetentAuthority", {})
+            if auth:
+                auth_name = auth.get("gvmen_heb_name", "")
+                req["authority"] = auth_name
+                req["authority_department"] = auth.get("cpau_department", "")
+
+                if auth_name and auth_name not in authorities_seen:
+                    authorities_seen[auth_name] = {
+                        "name": auth_name,
+                        "department": auth.get("cpau_department", ""),
+                        "phone": auth.get("cpau_phone", ""),
+                        "email": auth.get("cpau_email", ""),
+                        "website": auth.get("cpau_website", ""),
+                        "address": auth.get("cpau_address", ""),
+                    }
+
+            # Standard info
+            std = lr.get("Standard")
+            if std:
+                req["standard"] = std
+
+            item["legal_requirements"].append(req)
+
+        if item["legal_requirements"]:
+            items.append(item)
+
+    # Decree version
+    decree = ""
+    if search_list:
+        dv = search_list[0].get("ImportWareDecreeVersion", {})
+        if dv:
+            decree = dv.get("fidcv_name", "")
+
+    return {
+        "items": items,
+        "authorities": list(authorities_seen.values()),
+        "decree_version": decree,
+    }
+
+
+def _query_fio_parents(hs_10):
+    """Query parent HS codes for inherited requirements."""
+    url = f"{_FIO_API}/GetImportWaresParents/{hs_10}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if isinstance(data, dict):
+            parents = data.get("Data", {}).get("FISearchList", data.get("Data", []))
+        else:
+            parents = data
+        if not parents:
+            return None
+
+        items = []
+        authorities_seen = {}
+
+        for entry in parents:
+            if not entry.get("fiimw_is_active", True):
+                continue
+
+            item = {
+                "id": entry.get("fiimw_id"),
+                "hs_code": entry.get("fiimw_iware_code", ""),
+                "description": entry.get("fiimw_description", ""),
+                "legal_requirements": [],
+            }
+
+            for lr in entry.get("LegalRequirements", []):
+                req = {
+                    "name": lr.get("filrq_legal_requirement_name", ""),
+                    "supplement": lr.get("filrq_supplement_num", 0),
+                    "type": lr.get("filrq_type", 0),
+                    "url": lr.get("filrq_url", ""),
+                }
+                auth = lr.get("CompetentAuthority", {})
+                if auth:
+                    auth_name = auth.get("gvmen_heb_name", "")
+                    req["authority"] = auth_name
+                    if auth_name and auth_name not in authorities_seen:
+                        authorities_seen[auth_name] = {
+                            "name": auth_name,
+                            "department": auth.get("cpau_department", ""),
+                            "phone": auth.get("cpau_phone", ""),
+                            "email": auth.get("cpau_email", ""),
+                            "website": auth.get("cpau_website", ""),
+                        }
+                item["legal_requirements"].append(req)
+
+            if item["legal_requirements"]:
+                items.append(item)
+
+        return {
+            "items": items,
+            "authorities": list(authorities_seen.values()),
+        }
+    except Exception as e:
+        print(f"    ⚠️ FIO parents query error: {e}")
+        return None
+
+
+def _check_fio_cache(db, hs_10):
+    """Check Firestore cache for Free Import Order results."""
+    try:
+        doc = db.collection("free_import_cache").document(hs_10).get()
+        if doc.exists:
+            data = doc.to_dict()
+            cached_at = data.get("cached_at", "")
+            if cached_at:
+                if isinstance(cached_at, str):
+                    cached_time = datetime.fromisoformat(cached_at)
+                else:
+                    cached_time = cached_at
+                if cached_time.tzinfo is None:
+                    cached_time = cached_time.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - cached_time).total_seconds() / 3600
+                data["cache_age_hours"] = age
+            return data
+    except Exception as e:
+        print(f"    ⚠️ FIO cache read error: {e}")
+    return None
+
+
+def _save_fio_cache(db, hs_10, result):
+    """Save Free Import Order results to Firestore cache."""
+    try:
+        cache_doc = {
+            **result,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+        }
+        db.collection("free_import_cache").document(hs_10).set(cache_doc)
+    except Exception as e:
+        print(f"    ⚠️ FIO cache write error: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
 #  INTERNAL HELPERS
 # ═══════════════════════════════════════════════════════════════
 

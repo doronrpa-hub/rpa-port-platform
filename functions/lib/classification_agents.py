@@ -68,7 +68,7 @@ except ImportError as e:
 
 # Intelligence module: system's own brain (Firestore-only, no AI)
 try:
-    from lib.intelligence import pre_classify, lookup_regulatory, lookup_fta, validate_documents
+    from lib.intelligence import pre_classify, lookup_regulatory, lookup_fta, validate_documents, query_free_import_order
     INTELLIGENCE_AVAILABLE = True
 except ImportError as e:
     print(f"Intelligence module not available: {e}")
@@ -560,6 +560,19 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             elif c.get('hs_warning'):
                 print(f"    ⚠️ {c.get('hs_warning')}")
         
+        # ── FREE IMPORT ORDER: Verify HS codes against official API ──
+        free_import_results = {}
+        if INTELLIGENCE_AVAILABLE:
+            for c in validated_classifications[:3]:
+                hs = c.get("hs_code", "")
+                if hs:
+                    try:
+                        fio = query_free_import_order(db, hs)
+                        if fio.get("found"):
+                            free_import_results[hs] = fio
+                    except Exception as e:
+                        print(f"    ⚠️ Free Import Order query error: {e}")
+
         # Agent 3: Regulatory (Gemini Flash)
         print("    ⚖️ Agent 3: Regulatory... [Gemini Flash]")
         regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry, gemini_key=gemini_key)
@@ -595,6 +608,21 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 "missing": [m["name_he"] for m in doc_validation.get("missing", [])],
             }
 
+        # Include Free Import Order official results
+        if free_import_results:
+            all_results["free_import_order"] = {
+                hs: {
+                    "authorities": [a["name"] for a in fio.get("authorities", [])],
+                    "requirements": [
+                        req["name"]
+                        for item in fio.get("items", [])
+                        for req in item.get("legal_requirements", [])
+                    ][:10],
+                    "decree": fio.get("decree_version", ""),
+                }
+                for hs, fio in free_import_results.items()
+            }
+
         synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
         
         # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
@@ -611,6 +639,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "invoice_data": invoice,  # Session 10: Pass invoice data for validation
             "intelligence": intelligence_results,  # Session 18: Pre-classify results
             "document_validation": doc_validation,  # Session 18: Document check
+            "free_import_order": free_import_results,  # Session 18: Official API results
         }
     except Exception as e:
         print(f"    ❌ Error: {e}")
