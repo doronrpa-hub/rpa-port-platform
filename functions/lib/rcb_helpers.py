@@ -320,10 +320,114 @@ def _pdf_to_images_fallback(pdf_bytes):
         return []
 
 
-def extract_text_from_attachments(attachments_data):
-    """Extract text from all PDF attachments
-    Phase 0: Added Hebrew cleanup and structure tagging"""
+def _extract_from_excel(file_bytes):
+    """Extract text from Excel files (.xlsx, .xls)"""
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        text_parts = []
+
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            text_parts.append(f"[SHEET: {sheet_name}]")
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(cell).strip() if cell is not None else "" for cell in row]
+                if any(cells):
+                    text_parts.append(" | ".join(cells))
+            text_parts.append(f"[/SHEET]")
+
+        wb.close()
+        return "\n".join(text_parts)
+    except Exception as e:
+        print(f"    Excel extraction error: {e}")
+        return ""
+
+
+def _extract_from_docx(file_bytes):
+    """Extract text from Word documents (.docx)"""
+    try:
+        import docx
+        doc = docx.Document(io.BytesIO(file_bytes))
+        text_parts = []
+
+        # Extract paragraphs
+        for para in doc.paragraphs:
+            if para.text.strip():
+                text_parts.append(para.text)
+
+        # Extract tables
+        for table_idx, table in enumerate(doc.tables):
+            text_parts.append(f"\n[TABLE {table_idx + 1}]")
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                if any(cells):
+                    text_parts.append(" | ".join(cells))
+            text_parts.append(f"[/TABLE]")
+
+        return "\n".join(text_parts)
+    except Exception as e:
+        print(f"    Word extraction error: {e}")
+        return ""
+
+
+def _extract_from_eml(file_bytes):
+    """Extract text from email files (.eml, .msg)"""
+    try:
+        import email
+        from email import policy
+        msg = email.message_from_bytes(file_bytes, policy=policy.default)
+        text_parts = []
+
+        # Extract headers
+        subject = msg.get('Subject', '')
+        from_addr = msg.get('From', '')
+        date = msg.get('Date', '')
+        if subject:
+            text_parts.append(f"Subject: {subject}")
+        if from_addr:
+            text_parts.append(f"From: {from_addr}")
+        if date:
+            text_parts.append(f"Date: {date}")
+        text_parts.append("")
+
+        # Extract body
+        body = msg.get_body(preferencelist=('plain', 'html'))
+        if body:
+            content = body.get_content()
+            if body.get_content_type() == 'text/html':
+                # Strip HTML tags
+                content = re.sub(r'<[^>]+>', ' ', content)
+                content = re.sub(r'\s+', ' ', content).strip()
+            text_parts.append(content)
+
+        return "\n".join(text_parts)
+    except Exception as e:
+        print(f"    Email extraction error: {e}")
+        return ""
+
+
+def _extract_urls_from_text(text):
+    """Detect URLs in text and append them as tagged section"""
+    if not text:
+        return text
+    urls = re.findall(r'https?://[^\s<>"\')\]]+', text)
+    if urls:
+        unique_urls = list(dict.fromkeys(urls))  # Preserve order, remove dupes
+        url_section = "\n[URLS_FOUND]\n" + "\n".join(unique_urls[:20]) + "\n[/URLS_FOUND]"
+        return text + url_section
+    return text
+
+
+def extract_text_from_attachments(attachments_data, email_body=None):
+    """Extract text from all attachments (PDF, Excel, Word, images, emails)
+    Phase 0: Added Hebrew cleanup, structure tagging, multi-format support"""
     all_text = []
+
+    # Extract URLs from email body if provided
+    if email_body:
+        email_body = _extract_urls_from_text(email_body)
+        all_text.append(f"=== Email Body ===\n{email_body}")
+
     for att in attachments_data:
         name = att.get('name', 'file')
         content_bytes = att.get('contentBytes', '')
@@ -337,8 +441,10 @@ def extract_text_from_attachments(attachments_data):
         except:
             continue
 
-        # Check if PDF
-        if name.lower().endswith('.pdf'):
+        name_lower = name.lower()
+
+        # PDF
+        if name_lower.endswith('.pdf'):
             print(f"    📄 Extracting text from: {name}")
             text = extract_text_from_pdf_bytes(file_bytes)
             if text:
@@ -348,8 +454,35 @@ def extract_text_from_attachments(attachments_data):
             else:
                 all_text.append(f"=== {name} ===\n[No text could be extracted]")
 
-        # Handle images directly with OCR
-        elif name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+        # Excel
+        elif name_lower.endswith(('.xlsx', '.xls')):
+            print(f"    📊 Extracting text from: {name}")
+            text = _extract_from_excel(file_bytes)
+            if text:
+                text = _cleanup_hebrew_text(text)
+                text = _tag_document_structure(text)
+                all_text.append(f"=== {name} ===\n{text}")
+
+        # Word
+        elif name_lower.endswith('.docx'):
+            print(f"    📝 Extracting text from: {name}")
+            text = _extract_from_docx(file_bytes)
+            if text:
+                text = _cleanup_hebrew_text(text)
+                text = _tag_document_structure(text)
+                all_text.append(f"=== {name} ===\n{text}")
+
+        # Email files
+        elif name_lower.endswith(('.eml', '.msg')):
+            print(f"    📧 Extracting text from: {name}")
+            text = _extract_from_eml(file_bytes)
+            if text:
+                text = _cleanup_hebrew_text(text)
+                text = _extract_urls_from_text(text)
+                all_text.append(f"=== {name} ===\n{text}")
+
+        # Images — OCR
+        elif name_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
             print(f"    🖼️ OCR on image: {name}")
             img_bytes = _preprocess_image_for_ocr(file_bytes)
             text = _ocr_image(img_bytes)
