@@ -68,7 +68,7 @@ except ImportError as e:
 
 # Intelligence module: system's own brain (Firestore-only, no AI)
 try:
-    from lib.intelligence import pre_classify, lookup_regulatory, lookup_fta, validate_documents, query_free_import_order
+    from lib.intelligence import pre_classify, lookup_regulatory, lookup_fta, validate_documents, query_free_import_order, route_to_ministries
     INTELLIGENCE_AVAILABLE = True
 except ImportError as e:
     print(f"Intelligence module not available: {e}")
@@ -573,6 +573,20 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                     except Exception as e:
                         print(f"    ⚠️ Free Import Order query error: {e}")
 
+        # ── MINISTRY ROUTING: Combine all sources into actionable guidance ──
+        ministry_routing = {}
+        if INTELLIGENCE_AVAILABLE:
+            for c in validated_classifications[:3]:
+                hs = c.get("hs_code", "")
+                if hs:
+                    try:
+                        fio_for_hs = free_import_results.get(hs)
+                        routing = route_to_ministries(db, hs, fio_for_hs)
+                        if routing.get("ministries"):
+                            ministry_routing[hs] = routing
+                    except Exception as e:
+                        print(f"    ⚠️ Ministry routing error: {e}")
+
         # Agent 3: Regulatory (Gemini Flash)
         print("    ⚖️ Agent 3: Regulatory... [Gemini Flash]")
         regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry, gemini_key=gemini_key)
@@ -623,6 +637,26 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 for hs, fio in free_import_results.items()
             }
 
+        # Include ministry routing with procedures and documents
+        if ministry_routing:
+            all_results["ministry_routing"] = {
+                hs: {
+                    "risk_level": r.get("risk_level", "low"),
+                    "summary_he": r.get("summary_he", ""),
+                    "ministries": [
+                        {
+                            "name_he": m["name_he"],
+                            "url": m.get("url", ""),
+                            "documents_he": m.get("documents_he", []),
+                            "procedure": m.get("procedure", ""),
+                            "official": m.get("official", False),
+                        }
+                        for m in r.get("ministries", [])
+                    ],
+                }
+                for hs, r in ministry_routing.items()
+            }
+
         synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
         
         # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
@@ -640,6 +674,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "intelligence": intelligence_results,  # Session 18: Pre-classify results
             "document_validation": doc_validation,  # Session 18: Document check
             "free_import_order": free_import_results,  # Session 18: Official API results
+            "ministry_routing": ministry_routing,  # Session 18: Phase C ministry routing
         }
     except Exception as e:
         print(f"    ❌ Error: {e}")

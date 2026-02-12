@@ -504,7 +504,504 @@ def validate_documents(extracted_text, direction="import", has_fta=False):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  5. FREE IMPORT ORDER API — official license/permit requirements
+#  5. MINISTRY ROUTING — HS chapter → specific ministry guidance
+# ═══════════════════════════════════════════════════════════════
+
+# Detailed ministry routing table with procedures, docs, URLs per chapter range
+_MINISTRY_ROUTES = {
+    "01": {
+        "cargo_he": "בעלי חיים חיים",
+        "risk": "high",
+        "ministries": [
+            {"name": "Veterinary Services", "name_he": "שירותים וטרינריים",
+             "url": "https://www.gov.il/he/departments/Units/veterinary_services",
+             "documents": ["Import permit", "Health certificate from origin", "Quarantine clearance"],
+             "documents_he": ["היתר יבוא", "תעודת בריאות מארץ המקור", "אישור הסגר"],
+             "procedure": "Apply for import permit BEFORE shipping. Pre-arrival notification 48h."},
+        ],
+    },
+    "02": {
+        "cargo_he": "בשר",
+        "risk": "high",
+        "ministries": [
+            {"name": "MOH", "name_he": "משרד הבריאות",
+             "url": "https://www.gov.il/he/departments/ministry_of_health",
+             "documents": ["MOH food import license", "Health certificate"],
+             "documents_he": ["רישיון יבוא מזון", "תעודת בריאות"],
+             "procedure": "Food import license from MOH Food Service."},
+            {"name": "Veterinary Services", "name_he": "שירותים וטרינריים",
+             "url": "https://www.gov.il/he/departments/Units/veterinary_services",
+             "documents": ["Veterinary certificate"],
+             "documents_he": ["תעודה וטרינרית"],
+             "procedure": "Veterinary certificate per shipment."},
+            {"name": "Chief Rabbinate", "name_he": "הרבנות הראשית",
+             "url": "https://www.gov.il/he/departments/chief_rabbinate",
+             "documents": ["Kosher certification"],
+             "documents_he": ["תעודת כשרות"],
+             "procedure": "Required for retail sale. Not required for industrial use."},
+        ],
+    },
+    "04": {
+        "cargo_he": "חלב ומוצריו",
+        "risk": "high",
+        "ministries": [
+            {"name": "MOH", "name_he": "משרד הבריאות",
+             "url": "https://www.gov.il/he/departments/ministry_of_health",
+             "documents": ["MOH food import license", "Health certificate", "Lab test results"],
+             "documents_he": ["רישיון יבוא מזון", "תעודת בריאות", "תוצאות מעבדה"],
+             "procedure": "Lab tests may be required on arrival."},
+        ],
+    },
+    "06": {
+        "cargo_he": "צמחים, ירקות, פירות",
+        "risk": "high",
+        "ministries": [
+            {"name": "PPIS", "name_he": "שה\"צ - שירות ההגנה על הצומח",
+             "url": "https://www.gov.il/he/departments/Units/ppis",
+             "documents": ["Phytosanitary certificate", "PPIS import permit", "Fumigation certificate"],
+             "documents_he": ["תעודה פיטוסניטרית", "היתר יבוא שה\"צ", "תעודת חיטוי"],
+             "procedure": "Phytosanitary certificate mandatory. Fumigation if from listed countries."},
+        ],
+    },
+    "15": {
+        "cargo_he": "מזון, משקאות, שמנים",
+        "risk": "medium",
+        "ministries": [
+            {"name": "MOH", "name_he": "משרד הבריאות",
+             "url": "https://www.gov.il/he/departments/ministry_of_health",
+             "documents": ["MOH food import license", "Hebrew labeling", "Health certificate", "Lab results"],
+             "documents_he": ["רישיון יבוא מזון", "תיוג בעברית", "תעודת בריאות", "תוצאות מעבדה"],
+             "procedure": "Hebrew labeling required on all consumer food products."},
+        ],
+    },
+    "24": {
+        "cargo_he": "טבק ומוצרי טבק",
+        "risk": "high",
+        "ministries": [
+            {"name": "MOH", "name_he": "משרד הבריאות",
+             "url": "https://www.gov.il/he/departments/ministry_of_health",
+             "documents": ["Special import license", "Health warnings in Hebrew"],
+             "documents_he": ["רישיון יבוא מיוחד", "אזהרות בריאות בעברית"],
+             "procedure": "Special purchase tax. Health warning labels mandatory."},
+            {"name": "Tax Authority", "name_he": "רשות המסים",
+             "url": "https://www.gov.il/he/departments/israel_tax_authority",
+             "documents": ["Purchase tax declaration"],
+             "documents_he": ["הצהרת מס קנייה"],
+             "procedure": "Purchase tax applies."},
+        ],
+    },
+    "28": {
+        "cargo_he": "כימיקלים",
+        "risk": "high",
+        "ministries": [
+            {"name": "Ministry of Environment", "name_he": "המשרד להגנת הסביבה",
+             "url": "https://www.gov.il/he/departments/ministry_of_environmental_protection",
+             "documents": ["MSDS", "Chemical registration", "Hazmat permit", "GHS labeling"],
+             "documents_he": ["גיליון בטיחות", "רישום כימיקל", "היתר חומ\"ס", "תיוג GHS"],
+             "procedure": "MSDS mandatory. Rotterdam/Stockholm convention compliance."},
+        ],
+    },
+    "30": {
+        "cargo_he": "תרופות",
+        "risk": "critical",
+        "ministries": [
+            {"name": "MOH Pharmaceutical Division", "name_he": "אגף הרוקחות - משרד הבריאות",
+             "url": "https://www.gov.il/he/departments/Units/pharmacy_department",
+             "documents": ["Drug registration", "Import permit per shipment", "GMP certificate", "CPP"],
+             "documents_he": ["רישום תרופה", "היתר יבוא לכל משלוח", "תעודת GMP", "CPP"],
+             "procedure": "Must be registered in Israeli drug registry BEFORE import."},
+        ],
+    },
+    "33": {
+        "cargo_he": "קוסמטיקה",
+        "risk": "medium",
+        "ministries": [
+            {"name": "MOH", "name_he": "משרד הבריאות",
+             "url": "https://www.gov.il/he/departments/ministry_of_health",
+             "documents": ["Cosmetics notification", "INCI ingredient list", "Hebrew labeling"],
+             "documents_he": ["הודעה על קוסמטיקה", "רשימת רכיבים INCI", "תיוג בעברית"],
+             "procedure": "Based on EU cosmetics regulation. INCI labeling mandatory."},
+        ],
+    },
+    "36": {
+        "cargo_he": "חומרי נפץ, זיקוקין",
+        "risk": "critical",
+        "ministries": [
+            {"name": "Ministry of Defense", "name_he": "משרד הביטחון",
+             "url": "https://www.gov.il/he/departments/ministry_of_defense",
+             "documents": ["Defense Ministry license", "End-user certificate", "Storage approval"],
+             "documents_he": ["רישיון משרד הביטחון", "תעודת משתמש סופי", "אישור אחסון"],
+             "procedure": "Security clearance required. Long processing times."},
+            {"name": "Israel Police", "name_he": "משטרת ישראל",
+             "url": "https://www.gov.il/he/departments/israel_police",
+             "documents": ["Police approval"],
+             "documents_he": ["אישור משטרה"],
+             "procedure": "Police approval for civilian pyrotechnics."},
+        ],
+    },
+    "39": {
+        "cargo_he": "פלסטיק, גומי",
+        "risk": "low",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["SII standard compliance", "Food-contact certificate"],
+             "documents_he": ["עמידה בתקן ישראלי", "אישור מגע מזון"],
+             "procedure": "Consumer products require SII mark. Food-contact materials need separate cert."},
+        ],
+    },
+    "44": {
+        "cargo_he": "עץ, שעם",
+        "risk": "medium",
+        "ministries": [
+            {"name": "PPIS", "name_he": "שה\"צ - שירות ההגנה על הצומח",
+             "url": "https://www.gov.il/he/departments/Units/ppis",
+             "documents": ["ISPM 15 compliance", "Phytosanitary certificate", "Heat treatment certificate"],
+             "documents_he": ["עמידה ב-ISPM 15", "תעודה פיטוסניטרית", "תעודת טיפול חום"],
+             "procedure": "ISPM 15 for ALL wood packaging. Solid wood products need phytosanitary cert."},
+        ],
+    },
+    "50": {
+        "cargo_he": "טקסטיל, הלבשה",
+        "risk": "low",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["Fiber composition label", "Safety standards (children)", "Care instructions"],
+             "documents_he": ["תווית הרכב סיבים", "תקני בטיחות (ילדים)", "הוראות טיפול"],
+             "procedure": "Hebrew labeling required. Children's items have strict safety standards."},
+        ],
+    },
+    "64": {
+        "cargo_he": "הנעלה",
+        "risk": "low",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["Material composition label", "Size marking"],
+             "documents_he": ["תווית הרכב חומרים", "סימון מידה"],
+             "procedure": "Labeling requirements for footwear materials."},
+        ],
+    },
+    "68": {
+        "cargo_he": "אבן, קרמיקה, זכוכית",
+        "risk": "low",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["Safety glass SI 1099", "Construction materials approval"],
+             "documents_he": ["זכוכית בטיחות ת\"י 1099", "אישור חומרי בנייה"],
+             "procedure": "Construction materials subject to Israeli Standards."},
+        ],
+    },
+    "71": {
+        "cargo_he": "יהלומים, אבנים יקרות, תכשיטים",
+        "risk": "medium",
+        "ministries": [
+            {"name": "Diamond Controller", "name_he": "מפקח על היהלומים",
+             "url": "https://www.gov.il/he/departments/Units/diamond_supervisor",
+             "documents": ["Kimberley Process cert (rough diamonds)", "Diamond Controller registration", "Hallmarking"],
+             "documents_he": ["תעודת קימברלי (יהלומי גלם)", "רישום מפקח היהלומים", "חותמת מתכת יקרה"],
+             "procedure": "Trade through Israel Diamond Exchange in Ramat Gan."},
+        ],
+    },
+    "72": {
+        "cargo_he": "מתכות (ברזל, פלדה, אלומיניום)",
+        "risk": "medium",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["Construction steel SI 4466", "Aluminum profiles standards"],
+             "documents_he": ["פלדת בנייה ת\"י 4466", "תקני פרופילי אלומיניום"],
+             "procedure": "Construction metals have mandatory SII standards. Check anti-dumping duties."},
+        ],
+    },
+    "84": {
+        "cargo_he": "מכונות, מכשירים מכניים",
+        "risk": "low",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["Electrical safety cert", "Energy efficiency label", "CE/UL marking"],
+             "documents_he": ["אישור בטיחות חשמלית", "תווית יעילות אנרגטית", "סימון CE/UL"],
+             "procedure": "Consumer appliances need energy labels. Industrial machinery generally exempt."},
+        ],
+    },
+    "85": {
+        "cargo_he": "אלקטרוניקה, ציוד תקשורת",
+        "risk": "medium",
+        "ministries": [
+            {"name": "MOC", "name_he": "משרד התקשורת",
+             "url": "https://www.gov.il/he/departments/ministry_of_communications",
+             "documents": ["MOC type approval (wireless/telecom)", "EMC compliance"],
+             "documents_he": ["אישור סוג משרד התקשורת", "עמידה ב-EMC"],
+             "procedure": "WiFi/Bluetooth/cellular devices need MOC type approval BEFORE import."},
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["Electrical safety cert", "Energy efficiency label"],
+             "documents_he": ["אישור בטיחות חשמלית", "תווית יעילות אנרגטית"],
+             "procedure": "All electrical products need SII safety certification."},
+        ],
+    },
+    "87": {
+        "cargo_he": "כלי רכב",
+        "risk": "high",
+        "ministries": [
+            {"name": "MOT", "name_he": "משרד התחבורה",
+             "url": "https://www.gov.il/he/departments/ministry_of_transport_and_road_safety",
+             "documents": ["Vehicle type approval", "Emissions compliance (Euro 6)"],
+             "documents_he": ["אישור סוג רכב", "עמידה בתקן פליטות (Euro 6)"],
+             "procedure": "Type approval mandatory. Green tax based on pollution level."},
+            {"name": "Ministry of Environment", "name_he": "המשרד להגנת הסביבה",
+             "url": "https://www.gov.il/he/departments/ministry_of_environmental_protection",
+             "documents": ["Green tax calculation"],
+             "documents_he": ["חישוב מס ירוק"],
+             "procedure": "Green tax based on CO2 emissions and pollutant level."},
+        ],
+    },
+    "88": {
+        "cargo_he": "כלי טיס, רחפנים",
+        "risk": "high",
+        "ministries": [
+            {"name": "CAAI", "name_he": "רשות התעופה האזרחית",
+             "url": "https://www.gov.il/he/departments/civil_aviation_authority",
+             "documents": ["CAAI type certificate", "Drone registration (>250g)"],
+             "documents_he": ["תעודת סוג רת\"א", "רישום רחפן (מעל 250 גרם)"],
+             "procedure": "Drones heavily regulated. Registration + flight permits required."},
+        ],
+    },
+    "89": {
+        "cargo_he": "כלי שיט",
+        "risk": "medium",
+        "ministries": [
+            {"name": "Shipping Authority", "name_he": "רשות הספנות",
+             "url": "https://www.gov.il/he/departments/Units/shipping_and_ports_authority",
+             "documents": ["Vessel registration", "Safety equipment compliance"],
+             "documents_he": ["רישום כלי שיט", "עמידה בציוד בטיחות"],
+             "procedure": "Different requirements for pleasure craft vs commercial."},
+        ],
+    },
+    "90": {
+        "cargo_he": "מכשירים רפואיים",
+        "risk": "high",
+        "ministries": [
+            {"name": "AMAR", "name_he": "אגף מכשירים רפואיים (אמ\"ר)",
+             "url": "https://www.gov.il/he/departments/Units/medical_devices",
+             "documents": ["AMAR registration", "CE marking or FDA clearance", "Hebrew user manual", "Authorized representative"],
+             "documents_he": ["רישום אמ\"ר", "סימון CE או אישור FDA", "הוראות שימוש בעברית", "נציג מורשה בישראל"],
+             "procedure": "Risk class I-IV. AMAR registration mandatory BEFORE import."},
+        ],
+    },
+    "93": {
+        "cargo_he": "נשק, תחמושת",
+        "risk": "critical",
+        "ministries": [
+            {"name": "SIBAT", "name_he": "סיבא\"ט - משרד הביטחון",
+             "url": "https://www.gov.il/he/departments/Units/sibat",
+             "documents": ["Defense import license", "End-user certificate", "Police approval"],
+             "documents_he": ["רישיון יבוא ביטחוני", "תעודת משתמש סופי", "אישור משטרה"],
+             "procedure": "Highly restricted. Multiple approvals. Long processing times."},
+        ],
+    },
+    "95": {
+        "cargo_he": "צעצועים, משחקים, ציוד ספורט",
+        "risk": "medium",
+        "ministries": [
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["SI 562 toy safety", "Age marking", "Hebrew warning labels", "Small parts test (under 3)"],
+             "documents_he": ["ת\"י 562 בטיחות צעצועים", "סימון גיל", "אזהרות בעברית", "בדיקת חלקים קטנים (מתחת ל-3)"],
+             "procedure": "Based on EN 71 / ASTM F963. Chemical content limits apply."},
+        ],
+    },
+    "97": {
+        "cargo_he": "עתיקות, אמנות",
+        "risk": "medium",
+        "ministries": [
+            {"name": "Israel Antiquities Authority", "name_he": "רשות העתיקות",
+             "url": "https://www.gov.il/he/departments/israel_antiquities_authority",
+             "documents": ["Provenance documentation", "Cultural heritage compliance"],
+             "documents_he": ["תיעוד מקור", "עמידה בחוקי מורשת תרבותית"],
+             "procedure": "Items over 200 years old classified as antiquities. Export restrictions."},
+        ],
+    },
+}
+
+# Chapters that share the same route (map to canonical chapter)
+_CHAPTER_ALIASES = {
+    "03": "02", "05": "02",  # meat, fish, dairy, animal products
+    "07": "06", "08": "06", "09": "06", "10": "06",
+    "11": "06", "12": "06", "13": "06", "14": "06",  # plants, veg, fruits
+    "16": "15", "17": "15", "18": "15", "19": "15",
+    "20": "15", "21": "15", "22": "15",  # food, beverages
+    "23": "06",  # animal feed -> MOA (same as plants)
+    "25": "28", "26": "28", "27": "28",  # minerals, fuels -> environment
+    "29": "28", "38": "28",  # chemicals
+    "31": "06",  # fertilizers -> MOA
+    "40": "39",  # rubber -> plastics/SII
+    "45": "44", "46": "44",  # cork, straw -> wood
+    "51": "50", "52": "50", "53": "50", "54": "50", "55": "50",
+    "56": "50", "57": "50", "58": "50", "59": "50", "60": "50",
+    "61": "50", "62": "50", "63": "50",  # textiles
+    "65": "64", "66": "64", "67": "64",  # headgear -> footwear
+    "69": "68", "70": "68",  # ceramics, glass -> stone
+    "73": "72", "74": "72", "75": "72", "76": "72",  # metals
+}
+
+
+def route_to_ministries(db, hs_code, free_import_result=None):
+    """
+    Phase C: Given an HS code (and optionally Free Import Order API result),
+    return complete ministry routing with procedures, documents, and URLs.
+
+    Merges three sources:
+      1. Built-in routing table (_MINISTRY_ROUTES)
+      2. Firestore baseline knowledge (regulatory_requirements, ministry_index)
+      3. Official Free Import Order API result (from Phase B)
+
+    Returns:
+        dict with:
+          hs_code, chapter,
+          risk_level: "low"|"medium"|"high"|"critical",
+          ministries: [{name, name_he, url, documents, documents_he, procedure,
+                        official: bool, source}],
+          summary_he: str
+    """
+    hs_clean = str(hs_code).replace(".", "").replace(" ", "").replace("/", "")
+    chapter = hs_clean[:2].zfill(2)
+
+    print(f"  🏛️ MINISTRY ROUTING: HS {hs_code} (chapter {chapter})")
+
+    # Resolve chapter alias
+    canonical = _CHAPTER_ALIASES.get(chapter, chapter)
+    route = _MINISTRY_ROUTES.get(canonical)
+
+    result = {
+        "hs_code": hs_code,
+        "chapter": chapter,
+        "risk_level": "low",
+        "ministries": [],
+        "summary_he": "",
+    }
+
+    seen_ministries = set()
+
+    # ── Source 1: Built-in routing table ──
+    if route:
+        result["risk_level"] = route.get("risk", "low")
+        for m in route["ministries"]:
+            seen_ministries.add(m["name"])
+            result["ministries"].append({
+                "name": m["name"],
+                "name_he": m["name_he"],
+                "url": m["url"],
+                "documents": m.get("documents", []),
+                "documents_he": m.get("documents_he", []),
+                "procedure": m.get("procedure", ""),
+                "official": False,
+                "source": "routing_table",
+            })
+
+    # ── Source 2: Firestore baseline ──
+    try:
+        mi_doc = db.collection("ministry_index").document(f"chapter_{chapter}").get()
+        if mi_doc.exists:
+            mi_data = mi_doc.to_dict()
+            for m_name in mi_data.get("ministries", []):
+                if m_name not in seen_ministries:
+                    seen_ministries.add(m_name)
+                    result["ministries"].append({
+                        "name": m_name,
+                        "name_he": m_name,
+                        "url": "",
+                        "documents": [],
+                        "documents_he": [],
+                        "procedure": "",
+                        "official": False,
+                        "source": "firestore_baseline",
+                    })
+    except Exception as e:
+        print(f"    ⚠️ Ministry index query error: {e}")
+
+    # ── Source 3: Official Free Import Order API result ──
+    if free_import_result and free_import_result.get("found"):
+        for auth in free_import_result.get("authorities", []):
+            auth_name = auth.get("name", "")
+            if not auth_name:
+                continue
+
+            # Check if we already have this ministry
+            existing = None
+            for m in result["ministries"]:
+                if auth_name in m["name"] or auth_name in m.get("name_he", ""):
+                    existing = m
+                    break
+
+            if existing:
+                # Enrich existing entry with official data
+                existing["official"] = True
+                existing["source"] = "official_api"
+                if auth.get("phone"):
+                    existing["phone"] = auth["phone"]
+                if auth.get("email"):
+                    existing["email"] = auth["email"]
+                if auth.get("website") and not existing["url"]:
+                    existing["url"] = auth["website"]
+                if auth.get("department"):
+                    existing["department"] = auth["department"]
+            else:
+                # Add new ministry from API
+                seen_ministries.add(auth_name)
+                result["ministries"].append({
+                    "name": auth_name,
+                    "name_he": auth_name,
+                    "url": auth.get("website", ""),
+                    "phone": auth.get("phone", ""),
+                    "email": auth.get("email", ""),
+                    "department": auth.get("department", ""),
+                    "documents": [],
+                    "documents_he": [],
+                    "procedure": "",
+                    "official": True,
+                    "source": "official_api",
+                })
+
+        # Add specific legal requirements from API items
+        for item in free_import_result.get("items", []):
+            for req in item.get("legal_requirements", []):
+                req_name = req.get("name", "")
+                req_auth = req.get("authority", "")
+                if req_name:
+                    # Find the matching ministry and add the requirement
+                    for m in result["ministries"]:
+                        if req_auth and (req_auth in m["name"] or req_auth in m.get("name_he", "")):
+                            if req_name not in m["documents"] and req_name not in m["documents_he"]:
+                                m["documents_he"].append(req_name)
+                            break
+
+    # Build Hebrew summary
+    if result["ministries"]:
+        ministry_names = ", ".join(m["name_he"] for m in result["ministries"])
+        risk_he = {"low": "נמוך", "medium": "בינוני", "high": "גבוה", "critical": "קריטי"}
+        result["summary_he"] = (
+            f"פרק {chapter} — רמת רגולציה: {risk_he.get(result['risk_level'], result['risk_level'])}. "
+            f"גורמים מאשרים: {ministry_names}."
+        )
+        official_count = sum(1 for m in result["ministries"] if m.get("official"))
+        if official_count:
+            result["summary_he"] += f" ({official_count} מאומתים מול צו יבוא חופשי)"
+
+        print(f"  🏛️ MINISTRY ROUTING: {len(result['ministries'])} ministries, "
+              f"risk={result['risk_level']}, official={official_count}")
+    else:
+        result["summary_he"] = f"פרק {chapter} — אין דרישות רגולטוריות מיוחדות."
+        print(f"  🏛️ MINISTRY ROUTING: No specific ministry requirements for chapter {chapter}")
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+#  6. FREE IMPORT ORDER API — official license/permit requirements
 # ═══════════════════════════════════════════════════════════════
 
 _FIO_API = "https://apps.economy.gov.il/Apps/FreeImportServices/FreeImportData"
