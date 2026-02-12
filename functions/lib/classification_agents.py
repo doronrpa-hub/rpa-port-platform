@@ -522,8 +522,12 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         # Agent 1: Extract (Gemini Flash)
         print("    🔍 Agent 1: Extracting... [Gemini Flash]")
         invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key)
-        items = invoice.get("items", [{"description": doc_text[:500]}])
-        origin = items[0].get("origin_country", "") if items else ""
+        if not isinstance(invoice, dict):
+            invoice = {"items": [{"description": doc_text[:500]}]}
+        items = invoice.get("items") or [{"description": doc_text[:500]}]
+        if not isinstance(items, list):
+            items = [{"description": doc_text[:500]}]
+        origin = items[0].get("origin_country", "") if items and isinstance(items[0], dict) else ""
 
         # ── DOCUMENT PARSER: Identify each document and extract structured fields ──
         parsed_documents = []
@@ -550,6 +554,8 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         if INTELLIGENCE_AVAILABLE:
             print("    🧠 Intelligence: Pre-classifying from own knowledge...")
             for item in items[:3]:
+                if not isinstance(item, dict):
+                    continue
                 desc = item.get("description", "")
                 item_origin = item.get("origin_country", origin)
                 if desc:
@@ -569,7 +575,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 print(f"    🧠 Intelligence: Missing documents — {missing_names}")
 
         # Get context (existing librarian search)
-        search_terms = [i.get("description", "")[:50] for i in items[:5]]
+        search_terms = [i.get("description", "")[:50] for i in items[:5] if isinstance(i, dict)]
         tariff = query_tariff(db, search_terms)
         ministry = query_ministry_index(db)
         rules = query_classification_rules(db)
@@ -577,6 +583,8 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         # Enhanced knowledge search
         knowledge_context = ""
         for item in items[:3]:
+            if not isinstance(item, dict):
+                continue
             desc = item.get("description", "")
             if desc:
                 knowledge = full_knowledge_search(db, desc)
@@ -588,10 +596,12 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         # Agent 2: Classify (Claude Sonnet 4.5 — core task, best quality)
         print("    🏷️ Agent 2: Classifying... [Claude Sonnet 4.5]")
         classification = run_classification_agent(api_key, items, tariff, rules, combined_context, gemini_key=gemini_key)
-        
+        if not isinstance(classification, dict):
+            classification = {"classifications": []}
+
         # Session 11: Validate HS codes against tariff database
         print("    ✅ Validating HS codes against tariff database...")
-        raw_classifications = classification.get("classifications", [])
+        raw_classifications = classification.get("classifications") or []
         validated_classifications = validate_and_correct_classifications(db, raw_classifications)
         classification["classifications"] = validated_classifications
         
@@ -673,14 +683,20 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         # Agent 3: Regulatory (Gemini Flash)
         print("    ⚖️ Agent 3: Regulatory... [Gemini Flash]")
         regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry, gemini_key=gemini_key)
+        if not isinstance(regulatory, dict):
+            regulatory = {"regulatory": []}
 
         # Agent 4: FTA (Gemini Flash)
         print("    🌍 Agent 4: FTA... [Gemini Flash]")
         fta = run_fta_agent(api_key, classification.get("classifications", []), origin, gemini_key=gemini_key)
+        if not isinstance(fta, dict):
+            fta = {"fta": []}
 
         # Agent 5: Risk (Gemini Flash)
         print("    🚨 Agent 5: Risk... [Gemini Flash]")
         risk = run_risk_agent(api_key, invoice, classification.get("classifications", []), gemini_key=gemini_key)
+        if not isinstance(risk, dict):
+            risk = {"risk": {"level": "נמוך", "items": []}}
 
         # Agent 6: Synthesis (Gemini Pro)
         print("    📝 Agent 6: Synthesis... [Gemini Pro]")
