@@ -65,6 +65,26 @@
 - `classification_agents.py` updated: passes `seller_name` from invoice to `pre_classify()`
 - Files changed: `knowledge_indexer.py`, `intelligence.py`, `classification_agents.py`
 
+### Phase F: Verification Loop
+- Created `functions/lib/verification_loop.py` — verify, enrich, cache every classification, no AI cost
+- `verify_hs_code(db, hs_code, free_import_result)` — verifies against 3 tariff collections + Free Import Order API
+  - Verification statuses: "official" (tariff + FIO), "verified" (tariff only), "partial", "unverified"
+  - Adds purchase tax by HS chapter (vehicles 83%, alcohol ~100-170%, tobacco varies, etc.)
+  - Adds VAT rate (18%)
+  - Results cached in `verification_cache` collection (30-day TTL)
+- `verify_all_classifications(db, classifications, free_import_results)` — batch verification of all Agent 2 outputs
+  - Overrides AI-guessed duty_rate with official tariff DB rate when available
+  - Adds official Hebrew/English descriptions
+  - Adds FIO-specific legal requirements per HS code
+- `learn_from_verification(db, classification)` — stores verified items in `classification_knowledge`
+  - Only stores verified/official items (not unverified guesses)
+  - Bumps usage_count on repeat items; creates new entries for first-time verified items
+- Purchase tax table: chapters 24 (tobacco), 27 (fuels), 87 (vehicles 83%), 93 (arms) + alcohol subheadings 2203-2208
+- Wired into `classification_agents.py`: runs after ministry routing, before smart questions
+- HTML email report: "✅ אומת רשמית" (official), "✅ אומת" (verified), "⚠️ לא אומת" (unverified)
+- Excel report: includes purchase_tax, vat_rate, verification_status columns
+- Files changed: `verification_loop.py`, `classification_agents.py`
+
 ### Smart Question Engine
 - Created `functions/lib/smart_questions.py` — elimination-based clarification, no AI cost
 - `analyze_ambiguity()` — detects chapter conflicts, duty rate spread, regulatory divergence, confidence gaps
