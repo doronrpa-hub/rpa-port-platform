@@ -65,6 +65,23 @@
 - `classification_agents.py` updated: passes `seller_name` from invoice to `pre_classify()`
 - Files changed: `knowledge_indexer.py`, `intelligence.py`, `classification_agents.py`
 
+### Smart Question Engine
+- Created `functions/lib/smart_questions.py` — elimination-based clarification, no AI cost
+- `analyze_ambiguity()` — detects chapter conflicts, duty rate spread, regulatory divergence, confidence gaps
+- `should_ask_questions()` — decides if clarification is needed (triggers on: chapter conflict, duty spread >= 4%, low confidence, near-equal candidates)
+- `generate_smart_questions()` — builds questions referencing specific HS codes, duty rates, and ministry requirements
+  - 12 chapter-pair distinction hints (84/85 machinery vs electronics, 61/62 knitted vs woven, etc.)
+  - Includes: material questions, origin country with FTA implications, missing document requests, regulatory divergence warnings
+- `format_questions_html()` — styled RTL HTML block for email inclusion
+- `format_questions_he()` — plain text format
+- Wired into `classification_agents.py`:
+  - Runs after ministry routing, before synthesis agent
+  - Questions included in synthesis context (Agent 6 aware of ambiguity)
+  - Questions rendered in HTML email report
+  - Auto-sets email status to CLARIFICATION when questions generated
+  - Ambiguity info (reason, question count) saved to Firestore `rcb_classifications`
+- Files changed: `smart_questions.py`, `classification_agents.py`
+
 ---
 
 ## Session 17 — February 12, 2026
