@@ -74,6 +74,14 @@ except ImportError as e:
     print(f"Intelligence module not available: {e}")
     INTELLIGENCE_AVAILABLE = False
 
+# Document parser: per-document type identification & field extraction
+try:
+    from lib.document_parser import parse_all_documents
+    DOCUMENT_PARSER_AVAILABLE = True
+except ImportError as e:
+    print(f"Document parser not available: {e}")
+    DOCUMENT_PARSER_AVAILABLE = False
+
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -501,6 +509,23 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         items = invoice.get("items", [{"description": doc_text[:500]}])
         origin = items[0].get("origin_country", "") if items else ""
 
+        # ── DOCUMENT PARSER: Identify each document and extract structured fields ──
+        parsed_documents = []
+        if DOCUMENT_PARSER_AVAILABLE:
+            try:
+                parsed_documents = parse_all_documents(doc_text)
+                if parsed_documents:
+                    types_found = [d["type_info"]["name_en"] for d in parsed_documents]
+                    print(f"    📑 Document Parser: {len(parsed_documents)} docs — {', '.join(types_found)}")
+                    for pd in parsed_documents:
+                        comp = pd.get("completeness", {})
+                        if comp.get("missing"):
+                            crit = [m["name_he"] for m in comp["missing"] if m["importance"] == "critical"]
+                            if crit:
+                                print(f"       ⚠️ {pd.get('filename','')}: missing critical — {', '.join(crit)}")
+            except Exception as e:
+                print(f"    ⚠️ Document parser error: {e}")
+
         # ── PRE-CLASSIFY: System's own brain BEFORE AI ──
         intelligence_context = ""
         intelligence_results = {}
@@ -622,6 +647,24 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 "missing": [m["name_he"] for m in doc_validation.get("missing", [])],
             }
 
+        # Include parsed document details for synthesis
+        if parsed_documents:
+            all_results["parsed_documents"] = [
+                {
+                    "filename": pd.get("filename", ""),
+                    "doc_type": pd["doc_type"],
+                    "type_name": pd["type_info"]["name_he"],
+                    "confidence": pd["type_info"]["confidence"],
+                    "completeness_score": pd["completeness"]["score"],
+                    "fields_extracted": list(pd["fields"].keys()),
+                    "critical_missing": [
+                        m["name_he"] for m in pd["completeness"].get("missing", [])
+                        if m["importance"] == "critical"
+                    ],
+                }
+                for pd in parsed_documents
+            ]
+
         # Include Free Import Order official results
         if free_import_results:
             all_results["free_import_order"] = {
@@ -675,6 +718,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "document_validation": doc_validation,  # Session 18: Document check
             "free_import_order": free_import_results,  # Session 18: Official API results
             "ministry_routing": ministry_routing,  # Session 18: Phase C ministry routing
+            "parsed_documents": parsed_documents,  # Session 19: Per-document parsing
         }
     except Exception as e:
         print(f"    ❌ Error: {e}")
