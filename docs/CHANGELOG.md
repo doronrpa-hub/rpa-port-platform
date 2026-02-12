@@ -1,5 +1,29 @@
 # RPA-PORT Changelog
 
+## Session 18 — February 12, 2026
+
+### Intelligence Module
+- Created `functions/lib/intelligence.py` — the system's own brain, pure Firestore lookups, zero AI cost
+- `pre_classify(db, desc, origin)` — searches classification_knowledge, classification_rules, tariff DB for candidate HS codes before AI
+- `lookup_regulatory(db, hs_code)` — ministry/permit requirements by HS chapter from Firestore
+- `lookup_fta(db, hs_code, origin)` — FTA eligibility lookup with country name normalization (English + Hebrew)
+- `validate_documents(text, direction, has_fta)` — detects 11 document types (invoice, packing list, BL, EUR.1, etc.) via regex patterns
+- Wired into `classification_agents.py`: runs BEFORE AI agents, injects context into Agent 2 prompt
+- Intelligence results included in synthesis context and final return value
+
+### Phase B: Free Import Order API Integration
+- Added `query_free_import_order(db, hs_code)` to intelligence.py
+- Queries live Ministry of Economy API (`apps.economy.gov.il/Apps/FreeImportServices`)
+- Searches main endpoint + parent HS codes (requirements inherit from chapter-level parents)
+- Returns: authorities (name, department, phone, email, website), legal requirements, decree version
+- Cached in Firestore (`free_import_cache` collection, 7-day TTL)
+- Falls back to stale cache on API errors
+- Wired into pipeline: after Agent 2 classifies, queries API for each HS code (up to 3)
+- Official requirements included in Agent 6 synthesis context
+- Files changed: `intelligence.py`, `classification_agents.py`
+
+---
+
 ## Session 17 — February 12, 2026
 
 ### Knowledge Engine Audit
