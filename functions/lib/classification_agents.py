@@ -98,6 +98,14 @@ except ImportError as e:
     print(f"Verification loop not available: {e}")
     VERIFICATION_AVAILABLE = False
 
+# Document tracker: shipment phase detection + document completeness
+try:
+    from lib.document_tracker import create_tracker, Document, DocumentType as TrackerDocType, feed_parsed_documents
+    TRACKER_AVAILABLE = True
+except ImportError as e:
+    print(f"Document tracker not available: {e}")
+    TRACKER_AVAILABLE = False
+
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -546,6 +554,37 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             except Exception as e:
                 print(f"    ⚠️ Document parser error: {e}")
 
+        # ── SHIPMENT TRACKER: Feed BL/DO/invoice fields to tracker ──
+        tracker_info = None
+        if TRACKER_AVAILABLE and parsed_documents:
+            try:
+                bl_num = invoice.get("bl_number", "") or ""
+                shipment_id = bl_num or invoice.get("awb_number", "") or "PENDING"
+                direction_val = invoice.get("direction", "import")
+                transport = "sea_fcl" if invoice.get("freight_type") == "sea" else (
+                    "air" if invoice.get("freight_type") == "air" else None)
+
+                tracker = create_tracker(
+                    shipment_id=shipment_id,
+                    direction=direction_val,
+                    transport_mode=transport,
+                )
+                feed_parsed_documents(tracker, parsed_documents, invoice_data=invoice)
+
+                # Also add invoice doc if Agent 1 extracted it
+                if invoice.get("invoice_number") or invoice.get("seller"):
+                    tracker.add_document(Document(
+                        doc_type=TrackerDocType.INVOICE,
+                        doc_number=invoice.get("invoice_number", ""),
+                    ))
+
+                tracker_info = tracker.to_dict()
+                print(f"    📦 Tracker: phase={tracker.phase_hebrew}, "
+                      f"docs={len(tracker.documents)}, "
+                      f"missing={len(tracker.missing_docs)}")
+            except Exception as e:
+                print(f"    ⚠️ Tracker error: {e}")
+
         # ── PRE-CLASSIFY: System's own brain BEFORE AI ──
         intelligence_context = ""
         intelligence_results = {}
@@ -803,6 +842,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "parsed_documents": parsed_documents,  # Session 19: Per-document parsing
             "smart_questions": smart_questions,  # Phase E: Elimination-based questions
             "ambiguity": ambiguity_info,  # Phase E: Ambiguity analysis
+            "tracker": tracker_info,  # Shipment phase tracker
         }
     except Exception as e:
         print(f"    ❌ Error: {e}")

@@ -666,6 +666,143 @@ def create_tracker(
 
 
 # =============================================================================
+# PORT PROCESS STEP DEFINITIONS (for container-level tracking)
+# =============================================================================
+
+_IMPORT_PROCESS_STEPS = [
+    ("manifest", "ManifestDate"),
+    ("port_unloading", "PortUnloadingDate"),
+    ("delivery_order", "DeliveryOrderDate"),
+    ("customs_check", "CustomsCheckDate"),
+    ("customs_release", "CustomsReleaseDate"),
+    ("port_release", "PortReleaseDate"),
+    ("escort_certificate", "EscortCertificateDate"),
+    ("cargo_exit_request", "CargoExitRequestDate"),
+    ("cargo_exit", "CargoExitDate"),
+]
+
+_EXPORT_PROCESS_STEPS = [
+    ("storage_id", "StorageIDDate"),
+    ("port_storage_feedback", "PortStorageFeedbackDate"),
+    ("storage_to_customs", "StorageIDToCustomsDate"),
+    ("driver_assignment", "DriverAssignmentDate"),
+    ("customs_check", "CustomsCheckDate"),
+    ("customs_release", "CustomsReleaseDate"),
+    ("cargo_entry", "CargoEntryDate"),
+    ("cargo_loading", "CargoLoadingDate"),
+    ("ship_sailing", "ShipSailingDate"),
+]
+
+
+def _derive_current_step(import_proc, export_proc):
+    """Derive the current step from process dates (latest step with a date)"""
+    import_proc = import_proc or {}
+    export_proc = export_proc or {}
+
+    # Check export steps (latest first)
+    for step_id, date_field in reversed(_EXPORT_PROCESS_STEPS):
+        if export_proc.get(date_field):
+            return step_id
+
+    # Check import steps (latest first)
+    for step_id, date_field in reversed(_IMPORT_PROCESS_STEPS):
+        if import_proc.get(date_field):
+            return step_id
+
+    return "initial"
+
+
+def feed_parsed_documents(tracker, parsed_documents, invoice_data=None):
+    """
+    Feed document parser results into the tracker.
+
+    Args:
+        tracker: DocumentTracker instance
+        parsed_documents: list of dicts from document_parser.parse_all_documents()
+        invoice_data: optional dict from Agent 1 extraction
+    """
+    invoice_data = invoice_data or {}
+
+    for pd in parsed_documents:
+        doc_type = pd.get("doc_type", "")
+        fields = pd.get("fields", {})
+        if not fields:
+            continue
+
+        if doc_type == "bill_of_lading":
+            tracker.add_document(Document(
+                doc_type=DocumentType.BILL_OF_LADING,
+                doc_number=fields.get("bl_number", ""),
+                notes=f"vessel={fields.get('vessel', '')} "
+                      f"POL={fields.get('port_of_loading', '')} "
+                      f"POD={fields.get('port_of_discharge', '')} "
+                      f"containers={fields.get('container_numbers', '')}",
+            ))
+            if not tracker.transport_mode:
+                tracker.set_transport_mode("sea_fcl")
+
+        elif doc_type == "air_waybill":
+            tracker.add_document(Document(
+                doc_type=DocumentType.AWB,
+                doc_number=fields.get("awb_number", ""),
+                notes=f"from={fields.get('airport_departure', '')} "
+                      f"to={fields.get('airport_destination', '')}",
+            ))
+            if not tracker.transport_mode:
+                tracker.set_transport_mode("air")
+
+        elif doc_type == "delivery_order":
+            tracker.add_document(Document(
+                doc_type=DocumentType.DELIVERY_ORDER,
+                doc_number=fields.get("do_number", ""),
+                notes=f"bl_ref={fields.get('bl_reference', '')}",
+            ))
+
+        elif doc_type == "commercial_invoice":
+            tracker.add_document(Document(
+                doc_type=DocumentType.INVOICE,
+                doc_number=fields.get("invoice_number", ""),
+            ))
+
+        elif doc_type == "packing_list":
+            tracker.add_document(Document(
+                doc_type=DocumentType.PACKING_LIST,
+                doc_number=fields.get("packing_list_number", ""),
+            ))
+
+        elif doc_type == "certificate_of_origin":
+            tracker.add_document(Document(
+                doc_type=DocumentType.CERTIFICATE_OF_ORIGIN,
+                doc_number=fields.get("certificate_number", ""),
+            ))
+
+        elif doc_type == "insurance":
+            tracker.add_document(Document(
+                doc_type=DocumentType.INSURANCE_CERT,
+                doc_number=fields.get("policy_number", ""),
+            ))
+
+        elif doc_type == "health_certificate":
+            tracker.add_document(Document(
+                doc_type=DocumentType.HEALTH_CERT,
+                doc_number=fields.get("certificate_number", ""),
+            ))
+
+    # Set incoterms from invoice if available
+    incoterms_str = invoice_data.get("incoterms", "")
+    if incoterms_str and not tracker.incoterms:
+        try:
+            tracker.set_incoterms(incoterms_str.upper().strip())
+        except (ValueError, KeyError):
+            pass
+
+    # Set direction from invoice
+    direction = invoice_data.get("direction", "")
+    if direction in ("import", "export"):
+        tracker.direction = direction
+
+
+# =============================================================================
 # QUICK TEST
 # =============================================================================
 
