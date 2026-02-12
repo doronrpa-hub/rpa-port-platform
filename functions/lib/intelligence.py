@@ -20,15 +20,18 @@ from datetime import datetime, timezone
 #  1. PRE-CLASSIFY — search own knowledge before AI
 # ═══════════════════════════════════════════════════════════════
 
-def pre_classify(db, item_description, origin_country=""):
+def pre_classify(db, item_description, origin_country="", seller_name=""):
     """
     Search the system's own Firestore knowledge for candidate HS codes
     BEFORE calling any AI model.
 
-    Searches:
-      - classification_knowledge (past classifications, corrections)
-      - classification_rules (keyword patterns)
-      - tariff / tariff_chapters (HS description matching)
+    Searches (fast path first, slow fallback):
+      1. keyword_index (pre-built inverted index — fast O(keywords) lookups)
+      2. product_index (exact/prefix product match)
+      3. supplier_index (supplier-based HS hints)
+      4. classification_knowledge (past classifications, corrections)
+      5. classification_rules (keyword patterns)
+      6. tariff / tariff_chapters (HS description matching — slow, only if needed)
       - regulatory_requirements (by HS chapter)
       - fta_agreements (by origin country)
 
@@ -47,21 +50,93 @@ def pre_classify(db, item_description, origin_country=""):
     desc_lower = item_description.lower()
     keywords = _extract_keywords(item_description)
 
-    # ── Step 1: classification_knowledge (past items) ──
-    ck_results = _search_classification_knowledge(db, keywords, desc_lower)
-    for r in ck_results:
+    # ── Step 1: keyword_index (fast pre-built inverted index) ──
+    ki_results = _search_keyword_index(db, keywords)
+    for r in ki_results:
         candidates.append({
             "hs_code": r["hs_code"],
             "confidence": r["score"],
-            "source": "past_classification",
+            "source": "keyword_index",
             "description": r.get("description", ""),
-            "duty_rate": r.get("duty_rate", ""),
-            "reasoning": f"Similar past item (score {r['score']}): {r.get('description', '')[:80]}",
-            "is_correction": r.get("is_correction", False),
-            "usage_count": r.get("usage_count", 0),
+            "duty_rate": "",
+            "reasoning": f"Keyword index ({r.get('matched_keywords', 0)} keywords, weight {r.get('weight', 0)})",
         })
+    if ki_results:
+        print(f"  🧠 INTELLIGENCE: keyword_index → {len(ki_results)} candidates")
 
-    # ── Step 2: classification_rules (keyword patterns) ──
+    # ── Step 2: product_index (exact/prefix product match) ──
+    pi_results = _search_product_index(db, desc_lower)
+    for r in pi_results:
+        already = any(c["hs_code"] == r["hs_code"] for c in candidates)
+        if not already:
+            candidates.append({
+                "hs_code": r["hs_code"],
+                "confidence": r["confidence"],
+                "source": "product_index",
+                "description": r.get("description", ""),
+                "duty_rate": "",
+                "reasoning": f"Product match (usage {r.get('usage_count', 0)}x)",
+                "is_correction": r.get("is_correction", False),
+                "usage_count": r.get("usage_count", 0),
+            })
+        else:
+            # Boost existing candidate confidence if product_index agrees
+            for c in candidates:
+                if c["hs_code"] == r["hs_code"]:
+                    c["confidence"] = min(95, c["confidence"] + 5)
+                    break
+    if pi_results:
+        print(f"  🧠 INTELLIGENCE: product_index → {len(pi_results)} matches")
+
+    # ── Step 3: supplier_index (supplier-based HS hints) ──
+    if seller_name:
+        si_results = _search_supplier_index(db, seller_name)
+        for r in si_results:
+            already = any(c["hs_code"] == r["hs_code"] for c in candidates)
+            if not already:
+                candidates.append({
+                    "hs_code": r["hs_code"],
+                    "confidence": r["confidence"],
+                    "source": "supplier_index",
+                    "description": "",
+                    "duty_rate": "",
+                    "reasoning": f"Supplier '{seller_name}' ships this ({r.get('count', 0)}x)",
+                })
+            else:
+                # Boost existing candidate if supplier also ships it
+                for c in candidates:
+                    if c["hs_code"] == r["hs_code"]:
+                        c["confidence"] = min(95, c["confidence"] + 3)
+                        break
+        if si_results:
+            print(f"  🧠 INTELLIGENCE: supplier_index → {len(si_results)} hints for '{seller_name}'")
+
+    # ── Step 4: classification_knowledge (past items) ──
+    ck_results = _search_classification_knowledge(db, keywords, desc_lower)
+    for r in ck_results:
+        already = any(c["hs_code"] == r["hs_code"] for c in candidates)
+        if not already:
+            candidates.append({
+                "hs_code": r["hs_code"],
+                "confidence": r["score"],
+                "source": "past_classification",
+                "description": r.get("description", ""),
+                "duty_rate": r.get("duty_rate", ""),
+                "reasoning": f"Similar past item (score {r['score']}): {r.get('description', '')[:80]}",
+                "is_correction": r.get("is_correction", False),
+                "usage_count": r.get("usage_count", 0),
+            })
+        else:
+            # Boost if past classification confirms
+            for c in candidates:
+                if c["hs_code"] == r["hs_code"]:
+                    c["confidence"] = min(95, c["confidence"] + 5)
+                    if r.get("is_correction"):
+                        c["confidence"] = min(95, c["confidence"] + 5)
+                        c["is_correction"] = True
+                    break
+
+    # ── Step 5: classification_rules (keyword patterns) ──
     rule_results = _search_classification_rules(db, desc_lower)
     for r in rule_results:
         # Don't duplicate if same heading already found with higher confidence
@@ -78,20 +153,23 @@ def pre_classify(db, item_description, origin_country=""):
                 "notes": r.get("notes", ""),
             })
 
-    # ── Step 3: tariff + tariff_chapters (HS description matching) ──
-    tariff_results = _search_tariff(db, keywords)
-    for r in tariff_results:
-        # Don't duplicate if same code already found
-        already = any(c["hs_code"] == r["hs_code"] for c in candidates)
-        if not already:
-            candidates.append({
-                "hs_code": r["hs_code"],
-                "confidence": r["score"],
-                "source": "tariff_db",
-                "description": r.get("description_he", r.get("description_en", "")),
-                "duty_rate": r.get("duty_rate", ""),
-                "reasoning": f"Tariff description match (score {r['score']})",
-            })
+    # ── Step 6: tariff scan (SLOW FALLBACK — skip if keyword_index had results) ──
+    if not ki_results:
+        tariff_results = _search_tariff(db, keywords)
+        for r in tariff_results:
+            # Don't duplicate if same code already found
+            already = any(c["hs_code"] == r["hs_code"] for c in candidates)
+            if not already:
+                candidates.append({
+                    "hs_code": r["hs_code"],
+                    "confidence": r["score"],
+                    "source": "tariff_db",
+                    "description": r.get("description_he", r.get("description_en", "")),
+                    "duty_rate": r.get("duty_rate", ""),
+                    "reasoning": f"Tariff description match (score {r['score']})",
+                })
+    else:
+        print(f"  🧠 INTELLIGENCE: Skipping slow tariff scan (keyword_index had results)")
 
     # Sort by confidence descending
     candidates.sort(key=lambda c: c["confidence"], reverse=True)
