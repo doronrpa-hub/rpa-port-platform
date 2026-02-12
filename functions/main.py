@@ -507,54 +507,31 @@ def on_classification_correction(event: firestore_fn.Event) -> None:
 # ============================================================
 @scheduler_fn.on_schedule(schedule="every 1 hours", memory=options.MemoryOption.MB_256)
 def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
-    """Periodically check and fill knowledge gaps"""
-    
-    # Count by category
-    categories = {}
-    for doc in get_db().collection("knowledge_base").stream():
-        cat = doc.to_dict().get("category", "unknown")
-        categories[cat] = categories.get(cat, 0) + 1
+    """Periodically enrich knowledge base — Phase 3"""
+    try:
+        from lib.enrichment_agent import create_enrichment_agent
+        from lib.librarian_index import rebuild_index
 
-    total = sum(categories.values())
-    print(f"Knowledge base: {total} documents, {len(categories)} categories")
+        enrichment = create_enrichment_agent(get_db())
 
-    # Check for unprocessed documents in storage
-    unprocessed = get_db().collection("inbox").where("status", "==", "new").limit(10).stream()
-    for doc in unprocessed:
-        print(f"Found unprocessed email: {doc.id}")
-        # Trigger reprocessing
+        # 1. Check and tag any completed PC Agent downloads
+        tagged = enrichment.check_and_tag_completed_downloads()
+        print(f" Tagged {len(tagged)} completed downloads")
 
-    # Check for stale enrichment sources
-    sources = ["customs_guidance", "free_import", "standards", "food_safety", "fta_updates"]
-    for source in sources:
-        log_doc = get_db().collection("enrichment_log").document(source).get()
-        if log_doc.exists:
-            data = log_doc.to_dict()
-            last_check = data.get("last_checked", "")
-            if last_check:
-                try:
-                    last_dt = datetime.fromisoformat(str(last_check))
-                    hours_since = (datetime.now() - last_dt).total_seconds() / 3600
-                    if hours_since > 24:
-                        print(f"Source {source} stale ({hours_since:.0f}h) - creating refresh task")
-                        get_db().collection("agent_tasks").add({
-                            "type": "enrichment_check",
-                            "source": source,
-                            "status": "pending",
-                            "created_at": firestore.SERVER_TIMESTAMP
-                        })
-                except Exception:
-                    pass
-        else:
-            print(f"Source {source} never checked - creating task")
-            get_db().collection("agent_tasks").add({
-                "type": "enrichment_check",
-                "source": source,
-                "status": "pending",
-                "created_at": firestore.SERVER_TIMESTAMP
-            })
+        # 2. Run scheduled enrichment tasks (checks 23 task types)
+        summary = enrichment.run_scheduled_enrichments()
+        print(f" Enrichment: checked {summary['tasks_checked']}, ran {summary['tasks_run']}")
 
-    print("Enrichment check complete")
+        # 3. Get status for logging
+        stats = enrichment.get_learning_stats()
+        print(f" Knowledge: {stats['total_learned']} learned, "
+              f"{stats['corrections']} corrections, "
+              f"{stats['pc_agent_downloads']} downloads")
+
+    except Exception as e:
+        print(f" Enrichment error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # ============================================================
