@@ -168,13 +168,17 @@ class TestExtractFromAttachments:
         assert result == ""
     
     def test_non_pdf_skipped(self):
-        """Should skip non-PDF attachments (except images)"""
+        """Should skip unsupported file types, but extract supported non-PDF formats"""
         attachments = [
             {"name": "doc.docx", "contentBytes": base64.b64encode(b"word doc").decode()},
-            {"name": "data.csv", "contentBytes": base64.b64encode(b"csv data").decode()}
+            {"name": "data.csv", "contentBytes": base64.b64encode(b"col1,col2\nval1,val2").decode()},
+            {"name": "archive.zip", "contentBytes": base64.b64encode(b"zip data").decode()}
         ]
         result = extract_text_from_attachments(attachments)
-        assert result == ""  # Non-PDF/image files skipped
+        # CSV is now supported — should extract content
+        assert "col1" in result or "val1" in result
+        # ZIP is unsupported — should not appear
+        assert "zip data" not in result
     
     def test_missing_content_bytes(self):
         """Should skip attachments without content"""
