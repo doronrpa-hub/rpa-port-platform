@@ -66,6 +66,14 @@ except ImportError as e:
     print(f"Enrichment agent not available: {e}")
     ENRICHMENT_AVAILABLE = False
 
+# Intelligence module: system's own brain (Firestore-only, no AI)
+try:
+    from lib.intelligence import pre_classify, lookup_regulatory, lookup_fta, validate_documents
+    INTELLIGENCE_AVAILABLE = True
+except ImportError as e:
+    print(f"Intelligence module not available: {e}")
+    INTELLIGENCE_AVAILABLE = False
+
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -484,20 +492,46 @@ def run_synthesis_agent(api_key, all_results, gemini_key=None):
 
 def run_full_classification(api_key, doc_text, db, gemini_key=None):
     """Run complete multi-agent classification
-    Session 15: Now accepts gemini_key for cost-optimized multi-model routing"""
+    Session 15: Now accepts gemini_key for cost-optimized multi-model routing
+    Session 18: Intelligence module runs BEFORE AI agents"""
     try:
         # Agent 1: Extract (Gemini Flash)
         print("    🔍 Agent 1: Extracting... [Gemini Flash]")
         invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key)
         items = invoice.get("items", [{"description": doc_text[:500]}])
         origin = items[0].get("origin_country", "") if items else ""
-        
-        # Get context
+
+        # ── PRE-CLASSIFY: System's own brain BEFORE AI ──
+        intelligence_context = ""
+        intelligence_results = {}
+        doc_validation = None
+        if INTELLIGENCE_AVAILABLE:
+            print("    🧠 Intelligence: Pre-classifying from own knowledge...")
+            for item in items[:3]:
+                desc = item.get("description", "")
+                item_origin = item.get("origin_country", origin)
+                if desc:
+                    pc_result = pre_classify(db, desc, item_origin)
+                    intelligence_results[desc[:50]] = pc_result
+                    if pc_result.get("context_text"):
+                        intelligence_context += pc_result["context_text"] + "\n\n"
+
+            # Validate documents present in extracted text
+            has_fta = any(
+                r.get("fta", {}).get("eligible", False)
+                for r in intelligence_results.values()
+            )
+            doc_validation = validate_documents(doc_text, direction="import", has_fta=has_fta)
+            if doc_validation.get("missing"):
+                missing_names = ", ".join(m["name_he"] for m in doc_validation["missing"])
+                print(f"    🧠 Intelligence: Missing documents — {missing_names}")
+
+        # Get context (existing librarian search)
         search_terms = [i.get("description", "")[:50] for i in items[:5]]
         tariff = query_tariff(db, search_terms)
         ministry = query_ministry_index(db)
         rules = query_classification_rules(db)
-        
+
         # Enhanced knowledge search
         knowledge_context = ""
         for item in items[:3]:
@@ -505,10 +539,13 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             if desc:
                 knowledge = full_knowledge_search(db, desc)
                 knowledge_context += build_classification_context(knowledge) + "\n"
-        
+
+        # Merge intelligence context with librarian context
+        combined_context = intelligence_context + knowledge_context
+
         # Agent 2: Classify (Claude Sonnet 4.5 — core task, best quality)
         print("    🏷️ Agent 2: Classifying... [Claude Sonnet 4.5]")
-        classification = run_classification_agent(api_key, items, tariff, rules, knowledge_context, gemini_key=gemini_key)
+        classification = run_classification_agent(api_key, items, tariff, rules, combined_context, gemini_key=gemini_key)
         
         # Session 11: Validate HS codes against tariff database
         print("    ✅ Validating HS codes against tariff database...")
@@ -538,6 +575,26 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         # Agent 6: Synthesis (Gemini Pro)
         print("    📝 Agent 6: Synthesis... [Gemini Pro]")
         all_results = {"invoice": invoice, "classification": classification, "regulatory": regulatory, "fta": fta, "risk": risk}
+
+        # Include intelligence results for synthesis context
+        if intelligence_results:
+            all_results["intelligence"] = {
+                "pre_classify": {
+                    k: {
+                        "top_candidate": v["candidates"][0] if v.get("candidates") else None,
+                        "candidates_found": v.get("stats", {}).get("candidates_found", 0),
+                        "fta_eligible": v.get("stats", {}).get("fta_eligible", False),
+                    }
+                    for k, v in intelligence_results.items()
+                }
+            }
+        if doc_validation:
+            all_results["document_validation"] = {
+                "score": doc_validation.get("score", 0),
+                "present": [p["name_he"] for p in doc_validation.get("present", [])],
+                "missing": [m["name_he"] for m in doc_validation.get("missing", [])],
+            }
+
         synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
         
         # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
@@ -551,7 +608,9 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "success": True,
             "agents": all_results,
             "synthesis": synthesis,
-            "invoice_data": invoice  # Session 10: Pass invoice data for validation
+            "invoice_data": invoice,  # Session 10: Pass invoice data for validation
+            "intelligence": intelligence_results,  # Session 18: Pre-classify results
+            "document_validation": doc_validation,  # Session 18: Document check
         }
     except Exception as e:
         print(f"    ❌ Error: {e}")
