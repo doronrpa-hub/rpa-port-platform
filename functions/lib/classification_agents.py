@@ -58,6 +58,14 @@ except ImportError as e:
     print(f"⚠️ Language tools not available: {e}")
     LANGUAGE_TOOLS_AVAILABLE = False
 
+# Session 17 Phase 2: Enrichment agent integration
+try:
+    from lib.enrichment_agent import create_enrichment_agent
+    ENRICHMENT_AVAILABLE = True
+except ImportError as e:
+    print(f"Enrichment agent not available: {e}")
+    ENRICHMENT_AVAILABLE = False
+
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -963,6 +971,21 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 save_data["clarification_sent"] = clarification_sent
             
             db.collection("rcb_classifications").add(save_data)
+
+            # Phase 2: Learn from this classification
+            if ENRICHMENT_AVAILABLE:
+                try:
+                    enrichment = create_enrichment_agent(db)
+                    enrichment.on_classification_complete(results)
+                    enrichment.on_email_processed({
+                        "sender": to_email,
+                        "subject": subject,
+                        "extracted_items": invoice_data.get('items', [])
+                    })
+                    print("  Enrichment: learned from classification")
+                except Exception as e:
+                    print(f"  Enrichment learning error: {e}")
+
             return True
         return False
     except Exception as e:
