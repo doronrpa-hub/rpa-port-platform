@@ -8,6 +8,16 @@
 - Confirmed librarian_index, librarian_researcher, enrichment_agent never wired into main.py
 - Created 6-phase wiring plan (`docs/WIRING_PLAN.md`)
 
+### Phase 0: Document Extraction Overhaul
+- OCR DPI raised from 150 to 300 for better accuracy
+- Added image preprocessing before OCR (grayscale, contrast 1.5x, sharpen) via Pillow
+- Replaced `len > 50` quality check with `_assess_extraction_quality()` (Hebrew, Latin, digit ratios)
+- Improved pdfplumber table extraction with `[TABLE]` structure tags
+- Added `_cleanup_hebrew_text()` for common OCR typos
+- Added `_tag_document_structure()` — regex detection of invoice#, HS codes, BL/AWB, countries, amounts, incoterms
+- Added multi-format support: Excel (.xlsx/.xls), Word (.docx), email (.eml), URL detection
+- Files changed: `rcb_helpers.py`, `requirements.txt`
+
 ### Phase 1: Build the Index
 - Ran `rebuild_index()` — populated `librarian_index` with 12,595 documents from 20 collections
 - `smart_search()` now hits the index first instead of slow per-collection scanning
@@ -24,10 +34,29 @@
 - Activates 23 enrichment task types (tariff updates, ministry procedures, FTAs, etc.)
 - Zero API cost — generates tasks and queries, no AI calls
 
+### Phase A: Baseline Knowledge Import
+- Created `functions/data/fta_agreements.json` — 21 FTA agreements with country codes, origin proof, preferential rates
+- Created `functions/data/regulatory_requirements.json` — 28 HS chapter groups mapped to ministries
+- Created `functions/data/classification_rules.json` — 11 GIR principles + 15 keyword patterns
+- Created `functions/import_knowledge.py` — imports all 3 JSONs into Firestore
+- Imported 150 documents: 21 fta_agreements, 28 regulatory_requirements, 75 ministry_index, 26 classification_rules
+- All entries marked `verified: false` — system will verify against official sources over time
+
+### 6 Extraction Fixes
+1. Fixed `_assess_extraction_quality` — no longer rejects text-only documents (certificates, EUR.1, letters) that lack numbers
+2. Added `_extract_from_msg()` for Outlook .msg files via `extract-msg` library; split .eml/.msg handling
+3. Added TIFF support (multi-page OCR via PIL), CSV/TSV (with Hebrew encoding fallback), HTML (strip script/style/tags)
+4. Wired `email_body` from Graph API through `process_and_send_report` into `extract_text_from_attachments` — URLs in email body now detected
+5. Added `_try_decode()` helper — tries utf-8, windows-1255, iso-8859-8, latin-1 for Israeli government files
+6. Added extraction summary logging (file count, total chars, 100-char preview per file)
+- Updated `test_non_pdf_skipped` to expect CSV content instead of empty string
+- Files changed: `rcb_helpers.py`, `classification_agents.py`, `main.py`, `requirements.txt`, `test_rcb_helpers.py`
+
 ### Documentation
 - Created `docs/SESSION17_BACKUP.md` — session notes
 - Created `docs/WIRING_PLAN.md` — 6-phase wiring plan
 - Created `docs/FIRESTORE_INVENTORY.md` — 16,927 docs across 40 collections
+- Created `docs/MASTER_PLAN.md` — single source of truth, supersedes all previous session docs
 - Created `docs/SYSTEM.md`, `docs/CHANGELOG.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md`
 
 ---
