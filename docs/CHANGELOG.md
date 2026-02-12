@@ -46,6 +46,25 @@
 - Parsed document types, extracted fields, and completeness warnings included in synthesis context and final return value
 - Files changed: `document_parser.py`, `classification_agents.py`
 
+### Phase E: Knowledge Indexer
+- Created `functions/knowledge_indexer.py` — one-time job to build inverted indexes from all Firestore knowledge
+- `build_keyword_index()` — reads ALL tariff (11,753), tariff_chapters, hs_code_index, classification_knowledge entries; builds keyword → HS code inverted index with weights
+  - Hebrew + English keywords extracted and indexed
+  - Weight scoring: chapter descriptions 2x, corrections 3x bonus, high-usage items +1–2x
+  - Top 20 HS codes stored per keyword
+- `build_product_index()` — reads classification_knowledge + rcb_classifications + classifications; maps product description → HS code with confidence and usage count
+- `build_supplier_index()` — reads sellers + rcb_classifications + classifications; maps supplier name → list of HS codes they typically ship (with count and last_seen)
+- Stores in Firestore: `keyword_index`, `product_index`, `supplier_index` collections
+- Supports `--dry-run` and `--stats-only` modes; stores run metadata in `system_metadata`
+- Wired into `intelligence.py` `pre_classify()`:
+  - New Step 1: `_search_keyword_index()` — fast O(keywords) Firestore lookups instead of scanning 11,753 tariff docs
+  - New Step 2: `_search_product_index()` — exact/prefix product match
+  - New Step 3: `_search_supplier_index()` — supplier-based HS hints (lower confidence, boosts existing candidates)
+  - Old tariff scan kept as fallback if keyword_index not yet built
+  - `pre_classify()` now accepts optional `seller_name` parameter
+- `classification_agents.py` updated: passes `seller_name` from invoice to `pre_classify()`
+- Files changed: `knowledge_indexer.py`, `intelligence.py`, `classification_agents.py`
+
 ---
 
 ## Session 17 — February 12, 2026

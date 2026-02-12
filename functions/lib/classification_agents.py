@@ -82,6 +82,14 @@ except ImportError as e:
     print(f"Document parser not available: {e}")
     DOCUMENT_PARSER_AVAILABLE = False
 
+# Smart question engine: elimination-based clarification
+try:
+    from lib.smart_questions import should_ask_questions, generate_smart_questions, format_questions_html
+    SMART_QUESTIONS_AVAILABLE = True
+except ImportError as e:
+    print(f"Smart questions not available: {e}")
+    SMART_QUESTIONS_AVAILABLE = False
+
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
 # =============================================================================
@@ -530,13 +538,14 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         intelligence_context = ""
         intelligence_results = {}
         doc_validation = None
+        seller_name = invoice.get("seller", "")
         if INTELLIGENCE_AVAILABLE:
             print("    🧠 Intelligence: Pre-classifying from own knowledge...")
             for item in items[:3]:
                 desc = item.get("description", "")
                 item_origin = item.get("origin_country", origin)
                 if desc:
-                    pc_result = pre_classify(db, desc, item_origin)
+                    pc_result = pre_classify(db, desc, item_origin, seller_name=seller_name)
                     intelligence_results[desc[:50]] = pc_result
                     if pc_result.get("context_text"):
                         intelligence_context += pc_result["context_text"] + "\n\n"
@@ -612,18 +621,45 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                     except Exception as e:
                         print(f"    ⚠️ Ministry routing error: {e}")
 
+        # ── SMART QUESTIONS: Detect ambiguity and generate elimination questions ──
+        smart_questions = []
+        ambiguity_info = {}
+        if SMART_QUESTIONS_AVAILABLE:
+            try:
+                ask, ambiguity_info = should_ask_questions(
+                    validated_classifications,
+                    intelligence_results=intelligence_results,
+                    free_import_results=free_import_results,
+                    ministry_routing=ministry_routing,
+                )
+                if ask:
+                    smart_questions = generate_smart_questions(
+                        ambiguity_info,
+                        validated_classifications,
+                        invoice_data=invoice,
+                        free_import_results=free_import_results,
+                        ministry_routing=ministry_routing,
+                        parsed_documents=parsed_documents,
+                    )
+                    print(f"    ❓ Smart questions: {len(smart_questions)} questions generated "
+                          f"(reason: {ambiguity_info.get('reason', 'unknown')})")
+                else:
+                    print(f"    ✅ Classification clear — no questions needed")
+            except Exception as e:
+                print(f"    ⚠️ Smart questions error: {e}")
+
         # Agent 3: Regulatory (Gemini Flash)
         print("    ⚖️ Agent 3: Regulatory... [Gemini Flash]")
         regulatory = run_regulatory_agent(api_key, classification.get("classifications", []), ministry, gemini_key=gemini_key)
-        
+
         # Agent 4: FTA (Gemini Flash)
         print("    🌍 Agent 4: FTA... [Gemini Flash]")
         fta = run_fta_agent(api_key, classification.get("classifications", []), origin, gemini_key=gemini_key)
-        
+
         # Agent 5: Risk (Gemini Flash)
         print("    🚨 Agent 5: Risk... [Gemini Flash]")
         risk = run_risk_agent(api_key, invoice, classification.get("classifications", []), gemini_key=gemini_key)
-        
+
         # Agent 6: Synthesis (Gemini Pro)
         print("    📝 Agent 6: Synthesis... [Gemini Pro]")
         all_results = {"invoice": invoice, "classification": classification, "regulatory": regulatory, "fta": fta, "risk": risk}

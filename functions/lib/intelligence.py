@@ -1407,8 +1407,172 @@ def _search_classification_rules(db, desc_lower):
     return results[:5]
 
 
+def _search_keyword_index(db, keywords):
+    """
+    Fast lookup via pre-built keyword_index collection.
+    Each keyword doc has: keyword, codes: [{hs_code, weight, source, description}].
+    Aggregate across all matching keywords, score by combined weight.
+    """
+    if not keywords:
+        return []
+
+    # hs_code → {total_weight, matched_keywords, description}
+    aggregated = {}
+
+    try:
+        for kw in keywords[:12]:
+            safe_id = re.sub(r'[^\w\u0590-\u05FF]', '_', kw.lower())
+            safe_id = re.sub(r'_+', '_', safe_id).strip('_')[:200]
+            if not safe_id:
+                continue
+
+            doc = db.collection("keyword_index").document(safe_id).get()
+            if not doc.exists:
+                continue
+
+            data = doc.to_dict()
+            for entry in data.get("codes", [])[:20]:
+                hs = entry.get("hs_code", "")
+                if not hs:
+                    continue
+                if hs not in aggregated:
+                    aggregated[hs] = {
+                        "total_weight": 0,
+                        "matched_keywords": 0,
+                        "description": entry.get("description", ""),
+                    }
+                aggregated[hs]["total_weight"] += entry.get("weight", 1)
+                aggregated[hs]["matched_keywords"] += 1
+    except Exception as e:
+        print(f"    ⚠️ keyword_index search error: {e}")
+        return []
+
+    if not aggregated:
+        return []
+
+    # Score: combine keyword match count and weight
+    results = []
+    for hs, info in aggregated.items():
+        kw_ratio = info["matched_keywords"] / max(len(keywords), 1)
+        score = min(90, int(kw_ratio * 70 + min(info["total_weight"], 20) * 1.5))
+        if score >= 20:
+            results.append({
+                "hs_code": hs,
+                "score": score,
+                "weight": info["total_weight"],
+                "matched_keywords": info["matched_keywords"],
+                "description": info["description"],
+            })
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results[:10]
+
+
+def _search_product_index(db, desc_lower):
+    """
+    Look up pre-built product_index for exact/close product matches.
+    Product keys are normalized descriptions.
+    """
+    if not desc_lower or len(desc_lower) < 5:
+        return []
+
+    results = []
+
+    try:
+        # Normalize to match how indexer stores it
+        normalized = re.sub(r'[^\w\u0590-\u05FF\s]', ' ', desc_lower)
+        normalized = re.sub(r'\s+', ' ', normalized).strip()[:200]
+        if not normalized:
+            return []
+
+        safe_id = re.sub(r'[^\w\u0590-\u05FF]', '_', normalized)
+        safe_id = re.sub(r'_+', '_', safe_id).strip('_')[:200]
+
+        # Try exact match
+        doc = db.collection("product_index").document(safe_id).get()
+        if doc.exists:
+            data = doc.to_dict()
+            results.append({
+                "hs_code": data.get("hs_code", ""),
+                "confidence": data.get("confidence", 75),
+                "usage_count": data.get("usage_count", 0),
+                "description": data.get("description", ""),
+                "is_correction": data.get("is_correction", False),
+            })
+
+        # Also try shorter prefix (first 60 chars) for partial matches
+        if len(normalized) > 60:
+            prefix = normalized[:60].strip()
+            prefix_id = re.sub(r'[^\w\u0590-\u05FF]', '_', prefix)
+            prefix_id = re.sub(r'_+', '_', prefix_id).strip('_')[:200]
+            if prefix_id != safe_id:
+                doc2 = db.collection("product_index").document(prefix_id).get()
+                if doc2.exists:
+                    data2 = doc2.to_dict()
+                    hs = data2.get("hs_code", "")
+                    if not any(r["hs_code"] == hs for r in results):
+                        results.append({
+                            "hs_code": hs,
+                            "confidence": max(50, data2.get("confidence", 75) - 10),
+                            "usage_count": data2.get("usage_count", 0),
+                            "description": data2.get("description", ""),
+                            "is_correction": data2.get("is_correction", False),
+                        })
+    except Exception as e:
+        print(f"    ⚠️ product_index search error: {e}")
+
+    return results
+
+
+def _search_supplier_index(db, seller_name):
+    """
+    Look up pre-built supplier_index for HS codes this supplier typically ships.
+    Returns suggestive candidates with lower confidence.
+    """
+    if not seller_name:
+        return []
+
+    results = []
+
+    try:
+        # Normalize supplier name (same logic as indexer)
+        name = seller_name.lower().strip()
+        for suffix in [" ltd", " ltd.", " inc", " inc.", " co.", " corp", " corp.",
+                       " gmbh", " s.a.", " s.r.l.", " bv", " b.v.", " llc",
+                       " בע\"מ", " בע״מ"]:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)].strip()
+        name = re.sub(r'[^\w\u0590-\u05FF\s]', ' ', name)
+        name = re.sub(r'\s+', ' ', name).strip()
+        if not name:
+            return []
+
+        safe_id = re.sub(r'[^\w\u0590-\u05FF]', '_', name)
+        safe_id = re.sub(r'_+', '_', safe_id).strip('_')[:200]
+
+        doc = db.collection("supplier_index").document(safe_id).get()
+        if doc.exists:
+            data = doc.to_dict()
+            for entry in data.get("codes", [])[:5]:
+                hs = entry.get("hs_code", "")
+                count = entry.get("count", 1)
+                if hs:
+                    # Supplier-based confidence: suggestive, not definitive
+                    conf = min(60, 30 + count * 5)
+                    results.append({
+                        "hs_code": hs,
+                        "confidence": conf,
+                        "count": count,
+                        "last_seen": entry.get("last_seen", ""),
+                    })
+    except Exception as e:
+        print(f"    ⚠️ supplier_index search error: {e}")
+
+    return results
+
+
 def _search_tariff(db, keywords):
-    """Search tariff and tariff_chapters for matching HS descriptions."""
+    """Search tariff and tariff_chapters for matching HS descriptions (SLOW FALLBACK)."""
     results = []
     keywords_lower = [k.lower() for k in keywords if k]
 
