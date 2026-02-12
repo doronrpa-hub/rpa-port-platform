@@ -1,56 +1,225 @@
-"""RCB Helper functions - Graph API, PDF extraction, Hebrew names"""
+"""RCB Helper functions - Graph API, PDF extraction, Hebrew names
+UPDATED Session 17 Phase 0: Improved document extraction
+"""
 import requests
 import base64
 import io
+import re
 from datetime import datetime
 
 # ============================================================
 # PDF TEXT EXTRACTION (with OCR fallback)
+# Phase 0: Improved extraction quality, table handling, OCR
 # ============================================================
 
+def _assess_extraction_quality(text):
+    """Check if extracted text is actually useful, not garbage"""
+    if not text or len(text.strip()) < 50:
+        return False, "too_short"
+
+    stripped = text.strip()
+
+    # Check for Hebrew content (customs docs should have Hebrew)
+    hebrew_chars = sum(1 for c in stripped if '\u0590' <= c <= '\u05FF')
+    latin_chars = sum(1 for c in stripped if c.isascii() and c.isalpha())
+    digit_chars = sum(1 for c in stripped if c.isdigit())
+    total_meaningful = hebrew_chars + latin_chars + digit_chars
+
+    # If less than 30% of text is meaningful characters, it's garbage
+    if len(stripped) > 0 and total_meaningful / len(stripped) < 0.3:
+        return False, "garbage_chars"
+
+    # Check for invoice-like patterns (numbers, currency, dates)
+    has_numbers = bool(re.search(r'\d{3,}', stripped))  # 3+ digit numbers
+    has_currency = bool(re.search(r'(USD|EUR|ILS|NIS|\$|€|₪)', stripped, re.IGNORECASE))
+    has_date = bool(re.search(r'\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}', stripped))
+
+    # If we have meaningful length but no numbers at all, probably wrong extraction
+    if len(stripped) > 200 and not has_numbers:
+        return False, "no_numbers"
+
+    return True, "ok"
+
+
+def _cleanup_hebrew_text(text):
+    """Fix common Hebrew/RTL extraction issues"""
+    if not text:
+        return text
+
+    # Normalize whitespace
+    text = re.sub(r' {3,}', '  ', text)  # Multiple spaces to double
+    text = re.sub(r'\n{4,}', '\n\n\n', text)  # Multiple newlines to max 3
+
+    # Fix common OCR mistakes in Hebrew customs context
+    replacements = {
+        'חשבוו': 'חשבון',
+        'מע"ט': 'מע"מ',
+        'עמיל מכם': 'עמיל מכס',
+    }
+    for wrong, right in replacements.items():
+        text = text.replace(wrong, right)
+
+    return text
+
+
+def _tag_document_structure(text):
+    """Tag document sections to help AI classification agent"""
+    tags = []
+
+    # Detect invoice number
+    inv_match = re.search(r'(?:invoice|inv|חשבונית|חשבון)[\s#:]*(\S+)', text, re.IGNORECASE)
+    if inv_match:
+        tags.append(f"[INVOICE_NUMBER: {inv_match.group(1)}]")
+
+    # Detect dates
+    dates = re.findall(r'\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}', text)
+    if dates:
+        tags.append(f"[DATES_FOUND: {', '.join(dates[:5])}]")
+
+    # Detect currency and amounts
+    amounts = re.findall(r'(?:USD|EUR|ILS|NIS|\$|€|₪)\s*[\d,.]+', text, re.IGNORECASE)
+    if not amounts:
+        amounts = re.findall(r'[\d,.]+\s*(?:USD|EUR|ILS|NIS|\$|€|₪)', text, re.IGNORECASE)
+    if amounts:
+        tags.append(f"[AMOUNTS: {', '.join(amounts[:10])}]")
+
+    # Detect HS code patterns (XX.XX or XXXX.XX.XXXX)
+    hs_codes = re.findall(r'\b\d{4}[.\s]\d{2}(?:[.\s]\d{2,6})?\b', text)
+    if hs_codes:
+        tags.append(f"[HS_CODE_CANDIDATES: {', '.join(set(hs_codes[:10]))}]")
+
+    # Detect BL/AWB numbers
+    bl_match = re.search(r'(?:B/?L|bill\s*of\s*lading|שטר\s*מטען)[\s#:]*(\S+)', text, re.IGNORECASE)
+    if bl_match:
+        tags.append(f"[BL_NUMBER: {bl_match.group(1)}]")
+
+    awb_match = re.search(r'(?:AWB|air\s*waybill)[\s#:]*(\S+)', text, re.IGNORECASE)
+    if awb_match:
+        tags.append(f"[AWB_NUMBER: {awb_match.group(1)}]")
+
+    # Detect country names
+    countries = re.findall(r'(?:China|India|Turkey|Germany|USA|Italy|Japan|Korea|Vietnam|Thailand|'
+                           r'סין|הודו|טורקיה|גרמניה|ארה"ב|איטליה|יפן|קוריאה|וייטנאם|תאילנד)',
+                           text, re.IGNORECASE)
+    if countries:
+        tags.append(f"[COUNTRIES: {', '.join(set(countries[:5]))}]")
+
+    # Detect shipping terms
+    incoterms = re.findall(r'\b(?:FOB|CIF|CFR|EXW|DDP|DAP|FCA|CPT|CIP|DAT)\b', text, re.IGNORECASE)
+    if incoterms:
+        tags.append(f"[INCOTERMS: {', '.join(set(incoterms))}]")
+
+    if tags:
+        header = "\n".join(tags)
+        return f"[DOCUMENT_ANALYSIS]\n{header}\n[/DOCUMENT_ANALYSIS]\n\n{text}"
+
+    return text
+
+
+def _preprocess_image_for_ocr(img_bytes):
+    """Preprocess image for better OCR accuracy"""
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter
+
+        img = Image.open(io.BytesIO(img_bytes))
+
+        # Convert to grayscale
+        if img.mode != 'L':
+            img = img.convert('L')
+
+        # Enhance contrast
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.5)
+
+        # Sharpen
+        img = img.filter(ImageFilter.SHARPEN)
+
+        # Convert back to bytes
+        output = io.BytesIO()
+        img.save(output, format='PNG')
+        return output.getvalue()
+    except Exception as e:
+        print(f"  Image preprocessing error: {e}")
+        return img_bytes  # Return original if preprocessing fails
+
+
 def extract_text_from_pdf_bytes(pdf_bytes):
-    """Extract text from PDF bytes - tries multiple methods"""
-    
+    """Extract text from PDF bytes - tries multiple methods
+    Phase 0: Improved quality assessment, combined extraction, better OCR"""
+
     # Method 1: pdfplumber (fast, for text-based PDFs)
     text = _extract_with_pdfplumber(pdf_bytes)
-    if len(text.strip()) > 50:
-        print(f"    ✅ pdfplumber extracted {len(text)} chars")
+    is_good, reason = _assess_extraction_quality(text)
+    if is_good:
+        print(f"    ✅ pdfplumber extracted {len(text)} chars (quality: {reason})")
         return text
-    
+    elif text:
+        print(f"    ⚠️ pdfplumber: {len(text)} chars but quality: {reason}")
+
     # Method 2: pypdf (sometimes works better)
     text = _extract_with_pypdf(pdf_bytes)
-    if len(text.strip()) > 50:
-        print(f"    ✅ pypdf extracted {len(text)} chars")
+    is_good, reason = _assess_extraction_quality(text)
+    if is_good:
+        print(f"    ✅ pypdf extracted {len(text)} chars (quality: {reason})")
         return text
-    
-    # Method 3: Google Cloud Vision OCR (for scanned PDFs)
-    print(f"    🔍 Text extraction failed, trying OCR...")
+
+    # Method 3: COMBINED - try pdfplumber + pypdf merged
+    combined = _extract_with_pdfplumber(pdf_bytes) + "\n" + _extract_with_pypdf(pdf_bytes)
+    is_good, reason = _assess_extraction_quality(combined)
+    if is_good:
+        print(f"    ✅ Combined extraction: {len(combined)} chars")
+        return combined
+
+    # Method 4: Vision OCR (preprocessed, 300 DPI)
+    print(f"    🔍 All text methods failed, trying OCR...")
     text = _extract_with_vision_ocr(pdf_bytes)
     if text:
         print(f"    ✅ OCR extracted {len(text)} chars")
-        return text
-    
-    print(f"    ⚠️ All extraction methods failed")
-    return ""
+    else:
+        print(f"    ⚠️ All extraction methods failed")
+    return text or ""
 
 
 def _extract_with_pdfplumber(pdf_bytes):
-    """Extract text using pdfplumber"""
+    """Extract text using pdfplumber with improved table handling"""
     try:
         import pdfplumber
         text_parts = []
+
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for page in pdf.pages:
+            for page_num, page in enumerate(pdf.pages):
+                # Extract regular text
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
-                # Also try to extract tables
-                tables = page.extract_tables()
-                for table in tables:
+
+                # Extract tables with better settings
+                tables = page.extract_tables({
+                    "vertical_strategy": "lines",
+                    "horizontal_strategy": "lines",
+                    "snap_tolerance": 5,
+                    "join_tolerance": 5,
+                    "edge_min_length": 10,
+                    "min_words_vertical": 1,
+                    "min_words_horizontal": 1,
+                })
+
+                for table_idx, table in enumerate(tables):
+                    if not table:
+                        continue
+
+                    # Format table with structure preserved
+                    table_text = f"\n[TABLE {table_idx + 1} on page {page_num + 1}]\n"
                     for row in table:
                         if row:
-                            text_parts.append(" | ".join([str(cell) if cell else "" for cell in row]))
-        return "\n".join(text_parts)
+                            cells = [str(cell).strip() if cell else "" for cell in row]
+                            # Skip completely empty rows
+                            if any(cells):
+                                table_text += " | ".join(cells) + "\n"
+                    table_text += f"[/TABLE]\n"
+                    text_parts.append(table_text)
+
+        return _cleanup_hebrew_text("\n".join(text_parts))
     except Exception as e:
         print(f"    pdfplumber error: {e}")
         return ""
@@ -66,39 +235,42 @@ def _extract_with_pypdf(pdf_bytes):
             page_text = page.extract_text()
             if page_text:
                 text_parts.append(page_text)
-        return "\n".join(text_parts)
+        return _cleanup_hebrew_text("\n".join(text_parts))
     except Exception as e:
         print(f"    pypdf error: {e}")
         return ""
 
 
 def _extract_with_vision_ocr(pdf_bytes):
-    """Extract text using Google Cloud Vision OCR"""
+    """Extract text using Google Cloud Vision OCR
+    Phase 0: Added image preprocessing before OCR"""
     try:
         from google.cloud import vision
-        
+
         # Convert PDF pages to images first
         images = _pdf_to_images(pdf_bytes)
         if not images:
             print(f"    ⚠️ Could not convert PDF to images")
             return ""
-        
+
         client = vision.ImageAnnotatorClient()
         all_text = []
-        
+
         for i, img_bytes in enumerate(images):
+            # Phase 0: Preprocess image before OCR
+            img_bytes = _preprocess_image_for_ocr(img_bytes)
             image = vision.Image(content=img_bytes)
             response = client.text_detection(image=image)
-            
+
             if response.text_annotations:
                 page_text = response.text_annotations[0].description
                 all_text.append(f"--- Page {i+1} ---\n{page_text}")
                 print(f"    📄 Page {i+1}: {len(page_text)} chars")
-            
+
             if response.error.message:
                 print(f"    Vision API error: {response.error.message}")
-        
-        return "\n\n".join(all_text)
+
+        return _cleanup_hebrew_text("\n\n".join(all_text))
     except ImportError:
         print(f"    ⚠️ google-cloud-vision not installed")
         return ""
@@ -108,19 +280,20 @@ def _extract_with_vision_ocr(pdf_bytes):
 
 
 def _pdf_to_images(pdf_bytes):
-    """Convert PDF pages to images for OCR"""
+    """Convert PDF pages to images for OCR
+    Phase 0: Raised DPI from 150 to 300"""
     try:
         import fitz  # PyMuPDF
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         images = []
-        
+
         for page_num in range(min(len(doc), 10)):  # Max 10 pages
             page = doc[page_num]
-            # Render at 150 DPI for good OCR quality
-            pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
+            # Phase 0: Render at 300 DPI (was 150) for better OCR accuracy
+            pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
             img_bytes = pix.tobytes("png")
             images.append(img_bytes)
-        
+
         doc.close()
         return images
     except ImportError:
@@ -135,7 +308,7 @@ def _pdf_to_images_fallback(pdf_bytes):
     """Fallback: Convert PDF to images using pdf2image"""
     try:
         from pdf2image import convert_from_bytes
-        images = convert_from_bytes(pdf_bytes, dpi=150, first_page=1, last_page=10)
+        images = convert_from_bytes(pdf_bytes, dpi=300, first_page=1, last_page=10)
         result = []
         for img in images:
             buf = io.BytesIO()
@@ -148,37 +321,43 @@ def _pdf_to_images_fallback(pdf_bytes):
 
 
 def extract_text_from_attachments(attachments_data):
-    """Extract text from all PDF attachments"""
+    """Extract text from all PDF attachments
+    Phase 0: Added Hebrew cleanup and structure tagging"""
     all_text = []
     for att in attachments_data:
         name = att.get('name', 'file')
         content_bytes = att.get('contentBytes', '')
-        
+
         if not content_bytes:
             continue
-            
+
         # Decode base64
         try:
             file_bytes = base64.b64decode(content_bytes)
         except:
             continue
-        
+
         # Check if PDF
         if name.lower().endswith('.pdf'):
             print(f"    📄 Extracting text from: {name}")
             text = extract_text_from_pdf_bytes(file_bytes)
             if text:
+                text = _cleanup_hebrew_text(text)
+                text = _tag_document_structure(text)
                 all_text.append(f"=== {name} ===\n{text}")
             else:
                 all_text.append(f"=== {name} ===\n[No text could be extracted]")
-        
+
         # Handle images directly with OCR
         elif name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
             print(f"    🖼️ OCR on image: {name}")
-            text = _ocr_image(file_bytes)
+            img_bytes = _preprocess_image_for_ocr(file_bytes)
+            text = _ocr_image(img_bytes)
             if text:
+                text = _cleanup_hebrew_text(text)
+                text = _tag_document_structure(text)
                 all_text.append(f"=== {name} ===\n{text}")
-    
+
     return "\n\n".join(all_text)
 
 
