@@ -22,6 +22,17 @@
 - Official requirements included in Agent 6 synthesis context
 - Files changed: `intelligence.py`, `classification_agents.py`
 
+### Phase C: Ministry Routing Logic
+- Added `_MINISTRY_ROUTES` — 25 HS chapter entries with ministries, required documents, procedures, risk levels
+- Added `_CHAPTER_ALIASES` — maps related chapters to canonical routes (e.g., chapters 51–63 → textiles)
+- Added `route_to_ministries(db, hs_code, free_import_result=None)` — merges 3 sources:
+  1. Built-in routing table (hardcoded ministry URLs, documents, procedures)
+  2. Firestore baseline (`ministry_index` collection)
+  3. Official Free Import Order API result (live authorities)
+- Returns: risk_level, ministries list (name, URL, documents, procedure, official flag), summary_he
+- Wired into pipeline: runs after FIO query, results in Agent 6 synthesis context and return value
+- Files changed: `intelligence.py`, `classification_agents.py`
+
 ---
 
 ## Session 17 — February 12, 2026
