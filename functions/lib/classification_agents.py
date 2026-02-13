@@ -436,8 +436,18 @@ JSON בלבד."""
     try:
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
-            if start != -1: return json.loads(result[start:end])
-    except: pass
+            if start != -1:
+                parsed = json.loads(result[start:end])
+                print(f"    📦 Agent 1 raw JSON keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'NOT A DICT'}")
+                return parsed
+            else:
+                print(f"    ⚠️ Agent 1: No JSON braces found in response ({len(result)} chars): {result[:200]}")
+        else:
+            print("    ⚠️ Agent 1: AI returned None/empty")
+    except Exception as e:
+        print(f"    ⚠️ Agent 1 JSON parse error: {e}")
+        print(f"    ⚠️ Agent 1 raw response ({len(result)} chars): {result[:300]}")
+    print("    ⚠️ Agent 1: FALLBACK — returning doc_text[:500] as single item")
     return {"items": [{"description": doc_text[:500]}]}
 
 
@@ -568,10 +578,24 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         print("    🔍 Agent 1: Extracting... [Gemini Flash]")
         invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key)
         if not isinstance(invoice, dict):
+            print(f"    ⚠️ Agent 1 returned non-dict: {type(invoice)} — using fallback")
             invoice = {"items": [{"description": doc_text[:500]}]}
         items = invoice.get("items") or [{"description": doc_text[:500]}]
         if not isinstance(items, list):
+            print(f"    ⚠️ Agent 1 items is not a list: {type(items)} — using fallback")
             items = [{"description": doc_text[:500]}]
+
+        # DEBUG: Log exactly what Agent 1 extracted
+        print(f"    📦 Agent 1 extracted {len(items)} items:")
+        for idx, item in enumerate(items[:10]):
+            if isinstance(item, dict):
+                desc = item.get('description', '')[:80]
+                qty = item.get('quantity', '')
+                origin_c = item.get('origin_country', '')
+                print(f"       [{idx+1}] {desc} | qty={qty} | origin={origin_c}")
+            else:
+                print(f"       [{idx+1}] NOT A DICT: {str(item)[:80]}")
+
         origin = items[0].get("origin_country", "") if items and isinstance(items[0], dict) else ""
 
         # ── DOCUMENT PARSER: Identify each document and extract structured fields ──
@@ -679,7 +703,11 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         combined_context = intelligence_context + knowledge_context
 
         # Agent 2: Classify (Claude Sonnet 4.5 — core task, best quality)
-        print("    🏷️ Agent 2: Classifying... [Claude Sonnet 4.5]")
+        items_payload = json.dumps(items, ensure_ascii=False)
+        print(f"    🏷️ Agent 2: Classifying {len(items)} items ({len(items_payload)} chars payload)... [Claude Sonnet 4.5]")
+        if len(items) == 1:
+            desc_preview = items[0].get('description', '')[:150] if isinstance(items[0], dict) else str(items[0])[:150]
+            print(f"    ⚠️ Agent 2 WARNING: Only 1 item! desc: {desc_preview}")
         classification = run_classification_agent(api_key, items, tariff, rules, combined_context, gemini_key=gemini_key)
         if not isinstance(classification, dict):
             classification = {"classifications": []}
