@@ -595,18 +595,23 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             for item in items[:3]:
                 if not isinstance(item, dict):
                     continue
+                # Use extracted product description, not raw text blob
                 desc = item.get("description", "")
+                if not desc or desc.startswith("=== ") or "&nbsp;" in desc:
+                    continue  # Skip raw email/HTML text — not a real product description
                 item_origin = item.get("origin_country", origin)
-                if desc:
-                    pc_result = pre_classify(db, desc, item_origin, seller_name=seller_name)
-                    intelligence_results[desc[:50]] = pc_result
-                    if pc_result.get("context_text"):
-                        intelligence_context += pc_result["context_text"] + "\n\n"
+                pc_result = pre_classify(db, desc, item_origin, seller_name=seller_name)
+                if not isinstance(pc_result, dict):
+                    continue
+                intelligence_results[desc[:50]] = pc_result
+                if pc_result.get("context_text"):
+                    intelligence_context += pc_result["context_text"] + "\n\n"
 
             # Validate documents present in extracted text
             has_fta = any(
                 r.get("fta", {}).get("eligible", False)
                 for r in intelligence_results.values()
+                if isinstance(r, dict)
             )
             doc_validation = validate_documents(doc_text, direction="import", has_fta=has_fta)
             if doc_validation.get("missing"):
@@ -751,6 +756,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                         "fta_eligible": v.get("stats", {}).get("fta_eligible", False),
                     }
                     for k, v in intelligence_results.items()
+                    if isinstance(v, dict)
                 }
             }
         if doc_validation:
