@@ -877,6 +877,15 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 "first_question": smart_questions[0]["question_he"] if smart_questions else "",
             }
 
+        # ── QUALITY GATE: Audit + retry before synthesis ──
+        pre_send = {"agents": all_results, "invoice_data": invoice}
+        audit = audit_before_send(
+            pre_send, api_key=api_key, items=items,
+            tariff=tariff, rules=rules, context=combined_context,
+            gemini_key=gemini_key, db=db,
+        )
+        all_results["classification"]["classifications"] = audit["classifications"]
+
         synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
 
         # Session 14: Clean synthesis text (fix typos, VAT rate, RTL spacing)
@@ -886,7 +895,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             except Exception as e:
                 print(f"    ⚠️ Language fix_all failed: {e}")
 
-        return {
+        result = {
             "success": True,
             "agents": all_results,
             "synthesis": synthesis,
@@ -899,10 +908,169 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             "smart_questions": smart_questions,  # Phase E: Elimination-based questions
             "ambiguity": ambiguity_info,  # Phase E: Ambiguity analysis
             "tracker": tracker_info,  # Shipment phase tracker
+            "audit": audit,  # Quality gate results
         }
+        return result
     except Exception as e:
         print(f"    ❌ Error: {e}")
         return {"success": False, "error": str(e)}
+
+
+# =============================================================================
+# QUALITY GATE: Audit output before sending to customer
+# =============================================================================
+
+_CONFIDENCE_SCORES = {"גבוהה": 80, "בינונית": 50, "נמוכה": 20}
+_HEBREW_HS_PATTERNS = re.compile(r'[\u0590-\u05FF]')
+
+
+def _retry_classification(api_key, items, tariff, rules, context, gemini_key=None):
+    """Retry Agent 2 with explicit instruction to return numeric HS codes."""
+    retry_instruction = """חשוב מאוד: אתה חייב להחזיר קוד HS מספרי בלבד (6-10 ספרות).
+אם אינך בטוח, החזר את הקוד הקרוב ביותר עם confidence "נמוכה".
+לעולם אל תחזיר טקסט כמו "לא ניתן לסווג" בשדה hs_code.
+אם באמת אין מספיק מידע לסיווג, החזר hs_code ריק ""."""
+    enhanced_context = retry_instruction + "\n\n" + (context or "")
+    return run_classification_agent(api_key, items, tariff, rules, enhanced_context, gemini_key=gemini_key)
+
+
+def audit_before_send(results, api_key=None, items=None, tariff=None, rules=None,
+                      context=None, gemini_key=None, db=None):
+    """Quality gate — validate classification output before sending email.
+
+    Returns dict:
+        action: "send" | "send_with_warning" | "send_unclassified"
+        classifications: cleaned/retried classification list
+        warning_banner: HTML string or None
+        avg_confidence: numeric 0-100
+    """
+    classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
+    items = items or results.get("invoice_data", {}).get("items", [])
+
+    print("    🔍 Quality Gate: Auditing classifications before send...")
+
+    # ── Step 1: Check every HS code, collect bad ones ──
+    bad_indices = []
+    for i, c in enumerate(classifications):
+        hs = c.get("hs_code", "")
+        if not hs:
+            bad_indices.append(i)
+            continue
+        # Hebrew text in HS code field
+        if _HEBREW_HS_PATTERNS.search(hs):
+            print(f"    ⚠️ QG: Hebrew text in HS code: '{hs}' (item: {c.get('item', '')[:40]})")
+            c["original_hs_code"] = hs
+            c["hs_code"] = ""
+            c["confidence"] = "נמוכה"
+            c["hs_warning"] = f"⚠️ '{hs}' אינו קוד HS תקין"
+            bad_indices.append(i)
+            continue
+        if not _is_valid_hs(hs):
+            print(f"    ⚠️ QG: Invalid HS format: '{hs}' (item: {c.get('item', '')[:40]})")
+            c["original_hs_code"] = hs
+            c["hs_code"] = ""
+            c["confidence"] = "נמוכה"
+            c["hs_warning"] = f"⚠️ '{hs}' אינו קוד HS תקין"
+            bad_indices.append(i)
+
+    # ── Step 2: Retry once if we have bad classifications and API key ──
+    retried = False
+    if bad_indices and api_key and tariff is not None and rules is not None:
+        print(f"    🔄 QG: Retrying Agent 2 for {len(bad_indices)} unclassified items...")
+        retry_result = _retry_classification(api_key, items, tariff, rules, context, gemini_key)
+        if isinstance(retry_result, dict):
+            retry_cls = retry_result.get("classifications", [])
+            fixed = 0
+            for ri, rc in enumerate(retry_cls):
+                hs = rc.get("hs_code", "")
+                if hs and _is_valid_hs(hs) and not _HEBREW_HS_PATTERNS.search(hs):
+                    # Find matching original by item name or index
+                    if ri < len(classifications):
+                        orig = classifications[ri]
+                        if not orig.get("hs_code") or not _is_valid_hs(orig.get("hs_code", "")):
+                            orig["hs_code"] = hs
+                            orig["duty_rate"] = rc.get("duty_rate", orig.get("duty_rate", ""))
+                            orig["reasoning"] = rc.get("reasoning", orig.get("reasoning", ""))
+                            orig["confidence"] = rc.get("confidence", "בינונית")
+                            orig.pop("hs_warning", None)
+                            orig["hs_retried"] = True
+                            fixed += 1
+            if fixed:
+                print(f"    ✅ QG: Retry fixed {fixed} classifications")
+                retried = True
+            # Rebuild bad_indices after retry
+            bad_indices = [i for i, c in enumerate(classifications)
+                           if not c.get("hs_code") or not _is_valid_hs(c.get("hs_code", ""))]
+
+    # ── Step 3: Compute average confidence ──
+    scores = []
+    for c in classifications:
+        conf = c.get("confidence", "בינונית")
+        scores.append(_CONFIDENCE_SCORES.get(conf, 50))
+    avg_confidence = sum(scores) / len(scores) if scores else 0
+
+    # ── Step 4: Determine action ──
+    total = len(classifications)
+    classified = total - len(bad_indices)
+
+    if total == 0 or classified == 0:
+        # ALL items unclassified
+        print(f"    ⚠️ QG: ALL {total} items unclassified — switching to info email")
+        action = "send_unclassified"
+        warning_banner = _build_unclassified_banner(items)
+    elif avg_confidence < 50:
+        print(f"    ⚠️ QG: Low average confidence ({avg_confidence:.0f}%) — adding warning")
+        action = "send_with_warning"
+        warning_banner = _build_low_confidence_banner(avg_confidence, classified, total)
+    else:
+        action = "send"
+        warning_banner = None
+        print(f"    ✅ QG: {classified}/{total} classified, avg confidence {avg_confidence:.0f}%")
+
+    # Write back cleaned classifications
+    results["agents"]["classification"]["classifications"] = classifications
+    results["audit"] = {
+        "action": action,
+        "avg_confidence": round(avg_confidence),
+        "classified": classified,
+        "total": total,
+        "retried": retried,
+    }
+
+    return {
+        "action": action,
+        "classifications": classifications,
+        "warning_banner": warning_banner,
+        "avg_confidence": avg_confidence,
+    }
+
+
+def _build_unclassified_banner(items):
+    """HTML banner for when all items are unclassified."""
+    item_list = ""
+    for item in (items or [])[:5]:
+        if isinstance(item, dict):
+            desc = item.get("description", item.get("item", ""))
+            if desc and _is_product_description(desc):
+                item_list += f"<li>{desc[:100]}</li>"
+    items_html = f"<ul>{item_list}</ul>" if item_list else ""
+
+    return f'''<div style="background:#f8d7da;border:2px solid #dc3545;border-radius:5px;padding:20px;margin-bottom:20px">
+        <h3 style="color:#721c24;margin:0">⚠️ לא הצלחנו לסווג את הפריטים</h3>
+        <p style="color:#721c24;margin:10px 0 0 0">המערכת לא הצליחה לקבוע קודי HS עבור הפריטים שלהלן.
+        יש לספק תיאור מפורט יותר של המוצרים, כולל: חומר גלם, שימוש מיועד, הרכב.</p>
+        {items_html}
+        <p style="color:#721c24;margin:10px 0 0 0"><strong>אנא השיבו עם מידע נוסף ונחזור עם סיווג.</strong></p>
+    </div>'''
+
+
+def _build_low_confidence_banner(avg_confidence, classified, total):
+    """HTML warning banner for low average confidence."""
+    return f'''<div style="background:#fff3cd;border:2px solid #ffc107;border-radius:5px;padding:15px;margin-bottom:20px">
+        <h3 style="color:#856404;margin:0">⚠️ רמת ודאות נמוכה ({avg_confidence:.0f}%)</h3>
+        <p style="color:#856404;margin:10px 0 0 0">סווגו {classified} מתוך {total} פריטים, אך רמת הוודאות הממוצעת נמוכה.
+        מומלץ לבדוק את הסיווגים לפני שימוש. ייתכן שנדרש מידע נוסף על המוצרים.</p>
+    </div>'''
 
 
 def build_classification_email(results, sender_name, invoice_validation=None, tracking_code=None, invoice_data=None):
@@ -965,6 +1133,11 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
                 html += f'<li>{field}</li>'
             html += '</ul></div>'
     
+    # Quality Gate: Inject warning banner if present
+    audit_banner = results.get("audit", {}).get("warning_banner", "")
+    if audit_banner:
+        html += audit_banner
+
     # Session 14: Clean synthesis text before rendering
     if LANGUAGE_TOOLS_AVAILABLE:
         try:
@@ -1205,7 +1378,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if not results.get('success'):
             print(f"  ❌ Failed")
             return False
-        
+
         # Session 10: Validate invoice using Module 5
         invoice_validation = None
         if MODULES_AVAILABLE:
