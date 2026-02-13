@@ -422,6 +422,9 @@ def run_document_agent(api_key, doc_text, gemini_key=None):
 }
 
 הנחיות:
+- CRITICAL: Extract EACH product as a SEPARATE item in the items array. Every line item on the invoice must be its own entry. If the invoice has 10 products, return 10 items. Include the product name, quantity, unit price, total, and origin country for each.
+- Chinese product names (中文) must be translated to English in the description field.
+- Do NOT combine multiple products into one item. Do NOT summarize.
 - direction: "import" אם הסחורה מגיעה לישראל, "export" אם יוצאת מישראל
 - freight_type: "sea" אם יש B/L או אונייה, "air" אם יש AWB או טיסה
 - bl_number: מספר שטר מטען ימי (Bill of Lading)
