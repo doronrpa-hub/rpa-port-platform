@@ -13,6 +13,7 @@ UPDATED: Session 15 - Multi-model optimization:
   - Agents 1,3,4,5: Gemini 2.5 Flash (simple tasks, ~95% cheaper)
 """
 import json
+import re
 import requests
 import base64
 import io
@@ -105,6 +106,39 @@ try:
 except ImportError as e:
     print(f"Document tracker not available: {e}")
     TRACKER_AVAILABLE = False
+
+# =============================================================================
+# HS CODE VALIDATION HELPERS
+# =============================================================================
+
+_HS_RE = re.compile(r'^\d{4,10}$')
+
+def _is_valid_hs(code):
+    """Check if a string looks like a real HS code (4-10 digits, chapter 01-97)."""
+    if not code or not isinstance(code, str):
+        return False
+    clean = code.replace(".", "").replace("/", "").replace(" ", "").strip()
+    if not _HS_RE.match(clean):
+        return False
+    try:
+        chapter = int(clean[:2])
+        return 1 <= chapter <= 97
+    except (ValueError, IndexError):
+        return False
+
+
+def _is_product_description(text):
+    """Check if text looks like a real product description, not raw email/HTML."""
+    if not text or not isinstance(text, str):
+        return False
+    if text.startswith("=== "):
+        return False
+    if "&nbsp;" in text or "<br" in text.lower() or "<div" in text.lower():
+        return False
+    if len(text) > 400 and text.count("===") > 1:
+        return False
+    return True
+
 
 # =============================================================================
 # SESSION 11: Tracking Code & Subject Line Builder
@@ -618,19 +652,23 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                 missing_names = ", ".join(m["name_he"] for m in doc_validation["missing"])
                 print(f"    🧠 Intelligence: Missing documents — {missing_names}")
 
-        # Get context (existing librarian search)
-        search_terms = [i.get("description", "")[:50] for i in items[:5] if isinstance(i, dict)]
+        # Get context (existing librarian search) — only real product descriptions
+        search_terms = [
+            i.get("description", "")[:50]
+            for i in items[:5]
+            if isinstance(i, dict) and _is_product_description(i.get("description", ""))
+        ]
         tariff = query_tariff(db, search_terms)
         ministry = query_ministry_index(db)
         rules = query_classification_rules(db)
 
-        # Enhanced knowledge search
+        # Enhanced knowledge search — skip raw text blobs
         knowledge_context = ""
         for item in items[:3]:
             if not isinstance(item, dict):
                 continue
             desc = item.get("description", "")
-            if desc:
+            if desc and _is_product_description(desc):
                 knowledge = full_knowledge_search(db, desc)
                 knowledge_context += build_classification_context(knowledge) + "\n"
 
@@ -644,24 +682,35 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
             classification = {"classifications": []}
 
         # Session 11: Validate HS codes against tariff database
-        print("    ✅ Validating HS codes against tariff database...")
+        # First: reject non-HS-code text (e.g., Hebrew "לא ניתן לסווג")
         raw_classifications = classification.get("classifications") or []
+        for c in raw_classifications:
+            hs = c.get("hs_code", "")
+            if hs and not _is_valid_hs(hs):
+                print(f"    ⚠️ Agent 2 returned non-HS text: '{hs}' → marking unclassified")
+                c["original_hs_code"] = hs
+                c["hs_code"] = ""
+                c["confidence"] = "נמוכה"
+                c["hs_warning"] = f"⚠️ '{hs}' אינו קוד HS תקין"
+
+        print("    ✅ Validating HS codes against tariff database...")
         validated_classifications = validate_and_correct_classifications(db, raw_classifications)
         classification["classifications"] = validated_classifications
-        
+
         # Log validation results
         for c in validated_classifications:
             if c.get('hs_corrected'):
                 print(f"    ⚠️ HS corrected: {c.get('original_hs_code')} → {c.get('hs_code')}")
             elif c.get('hs_warning'):
                 print(f"    ⚠️ {c.get('hs_warning')}")
-        
+
         # ── FREE IMPORT ORDER: Verify HS codes against official API ──
+        # Only for valid HS codes — skip text like "לא ניתן לסווג"
         free_import_results = {}
         if INTELLIGENCE_AVAILABLE:
             for c in validated_classifications[:3]:
                 hs = c.get("hs_code", "")
-                if hs:
+                if hs and _is_valid_hs(hs):
                     try:
                         fio = query_free_import_order(db, hs)
                         if fio.get("found"):
@@ -670,11 +719,12 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
                         print(f"    ⚠️ Free Import Order query error: {e}")
 
         # ── MINISTRY ROUTING: Combine all sources into actionable guidance ──
+        # Only for valid HS codes
         ministry_routing = {}
         if INTELLIGENCE_AVAILABLE:
             for c in validated_classifications[:3]:
                 hs = c.get("hs_code", "")
-                if hs:
+                if hs and _is_valid_hs(hs):
                     try:
                         fio_for_hs = free_import_results.get(hs)
                         routing = route_to_ministries(db, hs, fio_for_hs)
