@@ -699,8 +699,14 @@ def helper_graph_mark_read(access_token, user_email, message_id):
     except:
         pass
 
-def helper_graph_send(access_token, user_email, to_email, subject, body_html, reply_to_id=None, attachments_data=None):
-    """Send email via Graph API"""
+def helper_graph_send(access_token, user_email, to_email, subject, body_html, reply_to_id=None, attachments_data=None, internet_message_id=None):
+    """Send email via Graph API.
+
+    Args:
+        internet_message_id: The original email's internetMessageId (RFC 2822 Message-ID).
+            When provided, sets In-Reply-To and References headers so replies
+            thread correctly in Outlook/Gmail.
+    """
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/sendMail"
         message = {
@@ -708,6 +714,12 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html, re
             'body': {'contentType': 'HTML', 'content': body_html},
             'toRecipients': [{'emailAddress': {'address': to_email}}]
         }
+        # Thread replies using In-Reply-To and References headers
+        if internet_message_id:
+            message['internetMessageHeaders'] = [
+                {'name': 'In-Reply-To', 'value': internet_message_id},
+                {'name': 'References', 'value': internet_message_id},
+            ]
         if attachments_data:
             message['attachments'] = [
                 {

@@ -1057,6 +1057,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     
     for msg in messages:
         msg_id = msg.get('id')
+        internet_msg_id = msg.get('internetMessageId', '')  # RFC 2822 Message-ID for threading
         subject = msg.get('subject', 'No Subject')
         from_data = msg.get('from', {}).get('emailAddress', {})
         from_email = from_data.get('address', '')
@@ -1133,52 +1134,39 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         except Exception as kq_err:
             print(f"  ⚠️ Knowledge query detection error: {kq_err}")
 
-        
-        # Build and send acknowledgment (Email 1)
+
+        # Consolidated: ONE email with ack + classification + clarification
         try:
             rcb_id = generate_rcb_id(get_db(), firestore, RCBType.CLASSIFICATION)
         except Exception:
             rcb_id = "RCB-UNKNOWN-CLS"
         print(f"  🏷️ [{rcb_id}] Processing classification")
-        reply_body = build_rcb_reply(
-            sender_name=from_name,
-            attachments=attachments,
-            subject=subject,
-            is_first_email=True,
-            include_joke=False
-        )
-        
-        if helper_graph_send(access_token, rcb_email, from_email, f"Re: {subject}", reply_body, msg_id, raw_attachments):
-            print(f"    ✅ [{rcb_id}] Ack sent to {from_email}")
-            
-            # Mark as processed
-            get_db().collection("rcb_processed").document(safe_id).set({
-                "processed_at": firestore.SERVER_TIMESTAMP,
-                "subject": subject,
-                "from": from_email,
-                "rcb_id": rcb_id,
-            })
-            
-            # Run classification and send report (Email 2)
-            try:
-                # Extract email body for URL detection and context
-                email_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
-                # Strip HTML tags if body is HTML
-                if msg.get('body', {}).get('contentType', '') == 'html' and email_body:
-                    import re as _re
-                    email_body = _re.sub(r'<[^>]+>', ' ', email_body)
-                    email_body = _re.sub(r'\s+', ' ', email_body).strip()
 
-                process_and_send_report(
-                    access_token, rcb_email, from_email, subject,
-                    from_name, raw_attachments, msg_id, get_secret,
-                    get_db(), firestore, helper_graph_send, extract_text_from_attachments,
-                    email_body=email_body
-                )
-            except Exception as ce:
-                print(f"    ⚠️ Classification error: {ce}")
-        else:
-            print(f"    ❌ Failed to send ack")
+        # Mark as processed immediately to prevent double-processing
+        get_db().collection("rcb_processed").document(safe_id).set({
+            "processed_at": firestore.SERVER_TIMESTAMP,
+            "subject": subject,
+            "from": from_email,
+            "rcb_id": rcb_id,
+        })
+
+        try:
+            # Extract email body for URL detection and context
+            email_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+            if msg.get('body', {}).get('contentType', '') == 'html' and email_body:
+                import re as _re
+                email_body = _re.sub(r'<[^>]+>', ' ', email_body)
+                email_body = _re.sub(r'\s+', ' ', email_body).strip()
+
+            process_and_send_report(
+                access_token, rcb_email, from_email, subject,
+                from_name, raw_attachments, msg_id, get_secret,
+                get_db(), firestore, helper_graph_send, extract_text_from_attachments,
+                email_body=email_body,
+                internet_message_id=internet_msg_id,
+            )
+        except Exception as ce:
+            print(f"    ⚠️ Classification error: {ce}")
     
     print("✅ RCB check complete")
 

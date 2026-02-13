@@ -1342,13 +1342,11 @@ def _parse_invoice_fields_from_data(invoice_data):
     return fields
 
 
-def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func, email_body=None):
-    """Main: Extract, classify, validate, send report with Excel + original attachments
-    
-    UPDATED Session 10: Integrates Module 4, 5, 6
-    - Validates invoice using Module 5
-    - Adds validation results to report
-    - Generates clarification requests if needed (Module 4)
+def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func, email_body=None, internet_message_id=None):
+    """Main: Extract, classify, validate, send ONE consolidated email.
+
+    Sends a single email containing: ack + classification report + clarification (if needed).
+    Uses internet_message_id for proper Outlook/Gmail threading.
     """
     try:
         print(f"  🤖 Starting: {subject[:50]}")
@@ -1431,7 +1429,83 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         print("  📋 Building reports...")
         html = build_classification_email(results, sender_name, invoice_validation, tracking_code, invoice_data)
         excel = build_excel_report(results)
-        
+
+        # ── Build clarification section (merged into same email) ──
+        clarification_sent = False
+        clarification_html = ""
+        if MODULES_AVAILABLE and invoice_validation and invoice_validation['score'] < 70:
+            try:
+                from lib.clarification_generator import (
+                    generate_missing_docs_request,
+                    DocumentType,
+                    UrgencyLevel,
+                )
+
+                missing_docs = []
+                field_to_doc = {
+                    'ארץ המקור': DocumentType.CERTIFICATE_OF_ORIGIN,
+                    'פרטי אריזות': DocumentType.PACKING_LIST,
+                    'משקלים': DocumentType.PACKING_LIST,
+                    'תנאי מכר': DocumentType.INVOICE,
+                    'מחיר': DocumentType.INVOICE,
+                    'תיאור הטובין': DocumentType.INVOICE,
+                }
+
+                for field_name in invoice_validation.get('missing_fields', []):
+                    if field_name in field_to_doc:
+                        doc = field_to_doc[field_name]
+                        if doc not in missing_docs:
+                            missing_docs.append(doc)
+
+                if missing_docs:
+                    urgency = UrgencyLevel.HIGH if invoice_validation['score'] < 50 else UrgencyLevel.MEDIUM
+                    clarification = generate_missing_docs_request(
+                        missing_docs=missing_docs,
+                        invoice_number=invoice_data.get('invoice_number') or invoice_data.get('invoice_date'),
+                        supplier_name=invoice_data.get('seller'),
+                        recipient_name=sender_name,
+                        urgency=urgency,
+                        sender_name="מערכת RCB",
+                    )
+                    clarification_html = f'''<div style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:20px;margin-top:25px">
+                        <h2 style="color:#856404;margin:0 0 10px 0">📋 בקשה להשלמת מסמכים</h2>
+                        <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;direction:rtl;text-align:right;color:#856404;margin:0">{clarification.body}</pre>
+                    </div>'''
+                    clarification_sent = True
+                    print(f"  📋 Clarification section added (score: {invoice_validation['score']}/100)")
+
+            except Exception as ce:
+                print(f"  ⚠️ Clarification generation error: {ce}")
+
+        # ── Assemble ONE consolidated email: ack + classification + clarification ──
+        # Insert ack banner before the classification report
+        name = sender_name.split('<')[0].strip()
+        first_name = name.split()[0] if name and '@' not in name else ""
+        # Try Hebrew name
+        try:
+            from lib.rcb_helpers import to_hebrew_name
+            display_name = to_hebrew_name(first_name) if first_name else "שלום"
+        except Exception:
+            display_name = first_name or "שלום"
+
+        hour = datetime.now().hour
+        greeting = "בוקר טוב" if 5 <= hour < 12 else "צהריים טובים" if 12 <= hour < 17 else "ערב טוב" if 17 <= hour < 21 else "לילה טוב"
+
+        ack_banner = f'''<div dir="rtl" style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto 15px auto;background:#d4edda;border:1px solid #28a745;border-radius:10px;padding:15px">
+            <p style="margin:0"><strong>{greeting} {display_name},</strong></p>
+            <p style="margin:5px 0 0 0">✅ קיבלתי את המסמכים ועיבדתי אותם. להלן הדו"ח המלא:</p>
+        </div>'''
+
+        # Final HTML: ack banner + classification report + clarification section
+        final_html = ack_banner + html
+        if clarification_html:
+            # Insert clarification before the footer (before the last </div></div>)
+            footer_pos = final_html.rfind('<hr style="margin:25px 0">')
+            if footer_pos > 0:
+                final_html = final_html[:footer_pos] + clarification_html + final_html[footer_pos:]
+            else:
+                final_html += clarification_html
+
         attachments = []
         if excel:
             attachments.append({
@@ -1440,7 +1514,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 'contentType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'contentBytes': excel
             })
-        
+
         for att in raw_attachments:
             if att.get('contentBytes'):
                 attachments.append({
@@ -1449,80 +1523,12 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                     'contentType': att.get('contentType', 'application/octet-stream'),
                     'contentBytes': att.get('contentBytes')
                 })
-        
-        print("  📤 Sending...")
-        if helper_graph_send(access_token, rcb_email, to_email, subject_line, html, msg_id, attachments):
+
+        print("  📤 Sending consolidated email...")
+        if helper_graph_send(access_token, rcb_email, to_email, subject_line, final_html, msg_id, attachments, internet_message_id=internet_message_id):
             print(f"  ✅ Sent to {to_email}")
-            
-            # Session 11: Auto-send clarification request if score < 70
-            clarification_sent = False
-            if MODULES_AVAILABLE and invoice_validation and invoice_validation['score'] < 70:
-                try:
-                    from lib.clarification_generator import (
-                        generate_missing_docs_request,
-                        DocumentType,
-                        UrgencyLevel,
-                    )
-                    
-                    # Map missing fields to document types
-                    missing_docs = []
-                    field_to_doc = {
-                        'ארץ המקור': DocumentType.CERTIFICATE_OF_ORIGIN,
-                        'פרטי אריזות': DocumentType.PACKING_LIST,
-                        'משקלים': DocumentType.PACKING_LIST,
-                        'תנאי מכר': DocumentType.INVOICE,
-                        'מחיר': DocumentType.INVOICE,
-                        'תיאור הטובין': DocumentType.INVOICE,
-                    }
-                    
-                    for field_name in invoice_validation.get('missing_fields', []):
-                        if field_name in field_to_doc:
-                            doc = field_to_doc[field_name]
-                            if doc not in missing_docs:
-                                missing_docs.append(doc)
-                    
-                    if missing_docs:
-                        # Determine urgency based on score
-                        urgency = UrgencyLevel.HIGH if invoice_validation['score'] < 50 else UrgencyLevel.MEDIUM
-                        
-                        # Generate clarification request
-                        clarification = generate_missing_docs_request(
-                            missing_docs=missing_docs,
-                            invoice_number=invoice_data.get('invoice_number') or invoice_data.get('invoice_date'),
-                            supplier_name=invoice_data.get('seller'),
-                            recipient_name=sender_name,
-                            urgency=urgency,
-                            sender_name="מערכת RCB",
-                        )
-                        
-                        # Build clarification email HTML
-                        clarification_html = f'''<div dir="rtl" style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto">
-                        <div style="background:#1e3a5f;color:white;padding:20px;text-align:center">
-                            <h1 style="margin:0">📋 בקשה להשלמת מסמכים</h1>
-                        </div>
-                        <div style="padding:25px;background:#fff">
-                            <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;direction:rtl;text-align:right">{clarification.body}</pre>
-                        </div>
-                        <hr style="margin:25px 0">
-                        <table><tr>
-                            <td><img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:70px"></td>
-                            <td style="border-right:3px solid #1e3a5f;padding-right:15px">
-                                <strong style="color:#1e3a5f">🤖 RCB - AI Customs Broker</strong><br>
-                                R.P.A. PORT LTD | rcb@rpa-port.co.il
-                            </td>
-                        </tr></table>
-                        </div>'''
-                        
-                        # Send clarification email with same tracking code
-                        clarification_subject = f"[{tracking_code}] ⚠️CLARIFICATION | {clarification.subject}"
-                        if helper_graph_send(access_token, rcb_email, to_email, clarification_subject, clarification_html, None, []):
-                            print(f"  📋 Clarification request sent (score: {invoice_validation['score']}/100)")
-                            clarification_sent = True
-                        
-                except Exception as ce:
-                    print(f"  ⚠️ Clarification generation error: {ce}")
-            
-            # Save to Firestore with validation data and tracking code
+
+            # Save to Firestore
             save_data = {
                 "tracking_code": tracking_code,
                 "subject": subject_line,
@@ -1530,22 +1536,20 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 "to": to_email,
                 "items": len(results.get("agents", {}).get("classification", {}).get("classifications", [])),
                 "timestamp": firestore.SERVER_TIMESTAMP,
-                # Session 11: Store extracted shipping info
                 "direction": invoice_data.get('direction', 'unknown'),
                 "freight_type": invoice_data.get('freight_type', 'unknown'),
                 "bl_number": invoice_data.get('bl_number', ''),
                 "awb_number": invoice_data.get('awb_number', ''),
                 "seller": invoice_data.get('seller', ''),
                 "buyer": invoice_data.get('buyer', ''),
+                "clarification_sent": clarification_sent,
             }
-            
+
             if invoice_validation:
                 save_data["invoice_score"] = invoice_validation['score']
                 save_data["invoice_valid"] = invoice_validation['is_valid']
                 save_data["missing_fields"] = invoice_validation['missing_fields']
-                save_data["clarification_sent"] = clarification_sent
 
-            # Phase E: Store smart question info
             if has_smart_questions:
                 ambiguity = results.get("ambiguity", {})
                 save_data["smart_questions_count"] = len(results["smart_questions"])
@@ -1554,7 +1558,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
 
             db.collection("rcb_classifications").add(save_data)
 
-            # Phase 2: Learn from this classification
+            # Learn from classification
             if ENRICHMENT_AVAILABLE:
                 try:
                     enrichment = create_enrichment_agent(db)
