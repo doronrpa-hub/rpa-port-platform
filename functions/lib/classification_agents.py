@@ -309,9 +309,18 @@ def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="
             data = response.json()
             candidates = data.get("candidates", [])
             if candidates:
+                finish_reason = candidates[0].get("finishReason", "UNKNOWN")
+                if finish_reason not in ("STOP", "UNKNOWN"):
+                    print(f"    ⚠️ Gemini finishReason: {finish_reason} (model={model})")
                 parts = candidates[0].get("content", {}).get("parts", [])
                 if parts:
-                    return parts[0].get("text")
+                    text = parts[0].get("text", "")
+                    # Strip markdown code fences that Gemini often wraps around JSON
+                    if text.startswith("```"):
+                        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+                    if text.endswith("```"):
+                        text = text[:-3]
+                    return text.strip()
         else:
             print(f"Gemini API error ({model}): {response.status_code} - {response.text[:200]}")
             return None
@@ -398,6 +407,26 @@ def query_classification_rules(db):
         print(f"Rules query error: {e}")
     return rules
 
+def _try_parse_agent1(result, model_name):
+    """Try to parse Agent 1 JSON response. Returns parsed dict or None."""
+    try:
+        if result:
+            start, end = result.find('{'), result.rfind('}') + 1
+            if start != -1 and end > start:
+                parsed = json.loads(result[start:end])
+                items = parsed.get("items", [])
+                print(f"    📦 Agent 1 ({model_name}): {len(items)} items extracted, keys={list(parsed.keys())}")
+                return parsed
+            else:
+                print(f"    ⚠️ Agent 1 ({model_name}): No complete JSON in response ({len(result)} chars): {result[:200]}")
+        else:
+            print(f"    ⚠️ Agent 1 ({model_name}): returned None/empty")
+    except Exception as e:
+        print(f"    ⚠️ Agent 1 ({model_name}) JSON parse error: {e}")
+        print(f"    ⚠️ Agent 1 ({model_name}) raw ({len(result)} chars): {result[:300]}")
+    return None
+
+
 def run_document_agent(api_key, doc_text, gemini_key=None):
     """Agent 1: Extract invoice data - Updated Session 11 with shipping details
     Session 15: Uses Gemini Flash (simple extraction task)"""
@@ -432,22 +461,19 @@ def run_document_agent(api_key, doc_text, gemini_key=None):
 - rpa_file_number: מספר תיק RPA אם מופיע
 
 JSON בלבד."""
-    result = call_ai(api_key, gemini_key, system, doc_text[:6000], tier="fast")
-    try:
-        if result:
-            start, end = result.find('{'), result.rfind('}') + 1
-            if start != -1:
-                parsed = json.loads(result[start:end])
-                print(f"    📦 Agent 1 raw JSON keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'NOT A DICT'}")
-                return parsed
-            else:
-                print(f"    ⚠️ Agent 1: No JSON braces found in response ({len(result)} chars): {result[:200]}")
-        else:
-            print("    ⚠️ Agent 1: AI returned None/empty")
-    except Exception as e:
-        print(f"    ⚠️ Agent 1 JSON parse error: {e}")
-        print(f"    ⚠️ Agent 1 raw response ({len(result)} chars): {result[:300]}")
-    print("    ⚠️ Agent 1: FALLBACK — returning doc_text[:500] as single item")
+    result = call_ai(api_key, gemini_key, system, doc_text[:6000], max_tokens=4096, tier="fast")
+    parsed = _try_parse_agent1(result, "Gemini")
+    if parsed:
+        return parsed
+
+    # Gemini failed — retry with Claude (more reliable JSON output)
+    print("    🔄 Agent 1: Gemini failed, retrying with Claude...")
+    result = call_claude(api_key, system, doc_text[:6000], max_tokens=4096)
+    parsed = _try_parse_agent1(result, "Claude")
+    if parsed:
+        return parsed
+
+    print("    ⚠️ Agent 1: BOTH models failed — returning doc_text[:500] as single item")
     return {"items": [{"description": doc_text[:500]}]}
 
 
