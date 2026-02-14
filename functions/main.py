@@ -1244,9 +1244,9 @@ def monitor_agent(event: scheduler_fn.ScheduledEvent) -> None:
             "pending_retries": len(failed)
         })
         
-        # Alert master if too many issues
+        # Alert master if too many issues (disabled — Doron requested no system alert emails)
         if len(failed) > 5 or errors_fixed > 10:
-            _send_alert_email([f"{len(failed)} failed classifications", f"{errors_fixed} auto-fixes applied"])
+            print(f"⚠️ Would alert: {len(failed)} failed, {errors_fixed} fixes (email alerts disabled)")
             errors_escalated += 1
         
         print(f"✅ Monitor complete: {errors_fixed} fixed, {errors_escalated} escalated")
@@ -1391,10 +1391,9 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
             "error_count": error_count if 'error_count' in dir() else 0
         })
         
-        # Send alert email if issues
+        # Send alert email if issues (disabled — Doron requested no system alert emails)
         if issues:
-            print(f"⚠️ Issues detected: {issues}")
-            _send_alert_email(issues)
+            print(f"⚠️ Issues detected (email alerts disabled): {issues}")
         else:
             print("✅ System healthy")
             
