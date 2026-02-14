@@ -1705,3 +1705,35 @@ def rcb_inspector_daily(event: scheduler_fn.ScheduledEvent) -> None:
     handle_inspector_daily(get_db(), get_secret)
     
     print("✅ RCB Inspector daily run complete")
+
+
+# ============================================================
+# NIGHTLY LEARNING — Build knowledge indexes automatically
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 02:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
+)
+def rcb_nightly_learn(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    Nightly learning pipeline — reads source data, builds indexes.
+    Runs at 02:00 Jerusalem time every night.
+
+    READS: tariff, knowledge_base, declarations, classification_knowledge,
+           rcb_classifications, sellers, and 20+ other collections
+    BUILDS: keyword_index, product_index, supplier_index, brain_index
+
+    Source data is NEVER modified. Only derived indexes are written.
+    No AI calls — pure text parsing. $0 cost.
+    """
+    print("NIGHTLY LEARN — Starting automated learning pipeline")
+
+    from lib.nightly_learn import run_pipeline
+
+    results = run_pipeline()
+
+    success = all(r.get("status") == "success" for r in results.values())
+    print(f"NIGHTLY LEARN — {'All steps succeeded' if success else 'Some steps failed'}")
