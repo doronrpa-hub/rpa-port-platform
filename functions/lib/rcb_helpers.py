@@ -817,7 +817,7 @@ def build_rcb_reply(sender_name, attachments, subject="", is_first_email=False, 
     # Signature
     html += '''<hr style="margin:25px 0">
     <table dir="rtl"><tr>
-        <td style="padding-left:15px"><img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:80px"></td>
+        <td style="padding-left:15px"><img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:80px"></td>
         <td style="border-right:3px solid #1e3a5f;padding-right:15px">
             <strong style="color:#1e3a5f">🤖 RCB - AI Customs Broker</strong><br>
             <strong>R.P.A. PORT LTD</strong><br>

@@ -1613,7 +1613,7 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
     <div style="background:#f8faff;padding:24px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">
         <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
             <td style="vertical-align:middle;width:60px">
-                <img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
+                <img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
             </td>
             <td style="vertical-align:middle;border-right:3px solid #1a3a5c;padding-right:16px">
                 <strong style="color:#0f2439;font-size:14px">RCB — AI Customs Broker</strong><br>

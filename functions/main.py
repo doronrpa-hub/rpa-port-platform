@@ -1038,7 +1038,7 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
 # CLASSIFICATION PROCESSING (called after acknowledgment)
 # ============================================================
 
-@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1)
+@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     """Check rcb@rpa-port.co.il inbox - process emails from last 2 days"""
     print("🤖 RCB checking email via Graph API...")
