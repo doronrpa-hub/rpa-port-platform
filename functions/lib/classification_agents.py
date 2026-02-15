@@ -107,6 +107,14 @@ except ImportError as e:
     print(f"Document tracker not available: {e}")
     TRACKER_AVAILABLE = False
 
+# Tool-calling classification engine (Session 22)
+try:
+    from lib.tool_calling_engine import tool_calling_classify
+    TOOL_CALLING_AVAILABLE = True
+except ImportError as e:
+    print(f"Tool-calling engine not available: {e}")
+    TOOL_CALLING_AVAILABLE = False
+
 # =============================================================================
 # HS CODE VALIDATION HELPERS
 # =============================================================================
@@ -1903,7 +1911,18 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         
         print(f"  📝 {len(doc_text)} chars")
         
-        results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
+        results = None
+        if TOOL_CALLING_AVAILABLE:
+            try:
+                results = tool_calling_classify(api_key, doc_text, db, gemini_key=gemini_key)
+                if not results or not results.get("success"):
+                    print("  ⚠️ Tool-calling returned no result, falling back to pipeline")
+                    results = None
+            except Exception as tc_err:
+                print(f"  ⚠️ Tool-calling error: {tc_err}, falling back to pipeline")
+                results = None
+        if not results:
+            results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
         if not results.get('success'):
             print(f"  ❌ Failed")
             return False

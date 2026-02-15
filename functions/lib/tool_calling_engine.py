@@ -1,0 +1,529 @@
+"""
+Tool-Calling Classification Engine for RCB
+============================================
+Replaces the 6-agent sequential pipeline with a single AI call
+that uses tools to gather data on demand.
+
+Entry point: tool_calling_classify(api_key, doc_text, db, gemini_key=None)
+Returns the EXACT same dict format as run_full_classification().
+
+Fallback: If this fails, classification_agents.py falls back to the old pipeline.
+"""
+
+import json
+import time
+import re
+import requests
+
+from lib.tool_definitions import CLAUDE_TOOLS, CLASSIFICATION_SYSTEM_PROMPT
+from lib.tool_executors import ToolExecutor
+
+# Optional modules — graceful degradation
+try:
+    from lib.document_parser import parse_all_documents
+    _PARSER_OK = True
+except ImportError:
+    _PARSER_OK = False
+
+try:
+    from lib.document_tracker import (
+        create_tracker, Document, DocumentType as TrackerDocType, feed_parsed_documents
+    )
+    _TRACKER_OK = True
+except ImportError:
+    _TRACKER_OK = False
+
+try:
+    from lib.smart_questions import should_ask_questions, generate_smart_questions
+    _QUESTIONS_OK = True
+except ImportError:
+    _QUESTIONS_OK = False
+
+try:
+    from lib.language_tools import HebrewLanguageChecker
+    _lang = HebrewLanguageChecker()
+    _LANG_OK = True
+except ImportError:
+    _LANG_OK = False
+
+try:
+    from lib.intelligence import validate_documents
+    _INTEL_OK = True
+except ImportError:
+    _INTEL_OK = False
+
+from lib.librarian import validate_and_correct_classifications
+from lib.verification_loop import verify_all_classifications, learn_from_verification
+from lib.classification_agents import (
+    _link_invoice_to_classifications,
+    _is_valid_hs,
+    audit_before_send,
+    query_tariff,
+    query_classification_rules,
+    run_synthesis_agent,
+)
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_MODEL = "claude-sonnet-4-20250514"
+_MAX_TOKENS = 4096
+_MAX_ROUNDS = 8
+_TIME_BUDGET_SEC = 120  # Hard ceiling — abort tool loop after this
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
+    """
+    Classify using tool-calling architecture.
+
+    Returns the EXACT same dict as run_full_classification() or None on failure.
+    """
+    t0 = time.time()
+    print("  [TOOL ENGINE] Starting tool-calling classification...")
+
+    executor = ToolExecutor(db, api_key, gemini_key=gemini_key)
+
+    # ── Step 1: Document parsing (same as old pipeline) ──
+    parsed_documents = []
+    if _PARSER_OK:
+        try:
+            parsed_documents = parse_all_documents(doc_text)
+            if parsed_documents:
+                types = [d["type_info"]["name_en"] for d in parsed_documents]
+                print(f"  [TOOL ENGINE] Parsed {len(parsed_documents)} docs: {', '.join(types)}")
+        except Exception as e:
+            print(f"  [TOOL ENGINE] Document parser error: {e}")
+
+    # ── Step 2: Extract invoice (always needed — uses Gemini Flash) ──
+    print("  [TOOL ENGINE] Extracting invoice...")
+    invoice = executor.execute("extract_invoice", {"document_text": doc_text})
+    if not isinstance(invoice, dict) or invoice.get("error"):
+        print(f"  [TOOL ENGINE] Invoice extraction failed, using fallback")
+        invoice = {"items": [{"description": doc_text[:500]}]}
+
+    items = invoice.get("items") or [{"description": doc_text[:500]}]
+    if not isinstance(items, list):
+        items = [{"description": doc_text[:500]}]
+    origin = items[0].get("origin_country", "") if items and isinstance(items[0], dict) else ""
+
+    print(f"  [TOOL ENGINE] Invoice: {len(items)} items, origin='{origin}'")
+
+    # ── Step 3: Shipment tracker ──
+    tracker_info = None
+    if _TRACKER_OK and parsed_documents:
+        try:
+            bl_num = invoice.get("bl_number", "") or ""
+            shipment_id = bl_num or invoice.get("awb_number", "") or "PENDING"
+            direction_val = invoice.get("direction", "import")
+            transport = "sea_fcl" if invoice.get("freight_type") == "sea" else (
+                "air" if invoice.get("freight_type") == "air" else None)
+            tracker = create_tracker(
+                shipment_id=shipment_id,
+                direction=direction_val,
+                transport_mode=transport,
+            )
+            feed_parsed_documents(tracker, parsed_documents, invoice_data=invoice)
+            if invoice.get("invoice_number") or invoice.get("seller"):
+                tracker.add_document(Document(
+                    doc_type=TrackerDocType.INVOICE,
+                    doc_number=invoice.get("invoice_number", ""),
+                ))
+            tracker_info = tracker.to_dict()
+        except Exception as e:
+            print(f"  [TOOL ENGINE] Tracker error: {e}")
+
+    # ── Step 4: Memory check for each item ──
+    memory_hits = {}
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc = item.get("description", "")
+        if not desc:
+            continue
+        mem = executor.execute("check_memory", {"product_description": desc})
+        if mem.get("found") and mem.get("level") == "exact" and mem.get("confidence", 0) >= 0.9:
+            memory_hits[desc[:50]] = mem
+            print(f"  [TOOL ENGINE] Memory HIT (exact): {desc[:40]} → {mem.get('hs_code')}")
+
+    # ── Step 5: AI classification call (skip if ALL items hit memory) ──
+    ai_response = None
+    if len(memory_hits) < len(items):
+        print(f"  [TOOL ENGINE] {len(memory_hits)} memory hits, {len(items) - len(memory_hits)} need AI")
+
+        # Build user prompt with invoice data
+        user_prompt = _build_user_prompt(items, origin, invoice, doc_text)
+
+        # Multi-turn tool calling loop
+        ai_response = _run_tool_loop(api_key, user_prompt, executor)
+    else:
+        print(f"  [TOOL ENGINE] ALL {len(items)} items from memory — skipping AI")
+
+    # ── Step 6: Parse AI response into classifications ──
+    classifications, regulatory, fta, risk, synthesis = _parse_ai_response(
+        ai_response, memory_hits, items
+    )
+
+    # ── Step 7: Post-processing (same as old pipeline) ──
+    classification_dict = {"classifications": classifications}
+
+    # 7a: Validate HS codes
+    for c in classifications:
+        hs = c.get("hs_code", "")
+        if hs and not _is_valid_hs(hs):
+            c["original_hs_code"] = hs
+            c["hs_code"] = ""
+            c["confidence"] = "נמוכה"
+
+    validated = validate_and_correct_classifications(db, classifications)
+    classification_dict["classifications"] = validated
+
+    # 7b: Free Import Order for valid HS codes
+    free_import_results = {}
+    for c in validated[:3]:
+        hs = c.get("hs_code", "")
+        if hs and _is_valid_hs(hs):
+            if hs in executor._fio_cache:
+                fio = executor._fio_cache[hs]
+            else:
+                reg = executor.execute("check_regulatory", {"hs_code": hs})
+                fio = reg.get("free_import_order", {})
+            if fio.get("found"):
+                free_import_results[hs] = fio
+
+    # 7c: Ministry routing for valid HS codes
+    ministry_routing = {}
+    for c in validated[:3]:
+        hs = c.get("hs_code", "")
+        if hs and _is_valid_hs(hs):
+            if hs in executor._ministry_cache:
+                routing = executor._ministry_cache[hs]
+            else:
+                reg = executor.execute("check_regulatory", {"hs_code": hs})
+                routing = reg.get("ministry_routing", {})
+            if routing.get("ministries"):
+                ministry_routing[hs] = routing
+
+    # 7d: Verification loop
+    try:
+        validated = verify_all_classifications(
+            db, validated, free_import_results=free_import_results
+        )
+        classification_dict["classifications"] = validated
+        for c in validated:
+            if c.get("verification_status") in ("official", "verified"):
+                learn_from_verification(db, c)
+    except Exception as e:
+        print(f"  [TOOL ENGINE] Verification error: {e}")
+
+    # 7e: Link invoice lines to classifications
+    validated = _link_invoice_to_classifications(items, validated)
+    classification_dict["classifications"] = validated
+
+    # 7f: Smart questions
+    smart_questions = []
+    ambiguity_info = {}
+    if _QUESTIONS_OK:
+        try:
+            ask, ambiguity_info = should_ask_questions(
+                validated,
+                intelligence_results={},
+                free_import_results=free_import_results,
+                ministry_routing=ministry_routing,
+            )
+            if ask:
+                smart_questions = generate_smart_questions(
+                    ambiguity_info, validated,
+                    invoice_data=invoice,
+                    free_import_results=free_import_results,
+                    ministry_routing=ministry_routing,
+                    parsed_documents=parsed_documents,
+                )
+        except Exception as e:
+            print(f"  [TOOL ENGINE] Smart questions error: {e}")
+
+    # 7g: Document validation
+    doc_validation = None
+    if _INTEL_OK:
+        try:
+            has_fta = any(f.get("eligible") for f in fta if isinstance(f, dict))
+            doc_validation = validate_documents(doc_text, direction="import", has_fta=has_fta)
+        except Exception as e:
+            print(f"  [TOOL ENGINE] Doc validation error: {e}")
+
+    # 7h: Audit before send
+    all_results = {
+        "invoice": invoice,
+        "classification": classification_dict,
+        "regulatory": {"regulatory": regulatory},
+        "fta": {"fta": fta},
+        "risk": {"risk": risk},
+    }
+    pre_send = {"agents": all_results, "invoice_data": invoice}
+
+    tariff = query_tariff(db, [i.get("description", "")[:50] for i in items[:5] if isinstance(i, dict)])
+    rules = query_classification_rules(db)
+
+    audit = audit_before_send(
+        pre_send, api_key=api_key, items=items,
+        tariff=tariff, rules=rules, context="",
+        gemini_key=gemini_key, db=db,
+    )
+    all_results["classification"]["classifications"] = audit["classifications"]
+
+    # 7i: Synthesis (if AI didn't provide one)
+    if not synthesis:
+        synthesis = run_synthesis_agent(api_key, all_results, gemini_key=gemini_key)
+
+    # 7j: Language cleanup
+    if _LANG_OK and synthesis:
+        try:
+            synthesis = _lang.fix_all(synthesis)
+        except Exception:
+            pass
+
+    # ── Build final result ──
+    elapsed = time.time() - t0
+    print(f"  [TOOL ENGINE] Done in {elapsed:.1f}s | Tools: {executor.get_stats()}")
+
+    return {
+        "success": True,
+        "agents": all_results,
+        "synthesis": synthesis,
+        "invoice_data": invoice,
+        "intelligence": {},  # tool engine uses tools directly, no pre-classify dict
+        "document_validation": doc_validation,
+        "free_import_order": free_import_results,
+        "ministry_routing": ministry_routing,
+        "parsed_documents": parsed_documents,
+        "smart_questions": smart_questions,
+        "ambiguity": ambiguity_info,
+        "tracker": tracker_info,
+        "audit": audit,
+        "_engine": "tool_calling",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Multi-turn tool calling loop (Claude API)
+# ---------------------------------------------------------------------------
+
+def _run_tool_loop(api_key, user_prompt, executor):
+    """
+    Send message to Claude with tools, execute tool calls, repeat.
+    Returns the final text response or None.
+
+    Constraints:
+        - Max 8 rounds
+        - 120 second time budget
+    """
+    messages = [{"role": "user", "content": user_prompt}]
+    t0 = time.time()
+    text_parts = []
+
+    for round_num in range(_MAX_ROUNDS):
+        elapsed = time.time() - t0
+        if elapsed > _TIME_BUDGET_SEC:
+            print(f"  [TOOL ENGINE] Time budget exhausted ({elapsed:.0f}s) at round {round_num}")
+            break
+
+        print(f"  [TOOL ENGINE] API call round {round_num + 1}...")
+        response = _call_claude_with_tools(api_key, messages)
+        if not response:
+            print("  [TOOL ENGINE] Claude API returned None")
+            return None
+
+        stop_reason = response.get("stop_reason", "")
+        content_blocks = response.get("content", [])
+
+        # Collect text and tool_use blocks
+        text_parts = []
+        tool_uses = []
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                tool_uses.append(block)
+
+        if stop_reason == "end_turn" or not tool_uses:
+            # Done — return accumulated text
+            final_text = "\n".join(text_parts)
+            print(f"  [TOOL ENGINE] AI finished in {round_num + 1} rounds")
+            return final_text
+
+        # Execute tool calls
+        messages.append({"role": "assistant", "content": content_blocks})
+        tool_results = []
+        for tu in tool_uses:
+            tool_name = tu.get("name", "")
+            tool_input = tu.get("input", {})
+            tool_id = tu.get("id", "")
+
+            # Time check before each tool execution
+            if time.time() - t0 > _TIME_BUDGET_SEC:
+                print(f"  [TOOL ENGINE] Time budget hit during tool execution")
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": json.dumps({"error": "Time budget exceeded"}, ensure_ascii=False),
+                })
+                continue
+
+            result = executor.execute(tool_name, tool_input)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_id,
+                "content": json.dumps(result, ensure_ascii=False, default=str),
+            })
+
+        messages.append({"role": "user", "content": tool_results})
+
+    print(f"  [TOOL ENGINE] Max rounds reached, returning last text")
+    return "\n".join(text_parts) if text_parts else None
+
+
+def _call_claude_with_tools(api_key, messages):
+    """Single Claude API call with tool definitions."""
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "content-type": "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model": _MODEL,
+                "max_tokens": _MAX_TOKENS,
+                "system": CLASSIFICATION_SYSTEM_PROMPT,
+                "tools": CLAUDE_TOOLS,
+                "messages": messages,
+            },
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        print(f"  [TOOL ENGINE] Claude API error: {resp.status_code} - {resp.text[:200]}")
+        return None
+    except Exception as e:
+        print(f"  [TOOL ENGINE] Claude API exception: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Prompt builder
+# ---------------------------------------------------------------------------
+
+def _build_user_prompt(items, origin, invoice, doc_text):
+    """Build the user prompt with invoice data for the AI."""
+    parts = ["Classify the following items from the invoice:\n"]
+
+    for idx, item in enumerate(items[:10]):
+        if not isinstance(item, dict):
+            continue
+        desc = item.get("description", "")
+        qty = item.get("quantity", "")
+        val = item.get("total", "") or item.get("unit_price", "")
+        item_origin = item.get("origin_country", origin)
+        parts.append(f"{idx+1}. {desc}")
+        if qty:
+            parts.append(f"   Quantity: {qty}")
+        if val:
+            parts.append(f"   Value: {val}")
+        if item_origin:
+            parts.append(f"   Origin: {item_origin}")
+        parts.append("")
+
+    if invoice.get("seller"):
+        parts.append(f"Seller: {invoice['seller']}")
+    if invoice.get("buyer"):
+        parts.append(f"Buyer: {invoice['buyer']}")
+    if invoice.get("currency"):
+        parts.append(f"Currency: {invoice['currency']}")
+    if invoice.get("incoterms"):
+        parts.append(f"Incoterms: {invoice['incoterms']}")
+
+    parts.append("\nClassify each item to the most specific Israeli HS code.")
+    parts.append("Use the tools to check memory, search tariff DB, verify codes, and check regulatory requirements.")
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Response parser
+# ---------------------------------------------------------------------------
+
+def _parse_ai_response(ai_text, memory_hits, items):
+    """
+    Parse the AI's final text response into structured data.
+    Also merges any memory hits.
+
+    Returns: (classifications, regulatory, fta, risk, synthesis)
+    """
+    classifications = []
+    regulatory = []
+    fta = []
+    risk = {"level": "נמוך", "items": []}
+    synthesis = ""
+
+    # Parse AI JSON response
+    if ai_text:
+        parsed = _extract_json(ai_text)
+        if parsed:
+            classifications = parsed.get("classifications", [])
+            regulatory = parsed.get("regulatory", [])
+            fta = parsed.get("fta", [])
+            risk = parsed.get("risk", {"level": "נמוך", "items": []})
+            synthesis = parsed.get("synthesis", "")
+
+    # Merge memory hits for items not in AI response
+    ai_described = {c.get("item_description", "").lower()[:50] for c in classifications}
+    for desc_key, mem in memory_hits.items():
+        if desc_key.lower() not in ai_described:
+            classifications.append({
+                "item": desc_key,
+                "item_description": desc_key,
+                "hs_code": mem.get("hs_code", ""),
+                "confidence": "גבוהה",
+                "reasoning": f"From memory ({mem.get('level', 'exact')})",
+                "source": "memory",
+            })
+
+    # Normalize classification fields
+    for c in classifications:
+        if "item" not in c and "item_description" in c:
+            c["item"] = c["item_description"]
+        if "item_description" not in c and "item" in c:
+            c["item_description"] = c["item"]
+
+    return classifications, regulatory, fta, risk, synthesis
+
+
+def _extract_json(text):
+    """Extract JSON from AI response — handles code fences and mixed text."""
+    if not text:
+        return None
+
+    # Try code-fenced JSON first
+    match = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Try raw JSON object
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    return None
