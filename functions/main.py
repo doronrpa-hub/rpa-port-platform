@@ -1206,6 +1206,52 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         except Exception as kq_err:
             print(f"  ⚠️ Knowledge query detection error: {kq_err}")
 
+        # ── Shipping-only routing: BL/AWB/booking without invoice → tracker ──
+        if attachments:
+            _invoice_kw = ['invoice', 'חשבונית', 'proforma', 'ci_']
+            _shipping_kw = [
+                'bill of lading', 'bl_', 'bol_', 'bol ', 'b_l', 'b/l',
+                'שטר מטען', 'שטר',
+                'awb', 'air waybill', 'airwaybill',
+                'booking', 'הזמנה',
+                'delivery order', 'פקודת מסירה', 'do_',
+                'packing', 'רשימת אריזה', 'pl_',
+            ]
+            _cls_intent = ['סיווג', 'classify', 'classification', 'קוד מכס', 'hs code', 'לסווג']
+
+            _has_inv = False
+            _has_ship = False
+            for att in attachments:
+                fn = att.get('filename', '').lower()
+                if any(kw in fn for kw in _invoice_kw):
+                    _has_inv = True
+                if any(kw in fn for kw in _shipping_kw):
+                    _has_ship = True
+
+            if _has_ship and not _has_inv:
+                # Check body for classification intent — "please classify" overrides
+                _body_text = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+                _combined = f"{subject} {_body_text}".lower()
+                if not any(kw in _combined for kw in _cls_intent):
+                    print(f"  📦 Shipping docs only (no invoice) — routing to tracker, skipping classification")
+                    if TRACKER_AVAILABLE:
+                        try:
+                            tracker_process_email(msg, get_db(), firestore, access_token, rcb_email, get_secret, is_direct=is_direct)
+                        except Exception as te:
+                            print(f"    ⚠️ Tracker error: {te}")
+                    if PUPIL_AVAILABLE:
+                        try:
+                            pupil_process_email(msg, get_db(), firestore, access_token, rcb_email, get_secret)
+                        except Exception as pe:
+                            print(f"    ⚠️ Pupil error: {pe}")
+                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                    get_db().collection("rcb_processed").document(safe_id).set({
+                        "processed_at": firestore.SERVER_TIMESTAMP,
+                        "subject": subject,
+                        "from": from_email,
+                        "type": "shipping_tracker",
+                    })
+                    continue
 
         # Consolidated: ONE email with ack + classification + clarification
         try:
@@ -1973,5 +2019,35 @@ def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
 
     except Exception as e:
         print(f"❌ Daily digest error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ============================================================
+# AUDIT: One-time overnight diagnostic scan
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 02:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.GB_2,
+    timeout_sec=540,
+)
+def rcb_overnight_audit(event: scheduler_fn.ScheduledEvent) -> None:
+    """Diagnostic scan: reprocess emails, check memory, find ghost deals, count everything."""
+    print("🔍 Overnight audit triggered...")
+    try:
+        from lib.overnight_audit import run_overnight_audit
+
+        secrets = get_rcb_secrets_internal(get_secret)
+        access_token = helper_get_graph_token(secrets) if secrets else None
+        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+        result = run_overnight_audit(get_db(), firestore, access_token, rcb_email, get_secret)
+        print(f"🔍 Audit complete: {result.get('duration_sec', 0):.1f}s, "
+              f"{len(result.get('errors', []))} errors")
+
+    except Exception as e:
+        print(f"❌ Overnight audit error: {e}")
         import traceback
         traceback.print_exc()
