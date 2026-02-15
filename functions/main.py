@@ -25,6 +25,28 @@ from lib.rcb_id import generate_rcb_id, RCBType
 from lib.rcb_helpers import extract_text_from_attachments
 from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal, extract_text_from_attachments
 
+# ── Optional agent imports (fail gracefully if modules have issues) ──
+try:
+    from lib.brain_commander import brain_commander_check, auto_learn_email_style
+    BRAIN_COMMANDER_AVAILABLE = True
+except ImportError as e:
+    print(f"Brain Commander not available: {e}")
+    BRAIN_COMMANDER_AVAILABLE = False
+
+try:
+    from lib.tracker import tracker_process_email, tracker_poll_active_deals
+    TRACKER_AVAILABLE = True
+except ImportError as e:
+    print(f"Tracker not available: {e}")
+    TRACKER_AVAILABLE = False
+
+try:
+    from lib.pupil import pupil_process_email
+    PUPIL_AVAILABLE = True
+except ImportError as e:
+    print(f"Pupil not available: {e}")
+    PUPIL_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -1102,6 +1124,24 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         
         print(f"    📎 {len(attachments)} attachments")
 
+        # ── Brain Commander: Father channel check ──
+        # If doron@ sends a brain command, handle it and skip classification
+        if BRAIN_COMMANDER_AVAILABLE:
+            try:
+                brain_result = brain_commander_check(msg, get_db(), access_token, rcb_email, get_secret)
+                if brain_result and brain_result.get('handled'):
+                    print(f"    🧠 Brain Commander handled: {brain_result.get('command', {}).get('type', 'unknown')}")
+                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                    get_db().collection("rcb_processed").document(safe_id).set({
+                        "processed_at": firestore.SERVER_TIMESTAMP,
+                        "subject": subject,
+                        "from": from_email,
+                        "type": "brain_command",
+                    })
+                    continue
+            except Exception as bc_err:
+                print(f"    ⚠️ Brain Commander error (continuing normally): {bc_err}")
+
         # ── Session 13 v4.1.0: Knowledge Query Detection ──
         # If team member asks a question (no commercial docs), answer it
         # and skip the classification pipeline entirely.
@@ -1167,7 +1207,26 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
             )
         except Exception as ce:
             print(f"    ⚠️ Classification error: {ce}")
-    
+
+        # ── Tracker: Feed email as observation for deal tracking ──
+        if TRACKER_AVAILABLE:
+            try:
+                tracker_process_email(
+                    msg, get_db(), firestore, access_token, rcb_email, get_secret,
+                    is_direct=is_direct
+                )
+            except Exception as te:
+                print(f"    ⚠️ Tracker error (non-fatal): {te}")
+
+        # ── Pupil: Passive learning from every email ──
+        if PUPIL_AVAILABLE:
+            try:
+                pupil_process_email(
+                    msg, get_db(), firestore, access_token, rcb_email, get_secret
+                )
+            except Exception as pe:
+                print(f"    ⚠️ Pupil error (non-fatal): {pe}")
+
     print("✅ RCB check complete")
 
 
@@ -1737,3 +1796,107 @@ def rcb_nightly_learn(event: scheduler_fn.ScheduledEvent) -> None:
 
     success = all(r.get("status") == "success" for r in results.values())
     print(f"NIGHTLY LEARN — {'All steps succeeded' if success else 'Some steps failed'}")
+
+
+# ============================================================
+# TRACKER: Poll active deals via TaskYam (every 30 minutes)
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every 30 minutes",
+    region="us-central1",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=300,
+)
+def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
+    """Poll TaskYam for active deal updates. Sends status emails when steps change."""
+    if not TRACKER_AVAILABLE:
+        print("⏸️ Tracker not available — skipping poll")
+        return
+
+    print("📦 Tracker polling active deals...")
+    try:
+        secrets = get_rcb_secrets_internal(get_secret)
+        access_token = helper_get_graph_token(secrets) if secrets else None
+        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+        result = tracker_poll_active_deals(
+            get_db(), firestore, get_secret,
+            access_token=access_token, rcb_email=rcb_email
+        )
+        print(f"📦 Tracker poll complete: {result}")
+    except Exception as e:
+        print(f"❌ Tracker poll error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ============================================================
+# PUPIL: Batch learning cycle (every 6 hours)
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every 6 hours",
+    region="us-central1",
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
+)
+def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    Pupil batch learning: verify observations, challenge brain, learn gaps.
+    Phase B+C run here (not in email loop) to avoid slowing down email processing.
+    """
+    if not PUPIL_AVAILABLE:
+        print("⏸️ Pupil not available — skipping learning cycle")
+        return
+
+    print("🎓 Pupil learning cycle starting...")
+    try:
+        from lib.pupil import (
+            pupil_learn, pupil_verify_scan, pupil_challenge,
+            pupil_send_reviews, pupil_find_corrections, pupil_audit
+        )
+
+        secrets = get_rcb_secrets_internal(get_secret)
+        access_token = helper_get_graph_token(secrets) if secrets else None
+        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+        # Phase B: Verify unverified observations
+        try:
+            pupil_verify_scan(get_db(), get_secret)
+            print("  ✅ Pupil verify scan done")
+        except Exception as e:
+            print(f"  ⚠️ Pupil verify error: {e}")
+
+        # Phase B: Learn from gaps (uses Gemini/Claude when needed)
+        try:
+            pupil_learn(get_db(), get_secret)
+            print("  ✅ Pupil learning done")
+        except Exception as e:
+            print(f"  ⚠️ Pupil learn error: {e}")
+
+        # Phase C: Find corrections in past classifications
+        try:
+            pupil_find_corrections(get_db(), access_token, rcb_email, get_secret)
+            print("  ✅ Pupil corrections scan done")
+        except Exception as e:
+            print(f"  ⚠️ Pupil corrections error: {e}")
+
+        # Phase C: Send review cases to doron@
+        try:
+            pupil_send_reviews(get_db(), access_token, rcb_email, get_secret)
+            print("  ✅ Pupil reviews sent")
+        except Exception as e:
+            print(f"  ⚠️ Pupil reviews error: {e}")
+
+        # Audit: Analyze patterns and summarize
+        try:
+            pupil_audit(get_db(), get_secret)
+            print("  ✅ Pupil audit done")
+        except Exception as e:
+            print(f"  ⚠️ Pupil audit error: {e}")
+
+        print("🎓 Pupil learning cycle complete")
+
+    except Exception as e:
+        print(f"❌ Pupil learning error: {e}")
+        import traceback
+        traceback.print_exc()
