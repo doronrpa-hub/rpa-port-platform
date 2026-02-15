@@ -25,6 +25,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r functions/requirements.txt
 
+      - name: Run read_everything.py
+        run: python functions/read_everything.py
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          GOOGLE_CLOUD_PROJECT: rpa-port-customs
+
       - name: Run deep_learn.py
         run: python functions/deep_learn.py
         env:
