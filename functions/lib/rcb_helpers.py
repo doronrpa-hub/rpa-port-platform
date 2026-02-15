@@ -735,6 +735,33 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html, re
         print(f"Send error: {e}")
         return False
 
+
+def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None):
+    """Reply to an existing email via Graph API (threads correctly in Outlook)."""
+    try:
+        url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}/reply"
+        payload = {
+            'message': {
+                'body': {'contentType': 'HTML', 'content': body_html}
+            }
+        }
+        if to_email:
+            payload['message']['toRecipients'] = [{'emailAddress': {'address': to_email}}]
+        if cc_emails:
+            payload['message']['ccRecipients'] = [
+                {'emailAddress': {'address': e}} for e in cc_emails if e
+            ]
+        response = requests.post(
+            url,
+            headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
+            json=payload
+        )
+        return response.status_code == 202
+    except Exception as e:
+        print(f"Reply error: {e}")
+        return False
+
+
 # ============================================================
 # HEBREW NAMES
 # ============================================================
