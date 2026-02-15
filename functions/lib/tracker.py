@@ -1144,6 +1144,28 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
                             if changed:
                                 deal_changed = True
 
+            elif not deal.get('awb_number'):
+                # General cargo without containers — try storage_id or manifest-only
+                storage_id = deal.get('storage_id', '')
+                result = None
+
+                if storage_id:
+                    result = client.get_cargo_status(storage_id=storage_id)
+                elif manifest:
+                    # manifest without transaction_ids — broad search
+                    result = client.get_cargo_status(manifest=manifest)
+
+                if result and result.get('CargoList'):
+                    for cargo in result['CargoList']:
+                        cn = cargo.get('ContainerID') or cargo.get('StorageID', '') or storage_id or 'general'
+                        changed = _update_container_status(
+                            db, firestore_module, deal_id, cn, cargo, direction)
+                        if changed:
+                            deal_changed = True
+                        # Enrich deal — may backfill manifest + transaction_ids
+                        # so next poll uses the more specific manifest+txn branch
+                        _enrich_deal_from_taskyam(db, deal_id, deal, cargo)
+
             if deal_changed:
                 updated_deals += 1
                 # Send status update email

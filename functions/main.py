@@ -1942,3 +1942,36 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"❌ Pupil learning error: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ============================================================
+# BRAIN: Daily digest to doron@ (07:00 Israel time)
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 07:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=120,
+)
+def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
+    """Send Doron a morning summary: arriving cargo, pending classifications, deals needing action."""
+    print("🧠 Brain daily digest starting...")
+    try:
+        from lib.brain_commander import brain_daily_digest
+
+        secrets = get_rcb_secrets_internal(get_secret)
+        access_token = helper_get_graph_token(secrets) if secrets else None
+        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+        if not access_token:
+            print("❌ No access token — cannot send digest")
+            return
+
+        result = brain_daily_digest(get_db(), access_token, rcb_email)
+        print(f"🧠 Daily digest result: {result}")
+
+    except Exception as e:
+        print(f"❌ Daily digest error: {e}")
+        import traceback
+        traceback.print_exc()
