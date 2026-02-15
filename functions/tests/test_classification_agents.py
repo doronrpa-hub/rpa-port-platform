@@ -15,7 +15,10 @@ from lib.classification_agents import (
     clean_firestore_data,
     call_claude,
     query_tariff,
-    query_ministry_index
+    query_ministry_index,
+    _enrich_results_for_email,
+    build_classification_email,
+    build_excel_report,
 )
 
 
@@ -331,6 +334,177 @@ class TestDataValidation:
         }
         result = clean_firestore_data(data)
         assert result["hebrew"] == "שלום"
+
+
+# ============================================================
+# ENRICHMENT + ENHANCED EMAIL TESTS
+# ============================================================
+
+class TestEnrichResultsForEmail:
+    """Tests for _enrich_results_for_email merging logic"""
+
+    def _make_results(self, items=None, classifications=None, ministry_routing=None, fta=None):
+        return {
+            "agents": {
+                "invoice": {"items": items or []},
+                "classification": {"classifications": classifications or []},
+                "fta": {"fta": fta or []},
+            },
+            "ministry_routing": ministry_routing or {},
+            "free_import_order": {},
+        }
+
+    def test_basic_merge(self):
+        items = [{"description": "Rubber tires", "quantity": "500", "unit_price": "$45", "origin_country": "China"}]
+        cls = [{"item": "Rubber tires", "hs_code": "4011.10", "duty_rate": "12%", "confidence": "גבוהה"}]
+        results = self._make_results(items=items, classifications=cls)
+        enriched = _enrich_results_for_email(results, {"seller": "Michelin", "buyer": "RPA PORT"}, None)
+        assert len(enriched) == 1
+        assert enriched[0]["line_number"] == 1
+        assert enriched[0]["description"] == "Rubber tires"
+        assert enriched[0]["seller"] == "Michelin"
+        assert enriched[0]["buyer"] == "RPA PORT"
+        assert enriched[0]["quantity"] == "500"
+        assert enriched[0]["hs_code"] == "4011.10"
+
+    def test_unequal_lengths(self):
+        items = [{"description": "A"}, {"description": "B"}, {"description": "C"}]
+        cls = [{"item": "A", "hs_code": "1234"}]
+        results = self._make_results(items=items, classifications=cls)
+        enriched = _enrich_results_for_email(results, {}, None)
+        assert len(enriched) == 3
+        assert enriched[0]["hs_code"] == "1234"
+        assert enriched[1]["hs_code"] == ""
+        assert enriched[2]["description"] == "C"
+
+    def test_empty_inputs(self):
+        results = self._make_results()
+        enriched = _enrich_results_for_email(results, {}, None)
+        assert enriched == []
+
+    def test_fta_matched_by_country(self):
+        items = [{"description": "Olive oil", "origin_country": "Turkey"}]
+        cls = [{"item": "Olive oil", "hs_code": "1509.10"}]
+        fta = [{"country": "Turkey", "eligible": True, "agreement": "IL-TR FTA", "preferential": "0%"}]
+        results = self._make_results(items=items, classifications=cls, fta=fta)
+        enriched = _enrich_results_for_email(results, {}, None)
+        assert enriched[0]["fta"] is not None
+        assert enriched[0]["fta"]["agreement"] == "IL-TR FTA"
+
+    def test_ministry_routing_merged(self):
+        items = [{"description": "Food"}]
+        cls = [{"item": "Food", "hs_code": "2106.90"}]
+        routing = {"2106.90": {"ministries": [{"name_he": "משרד הבריאות", "documents_he": ["אישור יבוא"]}]}}
+        results = self._make_results(items=items, classifications=cls, ministry_routing=routing)
+        enriched = _enrich_results_for_email(results, {}, None)
+        assert len(enriched[0]["ministries"]) == 1
+        assert enriched[0]["ministries"][0]["name_he"] == "משרד הבריאות"
+
+
+class TestBuildClassificationEmailEnriched:
+    """Tests for enhanced email rendering with enriched items"""
+
+    def _make_results(self):
+        return {
+            "agents": {
+                "classification": {"classifications": [{"item": "Test", "hs_code": "1234", "confidence": "גבוהה"}]},
+                "regulatory": {"regulatory": []},
+                "fta": {"fta": []},
+                "risk": {"risk": {}},
+            },
+            "synthesis": "Test synthesis",
+            "ministry_routing": {},
+            "intelligence": {},
+        }
+
+    def test_backward_compatible(self):
+        """When enriched_items=None, should still produce HTML without errors"""
+        html = build_classification_email(self._make_results(), "Test User")
+        assert "Test" in html
+        assert "1234" in html or "12.34" in html
+
+    def test_line_numbers_present(self):
+        enriched = [{"line_number": 1, "description": "Tires", "hs_code": "4011.10",
+                      "duty_rate": "12%", "confidence": "גבוהה", "vat_rate": "18%",
+                      "purchase_tax_display": "לא חל", "verification_status": "verified",
+                      "tariff_text_he": "צמיגי גומי", "seller": "Michelin", "buyer": "RPA",
+                      "quantity": "500", "unit_price": "$45", "origin_country": "China",
+                      "total": "$22500", "hs_corrected": False, "original_hs_code": "",
+                      "hs_warning": "", "hs_validated": False, "hs_exact_match": False,
+                      "ministries": [], "fta": None, "reasoning": ""}]
+        html = build_classification_email(self._make_results(), "Test", enriched_items=enriched)
+        assert "שורה 1" in html
+
+    def test_seller_buyer_shown(self):
+        enriched = [{"line_number": 1, "description": "Item", "hs_code": "1234",
+                      "duty_rate": "5%", "confidence": "בינונית", "vat_rate": "18%",
+                      "purchase_tax_display": "לא חל", "verification_status": "",
+                      "tariff_text_he": "", "seller": "ACME Corp", "buyer": "RPA PORT",
+                      "quantity": "", "unit_price": "", "origin_country": "",
+                      "total": "", "hs_corrected": False, "original_hs_code": "",
+                      "hs_warning": "", "hs_validated": False, "hs_exact_match": False,
+                      "ministries": [], "fta": None, "reasoning": ""}]
+        html = build_classification_email(self._make_results(), "Test", enriched_items=enriched)
+        assert "ACME Corp" in html
+        assert "RPA PORT" in html
+
+    def test_tariff_text_shown(self):
+        enriched = [{"line_number": 1, "description": "Item", "hs_code": "4011.10",
+                      "duty_rate": "12%", "confidence": "גבוהה", "vat_rate": "18%",
+                      "purchase_tax_display": "לא חל", "verification_status": "verified",
+                      "tariff_text_he": "צמיגי גומי פנאומטיים חדשים", "seller": "", "buyer": "",
+                      "quantity": "", "unit_price": "", "origin_country": "",
+                      "total": "", "hs_corrected": False, "original_hs_code": "",
+                      "hs_warning": "", "hs_validated": False, "hs_exact_match": False,
+                      "ministries": [], "fta": None, "reasoning": ""}]
+        html = build_classification_email(self._make_results(), "Test", enriched_items=enriched)
+        assert "צמיגי גומי פנאומטיים חדשים" in html
+
+    def test_original_email_quoted(self):
+        html = build_classification_email(self._make_results(), "Test",
+                                           original_email_body="Please classify these rubber tires from China")
+        assert "הודעה מקורית" in html
+        assert "rubber tires" in html
+
+    def test_no_quoting_for_short_body(self):
+        html = build_classification_email(self._make_results(), "Test", original_email_body="hi")
+        assert "הודעה מקורית" not in html
+
+
+class TestBuildExcelEnriched:
+    """Tests for enhanced Excel report"""
+
+    def _make_results(self):
+        return {
+            "agents": {"classification": {"classifications": [{"item": "Test", "hs_code": "1234", "confidence": "גבוהה"}]}},
+            "synthesis": "Summary",
+        }
+
+    def test_fallback_without_enriched(self):
+        """Should work with old format when no enriched_items (returns None if openpyxl missing)"""
+        excel = build_excel_report(self._make_results())
+        # Returns None when openpyxl not installed — that's expected in test env
+        try:
+            import openpyxl
+            assert excel is not None
+        except ImportError:
+            assert excel is None  # graceful fallback
+
+    def test_enriched_excel(self):
+        enriched = [{"line_number": 1, "description": "Tires", "seller": "Michelin",
+                      "buyer": "RPA", "quantity": "500", "unit_price": "$45",
+                      "origin_country": "China", "hs_code": "4011.10",
+                      "tariff_text_he": "צמיגי גומי", "duty_rate": "12%",
+                      "purchase_tax_display": "לא חל", "vat_rate": "18%",
+                      "confidence": "גבוהה", "verification_status": "verified",
+                      "hs_corrected": False, "original_hs_code": "",
+                      "ministries": [{"name_he": "משרד התחבורה"}], "reasoning": ""}]
+        excel = build_excel_report(self._make_results(), enriched_items=enriched)
+        try:
+            import openpyxl
+            assert excel is not None
+        except ImportError:
+            assert excel is None
 
 
 # ============================================================
