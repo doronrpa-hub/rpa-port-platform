@@ -133,6 +133,22 @@ EXPORT_KEYWORDS = [
     "תעודת תנועה", "eur.1", "movement certificate",
 ]
 
+# Classification intent keywords — if present, route to classification pipeline
+# even without attachments (consultation / guidance requests)
+CLASSIFICATION_INTENT_KEYWORDS = [
+    "סיווג", "סווג", "סיווגי", "לסווג",       # classify / classification
+    "קוד מכס", "קוד hs", "hs code",            # HS code
+    "tariff", "תעריף",                          # tariff
+    "classify", "classification",                # English classify
+    "יבוא", "ייבוא",                             # import
+    "יצוא", "ייצוא",                             # export
+    "מכס", "customs",                            # customs
+    "שחרור",                                     # clearance
+    "פרק", "פרט",                                # chapter / tariff item
+    "מס קניה", "מס קנייה",                       # purchase tax
+    "חומר גלם", "מוצר מוגמר",                    # raw material / finished product
+]
+
 # Topic → tags mapping (uses the SAME tag names as librarian_tags.py DOCUMENT_TAGS)
 TOPIC_TAG_MAP = {
     "רכב": ["vehicle", "personal_import"],
@@ -306,15 +322,29 @@ def _is_question_like(text: str) -> bool:
     return False
 
 
+def _has_classification_intent(text: str) -> bool:
+    """Check if text contains keywords indicating classification/customs intent."""
+    normalized = text.lower()
+    for kw in CLASSIFICATION_INTENT_KEYWORDS:
+        if kw in text or kw in normalized:
+            return True
+    return False
+
+
 def detect_knowledge_query(msg: dict) -> bool:
     """
     Master detection: returns True if this email is a knowledge query.
-    All conditions must be true:
-      - Sender is @rpa-port.co.il
-      - RCB is in TO (not just CC)
-      - No commercial documents attached
-      - Body/subject looks like a question
-      - Subject doesn't contain HS code patterns (shipment indicator)
+    Returns False (→ route to classification) when:
+      - Sender is NOT @rpa-port.co.il (external = always classify)
+      - Email has commercial document attachments
+      - Subject contains HS code pattern (e.g. 4011.10)
+      - Email text contains classification intent keywords
+        (סיווג, קוד מכס, יבוא, classify, customs, tariff, etc.)
+    Returns True (→ knowledge query) only when:
+      - Sender IS @rpa-port.co.il AND
+      - No commercial docs AND no HS codes AND
+      - No classification intent in text AND
+      - Text looks like a question
     """
     if not is_team_sender(msg):
         return False
@@ -327,14 +357,14 @@ def detect_knowledge_query(msg: dict) -> bool:
     if HS_CODE_PATTERN.search(subject):
         return False
 
-    # Safety net: if NO attachments at all, always treat as KQ
-    # (nothing to classify without documents)
-    attachments = msg.get("attachments", [])
-    if not attachments or len(attachments) == 0:
-        return True
-
     body_text = _get_body_text(msg)
     combined = f"{subject} {body_text}"
+
+    # Classification intent overrides — even without attachments,
+    # route to classification pipeline for consultation/guidance requests
+    if _has_classification_intent(combined):
+        return False
+
     return _is_question_like(combined)
 
 
