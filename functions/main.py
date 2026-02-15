@@ -1091,21 +1091,53 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                        for r in to_recipients)
         
         print(f"    DEBUG: {subject[:30]} from={from_email} is_direct={is_direct}")
-        if not is_direct:
-            continue
-        
-        # Check sender domain
-        if not from_email.lower().endswith('@rpa-port.co.il'):
-            continue
-        
-        # Skip system emails
+
+        # Skip system emails for all paths
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
             continue
-
-        # Skip self-test emails (processed by rcb_self_test, not here)
         if '[RCB-SELFTEST]' in subject:
             continue
-        
+
+        # ── CC emails: silent learning from ALL senders, no reply ──
+        if not is_direct:
+            import hashlib as _hl
+            safe_id_cc = _hl.md5(msg_id.encode()).hexdigest()
+            if get_db().collection("rcb_processed").document(safe_id_cc).get().exists:
+                continue
+
+            print(f"  👁️ CC observation: {subject[:50]} from {from_email}")
+
+            # Pupil: silent observation (FREE — Firestore only, no replies)
+            if PUPIL_AVAILABLE:
+                try:
+                    pupil_process_email(
+                        msg, get_db(), firestore, access_token, rcb_email, get_secret
+                    )
+                except Exception as pe:
+                    print(f"    ⚠️ Pupil CC error (non-fatal): {pe}")
+
+            # Tracker: observe shipping updates (FREE — no notifications when is_direct=False)
+            if TRACKER_AVAILABLE:
+                try:
+                    tracker_process_email(
+                        msg, get_db(), firestore, access_token, rcb_email, get_secret,
+                        is_direct=False
+                    )
+                except Exception as te:
+                    print(f"    ⚠️ Tracker CC error (non-fatal): {te}")
+
+            get_db().collection("rcb_processed").document(safe_id_cc).set({
+                "processed_at": firestore.SERVER_TIMESTAMP,
+                "subject": subject,
+                "from": from_email,
+                "type": "cc_observation",
+            })
+            continue
+
+        # ── Direct TO emails: full pipeline, only from @rpa-port.co.il ──
+        if not from_email.lower().endswith('@rpa-port.co.il'):
+            continue
+
         # Check if already processed
         import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         if get_db().collection("rcb_processed").document(safe_id).get().exists:

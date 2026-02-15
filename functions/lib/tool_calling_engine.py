@@ -54,14 +54,9 @@ except ImportError:
 
 from lib.librarian import validate_and_correct_classifications
 from lib.verification_loop import verify_all_classifications, learn_from_verification
-from lib.classification_agents import (
-    _link_invoice_to_classifications,
-    _is_valid_hs,
-    audit_before_send,
-    query_tariff,
-    query_classification_rules,
-    run_synthesis_agent,
-)
+
+# NOTE: classification_agents imports are LAZY (inside function) to avoid circular import.
+# classification_agents.py imports tool_calling_engine.py, so we can't import at module level.
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +81,16 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
     """
     t0 = time.time()
     print("  [TOOL ENGINE] Starting tool-calling classification...")
+
+    # Lazy imports to avoid circular dependency with classification_agents.py
+    from lib.classification_agents import (
+        _link_invoice_to_classifications,
+        _is_valid_hs,
+        audit_before_send,
+        query_tariff,
+        query_classification_rules,
+        run_synthesis_agent,
+    )
 
     executor = ToolExecutor(db, api_key, gemini_key=gemini_key)
 
@@ -286,6 +291,28 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
             synthesis = _lang.fix_all(synthesis)
         except Exception:
             pass
+
+    # ── Step 8: Learn from this classification (FREE) ──
+    try:
+        from lib.self_learning import SelfLearningEngine
+        learning = SelfLearningEngine(db)
+        learned_count = 0
+        for c in validated:
+            hs = c.get("hs_code", "")
+            desc = c.get("item_description", "") or c.get("item", "")
+            if hs and desc and c.get("verification_status") in ("official", "verified"):
+                learning.learn_classification(
+                    product_description=desc,
+                    hs_code=hs,
+                    method="ai",
+                    source="tool_calling",
+                    confidence=0.85,
+                )
+                learned_count += 1
+        if learned_count:
+            print(f"  [TOOL ENGINE] Learned {learned_count} classifications → memory")
+    except Exception as e:
+        print(f"  [TOOL ENGINE] Learning error (non-fatal): {e}")
 
     # ── Build final result ──
     elapsed = time.time() - t0
