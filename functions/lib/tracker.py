@@ -740,6 +740,15 @@ def _create_deal(db, firestore_module, observation):
         "bol": deal_data['bol_number'],
     })
 
+    # Register AWB for air cargo polling if present
+    if deal_data.get("awb_number"):
+        try:
+            from lib.air_cargo_tracker import register_awb
+            register_awb(db, deal_data["awb_number"], deal_id)
+            print(f"    ✈️ Registered AWB {deal_data['awb_number']} for air cargo polling")
+        except Exception as awb_err:
+            print(f"    ⚠️ AWB registration error (non-fatal): {awb_err}")
+
     print(f"    📦 Tracker: created deal {deal_id}: BOL={deal_data['bol_number']}, "
           f"{len(ext.get('containers', []))} containers, {deal_data['shipping_line']}")
 
@@ -786,6 +795,7 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     # Fill empty fields with new data
     field_map = {
         'bol_number': ('bols', 0),
+        'awb_number': ('awbs', 0),
         'booking_number': ('bookings', 0),
         'manifest_number': ('manifests', 0),
         'vessel_name': ('vessels', 0),
@@ -824,6 +834,15 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     if len(updates) > 1:  # more than just updated_at
         deal_ref.update(updates)
         print(f"    📦 Tracker: updated deal {deal_id} with {len(updates)-1} new fields")
+
+        # Register AWB for air cargo polling if newly added
+        if 'awb_number' in updates and updates['awb_number']:
+            try:
+                from lib.air_cargo_tracker import register_awb
+                register_awb(db, updates['awb_number'], deal_id)
+                print(f"    ✈️ Registered AWB {updates['awb_number']} for air cargo polling")
+            except Exception as awb_err:
+                print(f"    ⚠️ AWB registration error (non-fatal): {awb_err}")
 
     return deal_id
 

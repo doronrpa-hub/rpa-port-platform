@@ -1861,6 +1861,16 @@ def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
         import traceback
         traceback.print_exc()
 
+    # ── Air cargo: Poll AWBs via Maman API ──
+    try:
+        from lib.air_cargo_tracker import poll_air_cargo_for_tracker
+        air_result = poll_air_cargo_for_tracker(get_db(), firestore, get_secret)
+        print(f"✈️ Air cargo poll complete: {air_result}")
+    except ImportError:
+        print("✈️ Air cargo tracker not available")
+    except Exception as ae:
+        print(f"✈️ Air cargo poll error: {ae}")
+
 
 # ============================================================
 # PUPIL: Batch learning cycle (every 6 hours)
