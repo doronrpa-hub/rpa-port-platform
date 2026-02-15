@@ -151,7 +151,7 @@ def _audit_email_reprocessing(db, firestore_module, access_token, rcb_email, get
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
     url = f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages"
     params = {
-        '$top': 200,
+        '$top': 50,
         '$orderby': 'receivedDateTime desc',
         '$filter': f"receivedDateTime ge {cutoff}",
         '$select': 'id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,bodyPreview,internetMessageId',

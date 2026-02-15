@@ -2031,7 +2031,7 @@ def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
     timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
     region="us-central1",
     memory=options.MemoryOption.GB_2,
-    timeout_sec=540,
+    timeout_sec=900,
 )
 def rcb_overnight_audit(event: scheduler_fn.ScheduledEvent) -> None:
     """Diagnostic scan: reprocess emails, check memory, find ghost deals, count everything."""
