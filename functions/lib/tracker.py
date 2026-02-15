@@ -275,15 +275,18 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
         except Exception as learn_err:
             print(f"    🧠 Tracker learn skip: {learn_err}")
 
-        # ── STEP 8: Send initial email for new deals ──
-        if is_direct and deal_result.get("action") == "created" and deal_result.get("deal_id"):
+        # ── STEP 8: Send email for new and updated deals (if is_direct) ──
+        if is_direct and deal_result.get("deal_id"):
             try:
-                new_deal_id = deal_result["deal_id"]
-                new_deal_doc = db.collection("tracker_deals").document(new_deal_id).get()
-                if new_deal_doc.exists:
-                    _send_tracker_email(db, new_deal_id, new_deal_doc.to_dict(), access_token, rcb_email, "new_deal")
+                _deal_id = deal_result["deal_id"]
+                _deal_doc = db.collection("tracker_deals").document(_deal_id).get()
+                if _deal_doc.exists:
+                    _update_type = "new_deal" if deal_result.get("action") == "created" else "status_update"
+                    _send_tracker_email(
+                        db, _deal_id, _deal_doc.to_dict(), access_token, rcb_email,
+                        _update_type, observation=observation, extractions=extractions)
             except Exception as email_err:
-                print(f"    Warning: Initial tracker email error: {email_err}")
+                print(f"    Warning: Tracker email error: {email_err}")
 
         return {
             "status": "processed",
@@ -571,12 +574,36 @@ def _match_or_create_deal(db, firestore_module, observation):
 
     matched_deal_id = None
 
-    # Priority 1: Match by BOL
-    for bol in bols:
-        deal = _find_deal_by_field(db, 'bol_number', bol)
-        if deal:
-            matched_deal_id = deal.id
-            break
+    # Priority 0: Match by conversation thread (same email thread = same deal)
+    conv_id = observation.get('conversation_id', '')
+    if conv_id:
+        try:
+            conv_deals = list(db.collection("tracker_deals")
+                             .where("source_email_thread_id", "==", conv_id)
+                             .where("status", "in", ["active", "pending"])
+                             .limit(1).stream())
+            if conv_deals:
+                matched_deal_id = conv_deals[0].id
+                print(f"    🔗 Tracker: matched deal by conversation thread")
+        except Exception:
+            pass
+
+    # Priority 1a: Match by BOL
+    if not matched_deal_id:
+        for bol in bols:
+            deal = _find_deal_by_field(db, 'bol_number', bol)
+            if deal:
+                matched_deal_id = deal.id
+                break
+
+    # Priority 1b: Match by AWB (air freight)
+    if not matched_deal_id:
+        for awb in observation.get('extractions', {}).get('awbs', []):
+            deal = _find_deal_by_field(db, 'awb_number', awb)
+            if deal:
+                matched_deal_id = deal.id
+                print(f"    ✈️ Tracker: matched deal by AWB {awb}")
+                break
 
     # Priority 2: Match by container (any container in this email matches a deal)
     if not matched_deal_id:
@@ -642,7 +669,7 @@ def _create_deal(db, firestore_module, observation):
 
     deal_data = {
         "bol_number": ext.get('bols', [''])[0] if ext.get('bols') else '',
-        "awb_number": '',
+        "awb_number": ext.get('awbs', [''])[0] if ext.get('awbs') else '',
         "booking_number": ext.get('bookings', [''])[0] if ext.get('bookings') else '',
         "direction": ext.get('direction', ''),
         "containers": ext.get('containers', []),
@@ -1194,6 +1221,8 @@ def _update_container_status(db, firestore_module, deal_id, container_id, cargo,
 
 def _derive_current_step(import_proc, export_proc):
     """Derive the current step from process dates (latest step with a date)"""
+    import_proc = import_proc or {}
+    export_proc = export_proc or {}
     # Import steps in order
     import_steps = [
         ('cargo_exit', 'CargoExitDate'),
@@ -1362,13 +1391,14 @@ def _classify_sender(email_addr):
 #  EMAIL OUTPUT — send status updates via threaded reply
 # ══════════════════════════════════════════════════════════
 
-def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type="status_update"):
-    """Build and send tracker status email for a deal."""
+def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type="status_update",
+                        observation=None, extractions=None):
+    """Build and send tracker status email for a deal. v2: sea + air aware."""
     try:
         from lib.tracker_email import build_tracker_status_email
         from lib.rcb_helpers import helper_graph_reply, helper_graph_send
 
-        # Get all container statuses for this deal
+        # Get all container statuses for this deal (sea freight only)
         containers = deal.get('containers', [])
         container_statuses = []
         for cn in containers:
@@ -1376,8 +1406,10 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
             if doc.exists:
                 container_statuses.append(doc.to_dict())
 
-        # Build email
-        email_data = build_tracker_status_email(deal, container_statuses, update_type)
+        # Build email (v2: with observation context)
+        email_data = build_tracker_status_email(
+            deal, container_statuses, update_type,
+            observation=observation, extractions=extractions)
         subject = email_data['subject']
         body_html = email_data['body_html']
 
@@ -1430,80 +1462,6 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         traceback.print_exc()
         return False
 
-
-
-
-# ════════════════════════════════════════════════════════
-#  BACKWARD COMPATIBILITY — v1 function still called
-# ════════════════════════════════════════════════════════
-
-# ========================================================
-#  EMAIL OUTPUT - send status updates via threaded reply
-# ========================================================
-
-def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type='status_update'):
-    """Build and send tracker status email for a deal."""
-    try:
-        from lib.tracker_email import build_tracker_status_email
-        from lib.rcb_helpers import helper_graph_reply, helper_graph_send
-
-        containers = deal.get('containers', [])
-        container_statuses = []
-        for cn in containers:
-            doc = db.collection("tracker_container_status").document(f"{deal_id}_{cn}").get()
-            if doc.exists:
-                container_statuses.append(doc.to_dict())
-
-        email_data = build_tracker_status_email(deal, container_statuses, update_type)
-        subject = email_data['subject']
-        body_html = email_data['body_html']
-
-        follower = deal.get('follower_email', '')
-        cc_list = deal.get('cc_list', [])
-
-        if not follower:
-            print(f"    Warning: no follower for deal {deal_id}, skipping email")
-            return False
-
-        sent = False
-
-        source_obs_ids = deal.get('source_emails', [])
-        original_msg_id = None
-        if source_obs_ids:
-            latest_obs = db.collection("tracker_observations").document(source_obs_ids[-1]).get()
-            if latest_obs.exists:
-                original_msg_id = latest_obs.to_dict().get('msg_id', '')
-
-        if original_msg_id and access_token:
-            sent = helper_graph_reply(
-                access_token, rcb_email, original_msg_id,
-                body_html, to_email=follower, cc_emails=cc_list
-            )
-
-        if not sent and access_token:
-            sent = helper_graph_send(
-                access_token, rcb_email, follower,
-                subject, body_html
-            )
-
-        if sent:
-            _log_timeline(db, None, deal_id, {
-                "event_type": "email_sent",
-                "update_type": update_type,
-                "to": follower,
-                "subject": subject[:100],
-            })
-            print(f"    Mail: Tracker email sent for deal {deal_id} to {follower}")
-        else:
-            print(f"    Warning: Tracker email FAILED for deal {deal_id}")
-
-        return sent
-
-    except Exception as e:
-        print(f"    Error: Tracker email error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
 
 
 # tracker_poll_active_shipments is the old v1 name
