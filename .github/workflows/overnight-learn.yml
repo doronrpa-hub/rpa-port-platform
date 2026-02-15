@@ -1,0 +1,32 @@
+name: Overnight Learning Pipeline
+
+on:
+  schedule:
+    # Every night at 22:00 UTC = 00:00 Israel Standard Time
+    # (During summer IDT this will be 01:00 AM local)
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r functions/requirements.txt
+
+      - name: Run deep_learn.py
+        run: python functions/deep_learn.py
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          GOOGLE_CLOUD_PROJECT: rpa-port-customs
