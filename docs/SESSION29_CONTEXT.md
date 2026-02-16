@@ -339,9 +339,8 @@ All changes are minimal — no lines removed, no signatures changed, no restruct
 | Agent | Domain | Represents (Carrier) | Role |
 |-------|--------|---------------------|------|
 | KONMART | konmart.co.il | YANG_MING | shipping_agent |
-| Rosenfeld Shipping | rosenfeld.net | **TBD — ask Doron** | shipping_agent |
+| Rosenfeld Shipping | rosenfeld.net | SALAMIS | shipping_agent |
 | Carmel International | carmelship.co.il | **TBD — ask Doron** | shipping_agent |
-| SALAMIS SHIPPING | (unknown) | **TBD — ask Doron** | shipping_agent |
 
 **Fix needed:** Create a `shipping_agents` collection in Firestore:
 ```
