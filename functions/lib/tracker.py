@@ -486,6 +486,7 @@ def _extract_logistics_data(text):
         'direction': '',  # import/export, inferred
         'seals': [],
         'container_details': [],  # [{container, seal, weight, packages}] from table extraction
+        'freight_load_type': '',  # 'FCL' or 'LCL' — detected from keywords/CFS names
     }
 
     if not text:
@@ -624,6 +625,13 @@ def _extract_logistics_data(text):
         entry = {'qty': int(m.group(1)), 'type': m.group(2)}
         if entry not in result['container_type_qty']:
             result['container_type_qty'].append(entry)
+
+    # FCL vs LCL detection — keyword + CFS warehouse name scan
+    _lcl_en = r'\bLCL\b|\bCFS\b|consolidat(?:ion|ed)|less\s+than\s+container|groupage'
+    _lcl_he = r'מיכול|מטען\s*חלקי|מכולה\s*משותפת'
+    _cfs_names = r'\b(?:Gadot|Atta|Tiran)\b|גדות|עטא|טירן'
+    if re.search(_lcl_en, text, re.IGNORECASE) or re.search(_lcl_he, text) or re.search(_cfs_names, text, re.IGNORECASE):
+        result['freight_load_type'] = 'LCL'
 
     # Notice of arrival detection
     if re.search(PATTERNS['notify_arrival'], text, re.IGNORECASE):
@@ -949,6 +957,7 @@ def _create_deal(db, firestore_module, observation):
         "port": ext.get('ports', [{}])[0].get('code', '') if ext.get('ports') else '',
         "port_name": ext.get('ports', [{}])[0].get('name', '') if ext.get('ports') else '',
         "freight_kind": _infer_freight_kind(ext),
+        "freight_load_type": ext.get('freight_load_type', '') or ('LCL' if _infer_freight_kind(ext) == 'LCL' else 'FCL'),
         "customs_declaration": ext.get('declarations', [''])[0] if ext.get('declarations') else '',
         "storage_id": ext.get('storage_ids', [''])[0] if ext.get('storage_ids') else '',
         "eta": ext.get('etas', [''])[0] if ext.get('etas') else '',
@@ -1083,6 +1092,12 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     if not deal.get('carrier_name') and ext.get('shipping_lines'):
         updates['carrier_name'] = ext['shipping_lines'][0]
 
+    # Freight load type — LCL detected later overrides default FCL (never overwrite LCL with FCL)
+    ext_flt = ext.get('freight_load_type', '')
+    if ext_flt == 'LCL' and deal.get('freight_load_type') != 'LCL':
+        updates['freight_load_type'] = 'LCL'
+        updates['freight_kind'] = 'LCL'
+
     # Add source email
     source_emails = deal.get('source_emails', [])
     obs_id = observation.get('obs_id', '')
@@ -1119,6 +1134,9 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
 
 def _infer_freight_kind(extractions):
     """Infer freight kind from extractions"""
+    # LCL detected by keywords/CFS names — takes priority over container presence
+    if extractions.get('freight_load_type') == 'LCL':
+        return 'LCL'
     if extractions.get('containers'):
         return 'FCL'
     if extractions.get('awbs') or extractions.get('flights'):
