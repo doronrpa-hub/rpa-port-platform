@@ -642,16 +642,31 @@ def _extract_packing_list_fields(text):
 # ── FCL vs LCL helper ──
 
 def _detect_lcl(text):
-    """Detect LCL (Less than Container Load) keywords and CFS warehouse names.
+    """Detect LCL (Less than Container Load) from multiple signals.
+    Signal A: Explicit keywords (LCL, CFS, consolidation, מיכול) → always LCL.
+    Signal B: Cargo description co-occurrence (marking+dims+units+CBM) → house BL LCL.
+    CFS warehouse names (Gadot, Atta, Tiran) → LCL.
     Returns True if LCL indicators found in text."""
+    # Signal A: explicit keywords
     _lcl_en = r'\bLCL\b|\bCFS\b|consolidat(?:ion|ed)|less\s+than\s+container|groupage'
     _lcl_he = r'מיכול|מטען\s*חלקי|מכולה\s*משותפת'
     _cfs_names = r'\b(?:Gadot|Atta|Tiran)\b|גדות|עטא|טירן'
-    return bool(
-        re.search(_lcl_en, text, re.IGNORECASE) or
-        re.search(_lcl_he, text) or
-        re.search(_cfs_names, text, re.IGNORECASE)
-    )
+    if (re.search(_lcl_en, text, re.IGNORECASE) or
+            re.search(_lcl_he, text) or
+            re.search(_cfs_names, text, re.IGNORECASE)):
+        return True
+
+    # Signal B: house BL cargo description — marking+dims+units+CBM co-occurrence
+    _desc_signals = [
+        re.search(r'(?:marking|marks|סימון|סימנים)', text, re.IGNORECASE),
+        re.search(r'(?:dimensions?|מידות|length.*width|ארוך.*רוחב)', text, re.IGNORECASE),
+        re.search(r'(?:units?|packages?|pieces?|יחידות|חבילות|אריזות)\s*[:\s]*\d', text, re.IGNORECASE),
+        re.search(r'(?:CBM|cubic\s*met|מ"ק|מטר\s*מעוקב)', text, re.IGNORECASE),
+    ]
+    if sum(1 for s in _desc_signals if s) >= 3:
+        return True
+
+    return False
 
 
 # ── Bill of Lading ──
