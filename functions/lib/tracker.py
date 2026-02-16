@@ -352,6 +352,13 @@ def _extract_logistics_data(text):
             if bol not in result['bols'] and len(bol) > 5:
                 result['bols'].append(bol)
 
+    # Maersk numeric BOLs — only when MAERSK detected in text (pattern too broad otherwise)
+    if 'MAERSK' in text_upper and not result['bols']:
+        for m in re.finditer(PATTERNS['bol_maersk'], text_upper):
+            bol = m.group(1).strip()
+            if bol not in result['bols']:
+                result['bols'].append(bol)
+
     # Bookings
     for pat_name in ['booking', 'booking_bare']:
         for m in re.finditer(PATTERNS[pat_name], text, re.IGNORECASE):
