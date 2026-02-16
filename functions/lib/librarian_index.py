@@ -166,6 +166,73 @@ COLLECTION_FIELDS = {
         "hs_fields": ["hs_code"],
         "doc_type": "record",
     },
+    # Session 27 Assignment 14C: Data pipeline collections
+    "classification_directives": {
+        "title_fields": ["title", "summary", "full_text"],
+        "keyword_fields": ["directive_id", "key_terms"],
+        "hs_fields": ["hs_codes_mentioned"],
+        "doc_type": "document",
+    },
+    "pre_rulings": {
+        "title_fields": ["product_description", "product_description_en", "reasoning_summary"],
+        "keyword_fields": ["ruling_id", "key_terms"],
+        "hs_fields": ["hs_code_assigned"],
+        "doc_type": "document",
+    },
+    "customs_decisions": {
+        "title_fields": ["product_description", "reasoning_summary"],
+        "keyword_fields": ["decision_id", "key_terms"],
+        "hs_fields": ["hs_code", "hs_codes_discussed"],
+        "doc_type": "document",
+    },
+    "court_precedents": {
+        "title_fields": ["case_name", "ruling_summary"],
+        "keyword_fields": ["case_id", "key_terms"],
+        "hs_fields": ["hs_codes_discussed"],
+        "doc_type": "document",
+    },
+    "customs_ordinance": {
+        "title_fields": ["title", "summary"],
+        "keyword_fields": ["section_number", "key_terms"],
+        "hs_fields": [],
+        "doc_type": "document",
+    },
+    "customs_procedures": {
+        "title_fields": ["title", "summary"],
+        "keyword_fields": ["procedure_type", "key_terms"],
+        "hs_fields": ["applicable_codes"],
+        "doc_type": "document",
+    },
+    "tariff_uk": {
+        "title_fields": ["description"],
+        "keyword_fields": ["uk_code", "key_terms"],
+        "hs_fields": ["uk_code"],
+        "doc_type": "record",
+    },
+    "tariff_usa": {
+        "title_fields": ["description"],
+        "keyword_fields": ["hts_code", "key_terms"],
+        "hs_fields": ["hts_code"],
+        "doc_type": "record",
+    },
+    "tariff_eu": {
+        "title_fields": ["description"],
+        "keyword_fields": ["taric_code", "key_terms"],
+        "hs_fields": ["taric_code"],
+        "doc_type": "record",
+    },
+    "cbp_rulings": {
+        "title_fields": ["product_description", "ruling_summary"],
+        "keyword_fields": ["ruling_id", "key_terms"],
+        "hs_fields": ["hts_code"],
+        "doc_type": "document",
+    },
+    "bti_decisions": {
+        "title_fields": ["product_description", "summary"],
+        "keyword_fields": ["bti_reference", "key_terms"],
+        "hs_fields": ["taric_code"],
+        "doc_type": "document",
+    },
 }
 
 # Document type by file extension

@@ -168,7 +168,26 @@ def _execute_download(db, task_id, task):
             "downloaded_by": "cloud_function_runner",
         })
 
-        # For text-based content, store in Firestore directly
+        # Feed through data pipeline if source_type is known
+        source_type = _detect_source_type(task)
+        if source_type:
+            try:
+                from lib.data_pipeline import ingest_source
+                pipeline_result = ingest_source(
+                    db=db,
+                    source_type=source_type,
+                    content_type=content_type,
+                    raw_bytes=response.content,
+                    source_url=url,
+                    filename=task.get("source_name", ""),
+                    metadata={"task_id": task_id, "downloaded_at": now},
+                )
+                if pipeline_result.get("valid"):
+                    print(f"    Pipeline ingested: {pipeline_result['collection']}/{pipeline_result['doc_id']}")
+            except Exception as pe:
+                logger.debug(f"Pipeline ingestion failed (non-fatal): {pe}")
+
+        # For text-based content, store raw in Firestore
         if any(t in content_type for t in ("text", "html", "json")):
             _store_text_content(db, task_id, task, content)
 
@@ -438,6 +457,55 @@ def _auto_tag_task(db, task_id, task, content_preview):
         pass
     except Exception as e:
         logger.warning(f"Auto-tag error for {task_id}: {e}")
+
+
+# ═══════════════════════════════════════════
+#  SOURCE TYPE DETECTION
+# ═══════════════════════════════════════════
+
+_SOURCE_TYPE_KEYWORDS = {
+    "directive": ["הנחי", "directive", "classification_directive", "הנחיית סיווג"],
+    "pre_ruling": ["pre_ruling", "preruling", "פרה-רולינג", "החלטת מוקדמת", "ruling"],
+    "customs_decision": ["customs_decision", "החלטת מכס"],
+    "court_precedent": ["court", "precedent", "פסק דין", "בית משפט"],
+    "customs_ordinance": ["ordinance", "פקודת המכס", "customs_ordinance"],
+    "procedure": ["procedure", "נוהל", "customs_procedure"],
+}
+
+
+def _detect_source_type(task):
+    """Detect the pipeline source type from task metadata."""
+    # Explicit type from enrichment tasks
+    gap_type = task.get("gap_type", "")
+    if gap_type == "missing_directive":
+        return "directive"
+    if gap_type == "missing_preruling":
+        return "pre_ruling"
+
+    # Check source_key from PC_AGENT_DOWNLOAD_SOURCES
+    source_key = task.get("source_key", "")
+    for stype, keywords in _SOURCE_TYPE_KEYWORDS.items():
+        for kw in keywords:
+            if kw in source_key.lower():
+                return stype
+
+    # Check content_type in metadata
+    content_types = task.get("metadata", {}).get("content_type", [])
+    if isinstance(content_types, list):
+        for ct in content_types:
+            for stype, keywords in _SOURCE_TYPE_KEYWORDS.items():
+                for kw in keywords:
+                    if kw in ct.lower():
+                        return stype
+
+    # Check source_name
+    source_name = task.get("source_name", "").lower()
+    for stype, keywords in _SOURCE_TYPE_KEYWORDS.items():
+        for kw in keywords:
+            if kw in source_name:
+                return stype
+
+    return None
 
 
 # ═══════════════════════════════════════════
