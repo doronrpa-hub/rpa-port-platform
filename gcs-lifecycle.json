@@ -1,0 +1,25 @@
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {
+        "age": 90,
+        "matchesPrefix": ["inbox/"]
+      }
+    },
+    {
+      "action": {"type": "Delete"},
+      "condition": {
+        "age": 90,
+        "matchesPrefix": ["rcb-docs/raw/"]
+      }
+    },
+    {
+      "action": {"type": "Delete"},
+      "condition": {
+        "age": 90,
+        "matchesPrefix": ["rcb-docs/texts/"]
+      }
+    }
+  ]
+}

@@ -1421,6 +1421,57 @@ def rcb_cleanup_old_processed(event: scheduler_fn.ScheduledEvent) -> None:
 
 
 # ============================================================
+# TTL CLEANUP: scanner_logs + log collections (Assignment 16)
+# Runs daily at 03:30 Jerusalem time — after nightly jobs finish
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 03:30",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
+)
+def rcb_ttl_cleanup(event: scheduler_fn.ScheduledEvent) -> None:
+    """Daily TTL cleanup for large/growing collections."""
+    print("🧹 TTL Cleanup starting...")
+
+    from lib.ttl_cleanup import cleanup_scanner_logs, cleanup_collection_by_field
+
+    # 1. scanner_logs — 76K+ docs, 30-day TTL (batched via collection_streamer)
+    try:
+        result = cleanup_scanner_logs(get_db(), max_age_days=30)
+        print(f"  scanner_logs: deleted={result['deleted']} skipped={result['skipped']} "
+              f"errors={result['errors']} batches={result['batches_committed']}")
+    except Exception as e:
+        print(f"  ❌ scanner_logs error: {e}")
+
+    # 2. rcb_logs — 90-day TTL
+    try:
+        result = cleanup_collection_by_field(
+            get_db(), "rcb_logs", "timestamp", max_age_days=90)
+        print(f"  rcb_logs: deleted={result['deleted']} skipped={result['skipped']}")
+    except Exception as e:
+        print(f"  ❌ rcb_logs error: {e}")
+
+    # 3. learning_log — 90-day TTL
+    try:
+        result = cleanup_collection_by_field(
+            get_db(), "learning_log", "learned_at", max_age_days=90)
+        print(f"  learning_log: deleted={result['deleted']} skipped={result['skipped']}")
+    except Exception as e:
+        print(f"  ❌ learning_log error: {e}")
+
+    # 4. inbox — 90-day TTL
+    try:
+        result = cleanup_collection_by_field(
+            get_db(), "inbox", "received_at", max_age_days=90)
+        print(f"  inbox: deleted={result['deleted']} skipped={result['skipped']}")
+    except Exception as e:
+        print(f"  ❌ inbox error: {e}")
+
+    print("✅ TTL Cleanup complete")
+
+
+# ============================================================
 # FAILED CLASSIFICATIONS RETRY
 # ============================================================
 @scheduler_fn.on_schedule(schedule="every 6 hours")
