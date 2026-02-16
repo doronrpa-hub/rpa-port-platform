@@ -2263,6 +2263,70 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             except Exception as cc_err:
                 print(f"  ⚠️ Cross-check error: {cc_err}")
 
+        # ── SESSION 27: JUSTIFICATION + CHALLENGE (Assignment 11) ──
+        try:
+            from lib.justification_engine import (
+                build_justification_chain,
+                challenge_classification,
+                save_knowledge_gaps,
+                generate_pupil_questions,
+            )
+
+            classifications_j = (
+                results.get("agents", {}).get("classification", {}).get("classifications", [])
+            )
+
+            all_gaps = []
+            for idx, cls_item in enumerate(classifications_j):
+                item_hs = cls_item.get("hs_code", "")
+                item_desc = cls_item.get("item_description", cls_item.get("item", ""))[:500]
+                if not item_hs:
+                    continue
+
+                # 1. Build justification chain
+                justification = build_justification_chain(db, item_hs, item_desc)
+                cls_item["justification"] = justification
+                cls_item["legal_strength"] = justification["legal_strength"]
+
+                # 2. Challenge (devil's advocate)
+                challenge = challenge_classification(
+                    db, item_hs, item_desc,
+                    primary_chapter=item_hs[:2],
+                    gemini_key=gemini_key,
+                    call_gemini_func=call_gemini,
+                )
+                cls_item["challenge"] = challenge
+
+                # 3. Collect gaps
+                all_gaps.extend(justification.get("gaps", []))
+
+                # 4. Generate questions if confused
+                conf = cls_item.get("confidence", "")
+                is_low = conf in ("low", "none") or (isinstance(conf, (int, float)) and conf < 0.7)
+                if is_low or not challenge["challenge_passed"]:
+                    questions = generate_pupil_questions(
+                        db, item_hs, item_desc, justification, challenge,
+                    )
+                    if questions:
+                        cls_item["pupil_questions"] = len(questions)
+                        print(f"    ? {len(questions)} questions for daily digest")
+
+                print(
+                    f"    Legal: {justification['legal_strength']} "
+                    f"({justification['coverage_pct']}% sourced), "
+                    f"challenge: {'PASSED' if challenge['challenge_passed'] else 'OPEN'}"
+                )
+
+            # 5. Save all gaps for nightly enrichment
+            if all_gaps:
+                save_knowledge_gaps(db, all_gaps, email_id=msg_id)
+                print(f"  Gaps: {len(all_gaps)} knowledge gaps saved")
+
+        except ImportError:
+            pass
+        except Exception as just_err:
+            print(f"  Justification error (non-fatal): {just_err}")
+
         # Session 10: Validate invoice using Module 5
         invoice_validation = None
         if MODULES_AVAILABLE:

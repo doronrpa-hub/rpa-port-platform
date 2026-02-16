@@ -105,6 +105,18 @@ def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secre
         results["errors"].append(f"collection_counts: {e}")
         print(f"  ❌ Collection counts error: {e}")
 
+    # ── 8. Self-enrichment: fill knowledge gaps (Session 27) ──
+    try:
+        from lib.self_enrichment import run_nightly_enrichment, generate_enrichment_report
+        enrichment_results = run_nightly_enrichment(db, max_gaps=50)
+        results["self_enrichment"] = enrichment_results
+        enrichment_report = generate_enrichment_report(enrichment_results)
+        print(f"  Self-enrichment: {enrichment_results['filled']} filled, "
+              f"{enrichment_results['failed']} failed, {enrichment_results['skipped']} flagged")
+    except Exception as e:
+        results["errors"].append(f"self_enrichment: {e}")
+        print(f"  Self-enrichment error: {e}")
+
     # ── Save results ──
     finished = datetime.now(timezone.utc)
     results["finished_at"] = finished.isoformat()
