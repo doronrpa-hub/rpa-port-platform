@@ -1545,6 +1545,31 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
                     </tr></table>
                 </div>'''
 
+        # ── SESSION 27 Assignment 12: Justification chain + challenge ──
+        try:
+            from lib.report_builder import (
+                build_justification_html, build_challenge_html,
+                build_gaps_summary_html, build_cross_check_badge,
+            )
+            item_justification = c.get("justification")
+            if item_justification and item_justification.get("chain"):
+                html += build_justification_html(item_justification)
+
+            item_challenge = c.get("challenge")
+            if item_challenge and item_challenge.get("alternatives"):
+                html += build_challenge_html(item_challenge)
+
+            if item_justification and item_justification.get("gaps"):
+                html += build_gaps_summary_html(item_justification["gaps"])
+
+            cc_badge = build_cross_check_badge(c)
+            if cc_badge:
+                html += f'<div style="margin-top:6px">{cc_badge}</div>'
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
         # ── Per-item ministry approvals + FTA (enriched only) ──
         if _using_enriched:
             item_ministries = c.get("ministries", [])
@@ -2516,6 +2541,17 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 save_data["cross_check_avg_tier"] = round(sum(cc_tiers) / len(cc_tiers), 1) if cc_tiers else 0
 
             db.collection("rcb_classifications").add(save_data)
+
+            # Session 27 Assignment 12: Save structured classification report
+            try:
+                from lib.report_builder import build_report_document
+                report_doc = build_report_document(
+                    results, tracking_code, to_email, invoice_data, invoice_validation,
+                )
+                db.collection("classification_reports").add(report_doc)
+                print(f"  Classification report saved to Firestore")
+            except Exception as rpt_err:
+                print(f"  Report save error (non-fatal): {rpt_err}")
 
             # Learn from classification
             if ENRICHMENT_AVAILABLE:

@@ -878,8 +878,19 @@ def brain_daily_digest(db, access_token, rcb_email):
             <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">📦 New deals</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['new_deals']}</td></tr>
             <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">🎨 Email styles learned</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['styles_learned']}</td></tr>
             <tr><td style="padding:5px 10px;font-size:12px;">⚡ Improvements applied</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;">{digest['improvements_applied']}</td></tr>
-          </table>
-          <div style="font-size:11px;color:#888;">Reply "brain status" for full report. Reply "brain, learn about X" to start a mission.</div>
+          </table>'''
+
+        # Session 27 Assignment 12: Classification intelligence section
+        try:
+            from lib.report_builder import build_classification_digest_html
+            cls_html, cls_stats = build_classification_digest_html(db, yesterday)
+            if cls_html:
+                html += f'<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">{cls_html}</table>'
+                digest['classification_stats'] = cls_stats
+        except Exception:
+            pass
+
+        html += '''<div style="font-size:11px;color:#888;">Reply "brain status" for full report. Reply "brain, learn about X" to start a mission.</div>
         </div>
         <div style="background:#f8f9fa;padding:8px 20px;border:1px solid #ddd;border-top:0;border-radius:0 0 8px 8px;">
           <div style="font-size:9px;color:#bbb;">🧠 Only doron@ sees this digest</div>
