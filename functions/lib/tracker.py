@@ -68,6 +68,8 @@ PATTERNS = {
     'storage_id': r'(?:storage\s*(?:id|cert)|תעודת\s*אחסנה)[:\s#]*(\d{8,12})',
     'awb': r'\b(\d{3})[\s\-]?(\d{8})\b',  # Airline prefix + 8 digits
     'flight': r'\b(?:LY|EL|5C|TK|LH|AF|BA|KL|MS|ET|SU|W5)\s?\d{3,4}\b',
+    'voyage': r'(?:voyage|voy)[.:\s]*([A-Za-z0-9\-]{3,15})',
+    'container_type_qty': r'(\d+)\s*[xX*×]\s*(\d{2}(?:GP|HC|OT|RF|FR|TK))',
     'transaction_id': r'\b([IE]\d{2}\d{4,8}[A-Z]{2,5}\d{2,4})\b',
     'shipper': r'(?:shipper|שולח|מוצא)[:\s]+([^\n]{5,60})',
     'consignee': r'(?:consignee|נמען|יבואן)[:\s]+([^\n]{5,60})',
@@ -88,9 +90,11 @@ PORT_MAP = {
 LOGISTICS_SENDERS = {
     'port_authority': ['haifaport.co.il', 'ashdodport.co.il', 'israports.co.il', 'gadot.co.il'],
     'shipping_line': ['zim.com', 'maersk.com', 'msc.com', 'cma-cgm.com', 'hapag-lloyd.com',
-                      'evergreen-line.com', 'cosco.com', 'one-line.com', 'hmm21.com',
+                      'evergreen-line.com', 'cosco.com', 'coscoshipping.com', 'coscon.com',
+                      'one-line.com', 'hmm21.com',
                       'yangming.com', 'pilship.com', 'oocl.com', 'wanhai.com',
-                      'turkon.com.tr', 'konmart.co.il', 'carmelship.co.il'],
+                      'turkon.com.tr'],
+    'shipping_agent': ['konmart.co.il', 'carmelship.co.il', 'rosenfeld.net'],
     'airline': ['elal.co.il', 'turkishairlines.com', 'lufthansa.com'],
     'cargo_handler': ['maman.co.il', 'swissport.com', 'jas.com'],
     'customs_agent': ['rpa-port.co.il'],
@@ -126,6 +130,91 @@ def _load_bol_prefixes(db):
     except Exception as e:
         print(f"    📋 Tracker: BOL prefix load error: {e}")
     return _bol_prefix_cache
+
+
+# ── Cached shipping agents from Firestore shipping_agents collection ──
+_shipping_agent_cache = None  # {domain: {agent_name, carriers: [carrier1, ...]}}
+
+def _load_shipping_agents(db):
+    """Load shipping_agents from Firestore. Cached per cold start.
+    Collection docs: {name, domains: [str], carriers: [str], role, notes}"""
+    global _shipping_agent_cache
+    if _shipping_agent_cache is not None:
+        return _shipping_agent_cache
+    _shipping_agent_cache = {}
+    try:
+        for doc in db.collection('shipping_agents').stream():
+            data = doc.to_dict()
+            agent_name = data.get('name', doc.id)
+            carriers = data.get('carriers', [])
+            for domain in data.get('domains', []):
+                if domain:
+                    _shipping_agent_cache[domain.lower()] = {
+                        'agent_name': agent_name,
+                        'carriers': carriers,
+                    }
+        print(f"    🏢 Tracker: loaded {len(_shipping_agent_cache)} shipping agent domains from Firestore")
+    except Exception as e:
+        print(f"    🏢 Tracker: shipping agent load error: {e}")
+    return _shipping_agent_cache
+
+
+def _resolve_agent_carrier(from_email, db):
+    """Resolve sender email domain to agent_name + carrier_name.
+    Returns {'agent_name': str, 'carrier_name': str} or empty dict."""
+    if not from_email or '@' not in from_email:
+        return {}
+    domain = from_email.lower().split('@')[-1]
+    agents = _load_shipping_agents(db)
+    for agent_domain, info in agents.items():
+        if domain.endswith(agent_domain):
+            result = {'agent_name': info['agent_name']}
+            if info['carriers']:
+                result['carrier_name'] = info['carriers'][0]  # Primary carrier
+            return result
+    return {}
+
+
+def seed_shipping_agents(db):
+    """One-time seed for shipping_agents collection. Idempotent — skips existing docs."""
+    agents = [
+        {
+            'id': 'konmart',
+            'name': 'KONMART',
+            'domains': ['konmart.co.il'],
+            'carriers': ['YANG_MING'],
+            'role': 'shipping_agent',
+            'notes': 'Yang Ming agent in Israel',
+        },
+        {
+            'id': 'rosenfeld',
+            'name': 'Rosenfeld Shipping',
+            'domains': ['rosenfeld.net'],
+            'carriers': ['SALAMIS'],
+            'role': 'shipping_agent',
+            'notes': 'Salamis agent in Israel',
+        },
+        {
+            'id': 'carmel',
+            'name': 'Carmel International',
+            'domains': ['carmelship.co.il'],
+            'carriers': ['ADMIRAL', 'COSCO'],
+            'role': 'shipping_agent',
+            'notes': 'ADMIRAL agent + COSCO Israel 50% JV. COSCO direct emails from coscon.com/coscoshipping.com',
+        },
+    ]
+    created = 0
+    for agent in agents:
+        doc_id = agent.pop('id')
+        ref = db.collection('shipping_agents').document(doc_id)
+        if not ref.get().exists:
+            ref.set(agent)
+            created += 1
+            print(f"    🏢 Seeded shipping agent: {doc_id}")
+        else:
+            print(f"    🏢 Shipping agent already exists: {doc_id}")
+    return created
+
 
 # ════════════════════════════════════════════════════════
 #  MAIN ENTRY POINT — called from rcb_check_email hook
@@ -178,6 +267,27 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             except Exception as ae:
                 print(f"    📎 Tracker attachment error: {ae}")
 
+        # ── STEP 2a: Structured table extraction from PDF attachments ──
+        attachment_tables = []
+        if has_attachments and access_token and attachment_names:
+            try:
+                import base64
+                from lib.table_extractor import TableExtractor
+                _tbl_extractor = TableExtractor()
+                for att in raw_atts:
+                    att_name = att.get('name', '')
+                    if att_name.lower().endswith('.pdf') and att.get('contentBytes'):
+                        try:
+                            pdf_bytes = base64.b64decode(att['contentBytes'])
+                            tbl_result = _tbl_extractor.extract_tables(pdf_bytes, "application/pdf")
+                            if tbl_result.get('tables'):
+                                attachment_tables.extend(tbl_result['tables'])
+                                print(f"    📊 Tracker: {len(tbl_result['tables'])} table(s) from {att_name}")
+                        except Exception:
+                            pass
+            except (ImportError, NameError):
+                pass
+
         # ── STEP 3: Check for follow/stop commands ──
         command = _detect_command(subject, clean_body)
         if command:
@@ -214,6 +324,11 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             print(f"    🧠 Tracker brain skip: {brain_err}")
             extractions = _extract_logistics_data(full_text)
             confidence = 0.40
+
+        # ── STEP 4 (table merge): Merge structured table data into extractions ──
+        if attachment_tables:
+            _merge_container_table_data(extractions, attachment_tables)
+            extractions['tables'] = attachment_tables
 
         # ── STEP 4a: Try template extraction (brain reads independently) ──
         template_used = False
@@ -256,6 +371,15 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
                     validate_template(template_extractions, extractions, tmpl_key, db)
         except Exception as tl_err:
             print(f"    📖 Tracker template learn skip: {tl_err}")
+
+        # ── STEP 4d: Resolve shipping agent → carrier mapping ──
+        _load_shipping_agents(db)
+        agent_info = _resolve_agent_carrier(from_email, db)
+        if agent_info:
+            extractions['agent_name'] = agent_info.get('agent_name', '')
+            if agent_info.get('carrier_name') and not extractions.get('shipping_lines'):
+                extractions['shipping_lines'] = [agent_info['carrier_name']]
+            print(f"    🏢 Tracker: agent={agent_info.get('agent_name')} → carrier={agent_info.get('carrier_name', '?')}")
 
         is_logistics = _is_logistics_email(sender_type, extractions, subject)
 
@@ -356,8 +480,12 @@ def _extract_logistics_data(text):
         'weights': [],
         'awbs': [],
         'flights': [],
+        'voyages': [],
+        'container_type_qty': [],  # [{'qty': 2, 'type': '40HC'}]
         'is_notice_of_arrival': False,
         'direction': '',  # import/export, inferred
+        'seals': [],
+        'container_details': [],  # [{container, seal, weight, packages}] from table extraction
     }
 
     if not text:
@@ -485,6 +613,18 @@ def _extract_logistics_data(text):
             if awb not in result['awbs']:
                 result['awbs'].append(awb)
 
+    # Voyages
+    for m in re.finditer(PATTERNS['voyage'], text, re.IGNORECASE):
+        voy = m.group(1).strip()
+        if voy not in result['voyages']:
+            result['voyages'].append(voy)
+
+    # Container type + quantity (e.g. "2x40HC")
+    for m in re.finditer(PATTERNS['container_type_qty'], text):
+        entry = {'qty': int(m.group(1)), 'type': m.group(2)}
+        if entry not in result['container_type_qty']:
+            result['container_type_qty'].append(entry)
+
     # Notice of arrival detection
     if re.search(PATTERNS['notify_arrival'], text, re.IGNORECASE):
         result['is_notice_of_arrival'] = True
@@ -495,6 +635,70 @@ def _extract_logistics_data(text):
     return result
 
 
+def _merge_container_table_data(extractions, tables):
+    """Extract container details (seals, weights, packages) from structured table data.
+    Tables come from table_extractor as list-of-dicts (each dict = one row).
+    Adds to extractions['seals'], extractions['container_details'], and
+    extractions['containers'] — never removes existing data."""
+    CONTAINER_HINTS = {'container', 'cntr', 'cont no', 'container no', 'מכולה'}
+    SEAL_HINTS = {'seal', 'seal no', 'סיל', 'חותם'}
+    WEIGHT_HINTS = {'weight', 'gross', 'wt', 'kg', 'משקל', 'gross weight'}
+    PACKAGE_HINTS = {'package', 'pkg', 'pcs', 'pieces', 'qty', 'quantity', 'אריזות', 'חבילות', 'packages'}
+
+    for table in tables:
+        if not table or not isinstance(table, list):
+            continue
+        # Each table is a list of dicts; first dict's keys are column headers
+        first_row = table[0] if table else {}
+        if not isinstance(first_row, dict):
+            continue
+
+        # Find relevant column names by matching headers
+        container_col = seal_col = weight_col = package_col = None
+        for h in first_row.keys():
+            hl = h.lower().strip()
+            if any(hint in hl for hint in CONTAINER_HINTS):
+                container_col = h
+            elif any(hint in hl for hint in SEAL_HINTS):
+                seal_col = h
+            elif any(hint in hl for hint in WEIGHT_HINTS):
+                weight_col = h
+            elif any(hint in hl for hint in PACKAGE_HINTS):
+                package_col = h
+
+        if not container_col:
+            continue  # Not a container table
+
+        for row in table:
+            if not isinstance(row, dict):
+                continue
+            cn = str(row.get(container_col, '')).strip()
+            if not cn or len(cn) < 4:
+                continue
+
+            detail = {'container': cn}
+            if seal_col:
+                seal = str(row.get(seal_col, '')).strip()
+                if seal:
+                    detail['seal'] = seal
+                    if seal not in extractions['seals']:
+                        extractions['seals'].append(seal)
+            if weight_col:
+                wt = str(row.get(weight_col, '')).strip()
+                if wt:
+                    detail['weight'] = wt
+            if package_col:
+                pkg = str(row.get(package_col, '')).strip()
+                if pkg:
+                    detail['packages'] = pkg
+
+            extractions['container_details'].append(detail)
+
+            # Also add container to containers list if valid ISO 6346
+            cn_upper = cn.upper()
+            if re.match(r'^[A-Z]{4}\d{7}$', cn_upper):
+                if _iso6346_check_digit(cn_upper) and cn_upper not in extractions['containers']:
+                    extractions['containers'].append(cn_upper)
 
 
 def _llm_enrich_extraction(extractions, full_text, get_secret_func):
@@ -569,7 +773,8 @@ def _infer_direction(text, extractions):
     """Infer import/export from context"""
     text_lower = text.lower()
     import_signals = ['import', 'יבוא', 'notice of arrival', 'הגעת טובין', 'eta', 'unloading',
-                      'delivery order', 'פריקה', 'הורדה']
+                      'delivery order', 'air delivery order', 'cargo release notice',
+                      'פריקה', 'הורדה']
     export_signals = ['export', 'יצוא', 'etd', 'loading', 'stowage', 'storage cert',
                       'תעודת אחסנה', 'סגירה', 'cutoff', 'cut-off', 'העמסה']
 
@@ -590,7 +795,7 @@ def _infer_direction(text, extractions):
 
 def _is_logistics_email(sender_type, extractions, subject):
     """Determine if email is logistics-relevant"""
-    if sender_type in ('port_authority', 'shipping_line', 'airline', 'cargo_handler'):
+    if sender_type in ('port_authority', 'shipping_line', 'shipping_agent', 'airline', 'cargo_handler'):
         return True
     if extractions.get('containers'):
         return True
@@ -679,7 +884,10 @@ def _match_or_create_deal(db, firestore_module, observation):
         return {"action": "updated", "deal_id": matched_deal_id}
     else:
         # Create new deal if we have enough info
-        if bols or (containers and (ext.get('shipping_lines') or ext.get('vessels'))):
+        # Booking with vessel/shipping_line also qualifies (BL comes later, links via booking)
+        if (bols or
+            (containers and (ext.get('shipping_lines') or ext.get('vessels'))) or
+            (bookings and (ext.get('shipping_lines') or ext.get('vessels')))):
             deal_id = _create_deal(db, firestore_module, observation)
             return {"action": "created", "deal_id": deal_id}
         else:
@@ -729,6 +937,7 @@ def _create_deal(db, firestore_module, observation):
         "transaction_ids": ext.get('transaction_ids', []),
         "taskyam_transmitted": False,
         "vessel_name": ext.get('vessels', [''])[0] if ext.get('vessels') else '',
+        "voyage": ext.get('voyages', [''])[0] if ext.get('voyages') else '',
         "loyds_number": '',
         "journey_id": '',
         "shipping_line": ext.get('shipping_lines', [''])[0] if ext.get('shipping_lines') else '',
@@ -747,6 +956,8 @@ def _create_deal(db, firestore_module, observation):
         "doc_cutoff": ext.get('cutoff_doc', [''])[0] if ext.get('cutoff_doc') else '',
         "container_cutoff": ext.get('cutoff_container', [''])[0] if ext.get('cutoff_container') else '',
         "sailing_date": '',
+        "agent_name": ext.get('agent_name', ''),
+        "carrier_name": ext.get('shipping_lines', [''])[0] if ext.get('shipping_lines') else '',
         "status": "active",
         "source_emails": [observation.get('obs_id', '')],
         "source_email_thread_id": observation.get('conversation_id', ''),
@@ -851,6 +1062,7 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
         'booking_number': ('bookings', 0),
         'manifest_number': ('manifests', 0),
         'vessel_name': ('vessels', 0),
+        'voyage': ('voyages', 0),
         'shipping_line': ('shipping_lines', 0),
         'customs_declaration': ('declarations', 0),
         'storage_id': ('storage_ids', 0),
@@ -864,6 +1076,12 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
             vals = ext[ext_field]
             if idx < len(vals):
                 updates[deal_field] = vals[idx] if not isinstance(vals[idx], dict) else vals[idx].get('code', '')
+
+    # Agent/carrier (string fields, not lists)
+    if not deal.get('agent_name') and ext.get('agent_name'):
+        updates['agent_name'] = ext['agent_name']
+    if not deal.get('carrier_name') and ext.get('shipping_lines'):
+        updates['carrier_name'] = ext['shipping_lines'][0]
 
     # Add source email
     source_emails = deal.get('source_emails', [])
@@ -1460,6 +1678,10 @@ def _guess_doc_type_from_attachments(attachment_names):
             return 'invoice'
         if any(x in n for x in ['bill_of_lading', 'b_l', 'bol', 'bl_', 'lading']):
             return 'bill_of_lading'
+        if any(x in n for x in ['booking', 'bkg_', 'ebkg', 'confirm']):
+            return 'booking_confirmation'
+        if any(x in n for x in ['air_delivery', 'ado_', 'air_release', 'cargo_release']):
+            return 'air_delivery_order'
         if any(x in n for x in ['delivery', 'do_', 'release']):
             return 'delivery_order'
         if any(x in n for x in ['certif', 'cert_', 'coo', 'phyto', 'health']):
