@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.librarian import (
     extract_search_keywords,
     search_collection_smart,
-    search_tariff_codes
+    search_tariff_codes,
+    clear_search_cache,
 )
 
 
@@ -82,7 +83,10 @@ class TestExtractSearchKeywords:
 
 class TestSearchCollectionSmart:
     """Tests for smart collection search"""
-    
+
+    def setup_method(self):
+        clear_search_cache()
+
     def test_basic_search(self):
         """Should find matching documents"""
         # Create mock Firestore

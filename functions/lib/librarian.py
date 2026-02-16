@@ -8,7 +8,35 @@ The Librarian is the CENTRAL BRAIN of the RCB system:
 - Keeps learning (researcher & enrichment)
 """
 
+import re
+import time
 from datetime import datetime, timezone
+
+# ═══════════════════════════════════════════
+#  SESSION 27: SEARCH CACHE (TTL-based)
+# ═══════════════════════════════════════════
+
+_SEARCH_CACHE = {}          # key -> (timestamp, result)
+_CACHE_TTL_SEC = 300        # 5 minutes
+
+
+def _cache_get(key):
+    """Return cached result if within TTL, else None."""
+    entry = _SEARCH_CACHE.get(key)
+    if entry and (time.time() - entry[0]) < _CACHE_TTL_SEC:
+        return entry[1]
+    return None
+
+
+def _cache_set(key, value):
+    """Store result in cache with current timestamp."""
+    _SEARCH_CACHE[key] = (time.time(), value)
+
+
+def clear_search_cache():
+    """Clear the entire search cache (call between classification runs)."""
+    _SEARCH_CACHE.clear()
+
 
 # ═══════════════════════════════════════════
 #  SESSION 11 ORIGINALS (preserved)
@@ -27,46 +55,79 @@ def extract_search_keywords(item_description):
 
 
 def search_collection_smart(db, collection_name, keywords, text_fields, max_results=50):
-    """Smart search a single collection"""
+    """Smart search a single collection (with cache + word-boundary matching)."""
+    keywords_lower = sorted(set(k.lower() for k in keywords if k))
+    cache_key = f"{collection_name}|{'|'.join(keywords_lower)}|{'|'.join(text_fields)}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached[:max_results]
+
     results = []
-    keywords_lower = [k.lower() for k in keywords if k]
-    
+
     try:
         docs = db.collection(collection_name).limit(500).stream()
         for doc in docs:
             data = doc.to_dict()
-            
+
             search_text = ""
             for field in text_fields:
                 val = data.get(field, "")
                 if isinstance(val, str):
                     search_text += " " + val.lower()
-            
+
             score = 0
             for kw in keywords_lower:
-                if kw in search_text:
-                    score += 1
-            
+                # Word-boundary match for Latin, substring for Hebrew
+                if any("\u0590" <= c <= "\u05FF" for c in kw):
+                    if kw in search_text:
+                        score += 1
+                else:
+                    if re.search(r'\b' + re.escape(kw) + r'\b', search_text):
+                        score += 1
+
             if score > 0:
                 results.append({
                     "doc_id": doc.id,
                     "score": score,
                     "data": data
                 })
-        
+
         results.sort(key=lambda x: x["score"], reverse=True)
+        _cache_set(cache_key, results)
         return results[:max_results]
-        
+
     except Exception as e:
-        print(f"    ❌ Error searching {collection_name}: {e}")
+        print(f"    Error searching {collection_name}: {e}")
         return []
 
 
 def search_tariff_codes(db, keywords):
-    """Search for HS codes in tariff collections"""
+    """Search for HS codes in tariff collections.
+    Session 27: Searches product_index FIRST (highest signal for repeat items)."""
     results = []
-    
-    print("    🔍 Searching tariff_chapters...")
+
+    # Tier 0: product_index — best signal for repeat items (boosted score)
+    print("    Searching product_index...")
+    products = search_collection_smart(
+        db, 'product_index', keywords,
+        ['product_name', 'description', 'description_he'],
+        max_results=10
+    )
+    for r in products:
+        data = r["data"]
+        hs = data.get('hs_code', '')
+        if hs:
+            results.append({
+                "source": "product_index",
+                "hs_code": hs,
+                "description_he": data.get('description_he', data.get('product_name', '')),
+                "description_en": data.get('description', data.get('product_name', '')),
+                "chapter": "",
+                "duty_rate": "",
+                "score": r["score"] + 2  # Boost: learned product = high signal
+            })
+
+    print("    Searching tariff_chapters...")
     chapters = search_collection_smart(
         db, 'tariff_chapters', keywords,
         ['description_he', 'description_en', 'title', 'title_he', 'title_en', 'code'],
@@ -237,21 +298,52 @@ def search_history(db, keywords):
     return results
 
 
+def _dedup_results(results_list, key_func=None):
+    """Remove duplicate results. key_func(item) -> unique key string."""
+    if not key_func:
+        def key_func(item):
+            # Default: dedup by hs_code or doc_id or data title
+            hs = item.get("hs_code", "")
+            if hs:
+                return hs
+            doc_id = item.get("doc_id", "")
+            if doc_id:
+                return doc_id
+            data = item.get("data", {})
+            return data.get("title", "") or str(data)[:80]
+    seen = set()
+    deduped = []
+    for item in results_list:
+        k = key_func(item)
+        if k and k not in seen:
+            seen.add(k)
+            deduped.append(item)
+    return deduped
+
+
 def full_knowledge_search(db, query_terms, item_description=""):
     """
-    Complete phased search across ALL knowledge
+    Complete phased search across ALL knowledge.
+    Session 27: Added cache, word-boundary matching, dedup, tiered search.
     Phase 1: Extract keywords and search all sources
     Phase 2: If low results, expand with learned knowledge
     """
     print("  📚 LIBRARIAN: Starting comprehensive search...")
-    
+
     all_terms = query_terms if isinstance(query_terms, list) else [query_terms]
     if item_description:
         all_terms.extend(extract_search_keywords(item_description))
-    
+
     keywords = list(set([t for t in all_terms if t and len(str(t)) > 2]))[:15]
     print(f"  📚 Keywords: {keywords[:5]}...")
-    
+
+    # Check full-query cache
+    fks_cache_key = f"fks|{'|'.join(sorted(keywords))}"
+    cached = _cache_get(fks_cache_key)
+    if cached is not None:
+        print("  📚 LIBRARIAN: Returning cached results")
+        return cached
+
     results = {
         "tariff_codes": [],
         "regulations": [],
@@ -261,16 +353,28 @@ def full_knowledge_search(db, query_terms, item_description=""):
         "similar_past": [],
         "confidence": "low"
     }
-    
+
     try:
-        # Phase 1: Targeted search
+        # Phase 1: Tiered search — most valuable sources first
+        # Tier 1: Product index + tariff (highest signal)
         results["tariff_codes"] = search_tariff_codes(db, keywords)
+
+        # Early stop: if we have 5+ tariff hits, skip low-value sources
+        tariff_found = len(results["tariff_codes"])
+
+        # Tier 2: Regulations (always needed for compliance)
         results["regulations"] = search_regulations(db, keywords)
+
+        # Tier 3: Rules and knowledge (skip if we already have plenty)
         results["procedures_rules"] = search_procedures_and_rules(db, keywords)
         results["knowledge"] = search_knowledge_base(db, keywords)
-        results["history"] = search_history(db, keywords)
-        
-        # Phase 2 (Session 12): Search learned knowledge for similar past items
+
+        # Tier 4: History (only if we need more signal)
+        total_so_far = sum(len(v) for v in results.values() if isinstance(v, list))
+        if total_so_far < 15:
+            results["history"] = search_history(db, keywords)
+
+        # Phase 2: Search learned knowledge for similar past items
         if item_description:
             try:
                 from .librarian_researcher import find_similar_classifications
@@ -281,12 +385,26 @@ def full_knowledge_search(db, query_terms, item_description=""):
                     print(f"    📚 Found {len(results['similar_past'])} similar past classifications")
             except ImportError:
                 pass
-        
-        # Calculate confidence based on results
+
+        # Dedup each category
+        results["tariff_codes"] = _dedup_results(
+            results["tariff_codes"],
+            lambda x: x.get("hs_code", "")
+        )
+        results["regulations"] = _dedup_results(
+            results["regulations"],
+            lambda x: x.get("data", {}).get("title", "") or x.get("source", "")
+        )
+        results["history"] = _dedup_results(
+            results["history"],
+            lambda x: x.get("data", {}).get("hs_code", "") or x.get("data", {}).get("description", "")[:60]
+        )
+
+        # Calculate confidence
         total_found = sum(len(v) for v in results.values() if isinstance(v, list))
         tariff_found = len(results["tariff_codes"])
         similar_found = len(results.get("similar_past", []))
-        
+
         if tariff_found >= 3 and total_found >= 10:
             results["confidence"] = "high"
         elif tariff_found >= 1 and total_found >= 5:
@@ -295,17 +413,20 @@ def full_knowledge_search(db, query_terms, item_description=""):
             results["confidence"] = "medium"
         else:
             results["confidence"] = "low"
-        
-        # Log search for analytics (Session 12)
+
+        # Cache results
+        _cache_set(fks_cache_key, results)
+
+        # Log search for analytics
         _log_search(db, keywords, item_description, total_found, results["confidence"])
-        
+
         print(f"  📚 LIBRARIAN: Found {total_found} docs, confidence: {results['confidence']}")
-        
+
     except Exception as e:
-        print(f"  ❌ Librarian error: {e}")
+        print(f"  Librarian error: {e}")
         import traceback
         traceback.print_exc()
-    
+
     return results
 
 
@@ -718,6 +839,7 @@ def smart_search(db, query, limit=20):
     """
     Unified smart search — searches the librarian_index first,
     then falls back to collection-level search.
+    Session 27: Added cache, dedup, early stopping.
 
     Args:
         db: Firestore client
@@ -728,14 +850,20 @@ def smart_search(db, query, limit=20):
         List of matching documents with scores
     """
     print(f"  📚 LIBRARIAN: Smart search for '{query}'...")
-    
+
     keywords = extract_search_keywords(query)
     if not keywords:
         keywords = [query]
-    
+
+    # Check cache
+    ss_cache_key = f"ss|{'|'.join(sorted(keywords))}|{limit}"
+    cached = _cache_get(ss_cache_key)
+    if cached is not None:
+        return cached
+
     results = []
     seen_ids = set()
-    
+
     # 1. Search librarian_index first (fastest, most comprehensive)
     try:
         index_results = search_collection_smart(
@@ -743,7 +871,7 @@ def smart_search(db, query, limit=20):
             ["title", "description", "keywords_he", "keywords_en"],
             max_results=limit
         )
-        
+
         for r in index_results:
             data = r["data"]
             doc_key = data.get("id", r["doc_id"])
@@ -760,11 +888,11 @@ def smart_search(db, query, limit=20):
                 })
     except Exception:
         pass
-    
-    # 2. If we don't have enough results, search raw collections
+
+    # 2. Early stop: if index gave enough high-quality results, skip fallback
     if len(results) < limit // 2:
         fallback = full_knowledge_search(db, keywords, query)
-        
+
         for category in ["tariff_codes", "regulations", "procedures_rules", "knowledge", "history"]:
             for item in fallback.get(category, []):
                 item_id = str(item.get("hs_code", item.get("data", {}).get("title", "")))[:50]
@@ -779,11 +907,13 @@ def smart_search(db, query, limit=20):
                     })
     
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
-    
-    # Log search
-    _log_search(db, keywords, query, len(results), "smart_search")
-    
-    return results[:limit]
+    final = results[:limit]
+
+    # Cache and log
+    _cache_set(ss_cache_key, final)
+    _log_search(db, keywords, query, len(final), "smart_search")
+
+    return final
 
 
 # ═══════════════════════════════════════════

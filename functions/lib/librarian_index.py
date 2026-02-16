@@ -135,6 +135,37 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "document",
     },
+    # Session 27: New collections from Assignments 8-9
+    "product_index": {
+        "title_fields": ["product_name", "description", "description_he"],
+        "keyword_fields": ["hs_code", "category"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "supplier_index": {
+        "title_fields": ["name", "company", "email"],
+        "keyword_fields": ["country", "type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "chapter_notes": {
+        "title_fields": ["chapter_title_he", "chapter_description_he", "heading_summary"],
+        "keyword_fields": ["chapter_number", "keywords"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "keyword_index": {
+        "title_fields": ["keyword", "keyword_he"],
+        "keyword_fields": ["keyword", "keyword_he"],
+        "hs_fields": ["hs_codes"],
+        "doc_type": "record",
+    },
+    "cross_check_log": {
+        "title_fields": ["item_description", "summary"],
+        "keyword_fields": ["tier", "hs_code"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension

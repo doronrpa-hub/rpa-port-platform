@@ -2154,6 +2154,11 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
     try:
         print(f"  🤖 Starting: {subject[:50]}")
         _cost_tracker.reset()  # Session 27: Reset per-run cost accumulator
+        try:
+            from lib.librarian import clear_search_cache
+            clear_search_cache()  # Session 27: Clear search cache between runs
+        except ImportError:
+            pass
 
         api_key = get_secret_func('ANTHROPIC_API_KEY')
         if not api_key:
