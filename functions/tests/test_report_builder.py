@@ -357,7 +357,8 @@ class TestSection1Summary:
     def test_renders_metrics(self):
         stats = {
             "reports": 5, "items_classified": 12, "emails_processed": 20,
-            "deals_tracked": 3, "cross_check_total": 10, "cross_check_t1": 7,
+            "deals_tracked": 3, "avg_confidence": 78,
+            "cross_check_total": 10, "cross_check_t1": 7,
             "strong": 8, "moderate": 3, "weak": 1,
             "cross_check_t2": 2, "cross_check_t3": 1, "cross_check_t4": 0,
         }
@@ -365,12 +366,14 @@ class TestSection1Summary:
         assert "5" in html  # reports
         assert "12" in html  # items
         assert "70%" in html  # agreement (7/10)
+        assert "78%" in html  # avg confidence
         assert "סיכום יומי" in html
 
     def test_zero_cross_checks(self):
         stats = {
             "reports": 1, "items_classified": 2, "emails_processed": 3,
-            "deals_tracked": 0, "cross_check_total": 0, "cross_check_t1": 0,
+            "deals_tracked": 0, "avg_confidence": 0,
+            "cross_check_total": 0, "cross_check_t1": 0,
             "strong": 0, "moderate": 0, "weak": 0,
             "cross_check_t2": 0, "cross_check_t3": 0, "cross_check_t4": 0,
         }
@@ -387,14 +390,18 @@ class TestSection2Questions:
                 {
                     "question_he": "Is this chapter 84 or 85?",
                     "context": "Electric motor for pump",
+                    "product": "Electric motor",
                     "primary_hs": "8501.10",
                     "type": "chapter_dispute",
+                    "confidence": 65,
                 },
                 {
                     "question_he": "Missing preamble for chapter 39",
                     "context": "Plastic container",
+                    "product": "Plastic container",
                     "primary_hs": "3923.10",
                     "type": "knowledge_gap",
+                    "confidence": 40,
                 },
             ],
         }
@@ -404,6 +411,8 @@ class TestSection2Questions:
         assert "Q2." in html
         assert "8501.10" in html
         assert "chapter dispute" in html
+        assert "confidence: 65%" in html
+        assert "Action:" in html
 
     def test_no_questions(self):
         stats = {"pupil_questions": 0, "_questions_data": []}
@@ -416,9 +425,12 @@ class TestSection3Gaps:
     def test_renders_gaps(self):
         stats = {
             "gaps_open": 5, "gaps_filled": 3,
+            "gaps_filled_self_enrichment": 1, "gaps_filled_ai": 1, "gaps_filled_other": 1,
             "_open_gaps_data": [
-                {"type": "missing_directive", "description": "No directive for 8516", "priority": "high"},
-                {"type": "missing_preamble", "description": "Preamble chapter 39 empty", "priority": "critical"},
+                {"type": "missing_directive", "description": "No directive for 8516",
+                 "priority": "high", "hs_code": "85.16", "source": "classification_report"},
+                {"type": "missing_preamble", "description": "Preamble chapter 39 empty",
+                 "priority": "critical", "hs_code": "39.23"},
             ],
         }
         html = _build_section3_html(stats)
@@ -426,36 +438,80 @@ class TestSection3Gaps:
         assert "3 הושלמו אתמול" in html
         assert "[HIGH]" in html
         assert "[CRITICAL]" in html
+        assert "1 self-enrichment" in html
+        assert "1 AI" in html
+        assert "HS: 85.16" in html
 
     def test_no_gaps(self):
-        stats = {"gaps_open": 0, "gaps_filled": 0, "_open_gaps_data": []}
+        stats = {
+            "gaps_open": 0, "gaps_filled": 0,
+            "gaps_filled_self_enrichment": 0, "gaps_filled_ai": 0, "gaps_filled_other": 0,
+            "_open_gaps_data": [],
+        }
         html = _build_section3_html(stats)
         assert html == ""
 
 
 class TestSection4Enrichment:
 
-    def test_renders_enrichment(self):
+    def test_renders_overnight_brain_report(self):
         stats = {
             "enrichment": {
-                "processed": 10, "filled": 6, "failed": 2, "skipped": 2,
-                "details": [
-                    {"action": "filled", "description": "Chapter 85 preamble found"},
-                    {"action": "could_not_fill", "description": "Directive 8516 not available"},
-                    {"action": "flagged_for_pc_agent", "description": "Pre-ruling for 3923"},
-                ],
+                "date": "2026-02-16T00:00:00Z",
+                "duration_seconds": 245,
+                "cost": {
+                    "total_spent": 1.23, "budget_limit": 3.50,
+                    "gemini_calls": 15, "stopped_by_budget": False,
+                },
+                "stream_stats": {
+                    "stream_1_tariff_mine": {"terms_indexed": 340, "garbage_fixed": 5},
+                    "stream_3_cc_learning": {"patterns_learned": 8, "corrections_learned": 2},
+                    "stream_5_ai_fill": {"gaps_filled": 12},
+                    "stream_6_uk_tariff": {"fetched": 50},
+                    "stream_8_self_teach": {"chapters_taught": 4, "rules_generated": 15},
+                    "stream_9_knowledge_sync": {"patterns_synced": 10, "enrichments_synced": 5},
+                },
+            }
+        }
+        html = _build_section4_html(stats)
+        assert "Overnight Brain" in html
+        assert "$1.23" in html  # cost
+        assert "15 AI calls" in html
+        assert "patterns learned" in html
+        assert "terms indexed" in html
+        assert "corrections learned" in html
+        assert "gaps filled" in html
+        assert "UK tariff codes" in html
+        assert "classification rules" in html
+        assert "synced to classifiers" in html
+
+    def test_renders_legacy_enrichment(self):
+        stats = {
+            "enrichment": {
+                "processed": 10, "filled": 6, "failed": 2,
             }
         }
         html = _build_section4_html(stats)
         assert "העשרה אוטומטית" in html
-        assert "10" in html  # processed
-        assert "6" in html  # filled
-        assert "Chapter 85 preamble" in html
+        assert "10" in html
+        assert "6" in html
 
     def test_no_enrichment(self):
         stats = {"enrichment": {}}
         html = _build_section4_html(stats)
         assert html == ""
+
+    def test_budget_exhausted_warning(self):
+        stats = {
+            "enrichment": {
+                "cost": {"total_spent": 3.48, "budget_limit": 3.50,
+                         "gemini_calls": 40, "stopped_by_budget": True},
+                "duration_seconds": 500,
+                "stream_stats": {"stream_1_tariff_mine": {"terms_indexed": 100}},
+            }
+        }
+        html = _build_section4_html(stats)
+        assert "Budget exhausted" in html
 
 
 class TestSection5Alerts:
@@ -463,10 +519,12 @@ class TestSection5Alerts:
     def test_renders_low_confidence(self):
         stats = {
             "low_confidence_items": [
-                {"hs_code": "8516.31", "item": "Hair dryer", "strength": "weak", "tracking": "RCB-X123"},
+                {"hs_code": "8516.31", "item": "Hair dryer", "strength": "weak",
+                 "confidence": 45, "tracking": "RCB-X123"},
             ],
             "cross_check_t3": 2, "cross_check_t4": 1,
             "pc_agent_pending": 3,
+            "failed_extractions": 0,
         }
         html = _build_section5_html(stats)
         assert "חריגים" in html
@@ -476,11 +534,23 @@ class TestSection5Alerts:
         assert "2 conflicts (T3)" in html
         assert "3 tasks pending" in html
 
+    def test_renders_failed_extractions(self):
+        stats = {
+            "low_confidence_items": [],
+            "cross_check_t3": 0, "cross_check_t4": 0,
+            "pc_agent_pending": 0,
+            "failed_extractions": 7,
+        }
+        html = _build_section5_html(stats)
+        assert "חריגים" in html
+        assert "7 extraction failures" in html
+
     def test_no_alerts(self):
         stats = {
             "low_confidence_items": [],
             "cross_check_t3": 0, "cross_check_t4": 0,
             "pc_agent_pending": 0,
+            "failed_extractions": 0,
         }
         html = _build_section5_html(stats)
         assert html == ""

@@ -377,11 +377,15 @@ def _gather_digest_stats(db, yesterday_iso):
     stats = {
         "reports": 0,
         "items_classified": 0,
+        "avg_confidence": 0,
         "strong": 0,
         "moderate": 0,
         "weak": 0,
         "gaps_open": 0,
         "gaps_filled": 0,
+        "gaps_filled_self_enrichment": 0,
+        "gaps_filled_ai": 0,
+        "gaps_filled_other": 0,
         "pupil_questions": 0,
         "emails_processed": 0,
         "deals_tracked": 0,
@@ -393,9 +397,11 @@ def _gather_digest_stats(db, yesterday_iso):
         "enrichment": {},
         "low_confidence_items": [],
         "pc_agent_pending": 0,
+        "failed_extractions": 0,
     }
 
     # ── Classification reports ──
+    confidence_values = []
     try:
         reports = list(
             db.collection("classification_reports")
@@ -424,16 +430,23 @@ def _gather_digest_stats(db, yesterday_iso):
                     stats["cross_check_t4"] += 1
                 stats["cross_check_total"] += 1
 
-            # Low-confidence items for alerts
+            # Low-confidence items + avg confidence tracking
             for item in data.get("items", []):
                 strength = item.get("legal_strength", "")
+                conf = item.get("confidence", 0)
+                if isinstance(conf, (int, float)) and conf > 0:
+                    confidence_values.append(conf)
                 if strength == "weak" or not item.get("challenge_passed", True):
                     stats["low_confidence_items"].append({
                         "hs_code": item.get("hs_code", ""),
                         "item": item.get("item", "")[:60],
                         "strength": strength,
+                        "confidence": conf,
                         "tracking": data.get("tracking_code", ""),
                     })
+
+        if confidence_values:
+            stats["avg_confidence"] = round(sum(confidence_values) / len(confidence_values))
     except Exception as e:
         logger.warning(f"Digest: classification_reports query failed: {e}")
 
@@ -494,7 +507,25 @@ def _gather_digest_stats(db, yesterday_iso):
             .limit(200)
             .stream()
         )
-        stats["gaps_filled"] = len(filled)
+        # Also check filled_by_ai status
+        filled_ai = list(
+            db.collection("knowledge_gaps")
+            .where("status", "==", "filled_by_ai")
+            .where("filled_at", ">=", yesterday_iso)
+            .limit(200)
+            .stream()
+        )
+        all_filled = filled + filled_ai
+        stats["gaps_filled"] = len(all_filled)
+        for f in all_filled:
+            fdata = f.to_dict()
+            fill_status = fdata.get("status", "")
+            if fill_status == "filled_by_ai":
+                stats["gaps_filled_ai"] += 1
+            elif fdata.get("filled_by") == "self_enrichment":
+                stats["gaps_filled_self_enrichment"] += 1
+            else:
+                stats["gaps_filled_other"] += 1
     except Exception:
         pass
 
@@ -513,18 +544,35 @@ def _gather_digest_stats(db, yesterday_iso):
     except Exception:
         pass
 
-    # ── Enrichment (from latest overnight audit) ──
+    # ── Enrichment (from overnight brain enrichment_reports) ──
     try:
-        audits = list(
-            db.collection("overnight_audit_results")
-            .limit(1)
+        reports_list = list(
+            db.collection("enrichment_reports")
+            .limit(5)
             .stream()
         )
-        if audits:
-            audit = audits[0].to_dict()
-            stats["enrichment"] = audit.get("self_enrichment", {})
+        if reports_list:
+            # Pick the latest by date field
+            latest = None
+            for rpt in reports_list:
+                rdata = rpt.to_dict()
+                if not latest or rdata.get("date", "") > latest.get("date", ""):
+                    latest = rdata
+            if latest:
+                stats["enrichment"] = latest
     except Exception:
-        pass
+        # Fallback to legacy overnight_audit_results
+        try:
+            audits = list(
+                db.collection("overnight_audit_results")
+                .limit(1)
+                .stream()
+            )
+            if audits:
+                audit = audits[0].to_dict()
+                stats["enrichment"] = audit.get("self_enrichment", {})
+        except Exception:
+            pass
 
     # ── PC Agent pending tasks ──
     try:
@@ -535,6 +583,19 @@ def _gather_digest_stats(db, yesterday_iso):
             .stream()
         )
         stats["pc_agent_pending"] = len(pending)
+    except Exception:
+        pass
+
+    # ── Failed extractions (last 24h) ──
+    try:
+        failed_ext = list(
+            db.collection("rcb_processed")
+            .where("status", "==", "extraction_failed")
+            .where("timestamp", ">=", yesterday_iso)
+            .limit(100)
+            .stream()
+        )
+        stats["failed_extractions"] = len(failed_ext)
     except Exception:
         pass
 
@@ -660,13 +721,14 @@ def _build_section1_html(stats):
     items = stats.get("items_classified", 0)
     emails = stats.get("emails_processed", 0)
     deals = stats.get("deals_tracked", 0)
+    avg_conf = stats.get("avg_confidence", 0)
     cc_total = stats.get("cross_check_total", 0)
     cc_t1 = stats.get("cross_check_t1", 0)
     agreement_pct = round(cc_t1 / max(cc_total, 1) * 100)
 
     html = _section_header("1. סיכום יומי")
 
-    # Metrics grid (2x3)
+    # Metrics grid (3x3)
     html += '<table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0">'
 
     html += '<tr>'
@@ -676,12 +738,21 @@ def _build_section1_html(stats):
     html += '</tr><tr>'
     html += _metric_cell("משלוחים פעילים", str(deals), "#555")
 
+    # Avg confidence
+    if avg_conf > 0:
+        conf_color = "#166534" if avg_conf >= 80 else "#92400e" if avg_conf >= 60 else "#991b1b"
+        html += _metric_cell("ביטחון ממוצע", f"{avg_conf}%", conf_color)
+    else:
+        html += _metric_cell("ביטחון ממוצע", "N/A", "#aaa")
+
     # Model agreement rate
     if cc_total > 0:
         agr_color = "#166534" if agreement_pct >= 70 else "#92400e" if agreement_pct >= 40 else "#991b1b"
         html += _metric_cell("הסכמת AI", f"{agreement_pct}%", agr_color)
     else:
         html += _metric_cell("הסכמת AI", "N/A", "#aaa")
+
+    html += '</tr><tr>'
 
     # Legal strength summary
     strong = stats.get("strong", 0)
@@ -693,6 +764,7 @@ def _build_section1_html(stats):
         html += _metric_cell("חוזק משפטי", f"{strong_pct}% חזק", "#166534" if strong_pct >= 60 else "#92400e")
     else:
         html += _metric_cell("חוזק משפטי", "N/A", "#aaa")
+    html += '<td></td><td></td>'
 
     html += '</tr></table>'
     return html
@@ -709,7 +781,7 @@ def _metric_cell(label, value, color):
 
 
 def _build_section2_html(stats):
-    """Section 2: Pupil Questions — numbered list of pending questions."""
+    """Section 2: Pupil Questions — numbered list with confidence + action."""
     questions_data = stats.get("_questions_data", [])
     count = stats.get("pupil_questions", 0)
     if count == 0:
@@ -720,8 +792,11 @@ def _build_section2_html(stats):
     for i, q in enumerate(questions_data[:8], 1):
         question_text = q.get("question_he", q.get("question_en", ""))
         context = q.get("context", "")[:80]
+        product = q.get("product", q.get("item", ""))
         hs = q.get("primary_hs", "")
+        confidence = q.get("confidence", 0)
         q_type = q.get("type", "")
+
         type_badge = (
             '<span style="background:#eff6ff;color:#1e40af;font-size:9px;padding:1px 6px;'
             'border-radius:8px;margin-right:4px">chapter dispute</span>'
@@ -730,15 +805,42 @@ def _build_section2_html(stats):
             'border-radius:8px;margin-right:4px">knowledge gap</span>'
         )
 
+        # Determine action needed
+        action = q.get("action_needed", "")
+        if not action:
+            if q_type == "chapter_dispute":
+                action = "confirm correct chapter"
+            elif confidence and int(confidence) < 50:
+                action = "manual classification needed"
+            else:
+                action = "reply with answer"
+
         html += (
             f'<div style="padding:8px 12px;margin-bottom:6px;background:#f8faff;'
             f'border:1px solid #e5e7eb;border-radius:8px;font-size:12px">'
             f'<div style="font-weight:700;color:#0f2439">Q{i}. {_escape(question_text[:120])}</div>'
         )
+        if product:
+            html += f'<div style="font-size:11px;color:#555;margin-top:3px">מוצר: {_escape(str(product)[:80])}</div>'
         if context:
             html += f'<div style="font-size:11px;color:#666;margin-top:3px">{_escape(context)}</div>'
+
+        # HS + confidence + type badge
+        meta_parts = []
         if hs:
-            html += f'<div style="font-size:11px;color:#888;margin-top:2px">HS: {_escape(hs)} {type_badge}</div>'
+            meta_parts.append(f'HS: {_escape(hs)}')
+        if confidence:
+            conf_val = int(confidence) if isinstance(confidence, (int, float)) else 0
+            conf_color = "#166534" if conf_val >= 80 else "#92400e" if conf_val >= 50 else "#991b1b"
+            meta_parts.append(f'<span style="color:{conf_color}">confidence: {conf_val}%</span>')
+        if meta_parts:
+            html += f'<div style="font-size:11px;color:#888;margin-top:2px">{" | ".join(meta_parts)} {type_badge}</div>'
+
+        # Action needed
+        html += (
+            f'<div style="font-size:10px;color:#1e40af;margin-top:3px;font-weight:600">'
+            f'Action: {_escape(action)}</div>'
+        )
         html += '</div>'
 
     if count > 8:
@@ -748,7 +850,7 @@ def _build_section2_html(stats):
 
 
 def _build_section3_html(stats):
-    """Section 3: Knowledge Gaps — open vs filled."""
+    """Section 3: Knowledge Gaps — open vs filled, with source split."""
     open_count = stats.get("gaps_open", 0)
     filled_count = stats.get("gaps_filled", 0)
     if open_count == 0 and filled_count == 0:
@@ -756,21 +858,38 @@ def _build_section3_html(stats):
 
     html = _section_header(f"3. פערי ידע")
 
+    filled_se = stats.get("gaps_filled_self_enrichment", 0)
+    filled_ai = stats.get("gaps_filled_ai", 0)
+    filled_other = stats.get("gaps_filled_other", 0)
+
     # Summary bar
     html += (
         '<div style="padding:8px 12px;margin-bottom:8px;border-radius:8px;font-size:13px">'
         f'<span style="color:#991b1b;font-weight:700">{open_count} פתוחים</span>'
         f' &nbsp;|&nbsp; '
         f'<span style="color:#166534;font-weight:700">{filled_count} הושלמו אתמול</span>'
-        '</div>'
     )
+    # Split by source
+    if filled_count > 0:
+        split_parts = []
+        if filled_se > 0:
+            split_parts.append(f'{filled_se} self-enrichment')
+        if filled_ai > 0:
+            split_parts.append(f'{filled_ai} AI')
+        if filled_other > 0:
+            split_parts.append(f'{filled_other} other')
+        if split_parts:
+            html += f'<div style="font-size:10px;color:#888;margin-top:2px">({", ".join(split_parts)})</div>'
+    html += '</div>'
 
-    # List top open gaps
+    # List top open gaps with classification context
     open_gaps = stats.get("_open_gaps_data", [])
     for g in open_gaps[:5]:
-        gap_type = g.get("type", "")
         desc = g.get("description", "")[:100]
         priority = g.get("priority", "low")
+        hs_code = g.get("hs_code", "")
+        source = g.get("source", g.get("triggered_by", ""))
+        classification_id = g.get("classification_id", "")
 
         p_color = "#991b1b" if priority == "critical" else "#92400e" if priority == "high" else "#555"
         p_label = priority.upper()
@@ -779,66 +898,146 @@ def _build_section3_html(stats):
             f'<div style="font-size:11px;padding:4px 0;border-bottom:1px dotted #eee;color:#333">'
             f'<span style="color:{p_color};font-weight:700;font-size:10px">[{p_label}]</span> '
             f'{_escape(desc)}'
-            f'</div>'
         )
+        # Show which classification triggered the gap
+        context_parts = []
+        if hs_code:
+            context_parts.append(f'HS: {_escape(hs_code)}')
+        if source:
+            context_parts.append(f'source: {_escape(str(source)[:40])}')
+        if context_parts:
+            html += f' <span style="color:#888;font-size:10px">({", ".join(context_parts)})</span>'
+        html += '</div>'
 
     return html
 
 
 def _build_section4_html(stats):
-    """Section 4: Enrichment Report — what the nightly run accomplished."""
+    """Section 4: Enrichment Report — overnight brain results from enrichment_reports."""
     enrichment = stats.get("enrichment", {})
     if not enrichment:
         return ""
 
-    processed = enrichment.get("processed", 0)
-    filled = enrichment.get("filled", 0)
-    failed = enrichment.get("failed", 0)
-    skipped = enrichment.get("skipped", 0)
+    # Overnight brain report structure (from Assignment 19)
+    stream_stats = enrichment.get("stream_stats", {})
+    cost_data = enrichment.get("cost", {})
+    duration = enrichment.get("duration_seconds", 0)
 
-    if processed == 0:
-        return ""
+    # If legacy format (from overnight_audit_results), use old rendering
+    if not stream_stats and not cost_data:
+        processed = enrichment.get("processed", 0)
+        filled = enrichment.get("filled", 0)
+        failed = enrichment.get("failed", 0)
+        if processed == 0:
+            return ""
+        html = _section_header("4. העשרה אוטומטית (לילית)")
+        html += '<table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0"><tr>'
+        html += _metric_cell("עובדו", str(processed), "#555")
+        html += _metric_cell("הושלמו", str(filled), "#166534")
+        html += _metric_cell("נכשלו", str(failed), "#991b1b" if failed > 0 else "#aaa")
+        html += '</tr></table>'
+        return html
 
-    html = _section_header("4. העשרה אוטומטית (לילית)")
+    html = _section_header("4. העשרה אוטומטית (Overnight Brain)")
 
-    html += '<table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0"><tr>'
-    html += _metric_cell("עובדו", str(processed), "#555")
-    html += _metric_cell("הושלמו", str(filled), "#166534")
-    html += _metric_cell("נכשלו", str(failed), "#991b1b" if failed > 0 else "#aaa")
-    html += '</tr></table>'
+    # Cost + duration header
+    total_cost = cost_data.get("total_spent", 0)
+    ai_calls = cost_data.get("gemini_calls", 0)
+    budget_limit = cost_data.get("budget_limit", 3.50)
+    cost_color = "#166534" if total_cost < 2.0 else "#92400e" if total_cost < 3.0 else "#991b1b"
 
-    if skipped > 0:
+    html += (
+        f'<div style="font-size:12px;margin-bottom:8px;padding:6px 10px;'
+        f'background:#f8faff;border-radius:6px;border:1px solid #e0e0e0">'
+        f'<span style="color:{cost_color};font-weight:700">${total_cost:.2f}</span>'
+        f'<span style="color:#888"> / ${budget_limit}</span>'
+        f' &nbsp;|&nbsp; {ai_calls} AI calls'
+        f' &nbsp;|&nbsp; {round(duration)}s runtime'
+        f'</div>'
+    )
+
+    # Stream results
+    stream_items = []
+
+    # Patterns learned (Stream 3 CC + Stream 8 self-teach)
+    s3 = stream_stats.get("stream_3_cc_learning", {})
+    s8 = stream_stats.get("stream_8_self_teach", {})
+    patterns = s3.get("patterns_learned", 0) + s8.get("chapters_taught", 0)
+    if patterns > 0:
+        stream_items.append(("patterns learned", patterns, "#166534"))
+
+    # Terms added (Stream 1 tariff mine)
+    s1 = stream_stats.get("stream_1_tariff_mine", {})
+    terms = s1.get("terms_indexed", 0)
+    if terms > 0:
+        stream_items.append(("terms indexed", terms, "#1a3a5c"))
+
+    # Corrections (Stream 3)
+    corrections = s3.get("corrections_learned", 0)
+    if corrections > 0:
+        stream_items.append(("corrections learned", corrections, "#92400e"))
+
+    # Gaps filled (Stream 5)
+    s5 = stream_stats.get("stream_5_ai_fill", {})
+    gaps = s5.get("gaps_filled", 0)
+    if gaps > 0:
+        stream_items.append(("gaps filled", gaps, "#166534"))
+
+    # UK tariff fetched (Stream 6)
+    s6 = stream_stats.get("stream_6_uk_tariff", {})
+    uk = s6.get("fetched", 0)
+    if uk > 0:
+        stream_items.append(("UK tariff codes", uk, "#555"))
+
+    # Suppliers found (Stream 2)
+    s2 = stream_stats.get("stream_2_email_mine", {})
+    suppliers = s2.get("suppliers_found", 0)
+    if suppliers > 0:
+        stream_items.append(("suppliers indexed", suppliers, "#555"))
+
+    # Knowledge synced (Stream 9)
+    s9 = stream_stats.get("stream_9_knowledge_sync", {})
+    synced = s9.get("patterns_synced", 0) + s9.get("enrichments_synced", 0)
+    if synced > 0:
+        stream_items.append(("synced to classifiers", synced, "#1e40af"))
+
+    # Garbage fixed (Stream 1)
+    garbage = s1.get("garbage_fixed", 0)
+    if garbage > 0:
+        stream_items.append(("garbage descriptions fixed", garbage, "#92400e"))
+
+    # Rules generated (Stream 8)
+    rules = s8.get("rules_generated", 0)
+    if rules > 0:
+        stream_items.append(("classification rules", rules, "#1a3a5c"))
+
+    if stream_items:
+        html += '<table style="width:100%;border-collapse:collapse;margin-top:4px" cellpadding="0" cellspacing="0">'
+        for label, count, color in stream_items:
+            html += (
+                f'<tr>'
+                f'<td style="padding:3px 8px;font-size:11px;color:#333;border-bottom:1px dotted #eee">'
+                f'{_escape(label)}</td>'
+                f'<td style="padding:3px 8px;font-size:12px;font-weight:700;color:{color};'
+                f'text-align:left;width:60px;border-bottom:1px dotted #eee">{count}</td>'
+                f'</tr>'
+            )
+        html += '</table>'
+
+    # Budget warning if stopped by budget
+    if cost_data.get("stopped_by_budget"):
         html += (
-            f'<div style="font-size:11px;color:#888;margin-top:4px">'
-            f'{skipped} tasks forwarded to PC Agent for manual research</div>'
+            '<div style="font-size:11px;color:#991b1b;margin-top:6px;font-weight:700">'
+            'Budget exhausted — some streams were cut short</div>'
         )
-
-    # Show enrichment details
-    details = enrichment.get("details", [])
-    for d in details[:5]:
-        action = d.get("action", "")
-        desc = d.get("description", "")[:80]
-        if action == "filled":
-            icon = '<span style="color:#166534">&#10003;</span>'
-        elif action == "flagged_for_pc_agent":
-            icon = '<span style="color:#1e40af">&#9654;</span>'
-        else:
-            icon = '<span style="color:#991b1b">&#10007;</span>'
-
-        html += f'<div style="font-size:11px;padding:2px 0;color:#555">{icon} {_escape(desc)}</div>'
 
     return html
 
 
 def _build_section5_html(stats):
     """Section 5: Exceptions & Alerts."""
-    alerts = []
-    html = ""
-
     # Low-confidence items
     low_conf = stats.get("low_confidence_items", [])
-    if low_conf:
-        alerts.extend(low_conf[:5])
 
     # Model disagreements
     cc_t4 = stats.get("cross_check_t4", 0)
@@ -847,25 +1046,30 @@ def _build_section5_html(stats):
     # PC Agent pending
     pc_pending = stats.get("pc_agent_pending", 0)
 
-    if not alerts and cc_t4 == 0 and cc_t3 == 0 and pc_pending == 0:
+    # Failed extractions
+    failed_ext = stats.get("failed_extractions", 0)
+
+    if not low_conf and cc_t4 == 0 and cc_t3 == 0 and pc_pending == 0 and failed_ext == 0:
         return ""
 
     html = _section_header("5. חריגים והתראות")
 
-    # Low confidence items
+    # Low confidence items (< 70%)
     if low_conf:
         html += '<div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:4px">סיווגים בעייתיים:</div>'
         for item in low_conf[:5]:
             hs = item.get("hs_code", "?")
             name = item.get("item", "")[:50]
             strength = item.get("strength", "")
+            confidence = item.get("confidence", "")
             tracking = item.get("tracking", "")
 
+            conf_str = f'{confidence}%' if confidence else strength
             html += (
                 f'<div style="font-size:11px;padding:3px 0;border-bottom:1px dotted #eee">'
                 f'<span style="font-family:monospace;color:#991b1b;font-weight:700">{_escape(hs)}</span> '
                 f'{_escape(name)} '
-                f'<span style="color:#888">({_escape(strength)}, {_escape(tracking)})</span>'
+                f'<span style="color:#888">({_escape(str(conf_str))}, {_escape(tracking)})</span>'
                 f'</div>'
             )
 
@@ -880,6 +1084,15 @@ def _build_section5_html(stats):
         if cc_t3 > 0:
             html += f'<span style="color:#92400e">{cc_t3} conflicts (T3)</span>'
         html += '</div>'
+
+    # Failed extractions
+    if failed_ext > 0:
+        html += (
+            f'<div style="font-size:12px;margin-top:8px">'
+            f'<span style="font-weight:700;color:#991b1b">חילוצים שנכשלו:</span> '
+            f'{failed_ext} extraction failures in last 24h'
+            f'</div>'
+        )
 
     # PC Agent pending
     if pc_pending > 0:
