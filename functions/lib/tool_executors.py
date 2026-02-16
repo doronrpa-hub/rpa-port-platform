@@ -14,7 +14,8 @@ import traceback
 from lib.self_learning import SelfLearningEngine
 from lib import intelligence
 from lib import verification_loop
-from lib.classification_agents import run_document_agent
+# NOTE: run_document_agent imported LAZILY inside _extract_invoice() to avoid circular import.
+# classification_agents.py -> tool_calling_engine.py -> tool_executors.py -> classification_agents.py
 
 
 # Dual-use HS chapters (require extra scrutiny)
@@ -146,6 +147,7 @@ class ToolExecutor:
 
     def _extract_invoice(self, inp):
         """Wraps classification_agents.run_document_agent()."""
+        from lib.classification_agents import run_document_agent  # Lazy import to avoid circular
         doc_text = inp.get("document_text", "")
         result = run_document_agent(self.api_key, doc_text, gemini_key=self.gemini_key)
         if isinstance(result, dict):
