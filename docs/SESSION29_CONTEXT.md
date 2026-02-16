@@ -326,10 +326,35 @@ All changes are minimal — no lines removed, no signatures changed, no restruct
 4. Maman credentials (requires manual phone call to 03-9715388)
 5. Document type gaps — see FUTURE FIXES below
 6. Wire smart_extractor + table_extractor into tracker path
+7. Shipping agent→carrier mapping — see FUTURE FIXES below
 
 ---
 
 ## FUTURE FIXES
+
+### SHIPPING AGENT→CARRIER MAPPING (CORRECTION)
+
+**KONMART is NOT a carrier.** It is a shipping agent (סוכן אוניות) representing YANG MING in Israeli ports. Same pattern applies to other Israeli shipping agents:
+
+| Agent | Domain | Represents (Carrier) | Role |
+|-------|--------|---------------------|------|
+| KONMART | konmart.co.il | YANG_MING | shipping_agent |
+| Rosenfeld Shipping | rosenfeld.net | **TBD — ask Doron** | shipping_agent |
+| Carmel International | carmelship.co.il | **TBD — ask Doron** | shipping_agent |
+| SALAMIS SHIPPING | (unknown) | **TBD — ask Doron** | shipping_agent |
+
+**Fix needed:** Create a `shipping_agents` collection in Firestore:
+```
+{ agent_domain: "konmart.co.il", carrier: "YANG_MING", role: "shipping_agent" }
+```
+
+When an email arrives from a shipping agent domain, tag the **CARRIER** (not the agent) as the shipping_line. This affects:
+- BL template matching (use carrier's template, not agent's)
+- BOL prefix lookup (use carrier's prefixes)
+- Deal tracking (group under carrier, not agent)
+
+**Current behavior (wrong):** Email from konmart.co.il → tagged as KONMART → no BL template match → falls back to generic extraction.
+**Correct behavior:** Email from konmart.co.il → agent lookup → tagged as YANG_MING → uses YANG_MING BL template + prefixes.
 
 ### DOCUMENT TYPE GAPS — Tracker should also read and extract from:
 
