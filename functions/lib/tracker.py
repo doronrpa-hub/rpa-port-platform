@@ -90,9 +90,11 @@ PORT_MAP = {
 LOGISTICS_SENDERS = {
     'port_authority': ['haifaport.co.il', 'ashdodport.co.il', 'israports.co.il', 'gadot.co.il'],
     'shipping_line': ['zim.com', 'maersk.com', 'msc.com', 'cma-cgm.com', 'hapag-lloyd.com',
-                      'evergreen-line.com', 'cosco.com', 'one-line.com', 'hmm21.com',
+                      'evergreen-line.com', 'cosco.com', 'coscoshipping.com', 'coscon.com',
+                      'one-line.com', 'hmm21.com',
                       'yangming.com', 'pilship.com', 'oocl.com', 'wanhai.com',
-                      'turkon.com.tr', 'konmart.co.il', 'carmelship.co.il'],
+                      'turkon.com.tr'],
+    'shipping_agent': ['konmart.co.il', 'carmelship.co.il', 'rosenfeld.net'],
     'airline': ['elal.co.il', 'turkishairlines.com', 'lufthansa.com'],
     'cargo_handler': ['maman.co.il', 'swissport.com', 'jas.com'],
     'customs_agent': ['rpa-port.co.il'],
@@ -128,6 +130,91 @@ def _load_bol_prefixes(db):
     except Exception as e:
         print(f"    📋 Tracker: BOL prefix load error: {e}")
     return _bol_prefix_cache
+
+
+# ── Cached shipping agents from Firestore shipping_agents collection ──
+_shipping_agent_cache = None  # {domain: {agent_name, carriers: [carrier1, ...]}}
+
+def _load_shipping_agents(db):
+    """Load shipping_agents from Firestore. Cached per cold start.
+    Collection docs: {name, domains: [str], carriers: [str], role, notes}"""
+    global _shipping_agent_cache
+    if _shipping_agent_cache is not None:
+        return _shipping_agent_cache
+    _shipping_agent_cache = {}
+    try:
+        for doc in db.collection('shipping_agents').stream():
+            data = doc.to_dict()
+            agent_name = data.get('name', doc.id)
+            carriers = data.get('carriers', [])
+            for domain in data.get('domains', []):
+                if domain:
+                    _shipping_agent_cache[domain.lower()] = {
+                        'agent_name': agent_name,
+                        'carriers': carriers,
+                    }
+        print(f"    🏢 Tracker: loaded {len(_shipping_agent_cache)} shipping agent domains from Firestore")
+    except Exception as e:
+        print(f"    🏢 Tracker: shipping agent load error: {e}")
+    return _shipping_agent_cache
+
+
+def _resolve_agent_carrier(from_email, db):
+    """Resolve sender email domain to agent_name + carrier_name.
+    Returns {'agent_name': str, 'carrier_name': str} or empty dict."""
+    if not from_email or '@' not in from_email:
+        return {}
+    domain = from_email.lower().split('@')[-1]
+    agents = _load_shipping_agents(db)
+    for agent_domain, info in agents.items():
+        if domain.endswith(agent_domain):
+            result = {'agent_name': info['agent_name']}
+            if info['carriers']:
+                result['carrier_name'] = info['carriers'][0]  # Primary carrier
+            return result
+    return {}
+
+
+def seed_shipping_agents(db):
+    """One-time seed for shipping_agents collection. Idempotent — skips existing docs."""
+    agents = [
+        {
+            'id': 'konmart',
+            'name': 'KONMART',
+            'domains': ['konmart.co.il'],
+            'carriers': ['YANG_MING'],
+            'role': 'shipping_agent',
+            'notes': 'Yang Ming agent in Israel',
+        },
+        {
+            'id': 'rosenfeld',
+            'name': 'Rosenfeld Shipping',
+            'domains': ['rosenfeld.net'],
+            'carriers': ['SALAMIS'],
+            'role': 'shipping_agent',
+            'notes': 'Salamis agent in Israel',
+        },
+        {
+            'id': 'carmel',
+            'name': 'Carmel International',
+            'domains': ['carmelship.co.il'],
+            'carriers': ['ADMIRAL', 'COSCO'],
+            'role': 'shipping_agent',
+            'notes': 'ADMIRAL agent + COSCO Israel 50% JV. COSCO direct emails from coscon.com/coscoshipping.com',
+        },
+    ]
+    created = 0
+    for agent in agents:
+        doc_id = agent.pop('id')
+        ref = db.collection('shipping_agents').document(doc_id)
+        if not ref.get().exists:
+            ref.set(agent)
+            created += 1
+            print(f"    🏢 Seeded shipping agent: {doc_id}")
+        else:
+            print(f"    🏢 Shipping agent already exists: {doc_id}")
+    return created
+
 
 # ════════════════════════════════════════════════════════
 #  MAIN ENTRY POINT — called from rcb_check_email hook
@@ -284,6 +371,15 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
                     validate_template(template_extractions, extractions, tmpl_key, db)
         except Exception as tl_err:
             print(f"    📖 Tracker template learn skip: {tl_err}")
+
+        # ── STEP 4d: Resolve shipping agent → carrier mapping ──
+        _load_shipping_agents(db)
+        agent_info = _resolve_agent_carrier(from_email, db)
+        if agent_info:
+            extractions['agent_name'] = agent_info.get('agent_name', '')
+            if agent_info.get('carrier_name') and not extractions.get('shipping_lines'):
+                extractions['shipping_lines'] = [agent_info['carrier_name']]
+            print(f"    🏢 Tracker: agent={agent_info.get('agent_name')} → carrier={agent_info.get('carrier_name', '?')}")
 
         is_logistics = _is_logistics_email(sender_type, extractions, subject)
 
@@ -699,7 +795,7 @@ def _infer_direction(text, extractions):
 
 def _is_logistics_email(sender_type, extractions, subject):
     """Determine if email is logistics-relevant"""
-    if sender_type in ('port_authority', 'shipping_line', 'airline', 'cargo_handler'):
+    if sender_type in ('port_authority', 'shipping_line', 'shipping_agent', 'airline', 'cargo_handler'):
         return True
     if extractions.get('containers'):
         return True
@@ -860,6 +956,8 @@ def _create_deal(db, firestore_module, observation):
         "doc_cutoff": ext.get('cutoff_doc', [''])[0] if ext.get('cutoff_doc') else '',
         "container_cutoff": ext.get('cutoff_container', [''])[0] if ext.get('cutoff_container') else '',
         "sailing_date": '',
+        "agent_name": ext.get('agent_name', ''),
+        "carrier_name": ext.get('shipping_lines', [''])[0] if ext.get('shipping_lines') else '',
         "status": "active",
         "source_emails": [observation.get('obs_id', '')],
         "source_email_thread_id": observation.get('conversation_id', ''),
@@ -978,6 +1076,12 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
             vals = ext[ext_field]
             if idx < len(vals):
                 updates[deal_field] = vals[idx] if not isinstance(vals[idx], dict) else vals[idx].get('code', '')
+
+    # Agent/carrier (string fields, not lists)
+    if not deal.get('agent_name') and ext.get('agent_name'):
+        updates['agent_name'] = ext['agent_name']
+    if not deal.get('carrier_name') and ext.get('shipping_lines'):
+        updates['carrier_name'] = ext['shipping_lines'][0]
 
     # Add source email
     source_emails = deal.get('source_emails', [])
