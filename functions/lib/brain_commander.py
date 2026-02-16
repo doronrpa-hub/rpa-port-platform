@@ -819,95 +819,48 @@ def _build_father_reply_html(command, result):
 
 def brain_daily_digest(db, access_token, rcb_email):
     """
-    Called by scheduler (e.g., 7 AM daily).
-    Sends father a summary of what brain learned yesterday.
+    Called by scheduler (7 AM daily).
+    Sends Doron a morning intelligence report with 5 sections:
+    1. Daily summary (classifications, emails, AI agreement)
+    2. Pupil questions (pending answers)
+    3. Knowledge gaps (open vs filled)
+    4. Enrichment report (nightly results)
+    5. Exceptions & alerts (low confidence, disagreements)
+
+    Session 27 — Assignment 13: Daily Digest Upgrade
     """
     try:
         from lib.rcb_helpers import helper_graph_send
 
         yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        now = datetime.now(timezone.utc)
+        now_str = now.strftime('%Y-%m-%d')
+        date_display = now.strftime('%d/%m/%Y')
 
-        # Gather daily stats
-        digest = {
-            'new_observations': 0,
-            'new_deals': 0,
-            'styles_learned': 0,
-            'improvements_applied': 0,
-            'missions_completed': 0,
-        }
-
-        # Count recent observations
+        # Build the full 5-section digest
         try:
-            obs = list(db.collection('tracker_observations')
-                      .where('observed_at', '>=', yesterday)
-                      .limit(500).stream())
-            digest['new_observations'] = len(obs)
-        except Exception:
-            pass
-
-        # Count recent deals
-        try:
-            deals = list(db.collection('tracker_deals')
-                        .where('created_at', '>=', yesterday)
-                        .limit(100).stream())
-            digest['new_deals'] = len(deals)
-        except Exception:
-            pass
-
-        # Count recent style learnings
-        try:
-            styles = list(db.collection('brain_email_styles')
-                         .where('last_seen', '>=', yesterday)
-                         .limit(100).stream())
-            digest['styles_learned'] = len(styles)
-        except Exception:
-            pass
-
-        # Build digest HTML
-        now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        html = f'''
-        <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;">
-        <div style="background:linear-gradient(135deg,#0f1923,#1a2d42);padding:14px 20px;border-radius:8px 8px 0 0;">
-          <div style="color:#fff;font-size:15px;font-weight:bold;">🧠 RCB Brain — Daily Digest</div>
-          <div style="color:rgba(255,255,255,0.5);font-size:11px;">{now_str}</div>
-        </div>
-        <div style="background:#fff;padding:16px 20px;border:1px solid #ddd;border-top:0;direction:rtl;">
-          <div style="font-size:14px;font-weight:bold;color:#1e3a5f;margin-bottom:10px;">בוקר טוב דורון 👨</div>
-          <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
-            <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">📧 Emails processed</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['new_observations']}</td></tr>
-            <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">📦 New deals</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['new_deals']}</td></tr>
-            <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">🎨 Email styles learned</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['styles_learned']}</td></tr>
-            <tr><td style="padding:5px 10px;font-size:12px;">⚡ Improvements applied</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;">{digest['improvements_applied']}</td></tr>
-          </table>'''
-
-        # Session 27 Assignment 12: Classification intelligence section
-        try:
-            from lib.report_builder import build_classification_digest_html
-            cls_html, cls_stats = build_classification_digest_html(db, yesterday)
-            if cls_html:
-                html += f'<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">{cls_html}</table>'
-                digest['classification_stats'] = cls_stats
-        except Exception:
-            pass
-
-        html += '''<div style="font-size:11px;color:#888;">Reply "brain status" for full report. Reply "brain, learn about X" to start a mission.</div>
-        </div>
-        <div style="background:#f8f9fa;padding:8px 20px;border:1px solid #ddd;border-top:0;border-radius:0 0 8px 8px;">
-          <div style="font-size:9px;color:#bbb;">🧠 Only doron@ sees this digest</div>
-        </div>
-        </div>'''
+            from lib.report_builder import build_full_daily_digest
+            html, digest = build_full_daily_digest(db, yesterday, date_display)
+        except ImportError:
+            # Fallback to legacy digest if report_builder not available
+            digest = {'error': 'report_builder not available'}
+            html = (
+                '<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;direction:rtl">'
+                '<p>Daily digest builder unavailable.</p></div>'
+            )
 
         # Save digest
         db.collection('brain_daily_digest').add({
             'date': now_str,
             'digest': digest,
-            'sent_at': datetime.now(timezone.utc).isoformat(),
+            'sent_at': now.isoformat(),
         })
 
         # Send to father
+        subject = f"RCB — \u05e1\u05d9\u05db\u05d5\u05dd \u05d9\u05d5\u05de\u05d9 | {date_display}"
         sent = helper_graph_send(
             access_token, rcb_email, FATHER_EMAIL,
-            f"🧠 RCB Brain Daily Digest — {now_str}",
+            subject,
             html
         )
 

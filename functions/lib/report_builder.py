@@ -1,12 +1,16 @@
 """
-RCB Report Builder — Classification Report HTML Helpers
-========================================================
+RCB Report Builder — Classification Report & Daily Digest HTML
+================================================================
 Renders justification chains, legal strength, devil's advocate results,
-and knowledge gaps as email-safe HTML (inline CSS, table-based, RTL Hebrew).
+knowledge gaps, and full daily digest as email-safe HTML.
 
-Session 27 — Assignment 12: Client Classification Report Email Upgrade
+Session 27 — Assignments 12 & 13
 R.P.A.PORT LTD - February 2026
 """
+
+import logging
+
+logger = logging.getLogger("rcb.report_builder")
 
 
 # ═══════════════════════════════════════════
@@ -338,31 +342,60 @@ def build_report_document(results, tracking_code, to_email, invoice_data,
 
 
 # ═══════════════════════════════════════════
-#  DAILY DIGEST UPGRADE HELPERS
+#  DAILY DIGEST — FULL 5-SECTION BUILDER
+#  (Assignment 13)
 # ═══════════════════════════════════════════
 
+# Keep old function as backward-compatible alias
 def build_classification_digest_html(db, yesterday_iso):
-    """
-    Build classification stats section for the daily digest.
+    """Backward-compatible wrapper. Returns (html_rows, stats)."""
+    stats = _gather_digest_stats(db, yesterday_iso)
+    html = _build_section1_summary_rows(stats)
+    return html, stats
 
-    Args:
-        db: Firestore client
-        yesterday_iso: ISO timestamp for yesterday
 
-    Returns:
-        tuple: (html_string, stats_dict)
-    """
+def _digest_row(label, value):
+    """Helper: single row for digest table."""
+    return (
+        f'<tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee">'
+        f'{label}</td>'
+        f'<td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee">'
+        f'{value}</td></tr>'
+    )
+
+
+def _section_header(title):
+    """Render a section header for the digest."""
+    return (
+        f'<div style="font-size:14px;font-weight:700;color:#0f2439;margin:18px 0 8px 0;'
+        f'padding-bottom:6px;border-bottom:2px solid #1a3a5c">{title}</div>'
+    )
+
+
+def _gather_digest_stats(db, yesterday_iso):
+    """Query all collections and build a comprehensive stats dict."""
     stats = {
         "reports": 0,
+        "items_classified": 0,
         "strong": 0,
         "moderate": 0,
         "weak": 0,
         "gaps_open": 0,
         "gaps_filled": 0,
         "pupil_questions": 0,
+        "emails_processed": 0,
+        "deals_tracked": 0,
+        "cross_check_t1": 0,
+        "cross_check_t2": 0,
+        "cross_check_t3": 0,
+        "cross_check_t4": 0,
+        "cross_check_total": 0,
+        "enrichment": {},
+        "low_confidence_items": [],
+        "pc_agent_pending": 0,
     }
 
-    # Count recent reports
+    # ── Classification reports ──
     try:
         reports = list(
             db.collection("classification_reports")
@@ -377,10 +410,68 @@ def build_classification_digest_html(db, yesterday_iso):
             stats["strong"] += summary.get("strong", 0)
             stats["moderate"] += summary.get("moderate", 0)
             stats["weak"] += summary.get("weak", 0)
+            stats["items_classified"] += data.get("items_count", 0)
+
+            # Cross-check tiers
+            for t in data.get("cross_check_tiers", []):
+                if t == 1:
+                    stats["cross_check_t1"] += 1
+                elif t == 2:
+                    stats["cross_check_t2"] += 1
+                elif t == 3:
+                    stats["cross_check_t3"] += 1
+                elif t == 4:
+                    stats["cross_check_t4"] += 1
+                stats["cross_check_total"] += 1
+
+            # Low-confidence items for alerts
+            for item in data.get("items", []):
+                strength = item.get("legal_strength", "")
+                if strength == "weak" or not item.get("challenge_passed", True):
+                    stats["low_confidence_items"].append({
+                        "hs_code": item.get("hs_code", ""),
+                        "item": item.get("item", "")[:60],
+                        "strength": strength,
+                        "tracking": data.get("tracking_code", ""),
+                    })
+    except Exception as e:
+        logger.warning(f"Digest: classification_reports query failed: {e}")
+
+    # ── Emails processed (rcb_processed) ──
+    try:
+        processed = list(
+            db.collection("rcb_processed")
+            .where("timestamp", ">=", yesterday_iso)
+            .limit(500)
+            .stream()
+        )
+        stats["emails_processed"] = len(processed)
+    except Exception:
+        # Fallback: try tracker_observations
+        try:
+            obs = list(
+                db.collection("tracker_observations")
+                .where("observed_at", ">=", yesterday_iso)
+                .limit(500)
+                .stream()
+            )
+            stats["emails_processed"] = len(obs)
+        except Exception:
+            pass
+
+    # ── Deals tracked ──
+    try:
+        deals = list(
+            db.collection("tracker_deals")
+            .where("status", "==", "active")
+            .limit(500)
+            .stream()
+        )
+        stats["deals_tracked"] = len(deals)
     except Exception:
         pass
 
-    # Count gaps
+    # ── Knowledge gaps ──
     try:
         open_gaps = list(
             db.collection("knowledge_gaps")
@@ -389,6 +480,9 @@ def build_classification_digest_html(db, yesterday_iso):
             .stream()
         )
         stats["gaps_open"] = len(open_gaps)
+        stats["_open_gaps_data"] = [
+            {"id": g.id, **g.to_dict()} for g in open_gaps[:20]
+        ]
     except Exception:
         pass
 
@@ -404,7 +498,7 @@ def build_classification_digest_html(db, yesterday_iso):
     except Exception:
         pass
 
-    # Count pupil questions
+    # ── Pupil questions ──
     try:
         questions = list(
             db.collection("pupil_questions")
@@ -413,20 +507,51 @@ def build_classification_digest_html(db, yesterday_iso):
             .stream()
         )
         stats["pupil_questions"] = len(questions)
+        stats["_questions_data"] = [
+            {"id": q.id, **q.to_dict()} for q in questions[:10]
+        ]
     except Exception:
         pass
 
-    if stats["reports"] == 0 and stats["gaps_open"] == 0:
-        return "", stats
+    # ── Enrichment (from latest overnight audit) ──
+    try:
+        audits = list(
+            db.collection("overnight_audit_results")
+            .limit(1)
+            .stream()
+        )
+        if audits:
+            audit = audits[0].to_dict()
+            stats["enrichment"] = audit.get("self_enrichment", {})
+    except Exception:
+        pass
 
-    # Build HTML section
+    # ── PC Agent pending tasks ──
+    try:
+        pending = list(
+            db.collection("pc_agent_tasks")
+            .where("status", "in", ["pending", "retry"])
+            .limit(100)
+            .stream()
+        )
+        stats["pc_agent_pending"] = len(pending)
+    except Exception:
+        pass
+
+    return stats
+
+
+def _build_section1_summary_rows(stats):
+    """Build Section 1 table rows (backward compatible format)."""
     total_items = stats["strong"] + stats["moderate"] + stats["weak"]
+    if stats["reports"] == 0 and stats["gaps_open"] == 0:
+        return ""
+
     html = (
         '<tr><td colspan="2" style="padding:8px 10px;font-size:13px;font-weight:bold;'
         'color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-top:12px">'
         'Classification Intelligence</td></tr>'
     )
-
     html += _digest_row("Reports sent", str(stats["reports"]))
 
     if total_items > 0:
@@ -449,17 +574,323 @@ def build_classification_digest_html(db, yesterday_iso):
             f'{stats["pupil_questions"]} awaiting your answer',
         )
 
+    return html
+
+
+def build_full_daily_digest(db, yesterday_iso, date_str):
+    """
+    Build the complete 5-section daily digest HTML.
+
+    Args:
+        db: Firestore client
+        yesterday_iso: ISO timestamp for 24h ago
+        date_str: Display date string (DD/MM/YYYY)
+
+    Returns:
+        tuple: (full_html, stats_dict)
+    """
+    stats = _gather_digest_stats(db, yesterday_iso)
+
+    html = f'''<div style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;direction:rtl;background:#f0f2f5;padding:0">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0f2439 0%,#1a3a5c 50%,#245a8a 100%);color:#fff;padding:28px 30px 24px;border-radius:12px 12px 0 0">
+        <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle">
+                <h1 style="margin:0;font-size:20px;font-weight:700;letter-spacing:0.3px">סיכום יומי — RCB</h1>
+                <p style="margin:6px 0 0 0;font-size:13px;opacity:0.8">בוקר טוב דורון, הנה מה שקרה ב-24 שעות האחרונות</p>
+            </td>
+            <td style="text-align:left;vertical-align:middle">
+                <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:8px 14px;display:inline-block">
+                    <span style="font-size:10px;opacity:0.7;display:block;text-align:center">DATE</span>
+                    <span style="font-size:14px;font-weight:600;letter-spacing:0.5px">{date_str}</span>
+                </div>
+            </td>
+        </tr></table>
+    </div>
+
+    <!-- Body -->
+    <div style="background:#ffffff;padding:24px 30px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'''
+
+    # ── SECTION 1: Daily Summary ──
+    html += _build_section1_html(stats)
+
+    # ── SECTION 2: Pupil Questions ──
+    html += _build_section2_html(stats)
+
+    # ── SECTION 3: Knowledge Gaps ──
+    html += _build_section3_html(stats)
+
+    # ── SECTION 4: Enrichment Report ──
+    html += _build_section4_html(stats)
+
+    # ── SECTION 5: Exceptions & Alerts ──
+    html += _build_section5_html(stats)
+
+    # Instructions
+    html += '''<div style="margin-top:20px;padding:12px 16px;background:#f8faff;border:1px solid #d4e3f5;border-radius:8px;font-size:12px;color:#555">
+        <strong style="color:#1a3a5c">How to respond:</strong><br>
+        Reply to this email with answers to pupil questions. Format: "Q1: your answer"
+    </div>'''
+
+    # Footer
+    html += '''</div>
+    <div style="background:#f8faff;padding:20px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">
+        <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle;width:60px">
+                <img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
+            </td>
+            <td style="vertical-align:middle;border-right:3px solid #1a3a5c;padding-right:16px">
+                <strong style="color:#0f2439;font-size:13px">RCB — AI Customs Broker</strong><br>
+                <span style="color:#666;font-size:11px">R.P.A. PORT LTD</span>
+                <span style="color:#ccc;margin:0 6px">|</span>
+                <span style="color:#1a3a5c;font-size:11px">rcb@rpa-port.co.il</span>
+            </td>
+        </tr></table>
+        <p style="font-size:9px;color:#bbb;margin:10px 0 0 0">Only doron@ receives this digest.</p>
+    </div>
+    </div>'''
+
     return html, stats
 
 
-def _digest_row(label, value):
-    """Helper: single row for digest table."""
+def _build_section1_html(stats):
+    """Section 1: Daily Summary — key metrics cards."""
+    reports = stats.get("reports", 0)
+    items = stats.get("items_classified", 0)
+    emails = stats.get("emails_processed", 0)
+    deals = stats.get("deals_tracked", 0)
+    cc_total = stats.get("cross_check_total", 0)
+    cc_t1 = stats.get("cross_check_t1", 0)
+    agreement_pct = round(cc_t1 / max(cc_total, 1) * 100)
+
+    html = _section_header("1. סיכום יומי")
+
+    # Metrics grid (2x3)
+    html += '<table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0">'
+
+    html += '<tr>'
+    html += _metric_cell("דו״חות סיווג", str(reports), "#1a3a5c")
+    html += _metric_cell("פריטים סווגו", str(items), "#1a3a5c")
+    html += _metric_cell("מיילים עובדו", str(emails), "#555")
+    html += '</tr><tr>'
+    html += _metric_cell("משלוחים פעילים", str(deals), "#555")
+
+    # Model agreement rate
+    if cc_total > 0:
+        agr_color = "#166534" if agreement_pct >= 70 else "#92400e" if agreement_pct >= 40 else "#991b1b"
+        html += _metric_cell("הסכמת AI", f"{agreement_pct}%", agr_color)
+    else:
+        html += _metric_cell("הסכמת AI", "N/A", "#aaa")
+
+    # Legal strength summary
+    strong = stats.get("strong", 0)
+    moderate = stats.get("moderate", 0)
+    weak = stats.get("weak", 0)
+    total = strong + moderate + weak
+    if total > 0:
+        strong_pct = round(strong / total * 100)
+        html += _metric_cell("חוזק משפטי", f"{strong_pct}% חזק", "#166534" if strong_pct >= 60 else "#92400e")
+    else:
+        html += _metric_cell("חוזק משפטי", "N/A", "#aaa")
+
+    html += '</tr></table>'
+    return html
+
+
+def _metric_cell(label, value, color):
+    """Render a single metric cell."""
     return (
-        f'<tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee">'
-        f'{label}</td>'
-        f'<td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee">'
-        f'{value}</td></tr>'
+        f'<td style="width:33%;padding:10px 8px;text-align:center;border:1px solid #f0f0f0">'
+        f'<div style="font-size:22px;font-weight:700;color:{color}">{value}</div>'
+        f'<div style="font-size:11px;color:#888;margin-top:2px">{label}</div>'
+        f'</td>'
     )
+
+
+def _build_section2_html(stats):
+    """Section 2: Pupil Questions — numbered list of pending questions."""
+    questions_data = stats.get("_questions_data", [])
+    count = stats.get("pupil_questions", 0)
+    if count == 0:
+        return ""
+
+    html = _section_header(f"2. שאלות תלמיד ({count})")
+
+    for i, q in enumerate(questions_data[:8], 1):
+        question_text = q.get("question_he", q.get("question_en", ""))
+        context = q.get("context", "")[:80]
+        hs = q.get("primary_hs", "")
+        q_type = q.get("type", "")
+        type_badge = (
+            '<span style="background:#eff6ff;color:#1e40af;font-size:9px;padding:1px 6px;'
+            'border-radius:8px;margin-right:4px">chapter dispute</span>'
+            if q_type == "chapter_dispute"
+            else '<span style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 6px;'
+            'border-radius:8px;margin-right:4px">knowledge gap</span>'
+        )
+
+        html += (
+            f'<div style="padding:8px 12px;margin-bottom:6px;background:#f8faff;'
+            f'border:1px solid #e5e7eb;border-radius:8px;font-size:12px">'
+            f'<div style="font-weight:700;color:#0f2439">Q{i}. {_escape(question_text[:120])}</div>'
+        )
+        if context:
+            html += f'<div style="font-size:11px;color:#666;margin-top:3px">{_escape(context)}</div>'
+        if hs:
+            html += f'<div style="font-size:11px;color:#888;margin-top:2px">HS: {_escape(hs)} {type_badge}</div>'
+        html += '</div>'
+
+    if count > 8:
+        html += f'<div style="font-size:11px;color:#888;text-align:center">... +{count - 8} more questions</div>'
+
+    return html
+
+
+def _build_section3_html(stats):
+    """Section 3: Knowledge Gaps — open vs filled."""
+    open_count = stats.get("gaps_open", 0)
+    filled_count = stats.get("gaps_filled", 0)
+    if open_count == 0 and filled_count == 0:
+        return ""
+
+    html = _section_header(f"3. פערי ידע")
+
+    # Summary bar
+    html += (
+        '<div style="padding:8px 12px;margin-bottom:8px;border-radius:8px;font-size:13px">'
+        f'<span style="color:#991b1b;font-weight:700">{open_count} פתוחים</span>'
+        f' &nbsp;|&nbsp; '
+        f'<span style="color:#166534;font-weight:700">{filled_count} הושלמו אתמול</span>'
+        '</div>'
+    )
+
+    # List top open gaps
+    open_gaps = stats.get("_open_gaps_data", [])
+    for g in open_gaps[:5]:
+        gap_type = g.get("type", "")
+        desc = g.get("description", "")[:100]
+        priority = g.get("priority", "low")
+
+        p_color = "#991b1b" if priority == "critical" else "#92400e" if priority == "high" else "#555"
+        p_label = priority.upper()
+
+        html += (
+            f'<div style="font-size:11px;padding:4px 0;border-bottom:1px dotted #eee;color:#333">'
+            f'<span style="color:{p_color};font-weight:700;font-size:10px">[{p_label}]</span> '
+            f'{_escape(desc)}'
+            f'</div>'
+        )
+
+    return html
+
+
+def _build_section4_html(stats):
+    """Section 4: Enrichment Report — what the nightly run accomplished."""
+    enrichment = stats.get("enrichment", {})
+    if not enrichment:
+        return ""
+
+    processed = enrichment.get("processed", 0)
+    filled = enrichment.get("filled", 0)
+    failed = enrichment.get("failed", 0)
+    skipped = enrichment.get("skipped", 0)
+
+    if processed == 0:
+        return ""
+
+    html = _section_header("4. העשרה אוטומטית (לילית)")
+
+    html += '<table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0"><tr>'
+    html += _metric_cell("עובדו", str(processed), "#555")
+    html += _metric_cell("הושלמו", str(filled), "#166534")
+    html += _metric_cell("נכשלו", str(failed), "#991b1b" if failed > 0 else "#aaa")
+    html += '</tr></table>'
+
+    if skipped > 0:
+        html += (
+            f'<div style="font-size:11px;color:#888;margin-top:4px">'
+            f'{skipped} tasks forwarded to PC Agent for manual research</div>'
+        )
+
+    # Show enrichment details
+    details = enrichment.get("details", [])
+    for d in details[:5]:
+        action = d.get("action", "")
+        desc = d.get("description", "")[:80]
+        if action == "filled":
+            icon = '<span style="color:#166534">&#10003;</span>'
+        elif action == "flagged_for_pc_agent":
+            icon = '<span style="color:#1e40af">&#9654;</span>'
+        else:
+            icon = '<span style="color:#991b1b">&#10007;</span>'
+
+        html += f'<div style="font-size:11px;padding:2px 0;color:#555">{icon} {_escape(desc)}</div>'
+
+    return html
+
+
+def _build_section5_html(stats):
+    """Section 5: Exceptions & Alerts."""
+    alerts = []
+    html = ""
+
+    # Low-confidence items
+    low_conf = stats.get("low_confidence_items", [])
+    if low_conf:
+        alerts.extend(low_conf[:5])
+
+    # Model disagreements
+    cc_t4 = stats.get("cross_check_t4", 0)
+    cc_t3 = stats.get("cross_check_t3", 0)
+
+    # PC Agent pending
+    pc_pending = stats.get("pc_agent_pending", 0)
+
+    if not alerts and cc_t4 == 0 and cc_t3 == 0 and pc_pending == 0:
+        return ""
+
+    html = _section_header("5. חריגים והתראות")
+
+    # Low confidence items
+    if low_conf:
+        html += '<div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:4px">סיווגים בעייתיים:</div>'
+        for item in low_conf[:5]:
+            hs = item.get("hs_code", "?")
+            name = item.get("item", "")[:50]
+            strength = item.get("strength", "")
+            tracking = item.get("tracking", "")
+
+            html += (
+                f'<div style="font-size:11px;padding:3px 0;border-bottom:1px dotted #eee">'
+                f'<span style="font-family:monospace;color:#991b1b;font-weight:700">{_escape(hs)}</span> '
+                f'{_escape(name)} '
+                f'<span style="color:#888">({_escape(strength)}, {_escape(tracking)})</span>'
+                f'</div>'
+            )
+
+    # AI disagreements
+    if cc_t3 > 0 or cc_t4 > 0:
+        html += (
+            f'<div style="font-size:12px;margin-top:8px">'
+            f'<span style="font-weight:700;color:#92400e">חילוקי דעות AI:</span> '
+        )
+        if cc_t4 > 0:
+            html += f'<span style="color:#991b1b">{cc_t4} disagreements (T4)</span> '
+        if cc_t3 > 0:
+            html += f'<span style="color:#92400e">{cc_t3} conflicts (T3)</span>'
+        html += '</div>'
+
+    # PC Agent pending
+    if pc_pending > 0:
+        html += (
+            f'<div style="font-size:12px;margin-top:8px">'
+            f'<span style="font-weight:700;color:#1e40af">PC Agent:</span> '
+            f'{pc_pending} tasks pending execution'
+            f'</div>'
+        )
+
+    return html
 
 
 # ═══════════════════════════════════════════

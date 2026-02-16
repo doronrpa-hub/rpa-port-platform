@@ -8,6 +8,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from unittest.mock import Mock, MagicMock
+
 from lib.report_builder import (
     build_legal_strength_badge,
     build_justification_html,
@@ -15,6 +17,13 @@ from lib.report_builder import (
     build_gaps_summary_html,
     build_cross_check_badge,
     build_report_document,
+    build_full_daily_digest,
+    _gather_digest_stats,
+    _build_section1_html,
+    _build_section2_html,
+    _build_section3_html,
+    _build_section4_html,
+    _build_section5_html,
     _escape,
 )
 
@@ -337,6 +346,173 @@ class TestEscape:
 
     def test_none(self):
         assert _escape(None) == ""
+
+
+# ============================================================
+# DAILY DIGEST — SECTION BUILDERS (Assignment 13)
+# ============================================================
+
+class TestSection1Summary:
+
+    def test_renders_metrics(self):
+        stats = {
+            "reports": 5, "items_classified": 12, "emails_processed": 20,
+            "deals_tracked": 3, "cross_check_total": 10, "cross_check_t1": 7,
+            "strong": 8, "moderate": 3, "weak": 1,
+            "cross_check_t2": 2, "cross_check_t3": 1, "cross_check_t4": 0,
+        }
+        html = _build_section1_html(stats)
+        assert "5" in html  # reports
+        assert "12" in html  # items
+        assert "70%" in html  # agreement (7/10)
+        assert "סיכום יומי" in html
+
+    def test_zero_cross_checks(self):
+        stats = {
+            "reports": 1, "items_classified": 2, "emails_processed": 3,
+            "deals_tracked": 0, "cross_check_total": 0, "cross_check_t1": 0,
+            "strong": 0, "moderate": 0, "weak": 0,
+            "cross_check_t2": 0, "cross_check_t3": 0, "cross_check_t4": 0,
+        }
+        html = _build_section1_html(stats)
+        assert "N/A" in html
+
+
+class TestSection2Questions:
+
+    def test_renders_questions(self):
+        stats = {
+            "pupil_questions": 2,
+            "_questions_data": [
+                {
+                    "question_he": "Is this chapter 84 or 85?",
+                    "context": "Electric motor for pump",
+                    "primary_hs": "8501.10",
+                    "type": "chapter_dispute",
+                },
+                {
+                    "question_he": "Missing preamble for chapter 39",
+                    "context": "Plastic container",
+                    "primary_hs": "3923.10",
+                    "type": "knowledge_gap",
+                },
+            ],
+        }
+        html = _build_section2_html(stats)
+        assert "שאלות תלמיד (2)" in html
+        assert "Q1." in html
+        assert "Q2." in html
+        assert "8501.10" in html
+        assert "chapter dispute" in html
+
+    def test_no_questions(self):
+        stats = {"pupil_questions": 0, "_questions_data": []}
+        html = _build_section2_html(stats)
+        assert html == ""
+
+
+class TestSection3Gaps:
+
+    def test_renders_gaps(self):
+        stats = {
+            "gaps_open": 5, "gaps_filled": 3,
+            "_open_gaps_data": [
+                {"type": "missing_directive", "description": "No directive for 8516", "priority": "high"},
+                {"type": "missing_preamble", "description": "Preamble chapter 39 empty", "priority": "critical"},
+            ],
+        }
+        html = _build_section3_html(stats)
+        assert "5 פתוחים" in html
+        assert "3 הושלמו אתמול" in html
+        assert "[HIGH]" in html
+        assert "[CRITICAL]" in html
+
+    def test_no_gaps(self):
+        stats = {"gaps_open": 0, "gaps_filled": 0, "_open_gaps_data": []}
+        html = _build_section3_html(stats)
+        assert html == ""
+
+
+class TestSection4Enrichment:
+
+    def test_renders_enrichment(self):
+        stats = {
+            "enrichment": {
+                "processed": 10, "filled": 6, "failed": 2, "skipped": 2,
+                "details": [
+                    {"action": "filled", "description": "Chapter 85 preamble found"},
+                    {"action": "could_not_fill", "description": "Directive 8516 not available"},
+                    {"action": "flagged_for_pc_agent", "description": "Pre-ruling for 3923"},
+                ],
+            }
+        }
+        html = _build_section4_html(stats)
+        assert "העשרה אוטומטית" in html
+        assert "10" in html  # processed
+        assert "6" in html  # filled
+        assert "Chapter 85 preamble" in html
+
+    def test_no_enrichment(self):
+        stats = {"enrichment": {}}
+        html = _build_section4_html(stats)
+        assert html == ""
+
+
+class TestSection5Alerts:
+
+    def test_renders_low_confidence(self):
+        stats = {
+            "low_confidence_items": [
+                {"hs_code": "8516.31", "item": "Hair dryer", "strength": "weak", "tracking": "RCB-X123"},
+            ],
+            "cross_check_t3": 2, "cross_check_t4": 1,
+            "pc_agent_pending": 3,
+        }
+        html = _build_section5_html(stats)
+        assert "חריגים" in html
+        assert "8516.31" in html
+        assert "Hair dryer" in html
+        assert "1 disagreements (T4)" in html
+        assert "2 conflicts (T3)" in html
+        assert "3 tasks pending" in html
+
+    def test_no_alerts(self):
+        stats = {
+            "low_confidence_items": [],
+            "cross_check_t3": 0, "cross_check_t4": 0,
+            "pc_agent_pending": 0,
+        }
+        html = _build_section5_html(stats)
+        assert html == ""
+
+
+class TestFullDigest:
+
+    def _mock_db(self):
+        """Create a mock Firestore that returns empty collections."""
+        db = Mock()
+        empty_stream = Mock()
+        empty_stream.stream.return_value = []
+        empty_stream.limit.return_value = empty_stream
+        db.collection.return_value = empty_stream
+        empty_stream.where.return_value = empty_stream
+        return db
+
+    def test_builds_complete_html(self):
+        db = self._mock_db()
+        html, stats = build_full_daily_digest(db, "2026-02-15T00:00:00", "16/02/2026")
+        assert "סיכום יומי" in html
+        assert "16/02/2026" in html
+        assert "RCB" in html
+        assert isinstance(stats, dict)
+
+    def test_returns_stats_dict(self):
+        db = self._mock_db()
+        _, stats = build_full_daily_digest(db, "2026-02-15T00:00:00", "16/02/2026")
+        assert "reports" in stats
+        assert "gaps_open" in stats
+        assert "pupil_questions" in stats
+        assert "emails_processed" in stats
 
 
 if __name__ == "__main__":
