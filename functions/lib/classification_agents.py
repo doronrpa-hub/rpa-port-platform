@@ -497,7 +497,7 @@ def query_tariff(db, search_terms):
     """Query tariff collection for Israeli HS codes"""
     results = []
     try:
-        docs = db.collection('tariff').limit(100).stream()
+        docs = db.collection('tariff').stream()
         for doc in docs:
             data = doc.to_dict()
             desc = (data.get('description_he', '') + ' ' + data.get('description_en', '')).lower()

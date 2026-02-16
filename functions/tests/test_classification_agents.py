@@ -170,7 +170,7 @@ class TestQueryTariff:
             "description_he": "מייבשי שיער",
             "description_en": "Hair drying apparatus"
         }
-        mock_db.collection.return_value.limit.return_value.stream.return_value = [mock_doc]
+        mock_db.collection.return_value.stream.return_value = [mock_doc]
         
         results = query_tariff(mock_db, ["hair", "dryer"])
         
@@ -185,7 +185,7 @@ class TestQueryTariff:
             "description_he": "רהיטים",
             "description_en": "furniture"
         }
-        mock_db.collection.return_value.limit.return_value.stream.return_value = [mock_doc]
+        mock_db.collection.return_value.stream.return_value = [mock_doc]
         
         results = query_tariff(mock_db, ["electronics", "computer"])
         
@@ -194,7 +194,7 @@ class TestQueryTariff:
     def test_error_handling(self):
         """Should handle Firestore errors"""
         mock_db = Mock()
-        mock_db.collection.return_value.limit.return_value.stream.side_effect = Exception("DB error")
+        mock_db.collection.return_value.stream.side_effect = Exception("DB error")
         
         results = query_tariff(mock_db, ["test"])
         
@@ -211,7 +211,7 @@ class TestQueryTariff:
                 "description_en": "hair dryer"
             }
             docs.append(doc)
-        mock_db.collection.return_value.limit.return_value.stream.return_value = docs
+        mock_db.collection.return_value.stream.return_value = docs
         
         results = query_tariff(mock_db, ["hair"])
         
@@ -277,7 +277,7 @@ class TestClassificationFlow:
             "description_he": "מייבש שיער חשמלי",
             "description_en": "electric hair dryer"
         }
-        mock_db.collection.return_value.limit.return_value.stream.return_value = [mock_doc]
+        mock_db.collection.return_value.stream.return_value = [mock_doc]
         
         # Should not raise exception
         results = query_tariff(mock_db, keywords)
@@ -290,7 +290,7 @@ class TestClassificationFlow:
             "description_he": "מכשיר Philips דגם 5000",
             "description_en": "Philips device model 5000"
         }
-        mock_db.collection.return_value.limit.return_value.stream.return_value = [mock_doc]
+        mock_db.collection.return_value.stream.return_value = [mock_doc]
         
         results = query_tariff(mock_db, ["philips", "5000"])
         # Should find match
@@ -306,7 +306,7 @@ class TestDataValidation:
     def test_empty_search_terms(self):
         """Should handle empty search terms"""
         mock_db = Mock()
-        mock_db.collection.return_value.limit.return_value.stream.return_value = []
+        mock_db.collection.return_value.stream.return_value = []
         
         results = query_tariff(mock_db, [])
         
@@ -320,7 +320,7 @@ class TestDataValidation:
             "description_he": "כבל USB-C",
             "description_en": "USB-C cable"
         }
-        mock_db.collection.return_value.limit.return_value.stream.return_value = [mock_doc]
+        mock_db.collection.return_value.stream.return_value = [mock_doc]
         
         # Should not crash
         results = query_tariff(mock_db, ["USB-C", "cable"])
