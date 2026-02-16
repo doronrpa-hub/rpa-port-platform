@@ -791,7 +791,7 @@ DOCUMENT TEXT:
         return extractions, False
 
 def _infer_direction(text, extractions):
-    """Infer import/export from context"""
+    """Infer import/export from context — keywords + POL/POD port detection"""
     text_lower = text.lower()
     import_signals = ['import', 'יבוא', 'notice of arrival', 'הגעת טובין', 'eta', 'unloading',
                       'delivery order', 'air delivery order', 'cargo release notice',
@@ -806,6 +806,19 @@ def _infer_direction(text, extractions):
         export_score += 2
     if extractions.get('is_notice_of_arrival'):
         import_score += 3
+
+    # POL/POD port-based detection — Israeli port as destination = import, as origin = export
+    _il_ports = r'(?:haifa|ashdod|eilat|hadera|חיפה|אשדוד|אילת|חדרה)'
+    pod_match = re.search(
+        r'(?:port\s*of\s*discharge|port\s*of\s*destination|POD|נמל\s*(?:ה)?פריקה|נמל\s*יעד)[:\s]+.*?' + _il_ports,
+        text, re.IGNORECASE)
+    pol_match = re.search(
+        r'(?:port\s*of\s*loading|port\s*of\s*origin|POL|נמל\s*טעינה|נמל\s*מוצא)[:\s]+.*?' + _il_ports,
+        text, re.IGNORECASE)
+    if pod_match:
+        import_score += 3
+    if pol_match:
+        export_score += 3
 
     if import_score > export_score:
         return 'import'
@@ -991,6 +1004,14 @@ def _create_deal(db, firestore_module, observation):
         "updated_at": now,
     }
 
+    # Lifecycle tracking — what doc types have been received, what's expected next
+    initial_doc_type = _guess_doc_type_from_attachments(observation.get('attachment_names', []))
+    docs_received = [initial_doc_type] if initial_doc_type else []
+    expected_next, stage = _compute_expected_next_doc(docs_received, deal_data.get('direction', ''))
+    deal_data["documents_received"] = docs_received
+    deal_data["expected_next_document"] = expected_next
+    deal_data["lifecycle_stage"] = stage
+
     # Create deal document
     doc_ref = db.collection("tracker_deals").document()
     doc_ref.set(deal_data)
@@ -1118,9 +1139,52 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
         source_emails.append(obs_id)
         updates['source_emails'] = source_emails
 
-    # Update direction if empty
-    if not deal.get('direction') and ext.get('direction'):
-        updates['direction'] = ext['direction']
+    # Direction — self-correction: if new evidence is stronger, update and log
+    new_dir = ext.get('direction', '')
+    old_dir = deal.get('direction', '')
+    if new_dir and new_dir != old_dir:
+        if not old_dir:
+            updates['direction'] = new_dir
+        else:
+            # Self-correct: new evidence overrides previous guess, log the change
+            updates['direction'] = new_dir
+            print(f"    🔄 Tracker: direction self-corrected {old_dir} → {new_dir} for deal {deal_id}")
+            try:
+                _log_timeline(db, firestore_module, deal_id, {
+                    "event_type": "direction_corrected",
+                    "old_direction": old_dir,
+                    "new_direction": new_dir,
+                    "source": observation.get('obs_id', ''),
+                })
+            except Exception:
+                pass
+
+    # Lifecycle tracking — track document types received and expected next
+    new_doc_type = _guess_doc_type_from_attachments(observation.get('attachment_names', []))
+    docs_received = deal.get('documents_received', [])
+    if new_doc_type and new_doc_type not in docs_received:
+        docs_received.append(new_doc_type)
+        updates['documents_received'] = docs_received
+        # Check if this was out of expected order
+        expected = deal.get('expected_next_document', '')
+        if expected and new_doc_type != expected:
+            print(f"    ⚠️ Tracker: out-of-order doc: expected {expected}, got {new_doc_type} for deal {deal_id}")
+            try:
+                _log_timeline(db, firestore_module, deal_id, {
+                    "event_type": "doc_out_of_order",
+                    "expected": expected,
+                    "received": new_doc_type,
+                    "source": observation.get('obs_id', ''),
+                })
+            except Exception:
+                pass
+    # Recompute expected next document
+    effective_dir = updates.get('direction', old_dir)
+    expected_next, stage = _compute_expected_next_doc(docs_received, effective_dir)
+    if expected_next != deal.get('expected_next_document', ''):
+        updates['expected_next_document'] = expected_next
+    if stage != deal.get('lifecycle_stage', ''):
+        updates['lifecycle_stage'] = stage
 
     # Merge transaction_ids
     existing_txns = deal.get('transaction_ids', [])
@@ -1155,6 +1219,35 @@ def _infer_freight_kind(extractions):
     if extractions.get('awbs') or extractions.get('flights'):
         return 'air'
     return 'general'
+
+
+# ── Import/Export Lifecycle ──
+_IMPORT_LIFECYCLE = ['booking_confirmation', 'bill_of_lading', 'arrival_notice', 'delivery_order', 'customs_declaration']
+_EXPORT_LIFECYCLE = ['booking_confirmation', 'bill_of_lading', 'customs_declaration']
+
+
+def _compute_expected_next_doc(documents_received, direction):
+    """Compute expected next document based on lifecycle stage.
+    Returns (expected_next, lifecycle_stage) tuple."""
+    lifecycle = _IMPORT_LIFECYCLE if direction == 'import' else _EXPORT_LIFECYCLE if direction == 'export' else _IMPORT_LIFECYCLE
+    if not documents_received:
+        return lifecycle[0] if lifecycle else '', 'initial'
+
+    # Find the furthest stage we've reached
+    max_idx = -1
+    for doc in documents_received:
+        if doc in lifecycle:
+            idx = lifecycle.index(doc)
+            if idx > max_idx:
+                max_idx = idx
+
+    if max_idx < 0:
+        return lifecycle[0], 'initial'
+    elif max_idx >= len(lifecycle) - 1:
+        return '', 'completed'
+    else:
+        return lifecycle[max_idx + 1], lifecycle[max_idx]
+
 
 # ════════════════════════════════════════════════════════
 #  FOLLOW / STOP COMMANDS
@@ -1415,9 +1508,37 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
             direction = deal.get('direction', '')
 
             deal_changed = False
+            freight_load_type = deal.get('freight_load_type', '')
 
+            # LCL: general cargo path FIRST (cargo-level detail from manifest+txn or storage_id)
+            # Then also check containers below for vessel/arrival info
+            if freight_load_type == 'LCL' and (manifest or deal.get('storage_id', '')):
+                storage_id = deal.get('storage_id', '')
+                if manifest and transaction_ids:
+                    for txn in transaction_ids:
+                        result = client.get_cargo_status(
+                            manifest=manifest, transaction_id=txn)
+                        if result and result.get('CargoList'):
+                            for cargo in result['CargoList']:
+                                cn = cargo.get('ContainerID', txn)
+                                changed = _update_container_status(
+                                    db, firestore_module, deal_id, cn, cargo, direction)
+                                if changed:
+                                    deal_changed = True
+                elif storage_id:
+                    result = client.get_cargo_status(storage_id=storage_id)
+                    if result and result.get('CargoList'):
+                        for cargo in result['CargoList']:
+                            cn = cargo.get('ContainerID') or storage_id
+                            changed = _update_container_status(
+                                db, firestore_module, deal_id, cn, cargo, direction)
+                            if changed:
+                                deal_changed = True
+                            _enrich_deal_from_taskyam(db, deal_id, deal, cargo)
+
+            # Containers: FCL always queries here; LCL also queries for vessel/arrival info
             if containers:
-                # FCL: query each container
+                # FCL: query each container / LCL: also check shared container for vessel info
                 for cn in containers:
                     total_containers += 1
                     result = client.get_cargo_status(container=cn)
@@ -1433,7 +1554,7 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
                         _enrich_deal_from_taskyam(db, deal_id, deal, cargo)
 
             elif manifest and transaction_ids:
-                # General cargo: query by manifest + transaction
+                # General cargo (non-LCL): query by manifest + transaction
                 for txn in transaction_ids:
                     result = client.get_cargo_status(
                         manifest=manifest, transaction_id=txn)
