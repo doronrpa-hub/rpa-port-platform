@@ -211,6 +211,29 @@ _DOC_TYPE_SIGNALS = {
             r"d[_\-\s]?o\b", r"delivery.?order", r"release",
         ],
     },
+    "air_delivery_order": {
+        "name_he": "פקודת מסירה אווירית",
+        "name_en": "Air Delivery Order",
+        "strong": [
+            r"air\s*delivery\s*order", r"פקודת\s*מסירה\s*אווירית",
+            r"air\s*release\s*order",
+            r"cargo\s*release\s*notice", r"הודעת\s*שחרור\s*מטען\s*אווירי",
+            r"שחרור\s*מטען\s*אווירי",
+        ],
+        "medium": [
+            r"air\s*release", r"air\s*cargo\s*release",
+            r"storage\s*notice", r"terminal\s*release",
+            r"(?:cargo\s*release|שחרור\s*מטען).*(?:awb|אווירי)",
+            r"(?:awb|air\s*waybill).*(?:release|שחרור)",
+        ],
+        "weak": [
+            r"maman", r"swissport", r"cargo\s*terminal",
+            r"storage\s*fee", r"דמי\s*אחסנה",
+        ],
+        "filename": [
+            r"ado", r"air.?release", r"air.?delivery", r"cargo.?release",
+        ],
+    },
 }
 
 # Required fields per document type (field_name, importance)
@@ -287,6 +310,15 @@ _REQUIRED_FIELDS = {
         ("vessel", "optional"),
         ("pickup_location", "optional"),
         ("release_date", "optional"),
+        ("agent_name", "optional"),
+    ],
+    "air_delivery_order": [
+        ("awb_reference", "critical"),
+        ("consignee", "critical"),
+        ("terminal", "important"),
+        ("release_status", "important"),
+        ("storage_fees", "optional"),
+        ("flight_number", "optional"),
         ("agent_name", "optional"),
     ],
 }
@@ -410,6 +442,7 @@ def extract_structured_fields(text, doc_type):
         "health_certificate": _extract_health_cert_fields,
         "insurance": _extract_insurance_fields,
         "delivery_order": _extract_do_fields,
+        "air_delivery_order": _extract_air_do_fields,
     }
 
     extractor = extractors.get(doc_type)
@@ -911,6 +944,77 @@ def _extract_do_fields(text):
     for pat in [
         r'(?:shipping\s*agent|סוכן\s*אוניות)[:\s]+(.+)',
         r'(?:issued\s*by|מונפק\s*(?:ע"י|על\s*ידי))[:\s]+(.+)',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["agent_name"] = _clean_value(m.group(1), max_len=80)
+            break
+
+    return fields
+
+
+# ── Air Delivery Order ──
+
+def _extract_air_do_fields(text):
+    """Extract fields from air cargo delivery order / release notice."""
+    fields = {}
+    t = text
+
+    # AWB reference (format: XXX-XXXXXXXX or XXX XXXXXXXX)
+    for pat in [
+        r'(?:awb|air\s*waybill)\s*(?:no|number|n[°o]|#|ref)?[.:\s]*(\d{3}[\s-]?\d{7,8})',
+        r'(?:שטר\s*(?:מטען\s*)?אווירי)\s*(?:מס[\'.]?|#)?[:\s]*(\d{3}[\s-]?\d{7,8})',
+        r'\b(\d{3}-\d{8})\b',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["awb_reference"] = m.group(1).strip()
+            break
+
+    # Consignee
+    m = re.search(r'(?:consignee|deliver\s*to|נמען|למסור\s*ל)[:\s]+(.+)', t, re.IGNORECASE)
+    if m:
+        fields["consignee"] = _clean_value(m.group(1), max_len=120)
+
+    # Terminal (Maman / Swissport / cargo terminal)
+    for pat in [
+        r'(?:terminal|cargo\s*terminal|מסוף)[:\s]+(.+)',
+        r'\b(maman|swissport|ממן|סוויספורט)\b',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["terminal"] = _clean_value(m.group(1), max_len=60)
+            break
+
+    # Release status
+    for pat in [
+        r'(?:release\s*status|status|סטטוס\s*שחרור|מצב)[:\s]+(.+)',
+        r'\b(released|שוחרר|hold|מעוכב|pending|ממתין|ready\s*for\s*collection|מוכן\s*למסירה)\b',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["release_status"] = _clean_value(m.group(1), max_len=40)
+            break
+
+    # Storage fees
+    for pat in [
+        r'(?:storage\s*fee|storage\s*charge|דמי\s*אחסנה|אחסנה)[:\s]*'
+        r'(?:[A-Z]{3}\s*)?([0-9][0-9,.\s]*[0-9])',
+        r'(?:storage|אחסנה)[:\s]+(?:USD|ILS|NIS|₪|\$)?\s*([0-9][0-9,.]*)',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["storage_fees"] = m.group(1).replace(" ", "").strip()
+            break
+
+    # Flight number
+    m = re.search(r'(?:flight|flt|טיסה)\s*(?:no|#)?[.:\s]*([A-Z]{2}\s*\d{2,5})', t, re.IGNORECASE)
+    if m:
+        fields["flight_number"] = m.group(1).strip()
+
+    # Agent name
+    for pat in [
+        r'(?:agent|סוכן|issued\s*by|מונפק\s*(?:ע"י|על\s*ידי))[:\s]+(.+)',
     ]:
         m = re.search(pat, t, re.IGNORECASE)
         if m:

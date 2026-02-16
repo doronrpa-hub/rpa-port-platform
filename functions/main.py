@@ -1209,6 +1209,7 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 'awb', 'air waybill', 'airwaybill',
                 'booking', 'הזמנה',
                 'delivery order', 'פקודת מסירה', 'do_',
+                'air delivery order', 'ado_', 'cargo release', 'שחרור מטען אווירי',
                 'packing', 'רשימת אריזה', 'pl_',
             ]
             _cls_intent = ['סיווג', 'classify', 'classification', 'קוד מכס', 'hs code', 'לסווג']

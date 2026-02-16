@@ -661,7 +661,8 @@ def _infer_direction(text, extractions):
     """Infer import/export from context"""
     text_lower = text.lower()
     import_signals = ['import', 'יבוא', 'notice of arrival', 'הגעת טובין', 'eta', 'unloading',
-                      'delivery order', 'פריקה', 'הורדה']
+                      'delivery order', 'air delivery order', 'cargo release notice',
+                      'פריקה', 'הורדה']
     export_signals = ['export', 'יצוא', 'etd', 'loading', 'stowage', 'storage cert',
                       'תעודת אחסנה', 'סגירה', 'cutoff', 'cut-off', 'העמסה']
 
@@ -1552,6 +1553,8 @@ def _guess_doc_type_from_attachments(attachment_names):
             return 'invoice'
         if any(x in n for x in ['bill_of_lading', 'b_l', 'bol', 'bl_', 'lading']):
             return 'bill_of_lading'
+        if any(x in n for x in ['air_delivery', 'ado_', 'air_release', 'cargo_release']):
+            return 'air_delivery_order'
         if any(x in n for x in ['delivery', 'do_', 'release']):
             return 'delivery_order'
         if any(x in n for x in ['certif', 'cert_', 'coo', 'phyto', 'health']):
