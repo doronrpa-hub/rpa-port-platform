@@ -1510,6 +1510,27 @@ def run_overnight_brain(db, get_secret_func):
 
     all_stats = {}
 
+    # ── Phase 0: One-time historical backfill (FREE, runs once) ──
+    try:
+        backfill_flag = db.collection('brain_config').document('backfill_done').get()
+        if not backfill_flag.exists:
+            print("\n--- Phase 0: Historical backfill (one-time) ---")
+            from lib.self_learning import SelfLearningEngine
+            brain = SelfLearningEngine(db)
+            backfill_stats = brain.backfill_from_history(max_docs=2000)
+            all_stats["backfill"] = backfill_stats
+            # Mark as done so it never runs again
+            db.collection('brain_config').document('backfill_done').set({
+                'completed_at': datetime.now(timezone.utc).isoformat(),
+                'stats': backfill_stats,
+            })
+            print(f"  Backfill complete — marked as done")
+        else:
+            all_stats["backfill"] = {"status": "already_done"}
+    except Exception as e:
+        logger.error(f"Backfill error: {e}")
+        all_stats["backfill"] = {"error": str(e)}
+
     # ── Phase A: FREE first (UK API sweep) ──
     print("\n--- Phase A: Free API sweep ---")
     try:

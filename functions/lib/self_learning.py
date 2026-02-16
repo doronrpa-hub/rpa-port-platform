@@ -1475,3 +1475,123 @@ class SelfLearningEngine:
                     })
         except Exception:
             pass  # Stats tracking is best-effort
+
+    # ════════════════════════════════════════════════════════
+    #  ONE-TIME HISTORICAL BACKFILL
+    # ════════════════════════════════════════════════════════
+
+    def backfill_from_history(self, max_docs=2000):
+        """One-time READ-ONLY mining of historical tracker_observations and rcb_processed.
+
+        For each email: extract agent→carrier mappings, learn doc templates,
+        extract BOL prefix patterns. Stores everything in brain collections.
+        Does NOT reprocess or resend any emails.
+
+        Args:
+            max_docs: int — maximum documents to scan (safety limit)
+
+        Returns:
+            dict — stats of what was learned
+        """
+        stats = {
+            'observations_scanned': 0,
+            'rcb_processed_scanned': 0,
+            'bol_prefixes_learned': 0,
+            'agent_mappings_learned': 0,
+            'patterns_learned': 0,
+            'errors': 0,
+        }
+
+        print("🧠 Backfill: scanning tracker_observations...")
+        try:
+            obs_docs = self.db.collection('tracker_observations').limit(max_docs).stream()
+            for doc in obs_docs:
+                stats['observations_scanned'] += 1
+                try:
+                    data = doc.to_dict()
+                    sender = data.get('from_email', '')
+                    extractions = data.get('extractions', {})
+                    attachments = data.get('attachment_names', [])
+                    if not extractions:
+                        continue
+
+                    # Guess doc type from attachments
+                    doc_type = ''
+                    for name in (attachments or []):
+                        n = name.lower()
+                        if any(x in n for x in ['bl', 'lading', 'bol']):
+                            doc_type = 'bill_of_lading'
+                        elif any(x in n for x in ['booking', 'bkg']):
+                            doc_type = 'booking_confirmation'
+                        elif any(x in n for x in ['delivery', 'do_']):
+                            doc_type = 'delivery_order'
+                        elif any(x in n for x in ['invoice', 'inv']):
+                            doc_type = 'invoice'
+                        if doc_type:
+                            break
+
+                    # Feed through learn_tracking_extraction (reuses all learning logic)
+                    self.learn_tracking_extraction(
+                        sender_email=sender,
+                        doc_type=doc_type or 'unknown',
+                        extractions=extractions,
+                        confidence=0.5,
+                        source='backfill_history'
+                    )
+                    stats['patterns_learned'] += 1
+                except Exception as e:
+                    stats['errors'] += 1
+                    if stats['errors'] <= 5:
+                        print(f"    Backfill obs error: {e}")
+        except Exception as e:
+            print(f"🧠 Backfill: tracker_observations scan error: {e}")
+
+        print(f"🧠 Backfill: scanned {stats['observations_scanned']} observations")
+
+        print("🧠 Backfill: scanning rcb_processed...")
+        try:
+            processed_docs = self.db.collection('rcb_processed').limit(max_docs).stream()
+            for doc in processed_docs:
+                stats['rcb_processed_scanned'] += 1
+                try:
+                    data = doc.to_dict()
+                    sender = data.get('from_email', '') or data.get('sender', '')
+                    # rcb_processed may have extractions or structured data
+                    extractions = data.get('extractions', {})
+                    if not extractions:
+                        # Try to reconstruct from top-level fields
+                        bols = []
+                        if data.get('bol_number'):
+                            bols.append(data['bol_number'])
+                        containers = data.get('containers', [])
+                        shipping_lines = []
+                        if data.get('shipping_line'):
+                            shipping_lines.append(data['shipping_line'])
+                        if bols or containers or shipping_lines:
+                            extractions = {
+                                'bols': bols,
+                                'containers': containers,
+                                'shipping_lines': shipping_lines,
+                            }
+                    if not extractions:
+                        continue
+
+                    doc_type = data.get('doc_type', data.get('document_type', 'unknown'))
+                    self.learn_tracking_extraction(
+                        sender_email=sender,
+                        doc_type=doc_type,
+                        extractions=extractions,
+                        confidence=0.5,
+                        source='backfill_history'
+                    )
+                    stats['patterns_learned'] += 1
+                except Exception as e:
+                    stats['errors'] += 1
+                    if stats['errors'] <= 5:
+                        print(f"    Backfill rcb error: {e}")
+        except Exception as e:
+            print(f"🧠 Backfill: rcb_processed scan error: {e}")
+
+        print(f"🧠 Backfill: scanned {stats['rcb_processed_scanned']} processed docs")
+        print(f"🧠 Backfill complete: {stats}")
+        return stats
