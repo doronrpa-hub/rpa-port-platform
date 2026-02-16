@@ -412,8 +412,8 @@ def _audit_brain_index(db):
             count = 0
             for _ in db.collection(coll).limit(1000).stream():
                 count += 1
-            key = coll.replace("brain_", "brain_") if coll.startswith("brain_") else coll
-            stats[coll] = count
+            key = "brain_index_size" if coll == "brain_index" else coll
+            stats[key] = count
         except Exception:
             pass
 
