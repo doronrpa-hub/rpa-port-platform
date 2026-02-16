@@ -341,6 +341,11 @@ All changes are minimal — no lines removed, no signatures changed, no restruct
 | KONMART | konmart.co.il | YANG_MING | shipping_agent |
 | Rosenfeld Shipping | rosenfeld.net | SALAMIS | shipping_agent |
 | Carmel International | carmelship.co.il | ADMIRAL | shipping_agent |
+| Carmel International | carmelship.co.il | COSCO (50% partner in COSCO Israel) | shipping_agent + JV partner |
+
+Note: ADMIRAL and COSCO are two separate shipping lines. Carmel's relationship differs:
+1. **ADMIRAL** — Carmel is the Israeli shipping agent (represents the carrier)
+2. **COSCO** — Carmel is a 50% JV partner with global COSCO for COSCO Israel operations
 
 **Fix needed:** Create a `shipping_agents` collection in Firestore:
 ```
