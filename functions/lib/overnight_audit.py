@@ -117,6 +117,17 @@ def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secre
         results["errors"].append(f"self_enrichment: {e}")
         print(f"  Self-enrichment error: {e}")
 
+    # ── 9. PC Agent Runner: execute pending tasks (Session 27, Assignment 14) ──
+    try:
+        from lib.pc_agent_runner import run_pending_tasks
+        runner_results = run_pending_tasks(db, max_tasks=10)
+        results["pc_agent_runner"] = runner_results
+        print(f"  PC Agent Runner: {runner_results['executed']} executed, "
+              f"{runner_results['skipped_browser']} skipped, {runner_results['failed']} failed")
+    except Exception as e:
+        results["errors"].append(f"pc_agent_runner: {e}")
+        print(f"  PC Agent Runner error: {e}")
+
     # ── Save results ──
     finished = datetime.now(timezone.utc)
     results["finished_at"] = finished.isoformat()

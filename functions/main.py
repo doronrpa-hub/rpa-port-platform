@@ -2037,3 +2037,26 @@ def rcb_overnight_audit(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"❌ Overnight audit error: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ============================================================
+# PC AGENT RUNNER: Execute pending tasks (every 30 minutes)
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every 30 minutes",
+    region="us-central1",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=300,
+)
+def rcb_pc_agent_runner(event: scheduler_fn.ScheduledEvent) -> None:
+    """Execute pending PC Agent tasks that don't require browser automation."""
+    print("PC Agent Runner starting...")
+    try:
+        from lib.pc_agent_runner import run_pending_tasks
+        result = run_pending_tasks(get_db(), max_tasks=10)
+        print(f"PC Agent Runner: {result['executed']} executed, "
+              f"{result['skipped_browser']} skipped, {result['failed']} failed")
+    except Exception as e:
+        print(f"PC Agent Runner error: {e}")
+        import traceback
+        traceback.print_exc()
