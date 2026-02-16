@@ -229,6 +229,85 @@ class SelfLearningEngine:
         except Exception as e:
             print(f"    🧠 SelfLearning: learn pattern error: {e}")
 
+        # ── Auto-learn BOL prefixes (new BL + known shipping line → learn prefix) ──
+        try:
+            bols = extractions.get('bols') or []
+            shipping_lines = extractions.get('shipping_lines') or []
+            if bols and shipping_lines:
+                carrier = shipping_lines[0].upper().replace(' ', '_')
+                for bol in bols:
+                    # Extract prefix: first 4 alpha chars of BOL
+                    prefix_match = re.match(r'^([A-Z]{3,5})', bol.upper())
+                    if not prefix_match:
+                        continue
+                    prefix = prefix_match.group(1)
+                    if len(prefix) < 3:
+                        continue
+                    # Check if already known
+                    sl_ref = self.db.collection('shipping_lines').document(carrier)
+                    sl_doc = sl_ref.get()
+                    if sl_doc.exists:
+                        existing_prefixes = sl_doc.to_dict().get('bol_prefixes', [])
+                        if prefix not in existing_prefixes:
+                            existing_prefixes.append(prefix)
+                            sl_ref.update({'bol_prefixes': existing_prefixes})
+                            print(f"    🧠 SelfLearning: learned BOL prefix {prefix} → {carrier}")
+                    else:
+                        sl_ref.set({
+                            'carrier': carrier,
+                            'bol_prefixes': [prefix],
+                            'learned_at': now,
+                        })
+                        print(f"    🧠 SelfLearning: created shipping_lines/{carrier} with prefix {prefix}")
+        except Exception as e:
+            print(f"    🧠 SelfLearning: BOL prefix learn error: {e}")
+
+        # ── Auto-learn shipping agent → carrier mapping (new domain + shipping line → learn agent) ──
+        try:
+            domain = sender_email.split("@")[-1] if "@" in sender_email else ""
+            if domain and shipping_lines:
+                # Skip known shipping line domains — they're carriers, not agents
+                _carrier_domains = [
+                    'zim.com', 'maersk.com', 'msc.com', 'cma-cgm.com', 'hapag-lloyd.com',
+                    'evergreen-line.com', 'cosco.com', 'coscoshipping.com', 'coscon.com',
+                    'one-line.com', 'hmm21.com', 'yangming.com', 'pilship.com', 'oocl.com',
+                    'wanhai.com', 'turkon.com.tr',
+                ]
+                if not any(domain.endswith(d) for d in _carrier_domains):
+                    carrier = shipping_lines[0].upper().replace(' ', '_')
+                    # Check if domain already in shipping_agents
+                    already_known = False
+                    try:
+                        for agent_doc in self.db.collection('shipping_agents').stream():
+                            agent_data = agent_doc.to_dict()
+                            if domain in (agent_data.get('domains') or []):
+                                already_known = True
+                                # Add carrier if not already mapped
+                                existing_carriers = agent_data.get('carriers') or []
+                                if carrier not in existing_carriers:
+                                    existing_carriers.append(carrier)
+                                    self.db.collection('shipping_agents').document(agent_doc.id).update({
+                                        'carriers': existing_carriers,
+                                        'updated_at': now,
+                                    })
+                                    print(f"    🧠 SelfLearning: added carrier {carrier} to agent {agent_doc.id}")
+                                break
+                    except Exception:
+                        pass
+                    if not already_known:
+                        agent_slug = domain.split('.')[0].lower()
+                        self.db.collection('shipping_agents').document(agent_slug).set({
+                            'name': agent_slug.upper(),
+                            'domains': [domain],
+                            'carriers': [carrier],
+                            'role': 'shipping_agent',
+                            'notes': f'Auto-learned from {sender_email}',
+                            'learned_at': now,
+                        }, merge=True)
+                        print(f"    🧠 SelfLearning: auto-learned agent {agent_slug} ({domain}) → {carrier}")
+        except Exception as e:
+            print(f"    🧠 SelfLearning: agent mapping learn error: {e}")
+
         # ── Track memory-level usage for cost stats ──
         try:
             self._record_memory_usage(source, confidence)
