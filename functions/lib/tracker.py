@@ -56,7 +56,7 @@ PATTERNS = {
     'manifest': r'(?:manifest|מניפסט|מצהר)[:\s#]*([0-9]{4,8})',
     'vessel_labeled': r'(?:M/?V|vessel|אוניה|ספינה)[:\s]+([A-Z][A-Z\s\-]{3,30})',
     'rnr_vessel': r'RNR\s*(?:CODE)?\s*[:\s]*(\d{3,5})\s+([A-Z][A-Z\s\-]{3,30})',
-    'shipping_line': r'\b(ZIM|MAERSK|MSC|CMA[\s\-]?CGM|HAPAG|EVERGREEN|COSCO|ONE|HMM|YANG\s*MING|PIL|TURKON|OOCL|WAN[\s\-]?HAI|KONMART|CARMEL)\b',
+    'shipping_line': r'\b(ZIM|MAERSK|MSC|CMA[\s\-]?CGM|HAPAG|EVERGREEN|COSCO|ONE[\s\-]?LINE|OCEAN\s*NETWORK|HMM|YANG\s*MING|PIL|TURKON|OOCL|WAN[\s\-]?HAI|KONMART|CARMEL)\b',
     'port_hebrew': r'(חיפה|אשדוד|אילת|חדרה)',
     'port_english': r'\b(haifa|ashdod|eilat|hadera)\b',
     'eta': r'(?:ETA|הגעה\s*משוערת|expected\s*arrival)[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
