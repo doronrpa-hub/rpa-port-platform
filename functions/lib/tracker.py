@@ -357,9 +357,11 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
         except Exception as llm_err:
             print(f"    🤖 Tracker LLM skip: {llm_err}")
 
-        # ── STEP 4c: Learn template if LLM was used (brain remembers HOW to read) ──
+        # ── STEP 4c: Learn template — LLM enriched OR good regex extraction ──
+        # (CC emails with solid regex results should also teach the brain)
         try:
-            if was_enriched:
+            _has_substance = bool(extractions.get('bols') or extractions.get('containers') or extractions.get('bookings'))
+            if was_enriched or (confidence >= 0.5 and _has_substance):
                 from lib.doc_reader import learn_template, identify_doc_type, validate_template
                 _shipping_line = (extractions.get('shipping_lines') or [''])[0]
                 if not _doc_type or _doc_type == 'unknown':
