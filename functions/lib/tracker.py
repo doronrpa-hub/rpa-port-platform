@@ -626,12 +626,25 @@ def _extract_logistics_data(text):
         if entry not in result['container_type_qty']:
             result['container_type_qty'].append(entry)
 
-    # FCL vs LCL detection — keyword + CFS warehouse name scan
+    # FCL vs LCL detection — multi-signal approach
+    # Signal A: Explicit keywords (LCL, CFS, consolidation, מיכול) → always LCL
     _lcl_en = r'\bLCL\b|\bCFS\b|consolidat(?:ion|ed)|less\s+than\s+container|groupage'
     _lcl_he = r'מיכול|מטען\s*חלקי|מכולה\s*משותפת'
     _cfs_names = r'\b(?:Gadot|Atta|Tiran)\b|גדות|עטא|טירן'
     if re.search(_lcl_en, text, re.IGNORECASE) or re.search(_lcl_he, text) or re.search(_cfs_names, text, re.IGNORECASE):
         result['freight_load_type'] = 'LCL'
+
+    # Signal B: House BL cargo description — marking+dims+units+CBM co-occurrence → LCL
+    # (Master BL from shipping line with container+seal in marks = FCL, which is the default)
+    if not result['freight_load_type']:
+        _lcl_desc_signals = [
+            re.search(r'(?:marking|marks|סימון|סימנים)', text, re.IGNORECASE),
+            re.search(r'(?:dimensions?|מידות|length.*width|ארוך.*רוחב)', text, re.IGNORECASE),
+            re.search(r'(?:units?|packages?|pieces?|יחידות|חבילות|אריזות)\s*[:\s]*\d', text, re.IGNORECASE),
+            re.search(r'(?:CBM|cubic\s*met|מ"ק|מטר\s*מעוקב)', text, re.IGNORECASE),
+        ]
+        if sum(1 for s in _lcl_desc_signals if s) >= 3:
+            result['freight_load_type'] = 'LCL'
 
     # Notice of arrival detection
     if re.search(PATTERNS['notify_arrival'], text, re.IGNORECASE):
