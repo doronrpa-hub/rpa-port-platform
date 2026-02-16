@@ -104,6 +104,27 @@ STOP_PATTERNS = [
     r'(?:stop\s*follow|stop\s*track|תפסיק\s*לעקוב|הפסק\s*מעקב)',
 ]
 
+# ── Cached BOL prefixes from Firestore shipping_lines collection ──
+_bol_prefix_cache = None  # {prefix: carrier_name}, loaded on first use
+
+def _load_bol_prefixes(db):
+    """Load bol_prefixes from shipping_lines collection. Cached per cold start."""
+    global _bol_prefix_cache
+    if _bol_prefix_cache is not None:
+        return _bol_prefix_cache
+    _bol_prefix_cache = {}
+    try:
+        for doc in db.collection('shipping_lines').stream():
+            data = doc.to_dict()
+            carrier = doc.id
+            for prefix in data.get('bol_prefixes', []):
+                if prefix:
+                    _bol_prefix_cache[prefix.upper()] = carrier
+        print(f"    📋 Tracker: loaded {len(_bol_prefix_cache)} BOL prefixes from Firestore")
+    except Exception as e:
+        print(f"    📋 Tracker: BOL prefix load error: {e}")
+    return _bol_prefix_cache
+
 # ════════════════════════════════════════════════════════
 #  MAIN ENTRY POINT — called from rcb_check_email hook
 # ════════════════════════════════════════════════════════
@@ -164,6 +185,9 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
         sender_type = _classify_sender(from_email)
         confidence = 0.0
         brain_level = "none"
+
+        # Load BOL prefix cache (once per cold start)
+        _load_bol_prefixes(db)
 
         # Ask brain first — does it know this sender/doc type?
         try:
@@ -358,6 +382,16 @@ def _extract_logistics_data(text):
             bol = m.group(1).strip()
             if bol not in result['bols']:
                 result['bols'].append(bol)
+
+    # BOLs — prefix matching from Firestore shipping_lines collection
+    if _bol_prefix_cache:
+        for prefix, carrier in _bol_prefix_cache.items():
+            for m in re.finditer(r'\b(' + re.escape(prefix) + r'[\w\-]{3,20})\b', text_upper):
+                bol = m.group(1).strip()
+                if bol not in result['bols'] and len(bol) > 5:
+                    result['bols'].append(bol)
+                    if carrier not in result['shipping_lines']:
+                        result['shipping_lines'].append(carrier)
 
     # Bookings
     for pat_name in ['booking', 'booking_bare']:
