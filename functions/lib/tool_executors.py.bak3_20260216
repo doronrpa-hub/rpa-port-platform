@@ -54,12 +54,6 @@ class ToolExecutor:
             "verify_hs_code": self._verify_hs_code,
             "extract_invoice": self._extract_invoice,
             "assess_risk": self._assess_risk,
-            "get_chapter_notes": self._get_chapter_notes,
-            "search_pre_rulings": self._stub_not_available,
-            "search_classification_directives": self._stub_not_available,
-            "search_foreign_tariff": self._stub_not_available,
-            "search_court_precedents": self._stub_not_available,
-            "search_wco_decisions": self._stub_not_available,
         }.get(tool_name)
 
         if not handler:
@@ -198,30 +192,3 @@ class ToolExecutor:
         level_he = {"low": "נמוך", "medium": "בינוני", "high": "גבוה"}.get(level, "נמוך")
 
         return {"risk": {"level": level_he, "items": items}}
-
-    def _get_chapter_notes(self, inp):
-        """Fetch tariff chapter notes from tariff_chapters collection.
-        Doc IDs use import_chapter_XX format (e.g., import_chapter_01)."""
-        chapter = str(inp.get("chapter", "")).replace(".", "").strip()
-        if len(chapter) == 1:
-            chapter = "0" + chapter
-        doc_id = f"import_chapter_{chapter}"
-        try:
-            doc = self.db.collection("tariff_chapters").document(doc_id).get()
-            if doc.exists:
-                data = doc.to_dict()
-                return {
-                    "found": True,
-                    "chapter": chapter,
-                    "chapter_name": data.get("chapterName", ""),
-                    "chapter_description": data.get("chapterDescription", ""),
-                    "headings": data.get("headings", [])[:20],
-                    "hs_codes_count": len(data.get("hsCodes", [])),
-                }
-            return {"found": False, "chapter": chapter, "message": f"Chapter {chapter} not found"}
-        except Exception as e:
-            return {"found": False, "error": str(e)}
-
-    def _stub_not_available(self, inp):
-        """Stub for tools whose data sources are not yet loaded."""
-        return {"available": False, "message": "Data source not yet loaded"}

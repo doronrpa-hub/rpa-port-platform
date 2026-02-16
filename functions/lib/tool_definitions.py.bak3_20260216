@@ -163,24 +163,6 @@ CLAUDE_TOOLS = [
             "required": ["hs_code", "origin_country", "item_description"],
         },
     },
-    {
-        "name": "get_chapter_notes",
-        "description": (
-            "Fetch chapter notes and headings from the Israeli Customs Tariff for a given chapter number. "
-            "Returns chapter name, description, headings list, and HS code count. "
-            "Use this to check inclusion/exclusion rules for classification decisions."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "chapter": {
-                    "type": "string",
-                    "description": "Chapter number (1-99, e.g., '01', '85')",
-                },
-            },
-            "required": ["chapter"],
-        },
-    },
 ]
 
 
@@ -223,12 +205,11 @@ You classify products into HS (Harmonized System) codes according to the Israeli
 WORKFLOW:
 1. ALWAYS call check_memory first for each item — it's free and may have the answer.
 2. If memory miss, call search_tariff to find candidate HS codes from the knowledge base.
-3. Call get_chapter_notes to check inclusion/exclusion rules for the relevant chapter.
-4. Use your customs expertise to select the best HS code from candidates.
-5. Call verify_hs_code to validate your chosen code against the official tariff DB.
-6. Call check_regulatory to find ministry requirements and permits.
-7. Call lookup_fta to check FTA eligibility if origin country is known.
-8. Call assess_risk for risk assessment.
+3. Use your customs expertise to select the best HS code from candidates.
+4. Call verify_hs_code to validate your chosen code against the official tariff DB.
+5. Call check_regulatory to find ministry requirements and permits.
+6. Call lookup_fta to check FTA eligibility if origin country is known.
+7. Call assess_risk for risk assessment.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.
