@@ -639,6 +639,21 @@ def _extract_packing_list_fields(text):
     return fields
 
 
+# ── FCL vs LCL helper ──
+
+def _detect_lcl(text):
+    """Detect LCL (Less than Container Load) keywords and CFS warehouse names.
+    Returns True if LCL indicators found in text."""
+    _lcl_en = r'\bLCL\b|\bCFS\b|consolidat(?:ion|ed)|less\s+than\s+container|groupage'
+    _lcl_he = r'מיכול|מטען\s*חלקי|מכולה\s*משותפת'
+    _cfs_names = r'\b(?:Gadot|Atta|Tiran)\b|גדות|עטא|טירן'
+    return bool(
+        re.search(_lcl_en, text, re.IGNORECASE) or
+        re.search(_lcl_he, text) or
+        re.search(_cfs_names, text, re.IGNORECASE)
+    )
+
+
 # ── Bill of Lading ──
 
 def _extract_bl_fields(text):
@@ -701,6 +716,10 @@ def _extract_bl_fields(text):
     m = re.search(r'(?:voyage|voy)[.:\s]*([A-Za-z0-9\-]+)', t, re.IGNORECASE)
     if m:
         fields["voyage_number"] = m.group(1).strip()
+
+    # FCL vs LCL detection
+    if _detect_lcl(t):
+        fields["freight_load_type"] = "LCL"
 
     return fields
 
@@ -775,6 +794,10 @@ def _extract_booking_fields(text):
         if m:
             fields["cutoff_date"] = m.group(1).strip()
             break
+
+    # FCL vs LCL detection
+    if _detect_lcl(t):
+        fields["freight_load_type"] = "LCL"
 
     return fields
 
@@ -1056,6 +1079,10 @@ def _extract_do_fields(text):
         if m:
             fields["agent_name"] = _clean_value(m.group(1), max_len=80)
             break
+
+    # FCL vs LCL detection
+    if _detect_lcl(t):
+        fields["freight_load_type"] = "LCL"
 
     return fields
 
