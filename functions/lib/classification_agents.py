@@ -107,6 +107,14 @@ except ImportError as e:
     print(f"Document tracker not available: {e}")
     TRACKER_AVAILABLE = False
 
+# Tool-calling classification engine (Session 22)
+try:
+    from lib.tool_calling_engine import tool_calling_classify
+    TOOL_CALLING_AVAILABLE = True
+except ImportError as e:
+    print(f"Tool-calling engine not available: {e}")
+    TOOL_CALLING_AVAILABLE = False
+
 # =============================================================================
 # HS CODE VALIDATION HELPERS
 # =============================================================================
@@ -1605,7 +1613,7 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
     <div style="background:#f8faff;padding:24px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">
         <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
             <td style="vertical-align:middle;width:60px">
-                <img src="https://rpa-port.com/wp-content/uploads/2020/01/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
+                <img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
             </td>
             <td style="vertical-align:middle;border-right:3px solid #1a3a5c;padding-right:16px">
                 <strong style="color:#0f2439;font-size:14px">RCB — AI Customs Broker</strong><br>
@@ -1903,7 +1911,18 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         
         print(f"  📝 {len(doc_text)} chars")
         
-        results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
+        results = None
+        if TOOL_CALLING_AVAILABLE:
+            try:
+                results = tool_calling_classify(api_key, doc_text, db, gemini_key=gemini_key)
+                if not results or not results.get("success"):
+                    print("  ⚠️ Tool-calling returned no result, falling back to pipeline")
+                    results = None
+            except Exception as tc_err:
+                print(f"  ⚠️ Tool-calling error: {tc_err}, falling back to pipeline")
+                results = None
+        if not results:
+            results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
         if not results.get('success'):
             print(f"  ❌ Failed")
             return False

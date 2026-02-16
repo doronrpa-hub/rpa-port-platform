@@ -1032,7 +1032,7 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
 # CLASSIFICATION PROCESSING (called after acknowledgment)
 # ============================================================
 
-@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1)
+@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     """Check rcb@rpa-port.co.il inbox - process emails from last 2 days"""
     print("🤖 RCB checking email via Graph API...")
@@ -1085,21 +1085,53 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                        for r in to_recipients)
         
         print(f"    DEBUG: {subject[:30]} from={from_email} is_direct={is_direct}")
-        if not is_direct:
-            continue
-        
-        # Check sender domain
-        if not from_email.lower().endswith('@rpa-port.co.il'):
-            continue
-        
-        # Skip system emails
+
+        # Skip system emails for all paths
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
             continue
-
-        # Skip self-test emails (processed by rcb_self_test, not here)
         if '[RCB-SELFTEST]' in subject:
             continue
-        
+
+        # ── CC emails: silent learning from ALL senders, no reply ──
+        if not is_direct:
+            import hashlib as _hl
+            safe_id_cc = _hl.md5(msg_id.encode()).hexdigest()
+            if get_db().collection("rcb_processed").document(safe_id_cc).get().exists:
+                continue
+
+            print(f"  👁️ CC observation: {subject[:50]} from {from_email}")
+
+            # Pupil: silent observation (FREE — Firestore only, no replies)
+            if PUPIL_AVAILABLE:
+                try:
+                    pupil_process_email(
+                        msg, get_db(), firestore, access_token, rcb_email, get_secret
+                    )
+                except Exception as pe:
+                    print(f"    ⚠️ Pupil CC error (non-fatal): {pe}")
+
+            # Tracker: observe shipping updates (FREE — no notifications when is_direct=False)
+            if TRACKER_AVAILABLE:
+                try:
+                    tracker_process_email(
+                        msg, get_db(), firestore, access_token, rcb_email, get_secret,
+                        is_direct=False
+                    )
+                except Exception as te:
+                    print(f"    ⚠️ Tracker CC error (non-fatal): {te}")
+
+            get_db().collection("rcb_processed").document(safe_id_cc).set({
+                "processed_at": firestore.SERVER_TIMESTAMP,
+                "subject": subject,
+                "from": from_email,
+                "type": "cc_observation",
+            })
+            continue
+
+        # ── Direct TO emails: full pipeline, only from @rpa-port.co.il ──
+        if not from_email.lower().endswith('@rpa-port.co.il'):
+            continue
+
         # Check if already processed
         import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
         if get_db().collection("rcb_processed").document(safe_id).get().exists:
@@ -1168,6 +1200,52 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         except Exception as kq_err:
             print(f"  ⚠️ Knowledge query detection error: {kq_err}")
 
+        # ── Shipping-only routing: BL/AWB/booking without invoice → tracker ──
+        if attachments:
+            _invoice_kw = ['invoice', 'חשבונית', 'proforma', 'ci_']
+            _shipping_kw = [
+                'bill of lading', 'bl_', 'bol_', 'bol ', 'b_l', 'b/l',
+                'שטר מטען', 'שטר',
+                'awb', 'air waybill', 'airwaybill',
+                'booking', 'הזמנה',
+                'delivery order', 'פקודת מסירה', 'do_',
+                'packing', 'רשימת אריזה', 'pl_',
+            ]
+            _cls_intent = ['סיווג', 'classify', 'classification', 'קוד מכס', 'hs code', 'לסווג']
+
+            _has_inv = False
+            _has_ship = False
+            for att in attachments:
+                fn = att.get('filename', '').lower()
+                if any(kw in fn for kw in _invoice_kw):
+                    _has_inv = True
+                if any(kw in fn for kw in _shipping_kw):
+                    _has_ship = True
+
+            if _has_ship and not _has_inv:
+                # Check body for classification intent — "please classify" overrides
+                _body_text = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+                _combined = f"{subject} {_body_text}".lower()
+                if not any(kw in _combined for kw in _cls_intent):
+                    print(f"  📦 Shipping docs only (no invoice) — routing to tracker, skipping classification")
+                    if TRACKER_AVAILABLE:
+                        try:
+                            tracker_process_email(msg, get_db(), firestore, access_token, rcb_email, get_secret, is_direct=is_direct)
+                        except Exception as te:
+                            print(f"    ⚠️ Tracker error: {te}")
+                    if PUPIL_AVAILABLE:
+                        try:
+                            pupil_process_email(msg, get_db(), firestore, access_token, rcb_email, get_secret)
+                        except Exception as pe:
+                            print(f"    ⚠️ Pupil error: {pe}")
+                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                    get_db().collection("rcb_processed").document(safe_id).set({
+                        "processed_at": firestore.SERVER_TIMESTAMP,
+                        "subject": subject,
+                        "from": from_email,
+                        "type": "shipping_tracker",
+                    })
+                    continue
 
         # Consolidated: ONE email with ack + classification + clarification
         try:
@@ -1823,6 +1901,16 @@ def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
         import traceback
         traceback.print_exc()
 
+    # ── Air cargo: Poll AWBs via Maman API ──
+    try:
+        from lib.air_cargo_tracker import poll_air_cargo_for_tracker
+        air_result = poll_air_cargo_for_tracker(get_db(), firestore, get_secret)
+        print(f"✈️ Air cargo poll complete: {air_result}")
+    except ImportError:
+        print("✈️ Air cargo tracker not available")
+    except Exception as ae:
+        print(f"✈️ Air cargo poll error: {ae}")
+
 
 # ============================================================
 # PUPIL: Batch learning cycle (every 6 hours)
@@ -1892,5 +1980,68 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
 
     except Exception as e:
         print(f"❌ Pupil learning error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ============================================================
+# BRAIN: Daily digest to doron@ (07:00 Israel time)
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 07:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=120,
+)
+def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
+    """Send Doron a morning summary: arriving cargo, pending classifications, deals needing action."""
+    print("🧠 Brain daily digest starting...")
+    try:
+        from lib.brain_commander import brain_daily_digest
+
+        secrets = get_rcb_secrets_internal(get_secret)
+        access_token = helper_get_graph_token(secrets) if secrets else None
+        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+        if not access_token:
+            print("❌ No access token — cannot send digest")
+            return
+
+        result = brain_daily_digest(get_db(), access_token, rcb_email)
+        print(f"🧠 Daily digest result: {result}")
+
+    except Exception as e:
+        print(f"❌ Daily digest error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ============================================================
+# AUDIT: One-time overnight diagnostic scan
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 02:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.GB_2,
+    timeout_sec=900,
+)
+def rcb_overnight_audit(event: scheduler_fn.ScheduledEvent) -> None:
+    """Diagnostic scan: reprocess emails, check memory, find ghost deals, count everything."""
+    print("🔍 Overnight audit triggered...")
+    try:
+        from lib.overnight_audit import run_overnight_audit
+
+        secrets = get_rcb_secrets_internal(get_secret)
+        access_token = helper_get_graph_token(secrets) if secrets else None
+        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+        result = run_overnight_audit(get_db(), firestore, access_token, rcb_email, get_secret)
+        print(f"🔍 Audit complete: {result.get('duration_sec', 0):.1f}s, "
+              f"{len(result.get('errors', []))} errors")
+
+    except Exception as e:
+        print(f"❌ Overnight audit error: {e}")
         import traceback
         traceback.print_exc()

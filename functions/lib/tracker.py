@@ -741,6 +741,15 @@ def _create_deal(db, firestore_module, observation):
         "bol": deal_data['bol_number'],
     })
 
+    # Register AWB for air cargo polling if present
+    if deal_data.get("awb_number"):
+        try:
+            from lib.air_cargo_tracker import register_awb
+            register_awb(db, deal_data["awb_number"], deal_id)
+            print(f"    ✈️ Registered AWB {deal_data['awb_number']} for air cargo polling")
+        except Exception as awb_err:
+            print(f"    ⚠️ AWB registration error (non-fatal): {awb_err}")
+
     print(f"    📦 Tracker: created deal {deal_id}: BOL={deal_data['bol_number']}, "
           f"{len(ext.get('containers', []))} containers, {deal_data['shipping_line']}")
 
@@ -787,6 +796,7 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     # Fill empty fields with new data
     field_map = {
         'bol_number': ('bols', 0),
+        'awb_number': ('awbs', 0),
         'booking_number': ('bookings', 0),
         'manifest_number': ('manifests', 0),
         'vessel_name': ('vessels', 0),
@@ -825,6 +835,15 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     if len(updates) > 1:  # more than just updated_at
         deal_ref.update(updates)
         print(f"    📦 Tracker: updated deal {deal_id} with {len(updates)-1} new fields")
+
+        # Register AWB for air cargo polling if newly added
+        if 'awb_number' in updates and updates['awb_number']:
+            try:
+                from lib.air_cargo_tracker import register_awb
+                register_awb(db, updates['awb_number'], deal_id)
+                print(f"    ✈️ Registered AWB {updates['awb_number']} for air cargo polling")
+            except Exception as awb_err:
+                print(f"    ⚠️ AWB registration error (non-fatal): {awb_err}")
 
     return deal_id
 
@@ -1125,6 +1144,28 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
                                 db, firestore_module, deal_id, cn, cargo, direction)
                             if changed:
                                 deal_changed = True
+
+            elif not deal.get('awb_number'):
+                # General cargo without containers — try storage_id or manifest-only
+                storage_id = deal.get('storage_id', '')
+                result = None
+
+                if storage_id:
+                    result = client.get_cargo_status(storage_id=storage_id)
+                elif manifest:
+                    # manifest without transaction_ids — broad search
+                    result = client.get_cargo_status(manifest=manifest)
+
+                if result and result.get('CargoList'):
+                    for cargo in result['CargoList']:
+                        cn = cargo.get('ContainerID') or cargo.get('StorageID', '') or storage_id or 'general'
+                        changed = _update_container_status(
+                            db, firestore_module, deal_id, cn, cargo, direction)
+                        if changed:
+                            deal_changed = True
+                        # Enrich deal — may backfill manifest + transaction_ids
+                        # so next poll uses the more specific manifest+txn branch
+                        _enrich_deal_from_taskyam(db, deal_id, deal, cargo)
 
             if deal_changed:
                 updated_deals += 1

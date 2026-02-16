@@ -865,7 +865,7 @@ def brain_daily_digest(db, access_token, rcb_email):
           <div style="color:rgba(255,255,255,0.5);font-size:11px;">{now_str}</div>
         </div>
         <div style="background:#fff;padding:16px 20px;border:1px solid #ddd;border-top:0;direction:rtl;">
-          <div style="font-size:14px;font-weight:bold;color:#1e3a5f;margin-bottom:10px;">בוקר טוב אבא 👨</div>
+          <div style="font-size:14px;font-weight:bold;color:#1e3a5f;margin-bottom:10px;">בוקר טוב דורון 👨</div>
           <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
             <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">📧 Emails processed</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['new_observations']}</td></tr>
             <tr><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #eee;">📦 New deals</td><td style="padding:5px 10px;font-weight:bold;font-size:12px;border-bottom:1px solid #eee;">{digest['new_deals']}</td></tr>
