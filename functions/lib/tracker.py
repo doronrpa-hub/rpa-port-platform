@@ -477,6 +477,14 @@ def _extract_logistics_data(text):
     for m in re.finditer(PATTERNS['flight'], text_upper):
         result['flights'].append(m.group(0))
 
+    # AWBs (Air Waybill: 3-digit airline prefix + 8-digit serial)
+    # Only when air context detected — pattern too broad for general text
+    if result['flights'] or re.search(r'(?:AWB|air\s*waybill|airwaybill|שטר\s*אווירי)', text, re.IGNORECASE):
+        for m in re.finditer(PATTERNS['awb'], text):
+            awb = f"{m.group(1)}-{m.group(2)}"
+            if awb not in result['awbs']:
+                result['awbs'].append(awb)
+
     # Notice of arrival detection
     if re.search(PATTERNS['notify_arrival'], text, re.IGNORECASE):
         result['is_notice_of_arrival'] = True
