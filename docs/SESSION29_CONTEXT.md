@@ -182,10 +182,10 @@ All from Elizabeth@rpa-port.co.il:
 - Tariff data quality: 35.7% of parent_heading_desc has garbage data
 - Chapter notes: Not properly stored in tariff_chapters
 
-### High (Fixes 7-9 address some of these)
-- query_tariff 100-doc limit → Fix 7
-- brain_index_size always 0 → Fix 8
-- Footer HTML marker wrong → Fix 9
+### High (Fixes 7-9 DONE)
+- ~~query_tariff 100-doc limit~~ → Fix 7 (`0fd2c2e`)
+- ~~brain_index_size always 0~~ → Fix 8 (`cd10f33`)
+- ~~Footer HTML marker wrong~~ → Fix 9 (`026cacf`)
 - Librarian reads: up to 19,000 Firestore reads per query (no caching)
 - Schedule conflict: Two heavy jobs fire at 02:00 simultaneously
 
@@ -199,12 +199,16 @@ All from Elizabeth@rpa-port.co.il:
 - 17 .bak_20260216 backup files committed to repo
 - overnight_log.txt: 22K lines in repo
 
-### Fixed this session (Fixes 1-5)
+### Fixed this session (Fixes 1-5, 7-9)
 - ~~bol_maersk pattern not in extraction loop~~ → Fix 1
 - ~~bol_prefixes from Firestore not wired~~ → Fix 2
 - ~~Missing carriers WAN HAI, KONMART, CARMEL~~ → Fix 3
 - ~~ONE false positive~~ → Fix 4
 - ~~AWB extraction dead code~~ → Fix 5
+- Fix 6: SKIPPED — Hebrew entries (אוברסיז, מדלוג) are valid UTF-8, not corrupted
+- ~~query_tariff 100-doc limit~~ → Fix 7
+- ~~brain_index_size always 0~~ → Fix 8
+- ~~Footer HTML marker wrong~~ → Fix 9
 
 ### Fixed in Sessions 26-28 (already deployed)
 - Circular import in tool_executors.py (6aacaf0)
@@ -282,6 +286,9 @@ tracker_process_email()
 ## COMMIT LOG THIS SESSION
 
 ```
+026cacf Fix: correct HTML marker for clarification footer insertion
+cd10f33 Fix: correct brain_index_size count in overnight audit
+0fd2c2e Fix: query_tariff reads full tariff database instead of 100-doc limit
 e8935e3 Fix: populate AWB extraction in tracker (was dead code)
 efbd49d Fix: reduce ONE carrier false positives in tracker
 e468bc5 Fix: add missing carriers WAN HAI, KONMART, CARMEL to tracker
@@ -303,13 +310,35 @@ d93feb1 Add CLAUDE_CONTEXT.md + SESSION25 docs for future AI sessions
 
 ## FILES MODIFIED THIS SESSION
 
-Only `functions/lib/tracker.py` was modified (Fixes 1-5). All changes are additive — no lines removed, no signatures changed, no restructuring.
+- `functions/lib/tracker.py` — Fixes 1-5 (additive only)
+- `functions/lib/classification_agents.py` — Fix 7 (removed .limit(100) in query_tariff), Fix 9 (corrected footer HTML marker)
+- `functions/lib/overnight_audit.py` — Fix 8 (corrected brain_index_size key mapping)
+- `functions/tests/test_classification_agents.py` — Fix 7 (updated 8 test mocks to match removed .limit())
+All changes are minimal — no lines removed, no signatures changed, no restructuring.
 
 ---
 
 ## NEXT SESSION PRIORITIES
 
-1. Complete Fixes 6-9 (corrupted templates, query_tariff limit, brain_index_size, footer marker)
-2. Then evaluate: tariff data quality cleanup (35.7% garbage)
-3. Then evaluate: classification pipeline Phase 0-9 methodology alignment
+1. ~~Complete Fixes 6-9~~ — DONE (Fix 6 skipped, Fixes 7-9 deployed)
+2. Evaluate: tariff data quality cleanup (35.7% garbage in parent_heading_desc)
+3. Evaluate: classification pipeline Phase 0-9 methodology alignment
 4. Maman credentials (requires manual phone call to 03-9715388)
+5. Document type gaps — see FUTURE FIXES below
+6. Wire smart_extractor + table_extractor into tracker path
+
+---
+
+## FUTURE FIXES
+
+### DOCUMENT TYPE GAPS — Tracker should also read and extract from:
+
+1. **Sea Delivery Orders** — release reference, container details, consignee, pickup info
+2. **Air Delivery Orders** — AWB, flight, storage location, release status, terminal (Maman/Swissport)
+3. **Booking Confirmations** — booking number, vessel/voyage, ETD/ETA, container type/quantity, POL/POD
+
+Currently only BLs and AWBs are recognized as shipping documents. These three doc types carry critical tracking data that should feed into tracker_deals.
+
+### smart_extractor.py and table_extractor.py NOT wired into tracker path
+
+These extractors are only used in the classification path. Tables in delivery orders, bookings, and BLs contain structured data (weights, seals, package counts) that regex misses. Wiring them into `tracker_process_email()` would capture BL table data currently lost.
