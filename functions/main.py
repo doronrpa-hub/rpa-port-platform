@@ -2076,3 +2076,36 @@ def rcb_pc_agent_runner(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"PC Agent Runner error: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ============================================================
+# OVERNIGHT BRAIN EXPLOSION: Know everything by morning
+# Session 28 — Assignment 19
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 20:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.GB_2,
+    timeout_sec=900,
+)
+def rcb_overnight_brain(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    Overnight Brain Explosion — 8 enrichment streams mine ALL internal data.
+    Runs at 20:00 Jerusalem (well before 02:00 nightly_learn — no conflict).
+    HARD CAP: $3.50 per run.
+    """
+    print("Overnight Brain Explosion starting...")
+    try:
+        from lib.overnight_brain import run_overnight_brain
+
+        result = run_overnight_brain(get_db(), get_secret)
+        cost = result.get("cost", {})
+        print(f"Overnight Brain complete: ${cost.get('total_spent', 0):.4f} / "
+              f"${cost.get('budget_limit', 3.50)}, "
+              f"{cost.get('gemini_calls', 0)} AI calls")
+
+    except Exception as e:
+        print(f"Overnight Brain error: {e}")
+        import traceback
+        traceback.print_exc()
