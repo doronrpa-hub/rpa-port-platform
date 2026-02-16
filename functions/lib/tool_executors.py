@@ -202,23 +202,44 @@ class ToolExecutor:
         return {"risk": {"level": level_he, "items": items}}
 
     def _get_chapter_notes(self, inp):
-        """Fetch tariff chapter notes from tariff_chapters collection.
-        Doc IDs use import_chapter_XX format (e.g., import_chapter_01)."""
+        """Fetch structured chapter notes from chapter_notes collection.
+        Session 27: Now reads from chapter_notes (parsed heading tree with
+        Hebrew descriptions, duty rates, keywords) instead of raw tariff_chapters."""
         chapter = str(inp.get("chapter", "")).replace(".", "").strip()
         if len(chapter) == 1:
             chapter = "0" + chapter
-        doc_id = f"import_chapter_{chapter}"
+        doc_id = f"chapter_{chapter}"
         try:
-            doc = self.db.collection("tariff_chapters").document(doc_id).get()
+            doc = self.db.collection("chapter_notes").document(doc_id).get()
             if doc.exists:
                 data = doc.to_dict()
                 return {
                     "found": True,
                     "chapter": chapter,
-                    "chapter_name": data.get("chapterName", ""),
-                    "chapter_description": data.get("chapterDescription", ""),
-                    "headings": data.get("headings", [])[:20],
-                    "hs_codes_count": len(data.get("hsCodes", [])),
+                    "chapter_name": data.get("chapter_title_he", ""),
+                    "chapter_description": data.get("chapter_description_he", ""),
+                    "preamble": data.get("preamble", ""),
+                    "notes": data.get("notes", []),
+                    "exclusions": data.get("exclusions", []),
+                    "inclusions": data.get("inclusions", []),
+                    "heading_summary": data.get("heading_summary", ""),
+                    "headings_count": data.get("headings_count", 0),
+                    "hs_codes_count": data.get("hs_codes_count", 0),
+                    "keywords": data.get("keywords", [])[:50],
+                    "duty_rates": data.get("duty_rates_summary", {}),
+                }
+            # Fallback to old tariff_chapters
+            old_doc_id = f"import_chapter_{chapter}"
+            old_doc = self.db.collection("tariff_chapters").document(old_doc_id).get()
+            if old_doc.exists:
+                old_data = old_doc.to_dict()
+                return {
+                    "found": True,
+                    "chapter": chapter,
+                    "chapter_name": old_data.get("chapterName", ""),
+                    "chapter_description": old_data.get("chapterDescription", ""),
+                    "headings": old_data.get("headings", [])[:20],
+                    "hs_codes_count": len(old_data.get("hsCodes", [])),
                 }
             return {"found": False, "chapter": chapter, "message": f"Chapter {chapter} not found"}
         except Exception as e:
