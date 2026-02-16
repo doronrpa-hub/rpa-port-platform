@@ -68,6 +68,8 @@ PATTERNS = {
     'storage_id': r'(?:storage\s*(?:id|cert)|תעודת\s*אחסנה)[:\s#]*(\d{8,12})',
     'awb': r'\b(\d{3})[\s\-]?(\d{8})\b',  # Airline prefix + 8 digits
     'flight': r'\b(?:LY|EL|5C|TK|LH|AF|BA|KL|MS|ET|SU|W5)\s?\d{3,4}\b',
+    'voyage': r'(?:voyage|voy)[.:\s]*([A-Za-z0-9\-]{3,15})',
+    'container_type_qty': r'(\d+)\s*[xX*×]\s*(\d{2}(?:GP|HC|OT|RF|FR|TK))',
     'transaction_id': r'\b([IE]\d{2}\d{4,8}[A-Z]{2,5}\d{2,4})\b',
     'shipper': r'(?:shipper|שולח|מוצא)[:\s]+([^\n]{5,60})',
     'consignee': r'(?:consignee|נמען|יבואן)[:\s]+([^\n]{5,60})',
@@ -382,6 +384,8 @@ def _extract_logistics_data(text):
         'weights': [],
         'awbs': [],
         'flights': [],
+        'voyages': [],
+        'container_type_qty': [],  # [{'qty': 2, 'type': '40HC'}]
         'is_notice_of_arrival': False,
         'direction': '',  # import/export, inferred
         'seals': [],
@@ -512,6 +516,18 @@ def _extract_logistics_data(text):
             awb = f"{m.group(1)}-{m.group(2)}"
             if awb not in result['awbs']:
                 result['awbs'].append(awb)
+
+    # Voyages
+    for m in re.finditer(PATTERNS['voyage'], text, re.IGNORECASE):
+        voy = m.group(1).strip()
+        if voy not in result['voyages']:
+            result['voyages'].append(voy)
+
+    # Container type + quantity (e.g. "2x40HC")
+    for m in re.finditer(PATTERNS['container_type_qty'], text):
+        entry = {'qty': int(m.group(1)), 'type': m.group(2)}
+        if entry not in result['container_type_qty']:
+            result['container_type_qty'].append(entry)
 
     # Notice of arrival detection
     if re.search(PATTERNS['notify_arrival'], text, re.IGNORECASE):
@@ -772,7 +788,10 @@ def _match_or_create_deal(db, firestore_module, observation):
         return {"action": "updated", "deal_id": matched_deal_id}
     else:
         # Create new deal if we have enough info
-        if bols or (containers and (ext.get('shipping_lines') or ext.get('vessels'))):
+        # Booking with vessel/shipping_line also qualifies (BL comes later, links via booking)
+        if (bols or
+            (containers and (ext.get('shipping_lines') or ext.get('vessels'))) or
+            (bookings and (ext.get('shipping_lines') or ext.get('vessels')))):
             deal_id = _create_deal(db, firestore_module, observation)
             return {"action": "created", "deal_id": deal_id}
         else:
@@ -822,6 +841,7 @@ def _create_deal(db, firestore_module, observation):
         "transaction_ids": ext.get('transaction_ids', []),
         "taskyam_transmitted": False,
         "vessel_name": ext.get('vessels', [''])[0] if ext.get('vessels') else '',
+        "voyage": ext.get('voyages', [''])[0] if ext.get('voyages') else '',
         "loyds_number": '',
         "journey_id": '',
         "shipping_line": ext.get('shipping_lines', [''])[0] if ext.get('shipping_lines') else '',
@@ -944,6 +964,7 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
         'booking_number': ('bookings', 0),
         'manifest_number': ('manifests', 0),
         'vessel_name': ('vessels', 0),
+        'voyage': ('voyages', 0),
         'shipping_line': ('shipping_lines', 0),
         'customs_declaration': ('declarations', 0),
         'storage_id': ('storage_ids', 0),
@@ -1553,6 +1574,8 @@ def _guess_doc_type_from_attachments(attachment_names):
             return 'invoice'
         if any(x in n for x in ['bill_of_lading', 'b_l', 'bol', 'bl_', 'lading']):
             return 'bill_of_lading'
+        if any(x in n for x in ['booking', 'bkg_', 'ebkg', 'confirm']):
+            return 'booking_confirmation'
         if any(x in n for x in ['air_delivery', 'ado_', 'air_release', 'cargo_release']):
             return 'air_delivery_order'
         if any(x in n for x in ['delivery', 'do_', 'release']):
