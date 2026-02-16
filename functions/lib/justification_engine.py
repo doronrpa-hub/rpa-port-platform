@@ -226,28 +226,19 @@ def build_justification_chain(db, hs_code, product_description, classification_r
     # ── STEP 5: Check classification directives ──
     sources_needed += 1
     try:
-        directive_docs = list(
-            db.collection("classification_directives")
-            .where("hs_code", "==", hs_code)
-            .limit(3)
-            .stream()
+        directive_docs = _search_pipeline_collection(
+            db, "classification_directives", hs_code, hs_clean, chapter, heading
         )
-        if not directive_docs:
-            directive_docs = list(
-                db.collection("classification_directives")
-                .where("chapter", "==", chapter)
-                .limit(3)
-                .stream()
-            )
-
         if directive_docs:
+            best = directive_docs[0].to_dict()
             chain.append({
                 "step": 5,
                 "decision": f"Found {len(directive_docs)} classification directives",
                 "source_type": "classification_directive",
-                "source_ref": "classification directives",
+                "source_ref": best.get("directive_id", "classification directive"),
+                "source_text": best.get("title", best.get("summary", ""))[:500],
                 "has_source": True,
-                "reasoning": "Classification directive found",
+                "reasoning": f"Directive covers {'HS ' + hs_code if hs_code else 'chapter ' + chapter}",
             })
             sources_found += 1
         else:
@@ -260,7 +251,6 @@ def build_justification_chain(db, hs_code, product_description, classification_r
                 "action": "search customs.gov.il for classification directives",
             })
     except Exception:
-        # Collection may not exist yet
         gaps.append({
             "type": "missing_directive",
             "hs_code": hs_code,
@@ -272,18 +262,17 @@ def build_justification_chain(db, hs_code, product_description, classification_r
     # ── STEP 6: Check pre-rulings ──
     sources_needed += 1
     try:
-        preruling_docs = list(
-            db.collection("pre_rulings")
-            .where("hs_code", "==", hs_code)
-            .limit(3)
-            .stream()
+        preruling_docs = _search_pipeline_collection(
+            db, "pre_rulings", hs_code, hs_clean, chapter, heading
         )
         if preruling_docs:
+            best = preruling_docs[0].to_dict()
             chain.append({
                 "step": 6,
                 "decision": f"Found {len(preruling_docs)} pre-rulings",
                 "source_type": "pre_ruling",
-                "source_ref": "pre-ruling",
+                "source_ref": best.get("ruling_id", "pre-ruling"),
+                "source_text": best.get("product_description", best.get("reasoning_summary", ""))[:500],
                 "has_source": True,
                 "reasoning": "Pre-ruling supports this classification",
             })
@@ -302,6 +291,34 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             "hs_code": hs_code,
             "description": "pre_rulings collection not available",
             "priority": "low",
+        })
+
+    # ── STEP 7: Check customs decisions & court precedents ──
+    supporting_sources = _search_supporting_sources(db, hs_code, hs_clean, chapter, heading)
+    if supporting_sources:
+        sources_needed += 1
+        chain.append({
+            "step": 7,
+            "decision": f"Found {len(supporting_sources)} supporting decisions/precedents",
+            "source_type": "supporting_evidence",
+            "source_ref": ", ".join(s["source"] for s in supporting_sources[:3]),
+            "source_text": supporting_sources[0].get("text", "")[:500],
+            "has_source": True,
+            "reasoning": "Additional legal sources support this classification",
+        })
+        sources_found += 1
+
+    # ── STEP 8: Check foreign tariff cross-references ──
+    foreign_refs = _search_foreign_tariffs(db, hs_clean, heading)
+    if foreign_refs:
+        chain.append({
+            "step": 8,
+            "decision": f"Cross-referenced with {len(foreign_refs)} foreign tariff(s)",
+            "source_type": "foreign_tariff",
+            "source_ref": ", ".join(r["source"] for r in foreign_refs[:3]),
+            "source_text": foreign_refs[0].get("text", "")[:500],
+            "has_source": True,
+            "reasoning": "Foreign tariff classification aligns with Israeli classification",
         })
 
     # ── Calculate legal strength ──
@@ -327,6 +344,122 @@ def build_justification_chain(db, hs_code, product_description, classification_r
         "confidence_boost": confidence_boost,
         "built_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ═══════════════════════════════════════════
+#  PIPELINE COLLECTION SEARCH HELPERS
+# ═══════════════════════════════════════════
+
+def _search_pipeline_collection(db, collection, hs_code, hs_clean, chapter, heading):
+    """
+    Search a pipeline-populated collection with cascading queries.
+    Tries exact HS code first, then hs_codes_mentioned, then chapter.
+    """
+    # Try 1: exact hs_code or hs_code_assigned
+    docs = list(
+        db.collection(collection)
+        .where("hs_code", "==", hs_code)
+        .limit(3)
+        .stream()
+    )
+    if docs:
+        return docs
+
+    # Try 2: hs_code_assigned (pre-rulings use this field)
+    try:
+        docs = list(
+            db.collection(collection)
+            .where("hs_code_assigned", "==", hs_code)
+            .limit(3)
+            .stream()
+        )
+        if docs:
+            return docs
+    except Exception:
+        pass
+
+    # Try 3: chapter field (integer)
+    try:
+        ch_int = int(chapter)
+        docs = list(
+            db.collection(collection)
+            .where("chapter", "==", ch_int)
+            .limit(3)
+            .stream()
+        )
+        if docs:
+            return docs
+    except (ValueError, TypeError):
+        pass
+
+    # Try 4: chapter as string
+    docs = list(
+        db.collection(collection)
+        .where("chapter", "==", chapter)
+        .limit(3)
+        .stream()
+    )
+    if docs:
+        return docs
+
+    return []
+
+
+def _search_supporting_sources(db, hs_code, hs_clean, chapter, heading):
+    """Search customs_decisions and court_precedents for supporting evidence."""
+    sources = []
+
+    for coll_name, id_field in [
+        ("customs_decisions", "decision_id"),
+        ("court_precedents", "case_id"),
+    ]:
+        try:
+            docs = _search_pipeline_collection(
+                db, coll_name, hs_code, hs_clean, chapter, heading
+            )
+            for doc in docs[:2]:
+                data = doc.to_dict()
+                sources.append({
+                    "source": f"{coll_name}: {data.get(id_field, doc.id)}",
+                    "text": data.get("ruling_summary", data.get("reasoning_summary", data.get("title", "")))
+                })
+        except Exception as e:
+            logger.debug(f"Supporting source search failed for {coll_name}: {e}")
+
+    return sources
+
+
+def _search_foreign_tariffs(db, hs_clean, heading):
+    """Search foreign tariff collections for cross-reference validation."""
+    refs = []
+
+    foreign_collections = [
+        ("tariff_uk", "uk_code", "UK"),
+        ("tariff_usa", "hts_code", "USA"),
+        ("tariff_eu", "taric_code", "EU"),
+        ("cbp_rulings", "hs_code", "CBP"),
+        ("bti_decisions", "hs_code", "BTI"),
+    ]
+
+    for coll_name, code_field, label in foreign_collections:
+        try:
+            # Search by heading (first 4 digits match internationally)
+            docs = list(
+                db.collection(coll_name)
+                .where("heading", "==", f"{heading[:2]}.{heading[2:4]}" if len(heading) >= 4 else heading)
+                .limit(2)
+                .stream()
+            )
+            for doc in docs:
+                data = doc.to_dict()
+                refs.append({
+                    "source": f"{label} ({data.get(code_field, '')})",
+                    "text": data.get("description", data.get("title", ""))
+                })
+        except Exception:
+            pass  # Collection may not exist yet
+
+    return refs
 
 
 # ═══════════════════════════════════════════

@@ -206,6 +206,37 @@ def search_regulations(db, keywords):
     return results[:15]
 
 
+def search_pipeline_sources(db, keywords):
+    """Search pipeline-ingested collections (directives, decisions, precedents, foreign tariffs)."""
+    results = []
+
+    collections = [
+        ('classification_directives', ['title', 'summary', 'key_terms', 'directive_id']),
+        ('pre_rulings', ['product_description', 'product_description_en', 'key_terms', 'ruling_id']),
+        ('customs_decisions', ['product_description', 'key_terms', 'reasoning_summary']),
+        ('court_precedents', ['case_name', 'ruling_summary', 'key_terms']),
+        ('customs_ordinance', ['title', 'summary', 'key_terms']),
+        ('customs_procedures', ['title', 'summary', 'key_terms']),
+        ('cbp_rulings', ['description', 'key_terms']),
+        ('bti_decisions', ['description', 'key_terms']),
+    ]
+
+    for coll_name, fields in collections:
+        try:
+            found = search_collection_smart(db, coll_name, keywords, fields, max_results=10)
+            for r in found:
+                results.append({
+                    "source": coll_name,
+                    "data": r["data"],
+                    "score": r["score"]
+                })
+        except Exception:
+            pass  # Collection may not exist yet
+
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return results[:15]
+
+
 def search_procedures_and_rules(db, keywords):
     """Search procedures and classification rules"""
     results = []
@@ -365,6 +396,9 @@ def full_knowledge_search(db, query_terms, item_description=""):
         # Tier 2: Regulations (always needed for compliance)
         results["regulations"] = search_regulations(db, keywords)
 
+        # Tier 2b: Pipeline sources (directives, decisions, precedents)
+        results["pipeline_sources"] = search_pipeline_sources(db, keywords)
+
         # Tier 3: Rules and knowledge (skip if we already have plenty)
         results["procedures_rules"] = search_procedures_and_rules(db, keywords)
         results["knowledge"] = search_knowledge_base(db, keywords)
@@ -395,6 +429,10 @@ def full_knowledge_search(db, query_terms, item_description=""):
             results["regulations"],
             lambda x: x.get("data", {}).get("title", "") or x.get("source", "")
         )
+        results["pipeline_sources"] = _dedup_results(
+            results.get("pipeline_sources", []),
+            lambda x: x.get("data", {}).get("title", "") or x.get("data", {}).get("directive_id", "") or x.get("source", "")
+        )
         results["history"] = _dedup_results(
             results["history"],
             lambda x: x.get("data", {}).get("hs_code", "") or x.get("data", {}).get("description", "")[:60]
@@ -403,9 +441,12 @@ def full_knowledge_search(db, query_terms, item_description=""):
         # Calculate confidence
         total_found = sum(len(v) for v in results.values() if isinstance(v, list))
         tariff_found = len(results["tariff_codes"])
+        pipeline_found = len(results.get("pipeline_sources", []))
         similar_found = len(results.get("similar_past", []))
 
         if tariff_found >= 3 and total_found >= 10:
+            results["confidence"] = "high"
+        elif pipeline_found >= 2 and tariff_found >= 1:
             results["confidence"] = "high"
         elif tariff_found >= 1 and total_found >= 5:
             results["confidence"] = "medium"

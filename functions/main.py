@@ -1512,6 +1512,21 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
         if pending > 10:
             issues.append(f"Queue may be stuck: {pending} processed in 6 hours")
         
+        # Check 4: Pipeline health — ingestion activity
+        try:
+            from lib.data_pipeline.pipeline import SOURCE_TYPE_TO_COLLECTION
+            pipeline_stats = {}
+            for stype, coll in SOURCE_TYPE_TO_COLLECTION.items():
+                try:
+                    docs = list(get_db().collection(coll).limit(1).stream())
+                    pipeline_stats[coll] = len(docs)
+                except Exception:
+                    pipeline_stats[coll] = 0
+            populated = sum(1 for v in pipeline_stats.values() if v > 0)
+            pipeline_stats["populated_collections"] = populated
+        except Exception:
+            pipeline_stats = {}
+
         # Update system status
         status = "healthy" if not issues else "degraded"
         get_db().collection("system_status").document("rcb").set({
@@ -1519,7 +1534,8 @@ def rcb_health_check(event: scheduler_fn.ScheduledEvent) -> None:
             "status": status,
             "issues": issues,
             "pending_count": pending,
-            "error_count": error_count if 'error_count' in dir() else 0
+            "error_count": error_count if 'error_count' in dir() else 0,
+            "pipeline": pipeline_stats,
         })
         
         # Send alert email if issues (disabled — Doron requested no system alert emails)
