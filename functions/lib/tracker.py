@@ -504,6 +504,8 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             "observed_at": datetime.now(timezone.utc).isoformat(),
         }
         db.collection("tracker_observations").document(obs_id).set(observation)
+        # Attach non-serializable refs for downstream use (NOT stored in Firestore)
+        observation['get_secret_func'] = get_secret_func
 
         if not is_logistics:
             return {"status": "not_logistics", "obs_id": obs_id}
@@ -1162,6 +1164,22 @@ def _create_deal(db, firestore_module, observation):
     print(f"    📦 Tracker: created deal {deal_id}: BOL={deal_data['bol_number']}, "
           f"{len(ext.get('containers', []))} containers, {deal_data['shipping_line']}")
 
+    # Inline TaskYam quick-check for new deals with containers (non-blocking)
+    if ext.get('containers') and observation.get('get_secret_func'):
+        try:
+            client = TaskYamClient(observation['get_secret_func'])
+            if client.login():
+                for cn in ext['containers'][:3]:  # Cap at 3 to stay fast
+                    result = client.get_cargo_status(container=cn)
+                    if result and result.get('CargoList'):
+                        cargo = result['CargoList'][0]
+                        _update_container_status(db, firestore_module, deal_id, cn, cargo, deal_data.get('direction', ''))
+                        _enrich_deal_from_taskyam(db, deal_id, deal_data, cargo)
+                        print(f"    🚢 TaskYam quick-check: {cn} enriched at deal creation")
+                client.logout()
+        except Exception as ty_err:
+            print(f"    🚢 TaskYam quick-check skip (non-fatal): {ty_err}")
+
     return deal_id
 
 
@@ -1309,6 +1327,23 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
                 print(f"    ✈️ Registered AWB {updates['awb_number']} for air cargo polling")
             except Exception as awb_err:
                 print(f"    ⚠️ AWB registration error (non-fatal): {awb_err}")
+
+        # Inline TaskYam cross-check for newly added containers (non-blocking)
+        new_containers = [cn for cn in ext.get('containers', []) if cn not in deal.get('containers', [])]
+        if new_containers and observation.get('get_secret_func'):
+            try:
+                client = TaskYamClient(observation['get_secret_func'])
+                if client.login():
+                    for cn in new_containers[:3]:
+                        result = client.get_cargo_status(container=cn)
+                        if result and result.get('CargoList'):
+                            cargo = result['CargoList'][0]
+                            _update_container_status(db, firestore_module, deal_id, cn, cargo, deal.get('direction', ''))
+                            _enrich_deal_from_taskyam(db, deal_id, deal, cargo)
+                            print(f"    🚢 TaskYam cross-check: {cn} enriched on deal update")
+                    client.logout()
+            except Exception as ty_err:
+                print(f"    🚢 TaskYam cross-check skip (non-fatal): {ty_err}")
 
     return deal_id
 
