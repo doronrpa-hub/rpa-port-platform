@@ -178,6 +178,27 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             except Exception as ae:
                 print(f"    📎 Tracker attachment error: {ae}")
 
+        # ── STEP 2a: Structured table extraction from PDF attachments ──
+        attachment_tables = []
+        if has_attachments and access_token and attachment_names:
+            try:
+                import base64
+                from lib.table_extractor import TableExtractor
+                _tbl_extractor = TableExtractor()
+                for att in raw_atts:
+                    att_name = att.get('name', '')
+                    if att_name.lower().endswith('.pdf') and att.get('contentBytes'):
+                        try:
+                            pdf_bytes = base64.b64decode(att['contentBytes'])
+                            tbl_result = _tbl_extractor.extract_tables(pdf_bytes, "application/pdf")
+                            if tbl_result.get('tables'):
+                                attachment_tables.extend(tbl_result['tables'])
+                                print(f"    📊 Tracker: {len(tbl_result['tables'])} table(s) from {att_name}")
+                        except Exception:
+                            pass
+            except (ImportError, NameError):
+                pass
+
         # ── STEP 3: Check for follow/stop commands ──
         command = _detect_command(subject, clean_body)
         if command:
@@ -214,6 +235,11 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             print(f"    🧠 Tracker brain skip: {brain_err}")
             extractions = _extract_logistics_data(full_text)
             confidence = 0.40
+
+        # ── STEP 4 (table merge): Merge structured table data into extractions ──
+        if attachment_tables:
+            _merge_container_table_data(extractions, attachment_tables)
+            extractions['tables'] = attachment_tables
 
         # ── STEP 4a: Try template extraction (brain reads independently) ──
         template_used = False
@@ -358,6 +384,8 @@ def _extract_logistics_data(text):
         'flights': [],
         'is_notice_of_arrival': False,
         'direction': '',  # import/export, inferred
+        'seals': [],
+        'container_details': [],  # [{container, seal, weight, packages}] from table extraction
     }
 
     if not text:
@@ -495,6 +523,70 @@ def _extract_logistics_data(text):
     return result
 
 
+def _merge_container_table_data(extractions, tables):
+    """Extract container details (seals, weights, packages) from structured table data.
+    Tables come from table_extractor as list-of-dicts (each dict = one row).
+    Adds to extractions['seals'], extractions['container_details'], and
+    extractions['containers'] — never removes existing data."""
+    CONTAINER_HINTS = {'container', 'cntr', 'cont no', 'container no', 'מכולה'}
+    SEAL_HINTS = {'seal', 'seal no', 'סיל', 'חותם'}
+    WEIGHT_HINTS = {'weight', 'gross', 'wt', 'kg', 'משקל', 'gross weight'}
+    PACKAGE_HINTS = {'package', 'pkg', 'pcs', 'pieces', 'qty', 'quantity', 'אריזות', 'חבילות', 'packages'}
+
+    for table in tables:
+        if not table or not isinstance(table, list):
+            continue
+        # Each table is a list of dicts; first dict's keys are column headers
+        first_row = table[0] if table else {}
+        if not isinstance(first_row, dict):
+            continue
+
+        # Find relevant column names by matching headers
+        container_col = seal_col = weight_col = package_col = None
+        for h in first_row.keys():
+            hl = h.lower().strip()
+            if any(hint in hl for hint in CONTAINER_HINTS):
+                container_col = h
+            elif any(hint in hl for hint in SEAL_HINTS):
+                seal_col = h
+            elif any(hint in hl for hint in WEIGHT_HINTS):
+                weight_col = h
+            elif any(hint in hl for hint in PACKAGE_HINTS):
+                package_col = h
+
+        if not container_col:
+            continue  # Not a container table
+
+        for row in table:
+            if not isinstance(row, dict):
+                continue
+            cn = str(row.get(container_col, '')).strip()
+            if not cn or len(cn) < 4:
+                continue
+
+            detail = {'container': cn}
+            if seal_col:
+                seal = str(row.get(seal_col, '')).strip()
+                if seal:
+                    detail['seal'] = seal
+                    if seal not in extractions['seals']:
+                        extractions['seals'].append(seal)
+            if weight_col:
+                wt = str(row.get(weight_col, '')).strip()
+                if wt:
+                    detail['weight'] = wt
+            if package_col:
+                pkg = str(row.get(package_col, '')).strip()
+                if pkg:
+                    detail['packages'] = pkg
+
+            extractions['container_details'].append(detail)
+
+            # Also add container to containers list if valid ISO 6346
+            cn_upper = cn.upper()
+            if re.match(r'^[A-Z]{4}\d{7}$', cn_upper):
+                if _iso6346_check_digit(cn_upper) and cn_upper not in extractions['containers']:
+                    extractions['containers'].append(cn_upper)
 
 
 def _llm_enrich_extraction(extractions, full_text, get_secret_func):
