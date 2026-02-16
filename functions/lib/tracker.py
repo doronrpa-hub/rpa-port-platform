@@ -216,6 +216,107 @@ def seed_shipping_agents(db):
     return created
 
 
+# ── Reference data caches (loaded per cold start) ──
+_container_types_cache = None  # {code: {description_en, teu_equivalent, ...}}
+_package_types_cache = None    # {code: {description_en, description_he}}
+
+
+def seed_reference_data(db):
+    """One-time seed for reference_container_types, reference_uld_types, reference_package_types.
+    Idempotent — skips existing docs."""
+    created = 0
+
+    # ── Container types (ISO) ──
+    container_types = [
+        {'code': '20GP', 'description_en': '20ft General Purpose', 'description_he': 'מכולה רגילה 20 רגל', 'teu_equivalent': 1.0, 'max_weight_kg': 28200, 'internal_volume_cbm': 33.2},
+        {'code': '20HC', 'description_en': '20ft High Cube', 'description_he': 'מכולה גבוהה 20 רגל', 'teu_equivalent': 1.0, 'max_weight_kg': 28060, 'internal_volume_cbm': 37.4},
+        {'code': '40GP', 'description_en': '40ft General Purpose', 'description_he': 'מכולה רגילה 40 רגל', 'teu_equivalent': 2.0, 'max_weight_kg': 28800, 'internal_volume_cbm': 67.7},
+        {'code': '40HC', 'description_en': '40ft High Cube', 'description_he': 'מכולה גבוהה 40 רגל', 'teu_equivalent': 2.0, 'max_weight_kg': 28560, 'internal_volume_cbm': 76.3},
+        {'code': '40OT', 'description_en': '40ft Open Top', 'description_he': 'מכולה פתוחה 40 רגל', 'teu_equivalent': 2.0, 'max_weight_kg': 26630, 'internal_volume_cbm': 65.9},
+        {'code': '20RF', 'description_en': '20ft Reefer', 'description_he': 'מכולה קירור 20 רגל', 'teu_equivalent': 1.0, 'max_weight_kg': 27400, 'internal_volume_cbm': 28.3},
+        {'code': '40RF', 'description_en': '40ft Reefer', 'description_he': 'מכולה קירור 40 רגל', 'teu_equivalent': 2.0, 'max_weight_kg': 27700, 'internal_volume_cbm': 59.3},
+        {'code': '20FR', 'description_en': '20ft Flat Rack', 'description_he': 'מכולת מישטח 20 רגל', 'teu_equivalent': 1.0, 'max_weight_kg': 31000, 'internal_volume_cbm': 0},
+        {'code': '40FR', 'description_en': '40ft Flat Rack', 'description_he': 'מכולת מישטח 40 רגל', 'teu_equivalent': 2.0, 'max_weight_kg': 40000, 'internal_volume_cbm': 0},
+        {'code': '45HC', 'description_en': '45ft High Cube', 'description_he': 'מכולה גבוהה 45 רגל', 'teu_equivalent': 2.25, 'max_weight_kg': 27600, 'internal_volume_cbm': 86.0},
+        {'code': '20TK', 'description_en': '20ft Tank', 'description_he': 'מכולת מיכל 20 רגל', 'teu_equivalent': 1.0, 'max_weight_kg': 36000, 'internal_volume_cbm': 21.0},
+    ]
+    for ct in container_types:
+        ref = db.collection('reference_container_types').document(ct['code'])
+        if not ref.get().exists:
+            ref.set(ct)
+            created += 1
+
+    # ── ULD types (air cargo) ──
+    uld_types = [
+        {'code': 'PMC', 'description': 'Pallet (P6P base)', 'max_weight_kg': 6800, 'dimensions': '317x244x244 cm'},
+        {'code': 'AKE', 'description': 'LD3 Container', 'max_weight_kg': 1588, 'dimensions': '156x153x163 cm'},
+        {'code': 'PAG', 'description': 'Pallet (P1P base)', 'max_weight_kg': 6800, 'dimensions': '317x244x244 cm'},
+        {'code': 'PLA', 'description': 'Pallet (aircraft lower deck)', 'max_weight_kg': 5000, 'dimensions': '317x224x163 cm'},
+        {'code': 'AAA', 'description': 'LD1 Container', 'max_weight_kg': 1588, 'dimensions': '231x153x163 cm'},
+        {'code': 'AMP', 'description': 'LD9 Container', 'max_weight_kg': 6033, 'dimensions': '317x244x163 cm'},
+    ]
+    for uld in uld_types:
+        ref = db.collection('reference_uld_types').document(uld['code'])
+        if not ref.get().exists:
+            ref.set(uld)
+            created += 1
+
+    # ── Package types (customs codes) ──
+    package_types = [
+        {'code': 'CTN', 'description_en': 'Carton', 'description_he': 'קרטון'},
+        {'code': 'PLT', 'description_en': 'Pallet', 'description_he': 'משטח'},
+        {'code': 'BAG', 'description_en': 'Bag', 'description_he': 'שק'},
+        {'code': 'DRM', 'description_en': 'Drum', 'description_he': 'חבית'},
+        {'code': 'BDL', 'description_en': 'Bundle', 'description_he': 'חבילה'},
+        {'code': 'PKG', 'description_en': 'Package', 'description_he': 'אריזה'},
+        {'code': 'BLK', 'description_en': 'Bulk', 'description_he': 'תפזורת'},
+        {'code': 'ROL', 'description_en': 'Roll', 'description_he': 'גליל'},
+        {'code': 'CAS', 'description_en': 'Case', 'description_he': 'ארגז'},
+        {'code': 'BOX', 'description_en': 'Box', 'description_he': 'קופסה'},
+        {'code': 'ENV', 'description_en': 'Envelope', 'description_he': 'מעטפה'},
+        {'code': 'TBE', 'description_en': 'Tube', 'description_he': 'צינור'},
+    ]
+    for pt in package_types:
+        ref = db.collection('reference_package_types').document(pt['code'])
+        if not ref.get().exists:
+            ref.set(pt)
+            created += 1
+
+    print(f"    📦 Seeded {created} reference data documents")
+    return created
+
+
+def _load_reference_data(db):
+    """Load reference data caches for validation. Cached per cold start."""
+    global _container_types_cache, _package_types_cache
+    if _container_types_cache is not None:
+        return
+    _container_types_cache = {}
+    _package_types_cache = {}
+    try:
+        for doc in db.collection('reference_container_types').stream():
+            _container_types_cache[doc.id] = doc.to_dict()
+        for doc in db.collection('reference_package_types').stream():
+            _package_types_cache[doc.id] = doc.to_dict()
+        print(f"    📦 Loaded {len(_container_types_cache)} container types, {len(_package_types_cache)} package types")
+    except Exception as e:
+        print(f"    📦 Reference data load error: {e}")
+
+
+def validate_container_type(code):
+    """Validate container type code against reference data. Returns True if valid."""
+    if not _container_types_cache:
+        return True  # No cache loaded — skip validation
+    return code.upper() in _container_types_cache if code else False
+
+
+def validate_package_type(code):
+    """Validate package type code against reference data. Returns True if valid."""
+    if not _package_types_cache:
+        return True  # No cache loaded — skip validation
+    return code.upper() in _package_types_cache if code else False
+
+
 # ════════════════════════════════════════════════════════
 #  MAIN ENTRY POINT — called from rcb_check_email hook
 # ════════════════════════════════════════════════════════
@@ -298,8 +399,9 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
         confidence = 0.0
         brain_level = "none"
 
-        # Load BOL prefix cache (once per cold start)
+        # Load caches (once per cold start)
         _load_bol_prefixes(db)
+        _load_reference_data(db)
 
         # Ask brain first — does it know this sender/doc type?
         try:
