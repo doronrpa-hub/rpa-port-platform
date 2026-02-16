@@ -1018,6 +1018,25 @@ def _match_or_create_deal(db, firestore_module, observation):
                 matched_deal_id = deal.id
                 break
 
+    # Duplicate detection: check if other signals point to a DIFFERENT deal → merge
+    if matched_deal_id:
+        secondary_deal_ids = set()
+        try:
+            if containers and matched_deal_id:
+                for cn in containers:
+                    d = _find_deal_by_container(db, cn)
+                    if d and d.id != matched_deal_id:
+                        secondary_deal_ids.add(d.id)
+            if bookings and matched_deal_id:
+                for bkg in bookings:
+                    d = _find_deal_by_field(db, 'booking_number', bkg)
+                    if d and d.id != matched_deal_id:
+                        secondary_deal_ids.add(d.id)
+            for sec_id in secondary_deal_ids:
+                _merge_deals(db, firestore_module, matched_deal_id, sec_id)
+        except Exception as merge_err:
+            print(f"    ⚠️ Deal merge check error (non-fatal): {merge_err}")
+
     if matched_deal_id:
         # Update existing deal with new info
         _update_deal_from_observation(db, firestore_module, matched_deal_id, observation)
@@ -1060,6 +1079,77 @@ def _find_deal_by_container(db, container_number):
         return results[0] if results else None
     except Exception:
         return None
+
+
+def _merge_deals(db, firestore_module, primary_id, secondary_id):
+    """Merge secondary deal into primary deal. Mark secondary as stopped.
+    Copies containers, source_emails, documents_received from secondary to primary."""
+    try:
+        primary_ref = db.collection("tracker_deals").document(primary_id)
+        secondary_ref = db.collection("tracker_deals").document(secondary_id)
+        primary_doc = primary_ref.get()
+        secondary_doc = secondary_ref.get()
+        if not primary_doc.exists or not secondary_doc.exists:
+            return
+
+        primary = primary_doc.to_dict()
+        secondary = secondary_doc.to_dict()
+        updates = {}
+
+        # Merge containers
+        primary_containers = primary.get('containers', [])
+        for cn in secondary.get('containers', []):
+            if cn not in primary_containers:
+                primary_containers.append(cn)
+        if primary_containers != primary.get('containers', []):
+            updates['containers'] = primary_containers
+
+        # Merge source emails
+        primary_emails = primary.get('source_emails', [])
+        for e in secondary.get('source_emails', []):
+            if e not in primary_emails:
+                primary_emails.append(e)
+        if primary_emails != primary.get('source_emails', []):
+            updates['source_emails'] = primary_emails
+
+        # Merge documents_received
+        primary_docs = primary.get('documents_received', [])
+        for d in secondary.get('documents_received', []):
+            if d not in primary_docs:
+                primary_docs.append(d)
+        if primary_docs != primary.get('documents_received', []):
+            updates['documents_received'] = primary_docs
+
+        # Fill empty fields from secondary
+        for field in ['bol_number', 'booking_number', 'vessel_name', 'voyage',
+                      'shipping_line', 'carrier_name', 'agent_name', 'direction',
+                      'manifest_number', 'eta', 'etd']:
+            if not primary.get(field) and secondary.get(field):
+                updates[field] = secondary[field]
+
+        if updates:
+            updates['updated_at'] = datetime.now(timezone.utc).isoformat()
+            primary_ref.update(updates)
+
+        # Mark secondary as stopped (merged)
+        secondary_ref.update({
+            'status': 'stopped',
+            'follow_mode': 'stopped',
+            'merged_into': primary_id,
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+        })
+
+        print(f"    🔗 Tracker: merged deal {secondary_id} → {primary_id}")
+        try:
+            _log_timeline(db, firestore_module, primary_id, {
+                "event_type": "deal_merged",
+                "merged_from": secondary_id,
+            })
+        except Exception:
+            pass
+
+    except Exception as e:
+        print(f"    ⚠️ Deal merge error: {e}")
 
 
 def _create_deal(db, firestore_module, observation):
@@ -1245,8 +1335,25 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     # Agent/carrier (string fields, not lists)
     if not deal.get('agent_name') and ext.get('agent_name'):
         updates['agent_name'] = ext['agent_name']
-    if not deal.get('carrier_name') and ext.get('shipping_lines'):
-        updates['carrier_name'] = ext['shipping_lines'][0]
+    if ext.get('shipping_lines'):
+        new_carrier = ext['shipping_lines'][0]
+        old_carrier = deal.get('carrier_name', '')
+        if not old_carrier:
+            updates['carrier_name'] = new_carrier
+        elif old_carrier != new_carrier:
+            # Self-correct: BL/doc confirms different carrier than agent guess → update + learn
+            updates['carrier_name'] = new_carrier
+            updates['shipping_line'] = new_carrier
+            print(f"    🔄 Tracker: carrier self-corrected {old_carrier} → {new_carrier} for deal {deal_id}")
+            try:
+                _log_timeline(db, firestore_module, deal_id, {
+                    "event_type": "carrier_corrected",
+                    "old_carrier": old_carrier,
+                    "new_carrier": new_carrier,
+                    "source": observation.get('obs_id', ''),
+                })
+            except Exception:
+                pass
 
     # Freight load type — LCL detected later overrides default FCL (never overwrite LCL with FCL)
     ext_flt = ext.get('freight_load_type', '')
