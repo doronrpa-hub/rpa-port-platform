@@ -112,14 +112,9 @@ def verify_hs_code(db, hs_code, free_import_result=None):
     # ── Step 1: Check verification cache ──
     cached = _check_verification_cache(db, hs_clean)
     if cached:
-        cached_sources = cached.get("verification_sources", [])
-        # Skip cache if caller has FIO data but cached result was verified without it
-        if free_import_result and free_import_result.get("found") and "free_import_order" not in cached_sources:
-            pass  # Re-verify with FIO data
-        else:
-            result.update(cached)
-            result["from_cache"] = True
-            return result
+        result.update(cached)
+        result["from_cache"] = True
+        return result
 
     # ── Step 2: Verify in tariff DB (3 collections) ──
     tariff_match = _verify_in_tariff_db(db, hs_clean)

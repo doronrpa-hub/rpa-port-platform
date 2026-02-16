@@ -1423,10 +1423,10 @@ def _search_classification_knowledge(db, keywords, desc_lower):
 
                 # Boost items with high usage count
                 usage = data.get("usage_count", 0)
-                if usage >= 10:
-                    confidence = min(95, confidence + 10)
-                elif usage >= 5:
+                if usage >= 5:
                     confidence = min(95, confidence + 5)
+                elif usage >= 10:
+                    confidence = min(95, confidence + 10)
 
                 results.append({
                     "hs_code": hs_code,

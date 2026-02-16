@@ -7,8 +7,7 @@ Works in Outlook, Gmail, Apple Mail (table-based, inline CSS).
 """
 
 
-def build_tracker_status_email(deal, container_statuses, update_type="status_update",
-                               observation=None, extractions=None):
+def build_tracker_status_email(deal, container_statuses, update_type="status_update"):
     """
     Build consolidated HTML status email for a deal.
 
@@ -16,8 +15,6 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
         deal: dict from tracker_deals
         container_statuses: list of dicts from tracker_container_status
         update_type: "status_update", "new_deal", "follow_started", "follow_stopped"
-        observation: dict (optional) observation context from tracker brain
-        extractions: dict (optional) extracted data from source email
     Returns:
         dict with {subject, body_html}
     """

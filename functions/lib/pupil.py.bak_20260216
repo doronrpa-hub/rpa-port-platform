@@ -160,8 +160,8 @@ def pupil_process_email(msg, db, firestore_module, access_token, rcb_email, get_
                 observation["is_review_reply"] = True
                 observation["review_result"] = review_result
                 print(f"    🎓 PUPIL: Review reply processed: {review_result.get('status')}")
-            except Exception as re_err:
-                print(f"    🎓 PUPIL: Review reply error: {re_err}")
+            except Exception as re:
+                print(f"    🎓 PUPIL: Review reply error: {re}")
         
         # Check if it's a reply to a correction email
         if "תיקון סיווג" in subject or "corr_" in body_content:

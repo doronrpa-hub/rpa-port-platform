@@ -592,7 +592,7 @@ def run_synthesis_agent(api_key, all_results, gemini_key=None):
 
 טקסט מעוצב בלבד, לא JSON."""
     
-    return call_ai(api_key, gemini_key, system, json.dumps(all_results, ensure_ascii=False)[:4000], tier="pro") or "לא ניתן לייצר סיכום."
+    return call_ai(api_key, gemini_key, system, json.dumps(all_results, ensure_ascii=False)[:4000], tier="fast") or "לא ניתן לייצר סיכום."
 
 
 def _link_invoice_to_classifications(items, classifications):

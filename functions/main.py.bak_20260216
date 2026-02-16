@@ -926,13 +926,19 @@ def extract_invoice_fields(text):
     return data if data else None
 
 
+# Need this for Cloud Functions
+
+# ============================================================
+# FUNCTION 5: RCB API ENDPOINTS
+# ============================================================
+@https_fn.on_request(cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"]))
+
 # ============================================================
 # RCB HELPER FUNCTIONS
 # ============================================================
 
 def graph_forward_email(access_token, user_email, message_id, to_email, comment):
     """Forward email"""
-    import requests
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}/forward"
         requests.post(url, headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
@@ -1618,7 +1624,7 @@ def test_pdf_report(req: https_fn.Request) -> https_fn.Response:
                     'hs_description_he': 'מייבשי שיער',
                     'hs_description_en': 'Hair dryers',
                     'duty_rate': '12%',
-                    'vat_rate': '18%',
+                    'vat_rate': '17%',
                     'purchase_tax': 'לא חל',
                     'ministry_requirements': [
                         {'ministry': 'משרד הכלכלה', 'requirement': 'תקן ישראלי', 'status': 'נדרש'},
@@ -1633,7 +1639,7 @@ def test_pdf_report(req: https_fn.Request) -> https_fn.Response:
                     'hs_description_he': 'מוליכים חשמליים מצוידים במחברים',
                     'hs_description_en': 'Electric conductors with connectors',
                     'duty_rate': '0%',
-                    'vat_rate': '18%',
+                    'vat_rate': '17%',
                     'purchase_tax': 'לא חל',
                     'ministry_requirements': [],
                     'confidence': 'גבוהה (92%)'

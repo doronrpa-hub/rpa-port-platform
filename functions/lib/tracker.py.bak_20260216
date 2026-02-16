@@ -208,7 +208,6 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             print(f"    📖 Tracker template skip: {tmpl_err}")
 
         # ── STEP 4b: LLM enrichment if regex got thin results ──
-        was_enriched = False
         try:
             extractions, was_enriched = _llm_enrich_extraction(extractions, full_text, get_secret_func)
             if was_enriched:
