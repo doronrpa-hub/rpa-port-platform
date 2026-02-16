@@ -29,6 +29,9 @@ reportlab>=4.0.0
 
 # Gemini API configured
 
+# HTTP client (web search in self_learning.py)
+httpx>=0.25.0
+
 # OpenAI (ChatGPT cross-check in self_learning.py)
 openai>=1.0.0
 
