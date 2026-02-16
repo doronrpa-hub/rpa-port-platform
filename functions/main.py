@@ -2160,3 +2160,41 @@ def rcb_overnight_brain(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"Overnight Brain error: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ============================================================
+# DOWNLOAD CLASSIFICATION DIRECTIVES from Shaarolami
+# Assignment 17
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every day 04:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
+)
+def rcb_download_directives(event: scheduler_fn.ScheduledEvent) -> None:
+    """
+    Download Israeli Customs classification directives from Shaarolami.
+    Runs daily at 04:00 Jerusalem time (after TTL cleanup at 03:30).
+    First run: downloads all ~217 directives (~4 min at 1/sec).
+    Subsequent runs: skips existing, only picks up new ones.
+    """
+    print("Classification directives download starting...")
+    try:
+        from lib.data_pipeline.directive_downloader import download_all_directives
+
+        stats = download_all_directives(get_db(), get_secret)
+        print(
+            f"Directives complete: {stats['downloaded']} downloaded, "
+            f"{stats['skipped_exists']} already existed, "
+            f"{stats['skipped_empty']} empty, {stats['failed']} failed"
+        )
+        if stats["errors"]:
+            for err in stats["errors"][:10]:
+                print(f"  Error: {err}")
+
+    except Exception as e:
+        print(f"Directives download error: {e}")
+        import traceback
+        traceback.print_exc()
