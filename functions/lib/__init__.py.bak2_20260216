@@ -205,19 +205,16 @@ except ImportError:
     pass
 
 # PC Agent - Browser-based file downloads
-try:
-    from .pc_agent import (
-        create_download_task,
-        create_bulk_download_tasks,
-        report_download_complete,
-        report_upload_complete,
-        report_task_failed,
-        get_all_tasks_status as get_agent_status,
-        get_download_queue_for_agent,
-        get_agent_script,
-    )
-except ImportError:
-    pass
+from .pc_agent import (
+    create_download_task,
+    create_bulk_download_tasks,
+    report_download_complete,
+    report_upload_complete,
+    report_task_failed,
+    get_all_tasks_status as get_agent_status,
+    get_download_queue_for_agent,
+    get_agent_script,
+)
 
 # Knowledge Query Handler (Session 13: NEW)
 try:

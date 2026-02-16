@@ -1567,6 +1567,14 @@ def _send_alert_email(issues):
 # ============================================================
 @https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def monitor_self_heal(request):
+    """DISABLED Session 13.1: Dead code (redefined below). Was self-healer v1."""
+    print("⏸️ monitor_self_heal v1 DISABLED — dead code, redefined below")
+    return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")
+
+
+
+@https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
+def monitor_self_heal(request):
     """DISABLED Session 13.1: Consolidated into rcb_check_email. Was self-healer v2."""
     print("⏸️ monitor_self_heal v2 DISABLED — consolidated into rcb_check_email")
     return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")

@@ -314,12 +314,12 @@ def full_knowledge_search(db, query_terms, item_description=""):
 # ═══════════════════════════════════════════
 
 def get_israeli_hs_format(hs_code):
-    """Convert HS code to Israeli format XX.XX.XXXX/XX"""
+    """Convert HS code to Israeli format XX.XX.XXXXXX/X"""
     code = str(hs_code).replace('.', '').replace(' ', '').replace('/', '')
     code = code.ljust(10, '0')[:10]
-
+    
     if len(code) >= 8:
-        return f"{code[:2]}.{code[2:4]}.{code[4:8]}/{code[8:10]}"
+        return f"{code[:2]}.{code[2:4]}.{code[4:10]}/{code[9] if len(code) > 9 else '0'}"
     return hs_code
 
 

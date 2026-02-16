@@ -348,13 +348,10 @@ Respond in a structured way with clear findings."""
 
     if 'claude' in agents:
         try:
-            from lib.classification_agents import call_claude
-            api_key = get_secret_func("ANTHROPIC_API_KEY")
-            result = call_claude(
-                api_key,
-                "You are a customs broker research assistant.",
+            from lib.ai_intelligence import ask_claude
+            result = ask_claude(
                 f"Research for RCB customs broker AI system. Topic: {topic}",
-                max_tokens=3000
+                get_secret_func
             )
             if result:
                 findings.append({
@@ -460,15 +457,11 @@ def _exec_agent_task(command, db, get_secret_func):
 
     if 'claude' in agents:
         try:
-            from lib.classification_agents import call_claude
-            api_key = get_secret_func("ANTHROPIC_API_KEY")
-            result = call_claude(
-                api_key,
-                "You are a customs broker task assistant.",
+            from lib.ai_intelligence import ask_claude
+            results['claude'] = ask_claude(
                 f"Task from RCB brain's creator: {task}",
-                max_tokens=3000
-            )
-            results['claude'] = (result or "")[:3000]
+                get_secret_func
+            )[:3000]
         except Exception as e:
             results['claude'] = f"Error: {e}"
 

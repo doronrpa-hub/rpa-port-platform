@@ -2479,8 +2479,6 @@ def pupil_handle_correction_reply(db, msg, access_token, rcb_email, get_secret_f
         _create_investigation_task(db, {
             "case_id": case_id,
             "conflict_details": f"Correction disputed: {case.get('original_hs_code')} vs {case.get('corrected_hs_code')}",
-            "system_hs_code": case.get("original_hs_code", ""),
-            "ai_hs_code": case.get("corrected_hs_code", ""),
         }, body_clean)
     
     return {"status": decision, "case_id": case_id}

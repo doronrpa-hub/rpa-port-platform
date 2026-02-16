@@ -1269,7 +1269,7 @@ class StyleAnalyzer:
         
         # Extract formal phrases
         formal_phrases = re.findall(
-            r'(?:בהתאם ל|על פי|מכוח|לפי|בכפוף ל)[^.]{5,60}', text
+            r'(?:בהתאם ל|על פי|מכוח|לפי|בכפוו ל)[^.]{5,60}', text
         )
         for phrase in formal_phrases:
             self.style_observations.append(StyleObservation(
