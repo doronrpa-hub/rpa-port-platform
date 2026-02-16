@@ -341,11 +341,8 @@ All changes are minimal — no lines removed, no signatures changed, no restruct
 | KONMART | konmart.co.il | YANG_MING | shipping_agent |
 | Rosenfeld Shipping | rosenfeld.net | SALAMIS | shipping_agent |
 | Carmel International | carmelship.co.il | ADMIRAL | shipping_agent |
-| Carmel International | carmelship.co.il | COSCO (50% partner in COSCO Israel) | shipping_agent + JV partner |
 
-Note: ADMIRAL and COSCO are two separate shipping lines. Carmel's relationship differs:
-1. **ADMIRAL** — Carmel is the Israeli shipping agent (represents the carrier)
-2. **COSCO** — Carmel is a 50% JV partner with global COSCO for COSCO Israel operations
+Note: Carmel International also operates COSCO Israel (50% JV with global COSCO), but COSCO emails come from a COSCO domain (coscon.com/coscoshipping.com), not carmelship.co.il. So domain-based agent→carrier mapping is clean: carmelship.co.il → ADMIRAL only.
 
 **Fix needed:** Create a `shipping_agents` collection in Firestore:
 ```
