@@ -94,6 +94,16 @@ def cross_check_classification(
     chatgpt_result = _call_chatgpt_check(openai_key, user_prompt)
     models["chatgpt"] = chatgpt_result
 
+    # 4. UK Tariff (free API — not an AI model, but provides an independent HS code vote)
+    if db:
+        try:
+            from lib.uk_tariff_integration import get_uk_verification_for_cross_check
+            uk_result = get_uk_verification_for_cross_check(db, primary_hs, item_description)
+            if uk_result.get("hs_code"):
+                models["uk_tariff"] = uk_result
+        except Exception as e:
+            print(f"    [CROSS-CHECK] UK tariff lookup skipped: {e}")
+
     # Compare results
     result = _compare_results(primary_hs, models)
 

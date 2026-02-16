@@ -321,6 +321,36 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             "reasoning": "Foreign tariff classification aligns with Israeli classification",
         })
 
+    # ── STEP 9: UK Tariff Verification (live API) ──
+    sources_needed += 1
+    try:
+        from lib.uk_tariff_integration import compare_il_uk_classification
+        uk_result = compare_il_uk_classification(db, hs_code, product_description)
+        match_level = uk_result.get("match_level", "no_data")
+
+        if match_level in ("strong", "moderate", "description_match"):
+            chain.append({
+                "step": 9,
+                "decision": f"UK Tariff verification: {match_level}",
+                "source_type": "uk_tariff_verification",
+                "source_ref": f"UK ({uk_result.get('uk_code', '')})",
+                "source_text": uk_result.get("uk_description", "")[:500],
+                "has_source": True,
+                "similarity": uk_result.get("similarity", 0),
+                "reasoning": uk_result.get("verification_note", ""),
+            })
+            sources_found += 1
+        else:
+            gaps.append({
+                "type": "uk_tariff_mismatch",
+                "hs_code": hs_code,
+                "uk_code": uk_result.get("uk_code", ""),
+                "description": uk_result.get("verification_note", "UK tariff verification failed"),
+                "priority": "low",
+            })
+    except Exception as e:
+        logger.warning(f"UK tariff verification failed: {e}")
+
     # ── Calculate legal strength ──
     coverage = sources_found / max(sources_needed, 1)
 
