@@ -441,6 +441,11 @@ def _call_claude_with_tools(api_key, messages):
             out_tok = usage.get("output_tokens", 0)
             cost = (inp_tok * 3.0 + out_tok * 15.0) / 1_000_000
             print(f"    💰 Claude (tool-call): {inp_tok}+{out_tok} tokens = ${cost:.4f}")
+            try:
+                from lib.classification_agents import _cost_tracker
+                _cost_tracker.add("Claude tool-call", cost)
+            except ImportError:
+                pass
             return data
         print(f"  [TOOL ENGINE] Claude API error: {resp.status_code} - {resp.text[:200]}")
         return None

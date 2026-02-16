@@ -115,13 +115,53 @@ except ImportError as e:
     print(f"Tool-calling engine not available: {e}")
     TOOL_CALLING_AVAILABLE = False
 
+# Three-way AI cross-check (Session 27)
+try:
+    from lib.cross_checker import cross_check_all_items, get_cross_check_summary
+    CROSS_CHECK_AVAILABLE = True
+except ImportError as e:
+    print(f"Cross-checker not available: {e}")
+    CROSS_CHECK_AVAILABLE = False
+
 # =============================================================================
-# FEATURE FLAGS (Session 26: cost optimization)
+# FEATURE FLAGS (Session 26/27: cost optimization + cross-check)
 # =============================================================================
 
 PRE_CLASSIFY_BYPASS_ENABLED = True    # Skip AI pipeline when pre_classify confidence >= 90
 PRE_CLASSIFY_BYPASS_THRESHOLD = 90    # Minimum confidence to bypass
 COST_TRACKING_ENABLED = True          # Print per-call cost estimates
+CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after classification
+
+# =============================================================================
+# SESSION 27: Per-Run Cost Accumulator
+# =============================================================================
+
+class _CostTracker:
+    """Accumulates AI costs per classification run. Thread-safe reset per call."""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self._costs = {}  # model_name -> total_cost
+        self._calls = {}  # model_name -> call_count
+
+    def add(self, model, cost):
+        self._costs[model] = self._costs.get(model, 0) + cost
+        self._calls[model] = self._calls.get(model, 0) + 1
+
+    def total(self):
+        return sum(self._costs.values())
+
+    def summary(self):
+        if not self._costs:
+            return ""
+        lines = ["💰 Cost Summary:"]
+        for model in sorted(self._costs.keys()):
+            lines.append(f"    {model}: {self._calls[model]} calls = ${self._costs[model]:.4f}")
+        lines.append(f"    TOTAL: ${self.total():.4f}")
+        return "\n".join(lines)
+
+_cost_tracker = _CostTracker()
 
 # =============================================================================
 # HS CODE VALIDATION HELPERS
@@ -291,6 +331,7 @@ def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
                 out_tok = usage.get("output_tokens", 0)
                 cost = (inp_tok * 3.0 + out_tok * 15.0) / 1_000_000
                 print(f"    💰 Claude: {inp_tok}+{out_tok} tokens = ${cost:.4f}")
+                _cost_tracker.add("Claude Sonnet", cost)
             return data['content'][0]['text']
         else:
             print(f"Claude API error: {response.status_code} - {response.text[:200]}")
@@ -303,6 +344,53 @@ def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
 # =============================================================================
 # SESSION 15: Gemini API Integration (cost optimization)
 # =============================================================================
+
+# =============================================================================
+# SESSION 27: ChatGPT / OpenAI Integration (cross-check)
+# =============================================================================
+
+def call_chatgpt(openai_key, system_prompt, user_prompt, max_tokens=2000, model="gpt-4o-mini"):
+    """Call OpenAI ChatGPT API.
+
+    Session 27: Added for three-way cross-check.
+    Models:
+      - gpt-4o-mini: Fast, cheap (~$0.15/$0.60 per MTok)
+      - gpt-4o: Higher quality (~$2.50/$10 per MTok)
+    """
+    if not openai_key:
+        return None
+    try:
+        import openai
+        client = openai.OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.3,
+        )
+        result = response.choices[0].message.content
+        # Cost tracking
+        if COST_TRACKING_ENABLED:
+            usage = response.usage
+            inp_tok = usage.prompt_tokens if usage else 0
+            out_tok = usage.completion_tokens if usage else 0
+            if "mini" in model:
+                cost = (inp_tok * 0.15 + out_tok * 0.60) / 1_000_000
+            else:  # gpt-4o
+                cost = (inp_tok * 2.50 + out_tok * 10.0) / 1_000_000
+            print(f"    💰 ChatGPT ({model}): {inp_tok}+{out_tok} tokens = ${cost:.4f}")
+            _cost_tracker.add(f"ChatGPT {model}", cost)
+        return result
+    except ImportError:
+        print("    ⚠️ openai package not installed, ChatGPT unavailable")
+        return None
+    except Exception as e:
+        print(f"    ChatGPT call error ({model}): {e}")
+        return None
+
 
 def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="gemini-2.5-flash"):
     """Call Google Gemini API
@@ -342,6 +430,7 @@ def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="
                 else:  # pro
                     cost = (inp_tok * 1.25 + out_tok * 10.0) / 1_000_000
                 print(f"    💰 Gemini ({model}): {inp_tok}+{out_tok} tokens = ${cost:.4f}")
+                _cost_tracker.add(f"Gemini {model}", cost)
             candidates = data.get("candidates", [])
             if candidates:
                 finish_reason = candidates[0].get("finishReason", "UNKNOWN")
@@ -2064,7 +2153,8 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
     """
     try:
         print(f"  🤖 Starting: {subject[:50]}")
-        
+        _cost_tracker.reset()  # Session 27: Reset per-run cost accumulator
+
         api_key = get_secret_func('ANTHROPIC_API_KEY')
         if not api_key:
             print("  ❌ No API key")
@@ -2117,6 +2207,56 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if not results.get('success'):
             print(f"  ❌ Failed")
             return False
+
+        # ── SESSION 27: THREE-WAY CROSS-CHECK ──
+        if CROSS_CHECK_ENABLED and CROSS_CHECK_AVAILABLE:
+            try:
+                classifications = (
+                    results.get("agents", {}).get("classification", {}).get("classifications", [])
+                )
+                invoice_data_cc = results.get("invoice_data", {})
+                items_cc = invoice_data_cc.get("items", []) if isinstance(invoice_data_cc, dict) else []
+                item_descs = [
+                    it.get("description", "") for it in items_cc if isinstance(it, dict)
+                ]
+                origin_cc = ""
+                if item_descs and items_cc:
+                    origin_cc = items_cc[0].get("origin_country", "") if isinstance(items_cc[0], dict) else ""
+
+                openai_key = None
+                try:
+                    openai_key = get_secret_func("OPENAI_API_KEY")
+                except Exception:
+                    pass
+
+                if classifications:
+                    cc_results = cross_check_all_items(
+                        classifications,
+                        item_descs,
+                        origin_cc,
+                        api_key,
+                        gemini_key,
+                        openai_key,
+                        db=db,
+                    )
+                    if cc_results:
+                        results["cross_check"] = cc_results
+                        cc_summary = get_cross_check_summary(cc_results)
+                        if cc_summary:
+                            existing_synthesis = results.get("synthesis", "")
+                            results["synthesis"] = existing_synthesis + "\n\n" + cc_summary
+                            print(f"  🔍 Cross-check: {len(cc_results)} items verified")
+                        # Apply confidence adjustments
+                        for i, cc in enumerate(cc_results):
+                            adj = cc.get("confidence_adjustment", 0)
+                            if adj != 0 and i < len(classifications):
+                                old_conf = classifications[i].get("confidence", "")
+                                if isinstance(old_conf, (int, float)):
+                                    classifications[i]["confidence"] = max(0, min(1, old_conf + adj))
+                                classifications[i]["cross_check_tier"] = cc.get("tier", 0)
+                                classifications[i]["cross_check_note"] = cc.get("learning_note", "")
+            except Exception as cc_err:
+                print(f"  ⚠️ Cross-check error: {cc_err}")
 
         # Session 10: Validate invoice using Module 5
         invoice_validation = None
@@ -2296,6 +2436,16 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 save_data["ambiguity_reason"] = ambiguity.get("reason", "")
                 save_data["classification_ambiguous"] = True
 
+            # Session 27: Cost tracking
+            if COST_TRACKING_ENABLED:
+                save_data["total_cost"] = round(_cost_tracker.total(), 4)
+
+            # Session 27: Cross-check results
+            if results.get("cross_check"):
+                cc_tiers = [cc.get("tier", 0) for cc in results["cross_check"]]
+                save_data["cross_check_tiers"] = cc_tiers
+                save_data["cross_check_avg_tier"] = round(sum(cc_tiers) / len(cc_tiers), 1) if cc_tiers else 0
+
             db.collection("rcb_classifications").add(save_data)
 
             # Learn from classification
@@ -2311,6 +2461,12 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                     print("  Enrichment: learned from classification")
                 except Exception as e:
                     print(f"  Enrichment learning error: {e}")
+
+            # Session 27: Print cost summary
+            if COST_TRACKING_ENABLED:
+                summary = _cost_tracker.summary()
+                if summary:
+                    print(f"  {summary}")
 
             return True
         return False
