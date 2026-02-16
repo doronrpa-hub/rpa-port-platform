@@ -1,6 +1,6 @@
 """
 Unit Tests for Overnight Brain Explosion — Assignment 19
-Tests CostTracker, all 8 enrichment streams, and the orchestrator.
+Tests CostTracker, all 9 enrichment streams, and the orchestrator.
 Run: pytest tests/test_overnight_brain.py -v
 """
 import pytest
@@ -29,6 +29,7 @@ from lib.overnight_brain import (
     stream_6_uk_tariff_sweep,
     stream_7_cross_reference,
     stream_8_self_teach,
+    stream_9_knowledge_sync,
     run_overnight_brain,
 )
 
@@ -449,6 +450,84 @@ class TestStream8SelfTeach:
         assert stats["chapters_taught"] >= 0
 
 
+class TestStream9KnowledgeSync:
+
+    def test_syncs_patterns_to_classification_knowledge(self):
+        db = _mock_db({
+            "learned_patterns": [
+                {"hs_code": "85.16.31.00", "product": "Hair dryers",
+                 "reasoning": "Chapter 85 electrical", "confidence": "high",
+                 "learned_at": "2026-02-16T00:00:00Z"},
+            ],
+            "classification_knowledge": [],
+            "ai_knowledge_enrichments": [],
+        })
+        tracker = CostTracker()
+        stats = stream_9_knowledge_sync(db, tracker)
+        assert stats["patterns_synced"] == 1
+        assert stats["errors"] == 0
+
+    def test_skips_already_existing(self):
+        db = _mock_db({
+            "learned_patterns": [
+                {"hs_code": "85.16.31.00", "product": "Hair dryers",
+                 "reasoning": "test", "confidence": "high"},
+            ],
+            "classification_knowledge": [
+                {"hs_code": "85.16.31.00", "description": "Hair dryers"},
+            ],
+            "ai_knowledge_enrichments": [],
+        })
+        tracker = CostTracker()
+        stats = stream_9_knowledge_sync(db, tracker)
+        assert stats["already_exists"] == 1
+        assert stats["patterns_synced"] == 0
+
+    def test_syncs_ai_enrichments(self):
+        db = _mock_db({
+            "learned_patterns": [],
+            "classification_knowledge": [],
+            "ai_knowledge_enrichments": [
+                {"hs_code": "84.71.30.00", "data": {
+                    "classification_rules": ["Rule 1", "Rule 2"],
+                    "physical_characteristics": "Electronic computing",
+                    "alternative_codes": [{"code": "84.73"}],
+                }, "generated_at": "2026-02-16T00:00:00Z"},
+            ],
+        })
+        tracker = CostTracker()
+        stats = stream_9_knowledge_sync(db, tracker)
+        assert stats["enrichments_synced"] == 1
+
+    def test_stops_on_budget(self):
+        db = _mock_db({
+            "learned_patterns": [
+                {"hs_code": f"01.{i:02d}.0000", "product": f"product {i}",
+                 "reasoning": "test"}
+                for i in range(10)
+            ],
+            "classification_knowledge": [],
+            "ai_knowledge_enrichments": [],
+        })
+        tracker = CostTracker()
+        tracker.total_spent = 3.50  # Over budget
+        stats = stream_9_knowledge_sync(db, tracker)
+        # Should sync 0 because budget check in loop
+        assert stats["patterns_synced"] == 0
+
+    def test_handles_empty_collections(self):
+        db = _mock_db({
+            "learned_patterns": [],
+            "classification_knowledge": [],
+            "ai_knowledge_enrichments": [],
+        })
+        tracker = CostTracker()
+        stats = stream_9_knowledge_sync(db, tracker)
+        assert stats["patterns_synced"] == 0
+        assert stats["enrichments_synced"] == 0
+        assert stats["errors"] == 0
+
+
 # ============================================================
 # ORCHESTRATOR TESTS
 # ============================================================
@@ -463,11 +542,12 @@ class TestOrchestrator:
     @patch("lib.overnight_brain.stream_5_ai_knowledge_fill")
     @patch("lib.overnight_brain.stream_7_cross_reference")
     @patch("lib.overnight_brain.stream_8_self_teach")
+    @patch("lib.overnight_brain.stream_9_knowledge_sync")
     @patch("lib.overnight_brain._final_knowledge_audit")
-    def test_runs_all_streams(self, mock_audit, mock_s8, mock_s7, mock_s5,
+    def test_runs_all_streams(self, mock_audit, mock_s9, mock_s8, mock_s7, mock_s5,
                               mock_s4, mock_s2, mock_s1, mock_s3, mock_s6):
         # All streams return empty stats
-        for m in [mock_s1, mock_s2, mock_s3, mock_s4, mock_s5, mock_s6, mock_s7, mock_s8]:
+        for m in [mock_s1, mock_s2, mock_s3, mock_s4, mock_s5, mock_s6, mock_s7, mock_s8, mock_s9]:
             m.return_value = {}
         mock_audit.return_value = {"tariff": 11753}
 
@@ -486,6 +566,34 @@ class TestOrchestrator:
         mock_s3.assert_called_once()  # CC learning (Phase B)
         mock_s1.assert_called_once()  # Tariff mine (Phase B)
         mock_s2.assert_called_once()  # Email mine (Phase B)
+        mock_s9.assert_called_once()  # Knowledge sync (Phase F)
+
+    @patch("lib.overnight_brain.stream_6_uk_tariff_sweep")
+    @patch("lib.overnight_brain.stream_7_cross_reference")
+    @patch("lib.overnight_brain.stream_9_knowledge_sync")
+    @patch("lib.overnight_brain._final_knowledge_audit")
+    def test_skips_ai_streams_without_gemini_key(self, mock_audit, mock_s9, mock_s7, mock_s6):
+        """When no Gemini key, AI streams are skipped but Firestore-only streams still run."""
+        for m in [mock_s6, mock_s7, mock_s9]:
+            m.return_value = {}
+        mock_audit.return_value = {}
+
+        db = _mock_db()
+        get_secret = Mock(side_effect=Exception("No secret"))
+
+        result = run_overnight_brain(db, get_secret)
+
+        # Free/Firestore streams should still run
+        mock_s6.assert_called_once()  # UK API (free)
+        mock_s7.assert_called_once()  # Cross-ref (Firestore)
+        mock_s9.assert_called_once()  # Knowledge sync (Firestore)
+
+        # AI streams should be marked as skipped
+        stats = result["stream_stats"]
+        assert stats["stream_3_cc_learning"] == {"skipped": "no_gemini_key"}
+        assert stats["stream_1_tariff_mine"] == {"skipped": "no_gemini_key"}
+        assert stats["stream_4_attachments"] == {"skipped": "no_gemini_key"}
+        assert stats["stream_8_self_teach"] == {"skipped": "no_gemini_key"}
 
     @patch("lib.overnight_brain.stream_6_uk_tariff_sweep")
     @patch("lib.overnight_brain._final_knowledge_audit")

@@ -1,8 +1,9 @@
 """
 RCB Overnight Brain Explosion — Know Everything By Morning.
 =============================================================
-8 parallel enrichment streams that mine ALL internal data, call the UK Tariff
-API, cross-reference everything, and use Gemini Flash to fill knowledge gaps.
+9 enrichment streams that mine ALL internal data, call the UK Tariff API,
+cross-reference everything, use Gemini Flash to fill knowledge gaps, and
+sync results into the collections that downstream classifiers actually read.
 
 HARD COST CAP: $3.50 per run (enforced by CostTracker).
 
@@ -15,6 +16,8 @@ Streams:
   6. UK Tariff API Sweep — free HTTPS calls, zero AI cost
   7. Cross-Reference Engine — link every HS code to all its data sources
   8. Self-Teach from Patterns — synthesize per-chapter classification rules
+  9. Knowledge Sync — push learned data into classification_knowledge +
+     classification_rules so pre_classify() and intelligence.py consume it
 
 Schedule: 20:00 Jerusalem time (well before 02:00 nightly_learn — no conflict).
 
@@ -38,6 +41,7 @@ logger = logging.getLogger("rcb.overnight_brain")
 STREAM_PRIORITY = [
     (6, "UK API sweep"),           # $0.00 — free API
     (7, "Cross-reference"),        # ~$0.00 — Firestore only
+    (9, "Knowledge sync"),         # ~$0.00 — Firestore only, feeds classifiers
     (3, "CC email learning"),      # ~$0.01 — expert decisions = GOLD
     (8, "Self-teach"),             # ~$0.02 — synthesizes everything
     (1, "Tariff deep mine"),       # ~$0.04 — fixes core data
@@ -1253,8 +1257,36 @@ Generate JSON:
             stats["chapters_taught"] += 1
             stats["rules_generated"] += len(result.get("classification_rules", []))
 
+            # Also write to classification_rules — the collection intelligence.py
+            # actually reads via _search_classification_rules().
+            # Expected structure: type="keyword_pattern", pattern (pipe-separated),
+            # hs_heading (2-4 digit chapter), confidence, description, notes.
+            decision_kws = result.get("decision_keywords", [])
+            if decision_kws:
+                pattern_str = " | ".join(str(k) for k in decision_kws[:20])
+                # Get representative HS heading from patterns
+                heading = chapter.zfill(2)
+                for p in pats[:1]:
+                    code = p.get("hs_code", "")
+                    clean = code.replace(".", "").replace("/", "")
+                    if len(clean) >= 4:
+                        heading = clean[:4]
+                        break
+
+                db.collection("classification_rules").document(f"brain_ch{chapter}").set({
+                    "type": "keyword_pattern",
+                    "pattern": pattern_str,
+                    "hs_heading": heading,
+                    "confidence": "medium",
+                    "description": f"Chapter {chapter} — auto-learned from {len(pats)} patterns",
+                    "notes": "; ".join(str(r) for r in result.get("classification_rules", [])[:3]),
+                    "source": "overnight_brain_self_teach",
+                    "generated_at": now,
+                })
+                stats["rules_synced"] = stats.get("rules_synced", 0) + 1
+
             # Add decision keywords to keyword_index
-            for kw in result.get("decision_keywords", []):
+            for kw in decision_kws:
                 try:
                     k_id = _safe_doc_id(str(kw))
                     k_ref = db.collection("keyword_index").document(k_id)
@@ -1269,12 +1301,158 @@ Generate JSON:
                 except Exception:
                     pass
 
-            tracker.record_firestore_ops(writes=1 + len(result.get("decision_keywords", [])))
+            tracker.record_firestore_ops(writes=2 + len(decision_kws))
         except Exception:
             stats["errors"] += 1
 
     print(f"  [Stream 8] Done: {stats['chapters_taught']} chapters, "
           f"{stats['rules_generated']} rules generated")
+    return stats
+
+
+# ═══════════════════════════════════════════════════════════════
+#  STREAM 9: KNOWLEDGE SYNC — feed downstream classifiers
+# ═══════════════════════════════════════════════════════════════
+
+def stream_9_knowledge_sync(db, tracker):
+    """
+    Push learned data into the collections that intelligence.py pre_classify()
+    actually reads: classification_knowledge and classification_rules.
+
+    - learned_patterns → classification_knowledge (past_classification source)
+    - ai_knowledge_enrichments → classification_knowledge (ai_enrichment source)
+
+    Cost: ~$0.00 (Firestore read/write only, no AI).
+    """
+    print("  [Stream 9] Knowledge sync starting...")
+    stats = {"patterns_synced": 0, "enrichments_synced": 0,
+             "already_exists": 0, "errors": 0}
+    now = datetime.now(timezone.utc).isoformat()
+
+    # ── Sync learned_patterns → classification_knowledge ──
+    try:
+        patterns = list(db.collection("learned_patterns").stream())
+        tracker.record_firestore_ops(reads=len(patterns))
+    except Exception as e:
+        logger.error(f"Stream 9: Failed to read learned_patterns: {e}")
+        patterns = []
+
+    # Pre-load existing classification_knowledge hs_codes to avoid duplicates
+    existing_ck = set()
+    try:
+        ck_docs = list(db.collection("classification_knowledge").limit(5000).stream())
+        tracker.record_firestore_ops(reads=len(ck_docs))
+        for doc in ck_docs:
+            data = doc.to_dict()
+            key = f"{data.get('hs_code', '')}|{data.get('description', '')[:50]}"
+            existing_ck.add(key)
+    except Exception:
+        pass
+
+    for doc in patterns:
+        if tracker.is_over_budget:
+            break
+        data = doc.to_dict()
+        hs_code = data.get("hs_code", "")
+        product = data.get("product", "")
+        if not hs_code:
+            continue
+
+        dedup_key = f"{hs_code}|{product[:50]}"
+        if dedup_key in existing_ck:
+            stats["already_exists"] += 1
+            continue
+
+        try:
+            db.collection("classification_knowledge").add({
+                "hs_code": hs_code,
+                "description": product,
+                "description_lower": product.lower() if product else "",
+                "method": "Learned from expert CC email / processed email",
+                "teaching_rule": data.get("reasoning", ""),
+                "source": "overnight_brain_pattern",
+                "confidence": 70 if data.get("confidence") == "high" else 50,
+                "system_validated": False,
+                "learned_at": data.get("learned_at", now),
+                "usage_count": 0,
+                "is_correction": False,
+                "tags": ["overnight_brain", "auto_learned"],
+            })
+            existing_ck.add(dedup_key)
+            stats["patterns_synced"] += 1
+        except Exception:
+            stats["errors"] += 1
+
+    tracker.record_firestore_ops(writes=stats["patterns_synced"])
+
+    # ── Sync ai_knowledge_enrichments → classification_knowledge ──
+    try:
+        enrichments = list(db.collection("ai_knowledge_enrichments").stream())
+        tracker.record_firestore_ops(reads=len(enrichments))
+    except Exception:
+        enrichments = []
+
+    for doc in enrichments:
+        if tracker.is_over_budget:
+            break
+        data = doc.to_dict()
+        hs_code = data.get("hs_code", "")
+        if not hs_code:
+            continue
+
+        enrich_data = data.get("data", {})
+        if not isinstance(enrich_data, dict):
+            continue
+
+        # Build a searchable description from the enrichment
+        desc_parts = []
+        for field in ("classification_rules", "physical_characteristics", "edge_cases"):
+            val = enrich_data.get(field, "")
+            if isinstance(val, list):
+                desc_parts.extend(str(v) for v in val[:3])
+            elif val:
+                desc_parts.append(str(val)[:200])
+        description = "; ".join(desc_parts)[:500]
+
+        dedup_key = f"{hs_code}|ai_enrichment"
+        if dedup_key in existing_ck:
+            stats["already_exists"] += 1
+            continue
+
+        try:
+            # Extract alternative codes for the rejected_alternatives field
+            alt_codes = []
+            for alt in enrich_data.get("alternative_codes", []):
+                if isinstance(alt, dict):
+                    alt_codes.append(alt.get("code", str(alt)))
+                elif isinstance(alt, str):
+                    alt_codes.append(alt)
+
+            db.collection("classification_knowledge").add({
+                "hs_code": hs_code,
+                "description": description,
+                "description_lower": description.lower(),
+                "method": "AI knowledge enrichment (Gemini Flash)",
+                "teaching_rule": "; ".join(str(r) for r in enrich_data.get("classification_rules", [])[:3]),
+                "source": "overnight_brain_ai_enrichment",
+                "confidence": 40,  # AI-generated = lower confidence
+                "system_validated": False,
+                "learned_at": data.get("generated_at", now),
+                "usage_count": 0,
+                "is_correction": False,
+                "rejected_alternatives": alt_codes[:5],
+                "tags": ["overnight_brain", "ai_generated", "needs_review"],
+            })
+            existing_ck.add(dedup_key)
+            stats["enrichments_synced"] += 1
+        except Exception:
+            stats["errors"] += 1
+
+    tracker.record_firestore_ops(writes=stats["enrichments_synced"])
+
+    print(f"  [Stream 9] Done: {stats['patterns_synced']} patterns synced, "
+          f"{stats['enrichments_synced']} enrichments synced, "
+          f"{stats['already_exists']} already existed")
     return stats
 
 
@@ -1285,7 +1463,7 @@ Generate JSON:
 def run_overnight_brain(db, get_secret_func):
     """
     Master orchestrator. HARD CAP: $3.50.
-    Runs all 8 enrichment streams in priority order.
+    Runs all 9 enrichment streams in priority order.
     """
     tracker = CostTracker()
     t0 = time.time()
@@ -1304,6 +1482,10 @@ def run_overnight_brain(db, get_secret_func):
     except Exception as e:
         logger.error(f"Failed to get GEMINI_API_KEY: {e}")
 
+    has_ai = bool(gemini_key)
+    if not has_ai:
+        print("  WARNING: No Gemini API key — AI streams will be skipped")
+
     all_stats = {}
 
     # ── Phase A: FREE first (UK API sweep) ──
@@ -1315,32 +1497,38 @@ def run_overnight_brain(db, get_secret_func):
         all_stats["stream_6_uk_tariff"] = {"error": str(e)}
     print(f"  Budget after Phase A: ${tracker.total_spent:.4f}")
 
-    # ── Phase B: High-value AI streams ──
-    print("\n--- Phase B: High-value AI streams ---")
-    try:
-        all_stats["stream_3_cc_learning"] = stream_3_cc_email_learning(db, gemini_key, tracker)
-    except Exception as e:
-        logger.error(f"Stream 3 error: {e}")
-        all_stats["stream_3_cc_learning"] = {"error": str(e)}
-
-    if not tracker.is_over_budget:
+    # ── Phase B: High-value AI streams (skip if no API key) ──
+    if has_ai:
+        print("\n--- Phase B: High-value AI streams ---")
         try:
-            all_stats["stream_1_tariff_mine"] = stream_1_tariff_deep_mine(db, gemini_key, tracker)
+            all_stats["stream_3_cc_learning"] = stream_3_cc_email_learning(db, gemini_key, tracker)
         except Exception as e:
-            logger.error(f"Stream 1 error: {e}")
-            all_stats["stream_1_tariff_mine"] = {"error": str(e)}
+            logger.error(f"Stream 3 error: {e}")
+            all_stats["stream_3_cc_learning"] = {"error": str(e)}
 
-    if not tracker.is_over_budget:
-        try:
-            all_stats["stream_2_email_mine"] = stream_2_email_archive_mine(db, gemini_key, tracker)
-        except Exception as e:
-            logger.error(f"Stream 2 error: {e}")
-            all_stats["stream_2_email_mine"] = {"error": str(e)}
+        if not tracker.is_over_budget:
+            try:
+                all_stats["stream_1_tariff_mine"] = stream_1_tariff_deep_mine(db, gemini_key, tracker)
+            except Exception as e:
+                logger.error(f"Stream 1 error: {e}")
+                all_stats["stream_1_tariff_mine"] = {"error": str(e)}
 
-    print(f"  Budget after Phase B: ${tracker.total_spent:.4f}")
+        if not tracker.is_over_budget:
+            try:
+                all_stats["stream_2_email_mine"] = stream_2_email_archive_mine(db, gemini_key, tracker)
+            except Exception as e:
+                logger.error(f"Stream 2 error: {e}")
+                all_stats["stream_2_email_mine"] = {"error": str(e)}
 
-    # ── Phase C: Bulk processing (skip if tight) ──
-    if not tracker.is_over_budget:
+        print(f"  Budget after Phase B: ${tracker.total_spent:.4f}")
+    else:
+        print("\n--- Phase B: SKIPPED (no Gemini key) ---")
+        all_stats["stream_3_cc_learning"] = {"skipped": "no_gemini_key"}
+        all_stats["stream_1_tariff_mine"] = {"skipped": "no_gemini_key"}
+        all_stats["stream_2_email_mine"] = {"skipped": "no_gemini_key"}
+
+    # ── Phase C: Bulk processing (skip if no AI key or tight budget) ──
+    if has_ai and not tracker.is_over_budget:
         print("\n--- Phase C: Bulk processing ---")
         try:
             all_stats["stream_4_attachments"] = stream_4_attachment_mine(db, gemini_key, tracker)
@@ -1356,8 +1544,11 @@ def run_overnight_brain(db, get_secret_func):
                 all_stats["stream_5_ai_fill"] = {"error": str(e)}
 
         print(f"  Budget after Phase C: ${tracker.total_spent:.4f}")
+    elif not has_ai:
+        all_stats["stream_4_attachments"] = {"skipped": "no_gemini_key"}
+        all_stats["stream_5_ai_fill"] = {"skipped": "no_gemini_key"}
 
-    # ── Phase D: Cross-reference (Firestore only) ──
+    # ── Phase D: Cross-reference (Firestore only — always runs) ──
     if not tracker.is_over_budget:
         print("\n--- Phase D: Cross-reference ---")
         try:
@@ -1366,14 +1557,27 @@ def run_overnight_brain(db, get_secret_func):
             logger.error(f"Stream 7 error: {e}")
             all_stats["stream_7_crossref"] = {"error": str(e)}
 
-    # ── Phase E: Self-teach ──
-    if not tracker.is_over_budget:
+    # ── Phase E: Self-teach (needs AI) ──
+    if has_ai and not tracker.is_over_budget:
         print("\n--- Phase E: Self-teach ---")
         try:
             all_stats["stream_8_self_teach"] = stream_8_self_teach(db, gemini_key, tracker)
         except Exception as e:
             logger.error(f"Stream 8 error: {e}")
             all_stats["stream_8_self_teach"] = {"error": str(e)}
+    elif not has_ai:
+        all_stats["stream_8_self_teach"] = {"skipped": "no_gemini_key"}
+
+    # ── Phase F: Knowledge sync (Firestore only — always runs) ──
+    # Pushes learned_patterns + ai_enrichments → classification_knowledge
+    # so intelligence.py pre_classify() can consume them.
+    if not tracker.is_over_budget:
+        print("\n--- Phase F: Knowledge sync ---")
+        try:
+            all_stats["stream_9_knowledge_sync"] = stream_9_knowledge_sync(db, tracker)
+        except Exception as e:
+            logger.error(f"Stream 9 error: {e}")
+            all_stats["stream_9_knowledge_sync"] = {"error": str(e)}
 
     # ── Final audit ──
     print("\n--- Final Knowledge Audit ---")
@@ -1423,6 +1627,7 @@ def _final_knowledge_audit(db, tracker):
         "tariff", "keyword_index", "product_index", "supplier_index",
         "learned_patterns", "learned_corrections", "tariff_uk",
         "ai_knowledge_enrichments", "chapter_classification_rules",
+        "classification_rules", "classification_knowledge",
         "hs_code_crossref", "brain_index",
     ]
 
