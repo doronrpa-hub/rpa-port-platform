@@ -2474,7 +2474,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         final_html = ack_banner + html
         if clarification_html:
             # Insert clarification before the footer (before the last </div></div>)
-            footer_pos = final_html.rfind('<hr style="margin:25px 0">')
+            footer_pos = final_html.rfind('<!-- Footer -->')
             if footer_pos > 0:
                 final_html = final_html[:footer_pos] + clarification_html + final_html[footer_pos:]
             else:
