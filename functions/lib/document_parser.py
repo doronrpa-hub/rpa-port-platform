@@ -285,6 +285,9 @@ _REQUIRED_FIELDS = {
         ("consignee", "critical"),
         ("bl_reference", "important"),
         ("vessel", "optional"),
+        ("pickup_location", "optional"),
+        ("release_date", "optional"),
+        ("agent_name", "optional"),
     ],
 }
 
@@ -884,6 +887,35 @@ def _extract_do_fields(text):
     m = re.search(r'(?:vessel|ship|אוניה)[:\s]+(.+)', t, re.IGNORECASE)
     if m:
         fields["vessel"] = _clean_value(m.group(1), max_len=60)
+
+    # Pickup location / terminal
+    for pat in [
+        r'(?:pickup|collection|collect\s*from|terminal|warehouse|מחסן|נמל)[:\s]+(.+)',
+        r'(?:איסוף\s*מ|מקום\s*איסוף)[:\s]+(.+)',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["pickup_location"] = _clean_value(m.group(1), max_len=120)
+            break
+
+    # Release date
+    for pat in [
+        r'(?:release\s*date|date\s*of\s*release|valid\s*from|תאריך\s*שחרור)[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["release_date"] = m.group(1).strip()
+            break
+
+    # Agent name (shipping agent issuing the D/O)
+    for pat in [
+        r'(?:shipping\s*agent|סוכן\s*אוניות)[:\s]+(.+)',
+        r'(?:issued\s*by|מונפק\s*(?:ע"י|על\s*ידי))[:\s]+(.+)',
+    ]:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            fields["agent_name"] = _clean_value(m.group(1), max_len=80)
+            break
 
     return fields
 
