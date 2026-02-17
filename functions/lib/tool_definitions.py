@@ -229,6 +229,34 @@ CLAUDE_TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "search_classification_directives",
+        "description": (
+            "Search Israeli Customs classification directives (הנחיות סיווג) from shaarolami. "
+            "218 official directives that provide binding classification rulings for specific products. "
+            "Each directive has: directive_id (e.g., '025/97'), title, primary HS code, "
+            "related HS codes, dates, and ruling content. "
+            "Search by HS code, chapter number, directive ID, or keyword."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {
+                    "type": "string",
+                    "description": "HS code to search for (e.g., '87.08', '4011.10.0000')",
+                },
+                "chapter": {
+                    "type": "string",
+                    "description": "Chapter number to search (e.g., '87', '04')",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Directive ID (e.g., '025/97') or keyword search term",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -278,7 +306,8 @@ WORKFLOW:
 7. Call check_regulatory to find ministry requirements and permits.
 8. Call lookup_fta to check FTA eligibility if origin country is known.
 9. Call lookup_framework_order to check legal definitions or classification rules from the Framework Order if needed.
-10. Call assess_risk for risk assessment.
+10. Call search_classification_directives to check if an official classification directive exists for the product or HS code.
+11. Call assess_risk for risk assessment.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

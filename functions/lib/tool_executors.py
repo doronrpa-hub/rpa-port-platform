@@ -8,6 +8,7 @@ No new logic — just routing + caching + error handling.
 """
 
 import json
+import re
 import time
 import traceback
 
@@ -59,7 +60,7 @@ class ToolExecutor:
             "lookup_tariff_structure": self._lookup_tariff_structure,
             "lookup_framework_order": self._lookup_framework_order,
             "search_pre_rulings": self._stub_not_available,
-            "search_classification_directives": self._stub_not_available,
+            "search_classification_directives": self._search_classification_directives,
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
             "search_wco_decisions": self._stub_not_available,
@@ -639,6 +640,108 @@ class ToolExecutor:
 
         except Exception as e:
             return {"found": False, "error": str(e)}
+
+    def _search_classification_directives(self, inp):
+        """Search classification directives (הנחיות סיווג) from shaarolami.
+        C6: 218 directives enriched with directive_id, title, content, dates.
+        Search by HS code, chapter, directive_id, or keyword."""
+        query = str(inp.get("query", "")).strip()
+        hs_code = str(inp.get("hs_code", "")).strip()
+        chapter = str(inp.get("chapter", "")).strip()
+
+        if not query and not hs_code and not chapter:
+            return {"found": False, "error": "Provide query, hs_code, or chapter"}
+
+        try:
+            results = []
+
+            # Strategy 1: Search by HS code (exact or prefix match)
+            if hs_code:
+                hs_clean = hs_code.replace(".", "").replace(" ", "").replace("/", "")
+                # Try primary_hs_code match
+                for doc in self.db.collection("classification_directives").stream():
+                    data = doc.to_dict()
+                    phs = (data.get("primary_hs_code", "") or "").replace(".", "")
+                    hs_mentioned = data.get("hs_codes_mentioned", [])
+                    related = data.get("related_hs_codes", [])
+
+                    match = False
+                    if hs_clean and phs and (hs_clean.startswith(phs[:4]) or phs.startswith(hs_clean[:4])):
+                        match = True
+                    if not match:
+                        for h in hs_mentioned + related:
+                            h_clean = str(h).replace(".", "").replace(" ", "")
+                            if hs_clean[:4] == h_clean[:4]:
+                                match = True
+                                break
+
+                    if match:
+                        results.append(self._format_directive(doc.id, data))
+                        if len(results) >= 5:
+                            break
+
+            # Strategy 2: Search by chapter
+            if not results and chapter:
+                ch = chapter.zfill(2)
+                for doc in self.db.collection("classification_directives").stream():
+                    data = doc.to_dict()
+                    chapters_covered = [str(c).zfill(2) for c in data.get("chapters_covered", [])]
+                    title = data.get("title", "")
+                    # Check chapters_covered list or title prefix
+                    if ch in chapters_covered or title.startswith(f"{ch}."):
+                        results.append(self._format_directive(doc.id, data))
+                        if len(results) >= 10:
+                            break
+
+            # Strategy 3: Search by directive_id
+            if not results and query:
+                # Direct directive_id match (e.g., "025/97")
+                if re.match(r'\d{1,3}/\d{2,4}', query):
+                    for doc in self.db.collection("classification_directives").stream():
+                        data = doc.to_dict()
+                        if data.get("directive_id") == query:
+                            results.append(self._format_directive(doc.id, data))
+                            break
+
+            # Strategy 4: Keyword search in title + content
+            if not results and query:
+                q_lower = query.lower()
+                for doc in self.db.collection("classification_directives").stream():
+                    data = doc.to_dict()
+                    searchable = " ".join([
+                        str(data.get("title", "")),
+                        str(data.get("content", "")),
+                        str(data.get("summary", "")),
+                        " ".join(data.get("key_terms", [])),
+                    ]).lower()
+                    if q_lower in searchable:
+                        results.append(self._format_directive(doc.id, data))
+                        if len(results) >= 5:
+                            break
+
+            if results:
+                return {"found": True, "count": len(results), "directives": results}
+            return {"found": False, "query": query or hs_code or chapter,
+                    "message": "No matching classification directive found"}
+
+        except Exception as e:
+            return {"found": False, "error": str(e)}
+
+    @staticmethod
+    def _format_directive(doc_id, data):
+        """Format a directive doc for tool output."""
+        return {
+            "doc_id": doc_id,
+            "directive_id": data.get("directive_id", ""),
+            "title": data.get("title", ""),
+            "directive_type": data.get("directive_type", ""),
+            "primary_hs_code": data.get("primary_hs_code", ""),
+            "related_hs_codes": data.get("related_hs_codes", []),
+            "date_opened": data.get("date_opened", ""),
+            "date_expires": data.get("date_expires", ""),
+            "is_active": data.get("is_active", True),
+            "content": (data.get("content", "") or data.get("summary", ""))[:2000],
+        }
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""
