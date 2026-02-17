@@ -1179,15 +1179,18 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                             import re as _re
                             cc_email_body = _re.sub(r'<[^>]+>', ' ', cc_email_body)
                             cc_email_body = _re.sub(r'\s+', ' ', cc_email_body).strip()
-                        process_and_send_report(
+                        _cc_result = process_and_send_report(
                             access_token, rcb_email, from_email, subject,
                             from_name, cc_raw_attachments, msg_id, get_secret,
                             get_db(), firestore, helper_graph_send, extract_text_from_attachments,
                             email_body=cc_email_body,
                             internet_message_id=internet_msg_id,
                         )
-                        _cc_classified = True
-                        print(f"  ✅ [{cc_rcb_id}] CC classification complete")
+                        _cc_classified = _cc_result is True
+                        if _cc_classified:
+                            print(f"  ✅ [{cc_rcb_id}] CC classification complete")
+                        else:
+                            print(f"  ⚠️ [{cc_rcb_id}] CC classification returned False")
                     else:
                         print(f"  ℹ️ CC invoice signal but no attachments — skipping classification")
                 except Exception as cc_cls_err:
