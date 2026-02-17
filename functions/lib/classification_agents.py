@@ -2204,7 +2204,25 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         print("  📄 Extracting text...")
         doc_text = extract_text_func(raw_attachments, email_body=email_body)
         if not doc_text or len(doc_text) < 50:
-            print("  ⚠️ No text")
+            print("  ⚠️ No text — sending extraction failure notification")
+            _fail_html = (
+                '<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px">'
+                '<h3 style="color:#d63384">⚠️ לא הצלחנו לקרוא את הקבצים</h3>'
+                '<p>קיבלנו את המייל אך לא הצלחנו לקרוא את הקבצים המצורפים.</p>'
+                '<p>נא לשלוח שוב או לציין תיאור המוצר בגוף המייל.</p>'
+                '</div>'
+            )
+            try:
+                helper_graph_send(access_token, rcb_email, to_email, subject,
+                                  _fail_html, msg_id, internet_message_id=internet_message_id)
+            except Exception:
+                pass
+            try:
+                import hashlib as _hl_f
+                _safe_f = _hl_f.md5(msg_id.encode()).hexdigest()
+                db.collection("rcb_processed").document(_safe_f).update({"type": "extraction_failed"})
+            except Exception:
+                pass
             return False
         
         print(f"  📝 {len(doc_text)} chars")
@@ -2235,7 +2253,24 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if not results:
             results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
         if not results.get('success'):
-            print(f"  ❌ Failed")
+            print(f"  ❌ Classification failed — sending pipeline error notification")
+            _err_html = (
+                '<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px">'
+                '<h3 style="color:#d63384">⚠️ שגיאה בתהליך הסיווג</h3>'
+                '<p>קיבלנו את המייל ואנחנו עובדים על כך. אם הסיווג דחוף, נא לשלוח שוב.</p>'
+                '</div>'
+            )
+            try:
+                helper_graph_send(access_token, rcb_email, to_email, subject,
+                                  _err_html, msg_id, internet_message_id=internet_message_id)
+            except Exception:
+                pass
+            try:
+                import hashlib as _hl_p
+                _safe_p = _hl_p.md5(msg_id.encode()).hexdigest()
+                db.collection("rcb_processed").document(_safe_p).update({"type": "pipeline_error"})
+            except Exception:
+                pass
             return False
 
         # ── SESSION 27: THREE-WAY CROSS-CHECK ──
