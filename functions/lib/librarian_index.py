@@ -296,6 +296,14 @@ COLLECTION_FIELDS = {
         "hs_fields": ["hs_code", "hs_10"],
         "doc_type": "regulatory",
     },
+    # Block C4: צו יצוא חופשי — Free Export Order regulatory requirements
+    # Source: data.gov.il (1,704 records, 979 HS codes)
+    "free_export_order": {
+        "title_fields": ["goods_description"],
+        "keyword_fields": ["authorities_summary", "appendices", "confirmation_types"],
+        "hs_fields": ["hs_code", "hs_10"],
+        "doc_type": "regulatory",
+    },
     # Block C5: צו מסגרת — Framework Order (legal definitions, FTA rules, additions)
     # Source: knowledge doc (PDF text) + AdditionRulesDetailsHistory.xml
     "framework_order": {

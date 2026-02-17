@@ -35,6 +35,7 @@ class ToolExecutor:
         self._learning = SelfLearningEngine(db)
         # Caches to avoid duplicate API calls within one classification run
         self._fio_cache = {}       # hs_code -> free_import_order result
+        self._feo_cache = {}       # hs_code -> free_export_order result
         self._ministry_cache = {}  # hs_code -> route_to_ministries result
         # Stats
         self._stats = {}
@@ -117,6 +118,7 @@ class ToolExecutor:
         """Wraps intelligence.route_to_ministries() + query_free_import_order().
         C3: Checks local free_import_order collection first (instant), then
         falls back to live API if not found locally.
+        C4: Also checks local free_export_order collection.
         Caches both to avoid repeat lookups for same HS code."""
         hs_code = inp.get("hs_code", "")
 
@@ -131,15 +133,23 @@ class ToolExecutor:
                 self._fio_cache[hs_code] = intelligence.query_free_import_order(self.db, hs_code)
         fio = self._fio_cache[hs_code]
 
+        # Free Export Order (cached per HS) — C4
+        if hs_code not in self._feo_cache:
+            self._feo_cache[hs_code] = self._lookup_local_feo(hs_code)
+        feo = self._feo_cache[hs_code]
+
         # Ministry routing (cached per HS)
         if hs_code not in self._ministry_cache:
             self._ministry_cache[hs_code] = intelligence.route_to_ministries(self.db, hs_code, fio)
         ministry = self._ministry_cache[hs_code]
 
-        return {
+        result = {
             "free_import_order": fio,
             "ministry_routing": ministry,
         }
+        if feo and feo.get("found"):
+            result["free_export_order"] = feo
+        return result
 
     def _lookup_local_fio(self, hs_code):
         """C3: Look up Free Import Order requirements from local Firestore collection.
@@ -236,6 +246,75 @@ class ToolExecutor:
                             }
                 except Exception:
                     continue
+
+        return None
+
+    def _lookup_local_feo(self, hs_code):
+        """C4: Look up Free Export Order requirements from local Firestore collection.
+        Same pattern as _lookup_local_fio but for export (979 HS codes)."""
+        hs_clean = str(hs_code).replace(".", "").replace(" ", "").replace("/", "").replace("-", "")
+
+        candidates = [hs_clean]
+        if "/" in str(hs_code):
+            candidates.append(str(hs_code).replace("/", "_").replace(".", "").replace(" ", ""))
+
+        for doc_id in candidates:
+            try:
+                doc = self.db.collection("free_export_order").document(doc_id).get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {
+                        "hs_code": hs_code,
+                        "found": True,
+                        "source": "local_free_export_order",
+                        "goods_description": data.get("goods_description", ""),
+                        "authorities": data.get("authorities_summary", []),
+                        "confirmation_types": data.get("confirmation_types", []),
+                        "appendices": data.get("appendices", []),
+                        "has_absolute": data.get("has_absolute", False),
+                        "has_partial": data.get("has_partial", False),
+                        "active_count": data.get("active_count", 0),
+                        "requirements": [
+                            {
+                                "confirmation_type": r.get("confirmation_type", ""),
+                                "authority": r.get("authority", ""),
+                                "appendix": r.get("appendix", ""),
+                                "inception_code": r.get("inception_code", ""),
+                            }
+                            for r in data.get("requirements", [])[:20]
+                        ],
+                    }
+            except Exception:
+                continue
+
+        # Parent code fallback (4-digit chapter match)
+        if len(hs_clean) >= 4:
+            prefix = hs_clean[:4]
+            try:
+                query = (
+                    self.db.collection("free_export_order")
+                    .where("hs_10", ">=", prefix)
+                    .where("hs_10", "<", prefix[:-1] + chr(ord(prefix[-1]) + 1))
+                    .limit(3)
+                )
+                parent_docs = list(query.stream())
+                if parent_docs:
+                    all_auths = set()
+                    all_types = set()
+                    for pd in parent_docs:
+                        pd_data = pd.to_dict()
+                        all_auths.update(pd_data.get("authorities_summary", []))
+                        all_types.update(pd_data.get("confirmation_types", []))
+                    return {
+                        "hs_code": hs_code,
+                        "found": True,
+                        "source": "local_free_export_order_parent",
+                        "authorities": sorted(all_auths),
+                        "confirmation_types": sorted(all_types),
+                        "parent_matches": len(parent_docs),
+                    }
+            except Exception:
+                pass
 
         return None
 

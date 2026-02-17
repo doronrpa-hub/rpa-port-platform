@@ -61,8 +61,9 @@ CLAUDE_TOOLS = [
         "name": "check_regulatory",
         "description": (
             "Check ministry requirements, permits, and approvals needed for an HS code. "
-            "Merges: built-in routing table, Firestore baseline, Free Import Order API. "
-            "Returns ministries, required documents, procedures, and URLs."
+            "Merges: built-in routing table, Firestore baseline, Free Import Order (C3), "
+            "and Free Export Order (C4). "
+            "Returns ministries, required documents, procedures, URLs, and export requirements if applicable."
         ),
         "input_schema": {
             "type": "object",
