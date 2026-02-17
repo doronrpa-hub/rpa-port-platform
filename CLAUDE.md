@@ -206,9 +206,129 @@ Daily vessel schedule aggregation for Israeli ports (Haifa, Ashdod, Eilat).
 - Port2Port portal: `port2port.co.il` (links to port work schedules)
 - Note: Eilat Port closed July 2025 (Houthi attacks)
 
+## RCB TARGET ARCHITECTURE — Block Status (Session D — Tariff Data)
+
+### Blocks COMPLETED (deployed)
+- **A1**: CC invoice classification → customs pipeline
+- **A2**: [DECL] declaration routing
+- **A3 Cat.1**: Never-silent exits (extraction_failed + pipeline_error notifications)
+- **A3 Cat.2**: Clarification candidates instead of "unclassifiable"
+- **A4**: Reserved (no action needed)
+- **B1**: Wire smart_extractor via extraction_adapter
+- **B2**: Keyword seeding (seed_keywords_b2.py) — brain_index populated
+
+### Block C1: Tariff Descriptions — DONE (commit f1b7a44)
+- `functions/scrape_shaarolami_c1.py` — scraper for shaarolami tariff descriptions
+- **Phase 1**: 1,687 exact HS code matches written to `tariff` collection
+- **Phase 2**: 417 parent-code inheritance written to `tariff` collection
+- **Coverage**: 80.5% → 98.4% (descriptions filled)
+- **188 corrupt codes** flagged with `corrupt_code: true` in tariff collection
+- Staging collection: `shaarolami_scrape_staging` (12,308+ docs)
+
+### Block C2: Chapter Notes — IN PROGRESS (NOT YET IN FIRESTORE)
+**Status: Chapter notes text was NEVER loaded into Firestore.**
+All 99 `chapter_notes` docs have empty: preamble, notes, exclusions, inclusions.
+
+**Impact without chapter notes:**
+- `justification_engine.py` always produces "weak" legal strength (reads preamble step 1, notes step 4)
+- Elimination engine `challenge_classification()` METHOD 1 is completely dead (needs exclusions)
+- `tool_executors.py` returns empty preamble/notes/exclusions/inclusions to AI agent
+
+**Data source found — RuleDetailsHistory.xml:**
+- Covers **72 of 97 chapters** (missing 25: chapters 2, 13, 17, 23, 24, 36, 42, 45, 47, 50-53, 55, 66-67, 69, 75, 77-81, 88-89)
+- 9,228 entries, 9,099 with Hebrew text, only 1,284 with English
+- 18 section-level notes (Sections I, VI, VII, XI, XV, XVI, XVII)
+- Location: `C:\Users\doron\tariff_extract\RuleDetailsHistory.xml` (39 MB)
+- Also backed up to Cloud Storage: `tariff_xml_backup/RuleDetailsHistory.xml`
+
+**PDF path FAILED:**
+- `AllCustomsBookDataPDF.pdf` (3,134 pages) — text extraction is garbled (encoding broken on most pages)
+- Only TOC pages (1-2) extract cleanly; rest is ʷʸʴ ʺʩʨʱʩʨʨʱ garbage
+
+**User decision:** Handed XML tariff parsing to Cladi AI to make system "completely identical" to shaarolami XML data.
+
+### Blocks C3-C8: NOT STARTED
+- C3-C7: Brain downloads (FIO, directives, pre-rulings)
+- C8: Duty rates — `AdditionRulesDetailsHistory.xml` (7.4MB) has צו מסגרת legal text, relevant for this
+
+### Block D: Elimination Engine — BLOCKED by C2
+
+## Tariff XML Archive (fullCustomsBookData.zip)
+
+### Location
+- **7z archive**: `C:\Users\doron\fullCustomsBookData.zip` (214 MB) — also in Cloud Storage as `documents/tariff/1769686305688_fullCustomsBookData (6).zip`
+- **Extracted files**: `C:\Users\doron\tariff_extract\` (15 of 238 files extracted)
+- **Cloud Storage backup**: `tariff_xml_backup/` folder (25 files, 103.4 MB)
+
+### Extracted XML Files (analyzed)
+| File | Size | Contents |
+|------|------|----------|
+| Rule.xml | 114 KB | 670 rules mapping RuleID → CustomsItemID. Title categories: כללים לפרק (236x), כללים לחלק (32x), כללים נוספים (28x) |
+| RuleDetailsHistory.xml | 39 MB | **Chapter notes text** — 9,228 entries, 72/97 chapters covered. Fields: Rules (Hebrew), EnglishRules, RulesRTF |
+| AdditionRulesDetailsHistory.xml | 7.4 MB | **צו מסגרת legal text** — 296 entries. Trade agreement clauses, תוספת ראשונה/שניה rules. For Block C8. |
+| CustomsItem.xml | 12.4 MB | Master item tree — ID, FullClassification (HS code), Parent_CustomsItemID |
+| CustomsItemDetailsHistory.xml | 42.9 MB | Item descriptions with history — NOT YET ANALYZED |
+| CustomsBookAddition.xml | 25 KB | Metadata index of 95 additions — NO text content |
+| CustomsBookAdditionsDetailsHistory.xml | 46 KB | 101 entries, metadata only |
+| CustomsItemExclusion.xml | 48 KB | 322 regulatory exclusion mappings (NOT chapter note exclusions) |
+| CustomsItemLinkage.xml | 1.6 MB | Item linkages |
+| RegularityRequirement.xml | 3.5 MB | Regulatory requirements |
+| TradeAgreement.xml | 20 KB | Trade agreement metadata |
+| TradeAgreementVersion.xml | 267 KB | Trade agreement versions |
+| TradeLevy.xml | 83 KB | Trade levies |
+| CountriesExclusion.xml | 24 KB | Country-based exclusions |
+| fullCustomsBookData.xml | 4.1 GB | Master file: CustomsItem + TariffDetailsHistory + TariffComputedData + ComputationMethodData + PropertiesDetailsHistory + RegularityRequirementComputedData |
+
+### Unextracted Files (223 remaining in archive)
+Key files still inside the 7z:
+- `Tariff_0.xml` through `Tariff_6.xml` — tariff data partitions
+- `TariffDetailsHistory_0.xml` through `TariffDetailsHistory_52.xml` — 53 tariff history files
+- `ComputationMethodData_0.xml` through `ComputationMethodData_91.xml` — 92 computation files
+- `RegularityRequirementComputedData_0-6.xml` — 7 regulatory files
+- `PropertiesDetailsHistory_0-3.xml` — 4 properties files
+- `Quota.xml`, `QuotaComputedData.xml`, `QuotaDetailsHistory.xml`, `QuotaRenewal.xml`
+- `LevyCondition.xml`, `LevyExclusion.xml`
+- `RegularityInception.xml`, `RegularityRequiredCertificate.xml`
+- `Vendor.xml`, `AccessDBTamplate20240701.accdb`, `tempRegularityRequirementData.Json`
+
+## Firestore Key Collections (120 total)
+| Collection | Docs | Purpose |
+|-----------|------|---------|
+| tariff | 11,753+ | HS codes with descriptions, duty rates. Source: tariff_full_text.txt |
+| tariff_chapters | 101 | Scraped shaarolami chapter page HTML |
+| chapter_notes | 99 | **EMPTY** preamble/notes/exclusions/inclusions — needs C2 |
+| shaarolami_scrape_staging | 12,308+ | C1 scrape staging data |
+| classification_rules | 32 | GIR 1-6 interpretive rules only |
+| brain_index | 5,001+ | 174K keywords extracted by overnight brain |
+| librarian_index | 21,490 | Index metadata (tariff: 11,753, keyword_index: 8,120, knowledge_base: 305) |
+| knowledge | 71 | 1 tariff doc (FrameOrder PDF content = full צו מסגרת text), rest are shipments |
+| legal_documents | 4 | Has subcollection `sections` (8 docs about customs ordinance) |
+| files | 5,001+ | File metadata from Cloud Storage uploads |
+| pipeline_ingestion_log | 263 | All entries are classification_directives from shaarolami |
+
+## Cloud Storage Key Files
+| File | Size | Notes |
+|------|------|-------|
+| AllCustomsBookDataPDF.pdf | 35.9 MB | Full tariff book (3,134 pages) — text extraction BROKEN |
+| fullCustomsBookData (6).zip | 214 MB | 7z archive with 238 XML files |
+| FrameOrder (3) (1).pdf | 175 KB | צו מסגרת (content already in knowledge collection) |
+| tariff_xml_backup/ | 103.4 MB | 25 files — extracted XMLs + scripts backup |
+
+## Local Data Files
+- `C:\Users\doron\tariff_extract\` — extracted XMLs from 7z archive
+- `C:\Users\doron\fullCustomsBookData.zip` — the 7z archive (214 MB)
+- `C:\Users\doron\Desktop\doronrpa\tariff_data\tariff_full_text.txt` — 7.3 MB, source for tariff collection
+- `C:\Users\doron\Desktop\doronrpa\full_upload.py` — original upload script (regulatory data only)
+- `C:\Users\doron\sa-key.json` — service account key for rpa-port-customs
+- `C:\Users\doron\Downloads\AllCustomsBookDataPDF (4).pdf` — freshly downloaded tariff PDF
+
 ## Git Commits (Session B)
 - `0df6183` — shipping_knowledge.py + librarian_index + doc_reader signals
 - `d85f686` — Phase 2: ocean_tracker.py + tracker.py wiring + email sections
 - `25af8d1` — Consolidate Global Tracking email
 - `6c0e9cf` — POL/POD timing table + BL/container summary
 - `32e6cc7` — All timestamps in Israel time
+
+## Git Commits (Session D — Tariff)
+- `f1b7a44` — Block C1: Shaarolami tariff description scraper + 2,104 descriptions filled
+- `3ea16b5` — Backup: audit docs + seed keywords script from C1/C2 sessions
