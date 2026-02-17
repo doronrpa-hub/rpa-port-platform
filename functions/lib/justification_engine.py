@@ -519,7 +519,7 @@ def challenge_classification(db, hs_code, product_description, primary_chapter,
 
             for excl in exclusions:
                 excl_str = str(excl)
-                ch_refs = re.findall(r'(?:chapter)\s*(\d{1,2})', excl_str, re.IGNORECASE)
+                ch_refs = re.findall(r'(?:chapter|פרק|בפרק|לפרק)\s*(\d{1,2})', excl_str, re.IGNORECASE)
                 for ref in ch_refs:
                     ref_padded = ref.zfill(2)
                     if ref_padded != chapter:
