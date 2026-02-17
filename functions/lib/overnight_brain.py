@@ -1672,6 +1672,8 @@ def _final_knowledge_audit(db, tracker):
         "ai_knowledge_enrichments", "chapter_classification_rules",
         "classification_rules", "classification_knowledge",
         "hs_code_crossref", "brain_index",
+        "free_import_order", "free_export_order", "framework_order",
+        "classification_directives", "legal_knowledge",
     ]
 
     for coll_name in collections_to_count:

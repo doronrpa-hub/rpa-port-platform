@@ -529,9 +529,111 @@ Discovered structured JSON from data.gov.il (39 MB, 28,899 records) in Cloud Sto
 | `free_import_order` | 6,121 HS code docs + 1 metadata doc |
 | `librarian_index` | 6,121 entries (prefix: fio_) |
 
-### Block Status After Session 32
+### Block Status After Session 32 (afternoon)
 - **C1**: Tariff descriptions ✓
 - **C2**: Chapter notes ✓
-- **C3**: Free Import Order ✓ ← NEW
+- **C3**: Free Import Order ✓
 - **C4-C8**: Not started
 - **Block D**: Elimination Engine — READY (C1+C2+C3 provide data foundation)
+
+## Session 32 Evening Summary (2026-02-17) — Blocks C4+C5+C6+C8 Done
+
+### Overview
+Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. C7 (pre-rulings) blocked on data source.
+
+### Block C5: Framework Order (צו מסגרת) — DONE (commit 545c146)
+- `functions/seed_framework_order_c5.py` (NEW): Parses knowledge doc + AdditionRulesDetailsHistory.xml
+- **85 docs** seeded to `framework_order` collection: 31 definitions, 13 FTA clauses, 2 classification rules, 38 additions
+- `tool_executors.py`: Added `_lookup_framework_order()` — 6 query types (definitions, def:term, fta, country, classification_rules, addition by ID)
+- `tool_executors.py`: Enhanced `_lookup_fta()` with `_lookup_fw_fta_clause()` — FTA clause enrichment from framework_order
+- `tool_definitions.py`: Added `lookup_framework_order` tool definition
+- `librarian_index.py`: Added `framework_order` to COLLECTION_FIELDS
+- Tests updated: 9→10 tools
+
+### Block C6: Classification Directives (הנחיות סיווג) — DONE (commit 3e66ad8)
+- `functions/enrich_directives_c6.py` (NEW): Regex enrichment of 218 existing hollow directives
+- **218/218 enriched** at zero AI cost — regex extraction from consistent shaarolami HTML template
+- Fields extracted: directive_id, title, directive_type, primary_hs_code, related_hs_codes, dates, content, is_active
+- `tool_executors.py`: Replaced `_stub_not_available` with real `_search_classification_directives()` — 4 search strategies (HS code, chapter, directive_id, keyword)
+- `tool_definitions.py`: Added `search_classification_directives` tool definition
+- Tests updated: 10→11 tools
+
+### Block C4: Free Export Order (צו יצוא חופשי) — DONE (commit ad3a399)
+- `functions/seed_free_export_order_c4.py` (NEW): Parses data.gov.il JSON (CustomsBookType: "יצוא")
+- **979 HS code docs** seeded from 1,704 records, 35 chapters, 7 authorities
+- Source: `agent/data_gov_structured/20260201_download_20260201_143141.json` in Cloud Storage
+- `tool_executors.py`: Added `_lookup_local_feo()`, enhanced `_check_regulatory()` to return `free_export_order` alongside `free_import_order`
+- `tool_definitions.py`: Updated `check_regulatory` description to mention C4 Free Export Order
+- `librarian_index.py`: Added `free_export_order` to COLLECTION_FIELDS
+- Tests updated: 11→12 tools
+
+### Block C8: Legal Knowledge — DONE (commit b35d0a4)
+- `functions/seed_legal_knowledge_c8.py` (NEW): Multi-source legal document parser
+- **19 docs** seeded to `legal_knowledge` collection:
+  - 15 Customs Ordinance chapters (פקודת המכס, parsed from 272K chars in `legal_documents/pkudat_mechess`)
+  - 1 Customs Agents Law reference (extracted from Chapter 11, 130K chars, 9 law references)
+  - 1 EU Reform reference (מה שטוב לאירופה, effective 2014, legal basis: החלטת ממשלה 2118)
+  - 1 US Reform reference (מה שטוב לארצות הברית, effective 2019, legal basis: החלטת ממשלה 4440)
+  - 1 Export Order legal text (from `legal_documents/tzo_yetzu_hofshi`, 20K chars)
+- `tool_executors.py`: Added `_search_legal_knowledge()` — 5 search cases (chapter by number, customs agents, EU reform, US reform, keyword)
+- `tool_definitions.py`: Added `search_legal_knowledge` tool definition
+- `librarian_index.py`: Added `legal_knowledge` to COLLECTION_FIELDS
+
+### Block C7: Pre-Rulings (פרה-רולינג) — BLOCKED
+- All shaarolami URL patterns return 200 with 0 bytes (WAF blocking)
+- No alternative data source found
+- Stub remains in tool_executors.py dispatcher
+
+### Tool-Calling Engine: 12 Active Tools
+| # | Tool | Source | Wired |
+|---|------|--------|-------|
+| 1 | check_memory | classification_memory | Session A |
+| 2 | search_tariff | tariff, keyword_index, product_index, supplier_index | Session A |
+| 3 | check_regulatory | regulatory baseline + free_import_order (C3) + free_export_order (C4) | C3+C4 |
+| 4 | lookup_fta | FTA rules + framework_order FTA clauses (C5) | C5 |
+| 5 | verify_hs_code | tariff collection | Session A |
+| 6 | extract_invoice | Gemini Flash | Session A |
+| 7 | assess_risk | Rule-based (dual-use chapters, high-risk origins) | Session A |
+| 8 | get_chapter_notes | chapter_notes (C2) | C2 |
+| 9 | lookup_tariff_structure | tariff_structure (C2) | C2 |
+| 10 | lookup_framework_order | framework_order (C5) | C5 |
+| 11 | search_classification_directives | classification_directives (C6) | C6 |
+| 12 | search_legal_knowledge | legal_knowledge (C8) | C8 |
+
+### Firestore Collections Seeded This Session
+| Collection | Docs | Block |
+|-----------|------|-------|
+| `framework_order` | 85 + metadata | C5 |
+| `classification_directives` | 218 enriched | C6 |
+| `free_export_order` | 979 + metadata | C4 |
+| `legal_knowledge` | 19 + metadata | C8 |
+| `librarian_index` | +1,301 entries | All |
+
+### Git Commits This Session
+- `545c146` — C5: Framework Order (85 docs, lookup_framework_order tool)
+- `3e66ad8` — C6: Classification directives (218 enriched, search_classification_directives tool)
+- `ad3a399` — C4: Free Export Order (979 HS codes, _lookup_local_feo in check_regulatory)
+- `b35d0a4` — C8: Legal knowledge (19 docs, search_legal_knowledge tool)
+
+### Files Modified This Session
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | +4 tool methods, +2 cache/lookup helpers, dispatcher 9→12 active handlers |
+| `functions/lib/tool_definitions.py` | +3 tool definitions (C5/C6/C8), updated check_regulatory desc (C4), system prompt 9→12 steps |
+| `functions/lib/librarian_index.py` | +3 COLLECTION_FIELDS entries (framework_order, free_export_order, legal_knowledge) |
+| `functions/lib/overnight_brain.py` | +5 collections in collections_to_count audit list |
+| `functions/tests/test_tool_calling.py` | Tool count 9→12, expected names updated |
+
+### Test Results
+- **452 passed**, 5 failed (pre-existing BS4 issues in test_data_pipeline/test_smart_extractor/test_table_extractor — not our changes), 2 skipped
+
+### Block Status After Session 32 Evening
+- **C1**: Tariff descriptions ✓
+- **C2**: Chapter notes ✓
+- **C3**: Free Import Order ✓ (6,121 HS codes)
+- **C4**: Free Export Order ✓ (979 HS codes)
+- **C5**: Framework Order ✓ (85 docs)
+- **C6**: Classification Directives ✓ (218 enriched)
+- **C7**: Pre-Rulings — BLOCKED (no data source)
+- **C8**: Legal Knowledge ✓ (19 docs)
+- **Block D**: Elimination Engine — UNBLOCKED (all data foundation complete)
