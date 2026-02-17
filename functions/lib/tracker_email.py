@@ -4,7 +4,36 @@ RCB Tracker Email Builder
 Builds visual HTML emails for deal status updates.
 Progress bar style inspired by TaskYam but covers ALL containers in one email.
 Works in Outlook, Gmail, Apple Mail (table-based, inline CSS).
+All timestamps displayed in Israel time (Asia/Jerusalem).
 """
+from datetime import datetime, timezone, timedelta
+
+# Israel timezone: UTC+2 (IST) or UTC+3 (IDT, summer)
+# Simple approach: use fixed offset. For production, use zoneinfo if available.
+try:
+    from zoneinfo import ZoneInfo
+    IL_TZ = ZoneInfo("Asia/Jerusalem")
+except ImportError:
+    IL_TZ = None
+
+# Israel standard offset (UTC+2), summer (UTC+3)
+_IL_STANDARD = timedelta(hours=2)
+_IL_SUMMER = timedelta(hours=3)
+
+
+def _to_israel_time(dt_obj):
+    """Convert a datetime to Israel time."""
+    if IL_TZ:
+        return dt_obj.astimezone(IL_TZ)
+    # Fallback: approximate Israel DST (last Friday of March → last Sunday of October)
+    month = dt_obj.month
+    if 4 <= month <= 9:
+        return dt_obj + _IL_SUMMER
+    elif month == 3 and dt_obj.day >= 25:
+        return dt_obj + _IL_SUMMER
+    elif month == 10 and dt_obj.day <= 25:
+        return dt_obj + _IL_SUMMER
+    return dt_obj + _IL_STANDARD
 
 
 def build_tracker_status_email(deal, container_statuses, update_type="status_update",
@@ -236,10 +265,42 @@ def _summarize_steps(container_statuses, direction):
 
 
 def _format_date(date_str):
+    """Format a timestamp string to Israel time (dd/mm HH:MM IL)."""
     if not date_str:
         return ""
     try:
-        clean = date_str.split('.')[0].replace('T', ' ')
+        # Try parsing ISO format and converting to Israel time
+        clean = str(date_str).strip()
+        dt = None
+
+        # Try ISO format: 2026-02-17T08:30:00Z or 2026-02-17T08:30:00+00:00
+        if 'T' in clean or len(clean) >= 19:
+            iso_str = clean.split('.')[0]  # remove fractional seconds
+            if iso_str.endswith('Z'):
+                iso_str = iso_str[:-1]
+                dt = datetime.strptime(iso_str[:19], "%Y-%m-%dT%H:%M:%S")
+                dt = dt.replace(tzinfo=timezone.utc)
+            elif '+' in iso_str[10:] or (iso_str[10:].count('-') > 0 and len(iso_str) > 19):
+                # Has timezone offset — parse and treat as-is
+                try:
+                    dt = datetime.fromisoformat(clean.split('.')[0])
+                except ValueError:
+                    pass
+            else:
+                # No timezone — assume UTC
+                try:
+                    dt = datetime.strptime(iso_str[:19], "%Y-%m-%dT%H:%M:%S")
+                    dt = dt.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    pass
+
+        if dt:
+            # Convert to Israel time
+            il_dt = _to_israel_time(dt)
+            return f"{il_dt.day:02d}/{il_dt.month:02d} {il_dt.hour:02d}:{il_dt.minute:02d}"
+
+        # Fallback: simple string parsing for date-only or non-ISO formats
+        clean = clean.split('.')[0].replace('T', ' ')
         if '+' in clean:
             clean = clean.split('+')[0]
         parts = clean.split(' ')
@@ -249,6 +310,10 @@ def _format_date(date_str):
             d_parts = date_part.split('-')
             if len(d_parts) == 3:
                 return f"{d_parts[2]}/{d_parts[1]} {time_part}"
+        # Date only
+        d_parts = clean[:10].split('-')
+        if len(d_parts) == 3:
+            return f"{d_parts[2]}/{d_parts[1]}"
         return clean[:16]
     except Exception:
         return str(date_str)[:16]
