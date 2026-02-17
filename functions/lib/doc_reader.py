@@ -199,7 +199,31 @@ DOC_TYPE_SIGNALS = {
                'discharge progress', 'loading progress'],
         'he': ['דוח יומי', 'דוח נמל', 'לוח אוניות', 'הקצאת רציף'],
         'min_score': 2
-    }
+    },
+    # FIATA document types (added by shipping_knowledge.py research)
+    'fiata_fbl': {
+        'en': ['fiata multimodal', 'FBL', 'multimodal transport bill of lading',
+               'negotiable transport bill of lading'],
+        'he': ['שטר מטען רב אמצעי', 'פיאטה'],
+        'min_score': 2
+    },
+    'fiata_fwr': {
+        'en': ['fiata warehouse receipt', 'FWR', 'warehouse receipt'],
+        'he': ['תעודת מחסן', 'קבלת מחסן'],
+        'min_score': 2
+    },
+    'dangerous_goods_declaration': {
+        'en': ['dangerous goods declaration', 'DGD', 'shipper declaration dangerous',
+               'UN number', 'IMDG', 'packing group', 'proper shipping name'],
+        'he': ['הצהרת חומרים מסוכנים', 'מטענים מסוכנים'],
+        'min_score': 2
+    },
+    'air_waybill': {
+        'en': ['air waybill', 'AWB', 'airway bill', 'master air waybill', 'MAWB',
+               'house air waybill', 'HAWB', 'airport of departure', 'IATA'],
+        'he': ['שטר מטען אווירי', 'שטר אוויר'],
+        'min_score': 2
+    },
 }
 
 

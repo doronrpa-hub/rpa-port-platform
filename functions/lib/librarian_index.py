@@ -233,6 +233,20 @@ COLLECTION_FIELDS = {
         "hs_fields": ["taric_code"],
         "doc_type": "document",
     },
+    # Shipping knowledge collections (added by shipping_knowledge.py)
+    "shipping_lines": {
+        "title_fields": ["name", "country"],
+        "keyword_fields": ["scac", "bol_prefixes", "container_prefixes", "email_domains",
+                          "israel_company_codes", "israel_kav_codes"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "fiata_documents": {
+        "title_fields": ["name", "description"],
+        "keyword_fields": ["code", "key_fields"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension
