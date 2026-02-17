@@ -15,7 +15,7 @@ import time
 import re
 import requests
 
-from lib.tool_definitions import CLAUDE_TOOLS, CLASSIFICATION_SYSTEM_PROMPT
+from lib.tool_definitions import CLAUDE_TOOLS, GEMINI_TOOLS, CLASSIFICATION_SYSTEM_PROMPT
 from lib.tool_executors import ToolExecutor
 
 # Optional modules — graceful degradation
@@ -63,10 +63,15 @@ from lib.verification_loop import verify_all_classifications, learn_from_verific
 # Constants
 # ---------------------------------------------------------------------------
 
-_MODEL = "claude-sonnet-4-20250514"
+_CLAUDE_MODEL = "claude-sonnet-4-20250514"
+_GEMINI_MODEL = "gemini-2.5-flash"
 _MAX_TOKENS = 4096
 _MAX_ROUNDS = 8
 _TIME_BUDGET_SEC = 120  # Hard ceiling — abort tool loop after this
+
+# Cost optimization: Gemini Flash is ~20x cheaper than Claude Sonnet.
+# Try Gemini first for tool-calling, fall back to Claude if Gemini fails.
+_PREFER_GEMINI = True
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +169,8 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
         # Build user prompt with invoice data
         user_prompt = _build_user_prompt(items, origin, invoice, doc_text)
 
-        # Multi-turn tool calling loop
-        ai_response = _run_tool_loop(api_key, user_prompt, executor)
+        # Multi-turn tool calling loop (Gemini primary, Claude fallback)
+        ai_response = _run_tool_loop(api_key, user_prompt, executor, gemini_key=gemini_key)
     else:
         print(f"  [TOOL ENGINE] ALL {len(items)} items from memory — skipping AI")
 
@@ -340,15 +345,28 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
 # Multi-turn tool calling loop (Claude API)
 # ---------------------------------------------------------------------------
 
-def _run_tool_loop(api_key, user_prompt, executor):
+def _run_tool_loop(api_key, user_prompt, executor, gemini_key=None):
     """
-    Send message to Claude with tools, execute tool calls, repeat.
-    Returns the final text response or None.
+    Send message to AI with tools, execute tool calls, repeat.
+    Tries Gemini Flash first (20x cheaper), falls back to Claude if needed.
 
     Constraints:
         - Max 8 rounds
         - 120 second time budget
     """
+    # Choose model: Gemini first if available and preferred
+    use_gemini = _PREFER_GEMINI and gemini_key
+    model_label = "Gemini" if use_gemini else "Claude"
+    print(f"  [TOOL ENGINE] Using {model_label} for tool-calling loop")
+
+    if use_gemini:
+        return _run_gemini_tool_loop(gemini_key, user_prompt, executor, api_key)
+    else:
+        return _run_claude_tool_loop(api_key, user_prompt, executor)
+
+
+def _run_claude_tool_loop(api_key, user_prompt, executor):
+    """Claude tool-calling loop (fallback — more expensive)."""
     messages = [{"role": "user", "content": user_prompt}]
     t0 = time.time()
     text_parts = []
@@ -359,7 +377,7 @@ def _run_tool_loop(api_key, user_prompt, executor):
             print(f"  [TOOL ENGINE] Time budget exhausted ({elapsed:.0f}s) at round {round_num}")
             break
 
-        print(f"  [TOOL ENGINE] API call round {round_num + 1}...")
+        print(f"  [TOOL ENGINE] Claude round {round_num + 1}...")
         response = _call_claude_with_tools(api_key, messages)
         if not response:
             print("  [TOOL ENGINE] Claude API returned None")
@@ -378,9 +396,8 @@ def _run_tool_loop(api_key, user_prompt, executor):
                 tool_uses.append(block)
 
         if stop_reason == "end_turn" or not tool_uses:
-            # Done — return accumulated text
             final_text = "\n".join(text_parts)
-            print(f"  [TOOL ENGINE] AI finished in {round_num + 1} rounds")
+            print(f"  [TOOL ENGINE] Claude finished in {round_num + 1} rounds")
             return final_text
 
         # Execute tool calls
@@ -391,7 +408,6 @@ def _run_tool_loop(api_key, user_prompt, executor):
             tool_input = tu.get("input", {})
             tool_id = tu.get("id", "")
 
-            # Time check before each tool execution
             if time.time() - t0 > _TIME_BUDGET_SEC:
                 print(f"  [TOOL ENGINE] Time budget hit during tool execution")
                 tool_results.append({
@@ -414,8 +430,129 @@ def _run_tool_loop(api_key, user_prompt, executor):
     return "\n".join(text_parts) if text_parts else None
 
 
+def _run_gemini_tool_loop(gemini_key, user_prompt, executor, claude_api_key=None):
+    """
+    Gemini Flash tool-calling loop (PRIMARY — 20x cheaper than Claude).
+    Falls back to Claude if Gemini fails completely.
+    """
+    t0 = time.time()
+
+    # Gemini uses a different message format
+    contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
+    text_parts = []
+
+    for round_num in range(_MAX_ROUNDS):
+        elapsed = time.time() - t0
+        if elapsed > _TIME_BUDGET_SEC:
+            print(f"  [TOOL ENGINE] Time budget exhausted ({elapsed:.0f}s) at round {round_num}")
+            break
+
+        print(f"  [TOOL ENGINE] Gemini round {round_num + 1}...")
+        response = _call_gemini_with_tools(gemini_key, contents)
+        if not response:
+            print("  [TOOL ENGINE] Gemini API returned None — falling back to Claude")
+            if claude_api_key:
+                return _run_claude_tool_loop(claude_api_key, user_prompt, executor)
+            return None
+
+        # Parse Gemini response
+        candidates = response.get("candidates", [])
+        if not candidates:
+            print("  [TOOL ENGINE] Gemini no candidates — falling back to Claude")
+            if claude_api_key:
+                return _run_claude_tool_loop(claude_api_key, user_prompt, executor)
+            return None
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+
+        # Collect text and function calls
+        text_parts = []
+        func_calls = []
+        for part in parts:
+            if "text" in part:
+                text_parts.append(part["text"])
+            elif "functionCall" in part:
+                func_calls.append(part["functionCall"])
+
+        # Check finish reason
+        finish_reason = candidates[0].get("finishReason", "")
+        if not func_calls or finish_reason == "STOP":
+            final_text = "\n".join(text_parts)
+            print(f"  [TOOL ENGINE] Gemini finished in {round_num + 1} rounds")
+            return final_text
+
+        # Execute function calls and build response
+        contents.append({"role": "model", "parts": parts})
+        func_responses = []
+        for fc in func_calls:
+            tool_name = fc.get("name", "")
+            tool_args = fc.get("args", {})
+
+            if time.time() - t0 > _TIME_BUDGET_SEC:
+                print(f"  [TOOL ENGINE] Time budget hit during tool execution")
+                func_responses.append({
+                    "functionResponse": {
+                        "name": tool_name,
+                        "response": {"error": "Time budget exceeded"},
+                    }
+                })
+                continue
+
+            result = executor.execute(tool_name, tool_args)
+            func_responses.append({
+                "functionResponse": {
+                    "name": tool_name,
+                    "response": result if isinstance(result, dict) else {"result": str(result)},
+                }
+            })
+
+        contents.append({"role": "user", "parts": func_responses})
+
+    print(f"  [TOOL ENGINE] Max rounds reached, returning last text")
+    return "\n".join(text_parts) if text_parts else None
+
+
+def _call_gemini_with_tools(gemini_key, contents):
+    """Single Gemini API call with function declarations (tool calling)."""
+    try:
+        resp = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent?key={gemini_key}",
+            headers={"content-type": "application/json"},
+            json={
+                "systemInstruction": {"parts": [{"text": CLASSIFICATION_SYSTEM_PROMPT}]},
+                "contents": contents,
+                "tools": GEMINI_TOOLS,
+                "generationConfig": {
+                    "maxOutputTokens": _MAX_TOKENS,
+                    "temperature": 0.3,
+                },
+            },
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            # Cost tracking — Gemini Flash pricing
+            usage = data.get("usageMetadata", {})
+            inp_tok = usage.get("promptTokenCount", 0)
+            out_tok = usage.get("candidatesTokenCount", 0)
+            cost = (inp_tok * 0.15 + out_tok * 0.60) / 1_000_000
+            print(f"    💰 Gemini (tool-call): {inp_tok}+{out_tok} tokens = ${cost:.4f}")
+            try:
+                from lib.classification_agents import _cost_tracker
+                _cost_tracker.add("Gemini tool-call", cost)
+            except ImportError:
+                pass
+            return data
+        print(f"  [TOOL ENGINE] Gemini API error: {resp.status_code} - {resp.text[:200]}")
+        return None
+    except Exception as e:
+        print(f"  [TOOL ENGINE] Gemini API exception: {e}")
+        return None
+
+
 def _call_claude_with_tools(api_key, messages):
-    """Single Claude API call with tool definitions."""
+    """Single Claude API call with tool definitions (fallback — more expensive)."""
     try:
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -425,7 +562,7 @@ def _call_claude_with_tools(api_key, messages):
                 "anthropic-version": "2023-06-01",
             },
             json={
-                "model": _MODEL,
+                "model": _CLAUDE_MODEL,
                 "max_tokens": _MAX_TOKENS,
                 "system": CLASSIFICATION_SYSTEM_PROMPT,
                 "tools": CLAUDE_TOOLS,
@@ -440,7 +577,7 @@ def _call_claude_with_tools(api_key, messages):
             inp_tok = usage.get("input_tokens", 0)
             out_tok = usage.get("output_tokens", 0)
             cost = (inp_tok * 3.0 + out_tok * 15.0) / 1_000_000
-            print(f"    💰 Claude (tool-call): {inp_tok}+{out_tok} tokens = ${cost:.4f}")
+            print(f"    💰 Claude (tool-call fallback): {inp_tok}+{out_tok} tokens = ${cost:.4f}")
             try:
                 from lib.classification_agents import _cost_tracker
                 _cost_tracker.add("Claude tool-call", cost)

@@ -267,6 +267,19 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    "port_schedules": {
+        "title_fields": ["vessel_name", "shipping_line"],
+        "keyword_fields": ["port_code", "vessel_name", "shipping_line",
+                          "voyage", "schedule_key", "source"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "daily_port_report": {
+        "title_fields": ["port_name_en", "port_name_he"],
+        "keyword_fields": ["port_code", "report_date"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension

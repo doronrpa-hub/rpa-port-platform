@@ -47,6 +47,15 @@ except ImportError as e:
     print(f"Pupil not available: {e}")
     PUPIL_AVAILABLE = False
 
+try:
+    from lib.schedule_il_ports import (
+        build_all_port_schedules, is_schedule_email, process_schedule_email
+    )
+    SCHEDULE_AVAILABLE = True
+except ImportError as e:
+    print(f"Port schedule module not available: {e}")
+    SCHEDULE_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -1160,6 +1169,18 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 except Exception as te:
                     print(f"    ⚠️ Tracker CC error (non-fatal): {te}")
 
+            # Schedule: detect vessel schedule emails (FREE — Firestore only)
+            if SCHEDULE_AVAILABLE:
+                try:
+                    _sched_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+                    if is_schedule_email(subject, _sched_body, from_email):
+                        print(f"  🚢 Schedule email detected: {subject[:50]}")
+                        process_schedule_email(
+                            get_db(), subject, _sched_body, from_email, msg_id
+                        )
+                except Exception as se:
+                    print(f"    ⚠️ Schedule CC error (non-fatal): {se}")
+
             # ── Block A1: CC emails with invoice content → also classify ──
             _cc_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
             _cc_combined = f"{subject} {_cc_body}".lower()
@@ -2046,6 +2067,32 @@ def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
         print("✈️ Air cargo tracker not available")
     except Exception as ae:
         print(f"✈️ Air cargo poll error: {ae}")
+
+
+# ============================================================
+# PORT SCHEDULE: Daily vessel schedule aggregation
+# ============================================================
+@scheduler_fn.on_schedule(
+    schedule="every 12 hours",
+    region="us-central1",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=300,
+)
+def rcb_port_schedule(event: scheduler_fn.ScheduledEvent) -> None:
+    """Build daily vessel schedules for all Israeli ports (Haifa, Ashdod, Eilat)."""
+    if not SCHEDULE_AVAILABLE:
+        print("⏸️ Port schedule module not available — skipping")
+        return
+
+    print("🚢 Building daily port schedules...")
+    try:
+        results = build_all_port_schedules(get_db(), get_secret_func=get_secret)
+        total = sum(r.get("vessel_count", 0) for r in results.values() if isinstance(r, dict))
+        print(f"🚢 Port schedules complete: {total} vessels across {len(results)} ports")
+    except Exception as e:
+        print(f"❌ Port schedule error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # ============================================================

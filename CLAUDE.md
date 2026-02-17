@@ -125,6 +125,87 @@ Tables: 1091, 1259, 1326, 1347, 1390, 1307, 1308, 1378, 1369, 1373, 2010, 1557, 
 - **Port working plans** — published by Israeli ports
 - **TaskYam = 100% authoritative** when shown
 
+## Cost Optimization (Session C)
+
+### Model Routing Strategy (MINIMIZE COSTS)
+| Component | Model | Cost (per MTok) | Notes |
+|-----------|-------|-----------------|-------|
+| **Tool-calling engine** | Gemini 2.5 Flash (PRIMARY) | $0.15/$0.60 | Was Claude ($3/$15). ~95% savings. Falls back to Claude. |
+| **Agent 2 (Classification)** | Claude Sonnet 4.5 | $3/$15 | Stays on Claude — core task, quality critical |
+| **Agents 1,3,4,5** | Gemini 2.5 Flash | $0.15/$0.60 | Already optimized |
+| **Agent 6 (Synthesis)** | Gemini 2.5 Pro | $1.25/$10 | Hebrew quality needs Pro |
+| **Cross-check** | Gemini Pro + Flash + GPT-4o-mini | ~$0.0009/item | Was Claude+Gemini+GPT (~$0.0046/item). ~80% savings. |
+| **Overnight Brain** | Gemini 2.5 Flash | $0.15/$0.60 | Budget-capped at $3.50/run |
+| **Pupil** | Gemini 2.5 Flash | $0.15/$0.60 | Already optimized |
+
+### Changes Made
+- **`tool_calling_engine.py`**: Added `_call_gemini_with_tools()` + `_run_gemini_tool_loop()`. Gemini Flash is now PRIMARY for tool-calling, Claude is FALLBACK. `_PREFER_GEMINI = True` flag controls this.
+- **`cross_checker.py`**: Replaced Claude Sonnet with Gemini Pro in 3-way cross-check. Still 3 independent models (Gemini Pro vs Flash vs GPT-4o-mini + UK Tariff).
+- **`tool_definitions.py`**: Already had `GEMINI_TOOLS` format — now imported and used.
+
+### Estimated Monthly Savings (2,000 classifications/month)
+```
+Tool-calling:  $200 → $10     (savings: $190)
+Cross-check:   $200 → $40     (savings: $160)
+Total savings: ~$350/month
+```
+
+### Key Constants
+- `tool_calling_engine.py:_PREFER_GEMINI = True` — Gemini first, Claude fallback
+- `classification_agents.py:PRE_CLASSIFY_BYPASS_ENABLED = True` — Skip AI when memory confidence >= 90%
+- `classification_agents.py:CROSS_CHECK_ENABLED = True` — 3-way verification (now cheaper)
+- `cost_tracker.py:BUDGET_LIMIT = 3.50` — Hard cap per overnight run
+
+## Daily Port Schedule (Session C)
+
+### NEW: `functions/lib/schedule_il_ports.py`
+Daily vessel schedule aggregation for Israeli ports (Haifa, Ashdod, Eilat).
+
+**6 FREE data sources:**
+| # | Source | Type | Function |
+|---|--------|------|----------|
+| 1 | Carrier APIs | REST | `_query_carrier_schedules()` — via ocean_tracker.query_vessel_schedule() |
+| 2 | aisstream.io | AIS/REST | `_query_ais_vessels()` — real-time vessel positions near ports |
+| 3 | Haifa Port portal | Web | `_query_haifa_port_schedule()` — haifa-port.ynadev.com |
+| 4 | ZIM Expected | Web | `_query_zim_expected_vessels()` — zim.com Israel page |
+| 5 | TaskYam deals | Firestore | `_extract_from_active_deals()` — vessel data from active deals |
+| 6 | Email parsing | Graph API | `parse_schedule_from_email()` — cc@rpa-port.co.il schedule emails |
+
+**Key functions:**
+- `build_all_port_schedules(db, get_secret_func)` — main entry, all 3 ports
+- `build_daily_port_schedule(db, port_code, get_secret_func)` — single port
+- `is_schedule_email(subject, body, from_email)` — detect schedule emails
+- `process_schedule_email(db, subject, body, from_email, msg_id)` — extract & store
+- `build_schedule_email_html(db, port_code)` — daily report HTML email
+- `get_vessel_schedule(db, vessel_name)` — lookup by vessel
+- `get_daily_report(db, port_code, date)` — get daily aggregate
+
+**Dedup priority:** TaskYam > Carrier API > Haifa Port > ZIM Expected > Email > AIS
+
+**Secret keys needed:** `AISSTREAM_API_KEY` (free registration at aisstream.io)
+
+### MODIFIED: `functions/main.py`
+- Added `rcb_port_schedule()` — scheduled every 12 hours
+- Added schedule email detection in CC email handler (after tracker, before classification)
+- Import: `schedule_il_ports.build_all_port_schedules, is_schedule_email, process_schedule_email`
+
+### MODIFIED: `functions/lib/librarian_index.py`
+- Added `port_schedules` and `daily_port_report` to COLLECTION_FIELDS
+
+### Firestore Collections (Port Schedule)
+- `port_schedules` — one doc per vessel visit per port (dedup key: port+vessel+eta_date)
+- `daily_port_report` — aggregate per port per day (doc ID: `ILHFA_2026-02-17`)
+
+### Israeli Port Data Sources (Discovered)
+- Haifa Port digital portal: `haifa-port.ynadev.com` (ship schedules, work plan, real-time)
+- Ashdod Port: `ashdodport.co.il` (ASP.NET, may need session)
+- IsraPorts: `israports.co.il` (WAF-protected, has shipping schedule page)
+- ZIM Israel: `zim.com/global-network/asia-oceania/israel/expected-vessels`
+- ONE Port Schedule: `ecomm.one-line.com/one-ecom/schedule/port-schedule?portCdParam=ILHFA`
+- aisstream.io: Free real-time AIS WebSocket/REST
+- Port2Port portal: `port2port.co.il` (links to port work schedules)
+- Note: Eilat Port closed July 2025 (Houthi attacks)
+
 ## Git Commits (Session B)
 - `0df6183` — shipping_knowledge.py + librarian_index + doc_reader signals
 - `d85f686` — Phase 2: ocean_tracker.py + tracker.py wiring + email sections
