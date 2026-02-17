@@ -258,6 +258,31 @@ CLAUDE_TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "search_legal_knowledge",
+        "description": (
+            "Search Israeli customs legal knowledge: Customs Ordinance chapters (פקודת המכס), "
+            "Customs Agents Law (חוק סוכני המכס), "
+            "EU standards reform ('What's Good for Europe is Good for Israel'), "
+            "US standards reform ('What's Good for the USA is Good for Israel'). "
+            "Query by chapter number (1-15), keyword, or topic (e.g., 'agents', 'EU reform')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "What to look up. Can be: chapter number ('11' for Agents), "
+                        "'agents' or 'סוכנים' for customs agents law, "
+                        "'EU' or 'אירופה' for EU reform, 'USA' for US reform, "
+                        "or any keyword to search across legal texts."
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -308,7 +333,8 @@ WORKFLOW:
 8. Call lookup_fta to check FTA eligibility if origin country is known.
 9. Call lookup_framework_order to check legal definitions or classification rules from the Framework Order if needed.
 10. Call search_classification_directives to check if an official classification directive exists for the product or HS code.
-11. Call assess_risk for risk assessment.
+11. Call search_legal_knowledge to check relevant legal provisions, standards reforms (EU/US), or customs agents law if needed.
+12. Call assess_risk for risk assessment.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

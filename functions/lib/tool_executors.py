@@ -62,6 +62,7 @@ class ToolExecutor:
             "lookup_framework_order": self._lookup_framework_order,
             "search_pre_rulings": self._stub_not_available,
             "search_classification_directives": self._search_classification_directives,
+            "search_legal_knowledge": self._search_legal_knowledge,
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
             "search_wco_decisions": self._stub_not_available,
@@ -821,6 +822,91 @@ class ToolExecutor:
             "is_active": data.get("is_active", True),
             "content": (data.get("content", "") or data.get("summary", ""))[:2000],
         }
+
+    def _search_legal_knowledge(self, inp):
+        """Search legal knowledge: Customs Ordinance chapters, customs agents law,
+        EU/US standards reforms. C8: 19 docs from parsed legal_documents."""
+        query = str(inp.get("query", "")).strip()
+        if not query:
+            return {"found": False, "error": "No query provided"}
+
+        query_lower = query.lower()
+
+        try:
+            # Case 1: Ordinance chapter by number
+            if query.isdigit() and 1 <= int(query) <= 15:
+                doc_id = f"ordinance_ch_{query.zfill(2)}"
+                doc = self.db.collection("legal_knowledge").document(doc_id).get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {
+                        "found": True, "type": "ordinance_chapter",
+                        "chapter_number": data.get("chapter_number", 0),
+                        "title_he": data.get("title_he", ""),
+                        "title_en": data.get("title_en", ""),
+                        "text": data.get("text", "")[:3000],
+                        "sections_count": data.get("sections_count", 0),
+                    }
+
+            # Case 2: Customs agents
+            if any(k in query_lower for k in ["agent", "סוכנ", "broker", "עמיל"]):
+                doc = self.db.collection("legal_knowledge").document("customs_agents_law").get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {
+                        "found": True, "type": "customs_agents_law",
+                        "law_name_he": data.get("law_name_he", ""),
+                        "law_name_en": data.get("law_name_en", ""),
+                        "key_topics": data.get("key_topics", []),
+                        "law_references": data.get("law_references", [])[:5],
+                        "chapter_11_text": data.get("chapter_11_text", "")[:3000],
+                    }
+
+            # Case 3: EU reform
+            if any(k in query_lower for k in ["europe", "eu", "אירופ", "ce mark"]):
+                doc = self.db.collection("legal_knowledge").document("reform_eu_standards").get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {"found": True, "type": "reform", **{
+                        k: v for k, v in data.items()
+                        if k not in ("source", "seeded_at")
+                    }}
+
+            # Case 4: US reform
+            if any(k in query_lower for k in ["usa", "us", "america", "ארצות הברית", "ארה", "ul", "fda"]):
+                doc = self.db.collection("legal_knowledge").document("reform_us_standards").get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {"found": True, "type": "reform", **{
+                        k: v for k, v in data.items()
+                        if k not in ("source", "seeded_at")
+                    }}
+
+            # Case 5: General keyword search
+            matches = []
+            for doc in self.db.collection("legal_knowledge").stream():
+                if doc.id.startswith("_"):
+                    continue
+                data = doc.to_dict()
+                searchable = " ".join([
+                    str(data.get("title_he", "")),
+                    str(data.get("title_en", "")),
+                    str(data.get("reform_name_he", "")),
+                    str(data.get("law_name_he", "")),
+                    str(data.get("text", ""))[:2000],
+                ]).lower()
+                if query_lower in searchable:
+                    matches.append({
+                        "doc_id": doc.id,
+                        "type": data.get("type", ""),
+                        "title": data.get("title_he", "") or data.get("reform_name_he", "") or data.get("law_name_he", ""),
+                    })
+            if matches:
+                return {"found": True, "type": "search", "results": matches[:10], "count": len(matches)}
+
+            return {"found": False, "query": query, "message": "No matching legal knowledge found"}
+        except Exception as e:
+            return {"found": False, "error": str(e)}
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""

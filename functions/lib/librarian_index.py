@@ -304,6 +304,14 @@ COLLECTION_FIELDS = {
         "hs_fields": ["hs_code", "hs_10"],
         "doc_type": "regulatory",
     },
+    # Block C8: Legal knowledge — Customs Ordinance chapters, reforms, customs agents law
+    # Source: legal_documents/pkudat_mechess + reference docs
+    "legal_knowledge": {
+        "title_fields": ["title_he", "title_en", "reform_name_he", "law_name_he", "text"],
+        "keyword_fields": ["type", "chapter_number", "sections_mentioned"],
+        "hs_fields": [],
+        "doc_type": "legal",
+    },
     # Block C5: צו מסגרת — Framework Order (legal definitions, FTA rules, additions)
     # Source: knowledge doc (PDF text) + AdditionRulesDetailsHistory.xml
     "framework_order": {
