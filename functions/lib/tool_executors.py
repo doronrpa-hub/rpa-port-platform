@@ -57,6 +57,7 @@ class ToolExecutor:
             "assess_risk": self._assess_risk,
             "get_chapter_notes": self._get_chapter_notes,
             "lookup_tariff_structure": self._lookup_tariff_structure,
+            "lookup_framework_order": self._lookup_framework_order,
             "search_pre_rulings": self._stub_not_available,
             "search_classification_directives": self._stub_not_available,
             "search_foreign_tariff": self._stub_not_available,
@@ -238,12 +239,72 @@ class ToolExecutor:
         return None
 
     def _lookup_fta(self, inp):
-        """Wraps intelligence.lookup_fta()."""
-        return intelligence.lookup_fta(
+        """Wraps intelligence.lookup_fta() + enriches with C5 framework_order FTA clauses."""
+        result = intelligence.lookup_fta(
             self.db,
             inp.get("hs_code", ""),
             inp.get("origin_country", ""),
         )
+        # C5: Enrich with framework_order FTA clause if available
+        origin = (inp.get("origin_country", "") or "").strip().lower()
+        if origin:
+            fw_fta = self._lookup_fw_fta_clause(origin)
+            if fw_fta:
+                result["framework_order_clause"] = fw_fta
+        return result
+
+    def _lookup_fw_fta_clause(self, origin_country):
+        """Look up FTA clause from framework_order collection by country."""
+        # Map common country names/codes to framework_order doc IDs
+        _COUNTRY_MAP = {
+            "eu": "eu", "european union": "eu", "האיחוד האירופי": "eu",
+            "germany": "eu", "france": "eu", "italy": "eu", "spain": "eu",
+            "netherlands": "eu", "belgium": "eu", "austria": "eu", "poland": "eu",
+            "czech republic": "eu", "czechia": "eu", "romania": "eu",
+            "portugal": "eu", "greece": "eu", "sweden": "eu", "denmark": "eu",
+            "finland": "eu", "ireland": "eu", "hungary": "eu", "slovakia": "eu",
+            "croatia": "eu", "bulgaria": "eu", "lithuania": "eu", "slovenia": "eu",
+            "latvia": "eu", "estonia": "eu", "cyprus": "eu", "luxembourg": "eu",
+            "malta": "eu",
+            "efta": "efta", "switzerland": "efta", "norway": "efta",
+            "iceland": "efta", "liechtenstein": "efta", "אפט\"א": "efta",
+            "usa": "usa", "us": "usa", "united states": "usa", "america": "usa",
+            "ארה\"ב": "usa", "ארצות הברית": "usa",
+            "uk": "uk", "gb": "uk", "united kingdom": "uk", "britain": "uk",
+            "england": "uk", "בריטניה": "uk", "הממלכה המאוחדת": "uk",
+            "turkey": "turkey", "tr": "turkey", "turkiye": "turkey", "טורקיה": "turkey",
+            "jordan": "jordan", "jo": "jordan", "ירדן": "jordan",
+            "canada": "canada", "ca": "canada", "קנדה": "canada",
+            "mexico": "mexico", "mx": "mexico", "מקסיקו": "mexico",
+            "mercosur": "mercosur", "brazil": "mercosur", "argentina": "mercosur",
+            "uruguay": "mercosur", "paraguay": "mercosur", "מרקוסור": "mercosur",
+            "korea": "korea", "kr": "korea", "south korea": "korea", "קוריאה": "korea",
+            "colombia": "colombia", "co": "colombia", "קולומביה": "colombia",
+            "panama": "panama", "pa": "panama", "פנמה": "panama",
+            "ukraine": "ukraine", "ua": "ukraine", "אוקראינה": "ukraine",
+            "uae": "uae", "ae": "uae", "united arab emirates": "uae", "אמירויות": "uae",
+            "guatemala": "guatemala", "gt": "guatemala", "גואטמלה": "guatemala",
+        }
+        code = _COUNTRY_MAP.get(origin_country.lower())
+        if not code:
+            return None
+        try:
+            doc = self.db.collection("framework_order").document(f"fta_{code}").get()
+            if doc.exists:
+                data = doc.to_dict()
+                return {
+                    "country_code": data.get("country_code", ""),
+                    "country_en": data.get("country_en", ""),
+                    "country_he": data.get("country_he", ""),
+                    "supplements": data.get("supplements", []),
+                    "is_duty_free": data.get("is_duty_free", False),
+                    "has_reduction": data.get("has_reduction", False),
+                    "clause_text": data.get("clause_text", "")[:2000],
+                    "source": "framework_order_c5",
+                }
+        except Exception:
+            pass
+        return None
 
     def _verify_hs_code(self, inp):
         """Wraps verification_loop.verify_hs_code()."""
@@ -444,6 +505,137 @@ class ToolExecutor:
                 return {"found": True, "type": "search", "query": query, "results": matches[:10]}
 
             return {"found": False, "query": query, "message": "No matching section, chapter, or keyword found"}
+
+        except Exception as e:
+            return {"found": False, "error": str(e)}
+
+    def _lookup_framework_order(self, inp):
+        """Look up Framework Order (צו מסגרת) data: legal definitions, FTA clauses,
+        classification rules, and addition rules.
+        C5: Reads from framework_order collection seeded from knowledge doc + XML."""
+        query = str(inp.get("query", "")).strip()
+        if not query:
+            return {"found": False, "error": "No query provided"}
+
+        query_lower = query.lower()
+
+        try:
+            # Case 1: "definitions" — return all legal definitions
+            if query_lower in ("definitions", "הגדרות", "all_definitions"):
+                defs = []
+                for doc in self.db.collection("framework_order").where("type", "==", "definition").stream():
+                    data = doc.to_dict()
+                    defs.append({
+                        "term": data.get("term", ""),
+                        "definition": data.get("definition", "")[:500],
+                    })
+                return {"found": bool(defs), "type": "definitions", "definitions": defs, "count": len(defs)}
+
+            # Case 2: Specific definition term lookup
+            if query_lower.startswith("def:") or query_lower.startswith("define:"):
+                term = query.split(":", 1)[1].strip()
+                # Search definitions for matching term
+                matches = []
+                for doc in self.db.collection("framework_order").where("type", "==", "definition").stream():
+                    data = doc.to_dict()
+                    doc_term = data.get("term", "")
+                    if term in doc_term or term.lower() in doc_term.lower():
+                        matches.append({
+                            "term": doc_term,
+                            "definition": data.get("definition", ""),
+                        })
+                return {"found": bool(matches), "type": "definition_search", "term": term,
+                        "results": matches, "count": len(matches)}
+
+            # Case 3: "fta" or country name — FTA clause lookup
+            if query_lower.startswith("fta") or query_lower in (
+                "eu", "efta", "usa", "uk", "turkey", "jordan", "canada", "mexico",
+                "mercosur", "korea", "colombia", "panama", "ukraine", "uae", "guatemala",
+            ):
+                country = query_lower.replace("fta:", "").replace("fta ", "").strip()
+                if country == "fta":
+                    # Return all FTA clauses
+                    clauses = []
+                    for doc in self.db.collection("framework_order").where("type", "==", "fta_clause").stream():
+                        data = doc.to_dict()
+                        clauses.append({
+                            "country_code": data.get("country_code", ""),
+                            "country_en": data.get("country_en", ""),
+                            "country_he": data.get("country_he", ""),
+                            "is_duty_free": data.get("is_duty_free", False),
+                            "has_reduction": data.get("has_reduction", False),
+                            "supplements": data.get("supplements", []),
+                        })
+                    return {"found": bool(clauses), "type": "fta_overview", "clauses": clauses, "count": len(clauses)}
+                else:
+                    # Single country FTA
+                    fw_fta = self._lookup_fw_fta_clause(country)
+                    if fw_fta:
+                        return {"found": True, "type": "fta_clause", **fw_fta}
+                    return {"found": False, "type": "fta_clause", "query": country,
+                            "message": f"No FTA clause found for '{country}'"}
+
+            # Case 4: "classification_rules" or "rules"
+            if query_lower in ("classification_rules", "rules", "סיווג"):
+                rules = []
+                for doc in self.db.collection("framework_order").where("type", "==", "classification_rule").stream():
+                    data = doc.to_dict()
+                    rules.append({
+                        "rule_type": data.get("rule_type", ""),
+                        "title": data.get("title", ""),
+                        "title_en": data.get("title_en", ""),
+                        "text": data.get("text", "")[:2000],
+                    })
+                return {"found": bool(rules), "type": "classification_rules", "rules": rules, "count": len(rules)}
+
+            # Case 5: Addition by ID (e.g., "addition_3", "3")
+            add_match = None
+            if query_lower.startswith("addition_") or query_lower.startswith("addition "):
+                add_match = query.split("_", 1)[-1].split(" ", 1)[-1].strip()
+            elif query.isdigit():
+                add_match = query
+            if add_match:
+                doc = self.db.collection("framework_order").document(f"addition_{add_match}").get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {
+                        "found": True,
+                        "type": "addition_rule",
+                        "addition_id": data.get("addition_id", ""),
+                        "title": data.get("title", ""),
+                        "start_date": data.get("start_date", ""),
+                        "end_date": data.get("end_date", ""),
+                        "rules_text": data.get("rules_text", "")[:3000],
+                        "versions_count": data.get("versions_count", 0),
+                    }
+
+            # Case 6: General text search across all framework_order docs
+            matches = []
+            for doc in self.db.collection("framework_order").stream():
+                if doc.id.startswith("_"):
+                    continue
+                data = doc.to_dict()
+                searchable = " ".join([
+                    str(data.get("term", "")),
+                    str(data.get("title", "")),
+                    str(data.get("definition", "")),
+                    str(data.get("country_en", "")),
+                    str(data.get("country_he", "")),
+                ]).lower()
+                if query_lower in searchable:
+                    matches.append({
+                        "doc_id": doc.id,
+                        "type": data.get("type", ""),
+                        "term": data.get("term", ""),
+                        "title": data.get("title", ""),
+                        "country_en": data.get("country_en", ""),
+                        "snippet": (data.get("definition", "") or data.get("text", "")
+                                    or data.get("clause_text", ""))[:300],
+                    })
+            if matches:
+                return {"found": True, "type": "search", "query": query, "results": matches[:10], "count": len(matches)}
+
+            return {"found": False, "query": query, "message": "No matching framework order data found"}
 
         except Exception as e:
             return {"found": False, "error": str(e)}

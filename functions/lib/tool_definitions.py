@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 7 tools available to the AI during classification.
+Defines the 10 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -203,6 +203,32 @@ CLAUDE_TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "lookup_framework_order",
+        "description": (
+            "Look up data from the Israeli Framework Order (צו מסגרת): "
+            "legal definitions that override common language for classification, "
+            "FTA (Free Trade Agreement) preferential duty clauses per country, "
+            "classification rules for the First Supplement (תוספת ראשונה), "
+            "and tariff addition rules. "
+            "Query types: 'definitions' for all legal terms, 'def:term' for a specific term, "
+            "'fta' for all FTA clauses, a country name for specific FTA, "
+            "'classification_rules' for classification rules, or an addition number."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "What to look up. Can be: 'definitions', 'def:מכס', 'fta', 'eu', 'turkey', "
+                        "'classification_rules', 'addition_3', or a free-text search term."
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -251,7 +277,8 @@ WORKFLOW:
 6. Call verify_hs_code to validate your chosen code against the official tariff DB.
 7. Call check_regulatory to find ministry requirements and permits.
 8. Call lookup_fta to check FTA eligibility if origin country is known.
-9. Call assess_risk for risk assessment.
+9. Call lookup_framework_order to check legal definitions or classification rules from the Framework Order if needed.
+10. Call assess_risk for risk assessment.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

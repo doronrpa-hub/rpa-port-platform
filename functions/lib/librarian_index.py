@@ -296,6 +296,14 @@ COLLECTION_FIELDS = {
         "hs_fields": ["hs_code", "hs_10"],
         "doc_type": "regulatory",
     },
+    # Block C5: צו מסגרת — Framework Order (legal definitions, FTA rules, additions)
+    # Source: knowledge doc (PDF text) + AdditionRulesDetailsHistory.xml
+    "framework_order": {
+        "title_fields": ["term", "title", "country_en", "country_he", "clause_text"],
+        "keyword_fields": ["type", "country_code", "rule_type", "addition_id"],
+        "hs_fields": [],
+        "doc_type": "legal",
+    },
 }
 
 # Document type by file extension
