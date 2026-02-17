@@ -247,6 +247,26 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    "tracker_deals": {
+        "title_fields": ["bol_number", "vessel_name", "shipping_line"],
+        "keyword_fields": ["bol_number", "containers", "manifest_number",
+                          "direction", "status", "port"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "tracker_container_status": {
+        "title_fields": ["container_id", "current_step"],
+        "keyword_fields": ["container_id", "deal_id", "current_step",
+                          "ocean_step", "ocean_sources"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "tracker_timeline": {
+        "title_fields": ["event_type", "source"],
+        "keyword_fields": ["deal_id", "event_type", "source"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension

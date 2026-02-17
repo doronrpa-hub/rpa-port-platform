@@ -1436,6 +1436,37 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
                         # so next poll uses the more specific manifest+txn branch
                         _enrich_deal_from_taskyam(db, deal_id, deal, cargo)
 
+            # ── Phase 2: Ocean tracking (supplements TaskYam) ──
+            # Query external ocean sources for sea-leg visibility
+            # TaskYam always primary — ocean data only fills gaps
+            if containers and direction in ('import', 'export'):
+                try:
+                    from lib.ocean_tracker import (
+                        query_ocean_status, enrich_deal_from_ocean,
+                        update_container_ocean_events, ensure_terminal49_tracking
+                    )
+                    # Ensure Terminal49 tracking is set up (one-time per deal)
+                    ensure_terminal49_tracking(db, deal_id, deal, get_secret_func)
+
+                    # Query ocean sources for first container (representative)
+                    ocean_result = query_ocean_status(
+                        container_number=containers[0] if containers else None,
+                        bol_number=deal.get('bol_number'),
+                        vessel_name=deal.get('vessel_name'),
+                        imo=deal.get('loyds_number'),
+                        direction=direction,
+                        get_secret_func=get_secret_func,
+                        carrier_name=deal.get('shipping_line'),
+                    )
+                    if ocean_result and ocean_result.get('events'):
+                        enrich_deal_from_ocean(db, deal_id, deal, ocean_result)
+                        for cn in containers:
+                            update_container_ocean_events(db, deal_id, cn, ocean_result)
+                        if not deal_changed:
+                            deal_changed = True  # Ocean data counts as change
+                except Exception as oe:
+                    print(f"    Ocean tracker error for deal {deal_id}: {oe}")
+
             if deal_changed:
                 updated_deals += 1
                 # Send status update email

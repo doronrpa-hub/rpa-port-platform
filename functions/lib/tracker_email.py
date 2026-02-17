@@ -261,12 +261,84 @@ def _build_html(deal, container_statuses, steps_summary,
 
     html += "  </tr>\n  </table>\n</td></tr>"
 
-    # Per-container detail table
+    # ════════════════════════════════════════════════════
+    #  GLOBAL TRACKING — Ocean sources (non-TaskYam)
+    # ════════════════════════════════════════════════════
+    # Shows ocean-leg events from: Maersk, ZIM, Hapag-Lloyd, COSCO,
+    # Terminal49, INTTRA, VesselFinder
+    has_ocean = any(cs.get('ocean_events') for cs in container_statuses)
+    if has_ocean:
+        ocean_sources = set()
+        for cs in container_statuses:
+            for src in (cs.get('ocean_sources') or []):
+                ocean_sources.add(src)
+        sources_label = ", ".join(sorted(ocean_sources)) if ocean_sources else "Ocean APIs"
+
+        html += f"""
+<tr><td style="padding:15px 30px 5px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="font-size:15px;font-weight:bold;color:#2471a3;">&#127758; Global Tracking</td>
+    <td align="right" style="font-size:10px;color:#999;">Sources: {sources_label}</td>
+  </tr>
+  </table>
+</td></tr>
+<tr><td style="padding:5px 30px 15px;">
+  <table width="100%" cellpadding="3" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
+  <tr style="background:#2471a3;color:#fff;">
+    <td style="padding:5px 8px;font-weight:bold;">Event</td>
+    <td style="padding:5px 8px;font-weight:bold;">Date</td>
+    <td style="padding:5px 8px;font-weight:bold;">Location</td>
+    <td style="padding:5px 8px;font-weight:bold;">Vessel</td>
+    <td style="padding:5px 8px;font-weight:bold;">Sources</td>
+  </tr>"""
+
+        # Collect all unique ocean events across containers
+        seen_events = set()
+        all_ocean_events = []
+        for cs in container_statuses:
+            for evt in (cs.get('ocean_events') or []):
+                key = (evt.get('code', ''), evt.get('timestamp', '')[:10])
+                if key not in seen_events:
+                    seen_events.add(key)
+                    all_ocean_events.append(evt)
+        # Sort by timestamp
+        all_ocean_events.sort(key=lambda e: e.get('timestamp', '') or '9999')
+
+        for i, evt in enumerate(all_ocean_events):
+            bg = "#eaf2f8" if i % 2 == 0 else "#ffffff"
+            desc = evt.get('description', evt.get('code', ''))
+            ts = _format_date(evt.get('timestamp', ''))
+            loc = evt.get('location', '')
+            vsl = evt.get('vessel', '')[:25]
+            srcs = ", ".join(evt.get('sources', []))
+            html += f"""  <tr style="background:{bg};">
+    <td style="padding:4px 8px;font-size:11px;">{desc}</td>
+    <td style="padding:4px 8px;font-size:10px;color:#555;">{ts}</td>
+    <td style="padding:4px 8px;font-size:10px;color:#555;">{loc}</td>
+    <td style="padding:4px 8px;font-size:10px;color:#555;">{vsl}</td>
+    <td style="padding:4px 8px;font-size:9px;color:#888;">{srcs}</td>
+  </tr>\n"""
+
+        html += "  </table>\n</td></tr>"
+
+    # ════════════════════════════════════════════════════
+    #  TASKYAM LOCAL TRACKING — Israeli port operations
+    # ════════════════════════════════════════════════════
+    # Per-container detail table from TaskYam API
     if len(container_statuses) > 0:
         process_key = 'import_process' if direction != 'export' else 'export_process'
 
         html += """
-<tr><td style="padding:10px 30px;">
+<tr><td style="padding:15px 30px 5px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="font-size:15px;font-weight:bold;color:#1a5276;">&#9875; TaskYam Local Tracking</td>
+    <td align="right" style="font-size:10px;color:#999;">Source: TaskYam (Israel Ports)</td>
+  </tr>
+  </table>
+</td></tr>
+<tr><td style="padding:5px 30px 10px;">
   <table width="100%" cellpadding="4" cellspacing="0" style="font-size:11px;border-collapse:collapse;">
   <tr style="background:#1a5276;color:#fff;">
     <td style="padding:6px 8px;font-weight:bold;">Container</td>"""
@@ -306,7 +378,7 @@ def _build_html(deal, container_statuses, steps_summary,
       Reply "stop following" to stop updates
     </td>
     <td align="right" style="font-size:11px;color:#aaa;">
-      Powered by TaskYam + Brain
+      Powered by TaskYam + Ocean APIs
     </td>
   </tr>
   </table>

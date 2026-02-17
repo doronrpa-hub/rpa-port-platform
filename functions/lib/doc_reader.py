@@ -224,6 +224,20 @@ DOC_TYPE_SIGNALS = {
         'he': ['שטר מטען אווירי', 'שטר אוויר'],
         'min_score': 2
     },
+    'vessel_schedule': {
+        'en': ['vessel schedule', 'sailing schedule', 'transit time',
+               'port of loading', 'port of discharge', 'voyage number',
+               'vessel name', 'cut-off date', 'ETA', 'ETD'],
+        'he': ['לוח הפלגות', 'הפלגה', 'זמן מעבר'],
+        'min_score': 3
+    },
+    'arrival_notice': {
+        'en': ['arrival notice', 'notice of arrival', 'cargo arrival',
+               'container arrival', 'shipment arrival notification',
+               'ready for pickup', 'demurrage'],
+        'he': ['הודעת הגעה', 'הודעת הגעת מכולה', 'הודעת פריקה'],
+        'min_score': 2
+    },
 }
 
 
