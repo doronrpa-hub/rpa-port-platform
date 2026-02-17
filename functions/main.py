@@ -22,8 +22,8 @@ import email as email_lib
 from lib.classification_agents import run_full_classification, build_classification_email, process_and_send_report
 from lib.knowledge_query import detect_knowledge_query, handle_knowledge_query
 from lib.rcb_id import generate_rcb_id, RCBType
-from lib.rcb_helpers import extract_text_from_attachments
-from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal, extract_text_from_attachments
+from lib.extraction_adapter import extract_text_from_attachments
+from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal
 
 # ── Optional agent imports (fail gracefully if modules have issues) ──
 try:
