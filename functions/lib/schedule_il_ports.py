@@ -382,7 +382,7 @@ def _extract_from_active_deals(db, port_code):
             deal = doc.to_dict()
             if not deal:
                 continue
-            vessel = deal.get("vessel_name", "")
+            vessel = _sanitize_vessel_name(deal.get("vessel_name", ""))
             if not vessel:
                 continue
 
@@ -528,19 +528,27 @@ def _identify_sender_carrier(from_email):
 # Aggregation & Deduplication
 # ---------------------------------------------------------------------------
 
+def _sanitize_vessel_name(name):
+    """Clean vessel name: remove newlines, extra spaces, control chars."""
+    if not name:
+        return ""
+    clean = re.sub(r'[\r\n\t]+', ' ', str(name))
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    return clean
+
+
 def _make_schedule_key(entry):
     """
     Create deduplication key for a schedule entry.
     Key: (port_code, vessel_name_normalized, eta_date)
     """
-    vessel = (entry.get("vessel_name", "") or "").upper().strip()
-    vessel = re.sub(r'\s+', ' ', vessel)
+    vessel = _sanitize_vessel_name(entry.get("vessel_name", "")).upper()
     port = (entry.get("port_code", "") or "").upper().strip()
-    eta = entry.get("eta", "") or ""
+    eta = str(entry.get("eta", "") or "")
     # Normalize ETA to date only
     eta_date = ""
     if eta:
-        eta_clean = re.sub(r'[T ].*', '', str(eta)[:10])
+        eta_clean = re.sub(r'[T ].*', '', eta[:10])
         eta_date = eta_clean
     return f"{port}_{vessel}_{eta_date}"
 
@@ -601,14 +609,24 @@ def _merge_schedule_entries(entries):
 def _store_port_schedule(db, schedule_entry):
     """Store or update a single port schedule entry in Firestore."""
     key = _make_schedule_key(schedule_entry)
-    if not key or key == "__":
+    if not key or key == "__" or key.strip("_") == "":
         return
 
     doc_id = hashlib.md5(key.encode()).hexdigest()[:16]
     doc_ref = db.collection("port_schedules").document(doc_id)
 
-    # Clean up internal fields
-    entry = {k: v for k, v in schedule_entry.items() if not k.startswith("_")}
+    # Clean up internal fields and sanitize all values for Firestore
+    entry = {}
+    for k, v in schedule_entry.items():
+        if k.startswith("_"):
+            continue
+        # Firestore doesn't accept None as field value in some contexts
+        if v is None:
+            entry[k] = ""
+        elif isinstance(v, str):
+            entry[k] = re.sub(r'[\r\n\t]+', ' ', v).strip()
+        else:
+            entry[k] = v
     entry["schedule_key"] = key
     entry["sources"] = schedule_entry.get("_sources", [])
     entry["source_count"] = len(entry["sources"])
@@ -642,10 +660,10 @@ def _store_daily_report(db, port_code, report_date, vessels):
     doc_id = f"{port_code}_{report_date}"
     port_info = IL_PORTS.get(port_code, {})
 
-    # Count by carrier
+    # Count by carrier (filter empty keys — Firestore rejects empty map keys)
     carrier_counts = {}
     for v in vessels:
-        carrier = v.get("shipping_line", "Unknown")
+        carrier = v.get("shipping_line", "") or "Unknown"
         carrier_counts[carrier] = carrier_counts.get(carrier, 0) + 1
 
     # Count by direction
@@ -675,7 +693,7 @@ def _store_daily_report(db, port_code, report_date, vessels):
 def _clean_vessel_summary(entry):
     """Clean a vessel entry for storage in daily report."""
     return {
-        "vessel_name": entry.get("vessel_name", ""),
+        "vessel_name": _sanitize_vessel_name(entry.get("vessel_name", "")),
         "shipping_line": entry.get("shipping_line", ""),
         "eta": entry.get("eta", ""),
         "etd": entry.get("etd", ""),
