@@ -1092,6 +1092,46 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
         if '[RCB-SELFTEST]' in subject:
             continue
 
+        # ── Block A2: Customs declarations forwarded from airpaport@gmail ──
+        if '[DECL]' in subject.upper():
+            import hashlib as _hl_decl
+            safe_id_decl = _hl_decl.md5(msg_id.encode()).hexdigest()
+            if get_db().collection("rcb_processed").document(safe_id_decl).get().exists:
+                continue
+            print(f"  📜 Declaration received: {subject[:50]} from {from_email}")
+            try:
+                decl_attachments = helper_graph_attachments(access_token, rcb_email, msg_id)
+                decl_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+                decl_doc = {
+                    "received_at": firestore.SERVER_TIMESTAMP,
+                    "subject": subject,
+                    "from": from_email,
+                    "from_name": from_name,
+                    "msg_id": msg_id,
+                    "internet_message_id": internet_msg_id,
+                    "body": decl_body[:50000],  # Cap at 50k chars
+                    "attachment_count": len(decl_attachments),
+                    "attachments": [
+                        {"name": a.get("name", ""), "size": a.get("size", 0),
+                         "contentType": a.get("contentType", "")}
+                        for a in decl_attachments
+                        if a.get("@odata.type") == "#microsoft.graph.fileAttachment"
+                    ],
+                    "status": "pending_parse",  # Block G will process
+                }
+                get_db().collection("declarations_raw").add(decl_doc)
+                print(f"  ✅ Declaration saved ({len(decl_attachments)} attachments)")
+            except Exception as decl_err:
+                print(f"  ⚠️ Declaration save error (non-fatal): {decl_err}")
+            helper_graph_mark_read(access_token, rcb_email, msg_id)
+            get_db().collection("rcb_processed").document(safe_id_decl).set({
+                "processed_at": firestore.SERVER_TIMESTAMP,
+                "subject": subject,
+                "from": from_email,
+                "type": "declaration_received",
+            })
+            continue
+
         # ── CC emails: silent learning from ALL senders, no reply ──
         if not is_direct:
             import hashlib as _hl
@@ -1120,11 +1160,44 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 except Exception as te:
                     print(f"    ⚠️ Tracker CC error (non-fatal): {te}")
 
+            # ── Block A1: CC emails with invoice content → also classify ──
+            _cc_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
+            _cc_combined = f"{subject} {_cc_body}".lower()
+            _cc_invoice_kw = ['invoice', 'חשבונית', 'proforma', 'commercial invoice',
+                              'חשבון מסחרי', 'פרופורמה']
+            _cc_classified = False
+            if any(kw in _cc_combined for kw in _cc_invoice_kw):
+                print(f"  📋 CC with invoice signal — triggering classification alongside learning")
+                try:
+                    cc_raw_attachments = helper_graph_attachments(access_token, rcb_email, msg_id)
+                    if cc_raw_attachments:
+                        cc_rcb_id = generate_rcb_id(get_db(), firestore, RCBType.CLASSIFICATION)
+                        print(f"  🏷️ [{cc_rcb_id}] CC classification starting")
+                        # Extract clean body text (same as direct path lines 1267-1272)
+                        cc_email_body = _cc_body
+                        if msg.get('body', {}).get('contentType', '') == 'html' and cc_email_body:
+                            import re as _re
+                            cc_email_body = _re.sub(r'<[^>]+>', ' ', cc_email_body)
+                            cc_email_body = _re.sub(r'\s+', ' ', cc_email_body).strip()
+                        process_and_send_report(
+                            access_token, rcb_email, from_email, subject,
+                            from_name, cc_raw_attachments, msg_id, get_secret,
+                            get_db(), firestore, helper_graph_send, extract_text_from_attachments,
+                            email_body=cc_email_body,
+                            internet_message_id=internet_msg_id,
+                        )
+                        _cc_classified = True
+                        print(f"  ✅ [{cc_rcb_id}] CC classification complete")
+                    else:
+                        print(f"  ℹ️ CC invoice signal but no attachments — skipping classification")
+                except Exception as cc_cls_err:
+                    print(f"  ⚠️ CC classification error (non-fatal): {cc_cls_err}")
+
             get_db().collection("rcb_processed").document(safe_id_cc).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,
                 "subject": subject,
                 "from": from_email,
-                "type": "cc_observation",
+                "type": "cc_observation_classified" if _cc_classified else "cc_observation",
             })
             continue
 
