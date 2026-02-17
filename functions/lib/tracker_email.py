@@ -83,6 +83,131 @@ def _get_steps(direction):
     return IMPORT_STEPS if direction != 'export' else EXPORT_STEPS
 
 
+def _time_style(value):
+    """Return inline CSS for a timing cell — green if has value, grey if empty."""
+    if value:
+        return "color:#27ae60;font-weight:bold;"
+    return "color:#ccc;"
+
+
+def _extract_ocean_times(deal, container_statuses):
+    """
+    Extract POL/POD timing and merged events from deal + ocean data.
+    Returns dict with:
+      pol_code, pol_eta, pol_ata, pol_etd, pol_atd,
+      pod_code, pod_eta, pod_ata, pod_etd, pod_atd,
+      sources, merged_events
+    """
+    result = {
+        'pol_code': '', 'pol_eta': '', 'pol_ata': '', 'pol_etd': '', 'pol_atd': '',
+        'pod_code': '', 'pod_eta': '', 'pod_ata': '', 'pod_etd': '', 'pod_atd': '',
+        'sources': set(),
+        'merged_events': [],
+    }
+
+    # Get port codes from deal
+    result['pod_code'] = deal.get('port', '')[:5]
+    result['pod_eta'] = _format_date(deal.get('eta', ''))
+    result['pol_etd'] = _format_date(deal.get('etd', ''))
+
+    # Merge events by code across all containers
+    merged_by_code = {}
+    for cs in container_statuses:
+        for src in (cs.get('ocean_sources') or []):
+            result['sources'].add(src)
+        for evt in (cs.get('ocean_events') or []):
+            code = evt.get('code', '')
+            if not code:
+                continue
+            if code not in merged_by_code:
+                merged_by_code[code] = {
+                    'description': evt.get('description', code),
+                    'timestamps': [],
+                    'locations': set(),
+                    'sources': set(),
+                }
+            m = merged_by_code[code]
+            ts = evt.get('timestamp', '')
+            if ts:
+                m['timestamps'].append(ts)
+            loc = evt.get('location', '')
+            if loc:
+                m['locations'].add(loc)
+            for s in (evt.get('sources') or []):
+                m['sources'].add(s)
+
+    # Extract POL/POD timing from ocean events
+    # VD = Vessel Departed from POL → POL ATD
+    if 'VD' in merged_by_code:
+        vd = merged_by_code['VD']
+        if vd['timestamps']:
+            result['pol_atd'] = _format_date(min(vd['timestamps']))
+        if vd['locations']:
+            result['pol_code'] = sorted(vd['locations'])[0]
+
+    # AE = Loaded on vessel at POL → POL ATA (vessel was at POL)
+    if 'AE' in merged_by_code:
+        ae = merged_by_code['AE']
+        if ae['timestamps'] and not result['pol_ata']:
+            result['pol_ata'] = _format_date(min(ae['timestamps']))
+        if ae['locations'] and not result['pol_code']:
+            result['pol_code'] = sorted(ae['locations'])[0]
+
+    # GI = Gate in at origin → confirms POL
+    if 'GI' in merged_by_code and not result['pol_code']:
+        gi = merged_by_code['GI']
+        if gi['locations']:
+            result['pol_code'] = sorted(gi['locations'])[0]
+
+    # VA = Vessel Arrived at POD → POD ATA
+    if 'VA' in merged_by_code:
+        va = merged_by_code['VA']
+        if va['timestamps']:
+            result['pod_ata'] = _format_date(min(va['timestamps']))
+        if va['locations'] and not result['pod_code']:
+            result['pod_code'] = sorted(va['locations'])[0]
+
+    # UV = Discharged at POD → confirms arrival, POD ATD (vessel leaves after discharge)
+    if 'UV' in merged_by_code:
+        uv = merged_by_code['UV']
+        if uv['timestamps'] and not result['pod_ata']:
+            result['pod_ata'] = _format_date(min(uv['timestamps']))
+        if uv['locations'] and not result['pod_code']:
+            result['pod_code'] = sorted(uv['locations'])[0]
+
+    # GO = Gate out at POD → confirms POD
+    if 'GO' in merged_by_code and not result['pod_code']:
+        go = merged_by_code['GO']
+        if go['locations']:
+            result['pod_code'] = sorted(go['locations'])[0]
+
+    # Build sorted merged event list for timeline
+    sorted_events = sorted(
+        merged_by_code.items(),
+        key=lambda x: min(x[1]['timestamps']) if x[1]['timestamps'] else '9999'
+    )
+    for code, m in sorted_events:
+        timestamps = sorted(set(m['timestamps']))
+        if not timestamps:
+            date_str = ""
+        elif len(timestamps) == 1:
+            date_str = _format_date(timestamps[0])
+        else:
+            earliest = _format_date(timestamps[0])
+            latest = _format_date(timestamps[-1])
+            date_str = earliest if earliest == latest else f"{earliest} - {latest}"
+
+        result['merged_events'].append({
+            'code': code,
+            'description': m['description'],
+            'date_str': date_str,
+            'location': " / ".join(sorted(m['locations']))[:20] if m['locations'] else "",
+            'confirmed': len(m['sources']),
+        })
+
+    return result
+
+
 def _summarize_steps(container_statuses, direction):
     steps = _get_steps(direction)
     process_key = 'import_process' if direction != 'export' else 'export_process'
@@ -262,54 +387,18 @@ def _build_html(deal, container_statuses, steps_summary,
     html += "  </tr>\n  </table>\n</td></tr>"
 
     # ════════════════════════════════════════════════════
-    #  GLOBAL TRACKING — Consolidated ocean events
+    #  GLOBAL TRACKING — Shipment-level ocean visibility
     # ════════════════════════════════════════════════════
-    # One row per event type. Multiple sources merged.
-    # If timestamps differ across sources → show range.
-    # Source count shown as confidence indicator (e.g. "3/3").
+    # Shows BL-level summary: BL number, container count,
+    # POL (ETA/ATA/ETD/ATD), POD (ETA/ATA/ETD/ATD)
+    # Then consolidated ocean events timeline below.
     has_ocean = any(cs.get('ocean_events') for cs in container_statuses)
     if has_ocean:
-        # Merge events by code across all containers + sources
-        merged_by_code = {}  # code → {timestamps, locations, vessels, sources}
-        total_source_count = set()
-        for cs in container_statuses:
-            for src in (cs.get('ocean_sources') or []):
-                total_source_count.add(src)
-            for evt in (cs.get('ocean_events') or []):
-                code = evt.get('code', '')
-                if not code:
-                    continue
-                if code not in merged_by_code:
-                    merged_by_code[code] = {
-                        'description': evt.get('description', code),
-                        'timestamps': [],
-                        'locations': set(),
-                        'vessels': set(),
-                        'sources': set(),
-                    }
-                m = merged_by_code[code]
-                ts = evt.get('timestamp', '')
-                if ts:
-                    m['timestamps'].append(ts)
-                loc = evt.get('location', '')
-                if loc:
-                    m['locations'].add(loc)
-                vsl = evt.get('vessel', '')
-                if vsl:
-                    m['vessels'].add(vsl)
-                for s in (evt.get('sources') or []):
-                    m['sources'].add(s)
+        # ── Extract POL/POD timing from ocean events + deal ──
+        ocean_times = _extract_ocean_times(deal, container_statuses)
+        num_sources = len(ocean_times['sources'])
 
-        if merged_by_code:
-            num_sources = len(total_source_count)
-
-            # Sort by earliest timestamp per event code
-            sorted_events = sorted(
-                merged_by_code.items(),
-                key=lambda x: min(x[1]['timestamps']) if x[1]['timestamps'] else '9999'
-            )
-
-            html += f"""
+        html += f"""
 <tr><td style="padding:15px 30px 5px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
@@ -318,56 +407,76 @@ def _build_html(deal, container_statuses, steps_summary,
   </tr>
   </table>
 </td></tr>
-<tr><td style="padding:5px 30px 15px;">
-  <table width="100%" cellpadding="3" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
+
+<!-- SHIPMENT SUMMARY: BL + Containers -->
+<tr><td style="padding:8px 30px 4px;">
+  <table width="100%" cellpadding="4" cellspacing="0" style="font-size:13px;color:#333;border:1px solid #d4e6f1;border-radius:4px;background:#eaf2f8;">
+  <tr>
+    <td width="50%"><b style="color:#2471a3;">B/L:</b> {bol}</td>
+    <td width="25%"><b style="color:#2471a3;">Containers:</b> {total}</td>
+    <td width="25%"><b style="color:#2471a3;">Vessel:</b> {vessel[:20]}</td>
+  </tr>
+  </table>
+</td></tr>
+
+<!-- POL / POD TIMING TABLE -->
+<tr><td style="padding:4px 30px 10px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
   <tr style="background:#2471a3;color:#fff;">
-    <td style="padding:5px 8px;font-weight:bold;">Event</td>
-    <td style="padding:5px 8px;font-weight:bold;">Date</td>
-    <td style="padding:5px 8px;font-weight:bold;">Location</td>
-    <td style="padding:5px 8px;font-weight:bold;">Vessel</td>
-    <td style="padding:5px 4px;font-weight:bold;text-align:center;">Confirmed</td>
+    <td style="padding:6px 8px;font-weight:bold;width:20%;">Port</td>
+    <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ETD</td>
+    <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ATD</td>
+    <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ETA</td>
+    <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ATA</td>
+  </tr>
+  <tr style="background:#eaf2f8;">
+    <td style="padding:5px 8px;font-weight:bold;color:#2471a3;">POL {ocean_times['pol_code']}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_etd'])}"">{ocean_times['pol_etd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_atd'])}"">{ocean_times['pol_atd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_eta'])}"">{ocean_times['pol_eta'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_ata'])}"">{ocean_times['pol_ata'] or '&#8212;'}</td>
+  </tr>
+  <tr style="background:#ffffff;">
+    <td style="padding:5px 8px;font-weight:bold;color:#2471a3;">POD {ocean_times['pod_code']}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_etd'])}"">{ocean_times['pod_etd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_atd'])}"">{ocean_times['pod_atd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_eta'])}"">{ocean_times['pod_eta'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_ata'])}"">{ocean_times['pod_ata'] or '&#8212;'}</td>
+  </tr>
+  </table>
+</td></tr>"""
+
+        # ── Ocean Events Timeline (consolidated) ──
+        merged_events = ocean_times.get('merged_events', [])
+        if merged_events:
+            html += """
+<tr><td style="padding:4px 30px 15px;">
+  <table width="100%" cellpadding="3" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
+  <tr style="background:#5499c7;color:#fff;">
+    <td style="padding:4px 8px;font-weight:bold;">Event</td>
+    <td style="padding:4px 6px;font-weight:bold;">Date</td>
+    <td style="padding:4px 6px;font-weight:bold;">Location</td>
+    <td style="padding:4px 4px;font-weight:bold;text-align:center;">Confirmed</td>
   </tr>"""
 
-            for i, (code, m) in enumerate(sorted_events):
-                bg = "#eaf2f8" if i % 2 == 0 else "#ffffff"
-                desc = m['description']
-
-                # Date: show single date or range if sources disagree
-                timestamps = sorted(set(m['timestamps']))
-                if len(timestamps) == 0:
-                    date_str = ""
-                elif len(timestamps) == 1:
-                    date_str = _format_date(timestamps[0])
-                else:
-                    earliest = _format_date(timestamps[0])
-                    latest = _format_date(timestamps[-1])
-                    if earliest == latest:
-                        date_str = earliest
-                    else:
-                        date_str = f"{earliest} - {latest}"
-
-                loc = " / ".join(sorted(m['locations']))[:20] if m['locations'] else ""
-                vsl = " / ".join(sorted(m['vessels']))[:25] if m['vessels'] else ""
-
-                # Confidence: how many sources confirmed this event
-                confirmed = len(m['sources'])
+            for i, evt in enumerate(merged_events):
+                bg = "#f4f8fb" if i % 2 == 0 else "#ffffff"
+                confirmed = evt['confirmed']
                 if confirmed >= 2:
-                    conf_color = "#27ae60"  # Green — multiple sources agree
+                    conf_color = "#27ae60"
                     conf_icon = "&#10003;&#10003;"
                 elif confirmed == 1:
-                    conf_color = "#3498db"  # Blue — single source
+                    conf_color = "#3498db"
                     conf_icon = "&#10003;"
                 else:
                     conf_color = "#999"
                     conf_icon = "?"
-                conf_label = f"{confirmed}/{num_sources}"
 
                 html += f"""  <tr style="background:{bg};">
-    <td style="padding:5px 8px;font-size:11px;font-weight:bold;">{desc}</td>
-    <td style="padding:5px 8px;font-size:10px;color:#555;">{date_str}</td>
-    <td style="padding:5px 8px;font-size:10px;color:#555;">{loc}</td>
-    <td style="padding:5px 8px;font-size:10px;color:#555;">{vsl}</td>
-    <td style="padding:5px 4px;text-align:center;font-size:11px;color:{conf_color};font-weight:bold;">{conf_icon} {conf_label}</td>
+    <td style="padding:4px 8px;font-size:11px;">{evt['description']}</td>
+    <td style="padding:4px 6px;font-size:10px;color:#555;">{evt['date_str']}</td>
+    <td style="padding:4px 6px;font-size:10px;color:#555;">{evt['location']}</td>
+    <td style="padding:4px 4px;text-align:center;font-size:10px;color:{conf_color};font-weight:bold;">{conf_icon} {confirmed}/{num_sources}</td>
   </tr>\n"""
 
             html += "  </table>\n</td></tr>"
