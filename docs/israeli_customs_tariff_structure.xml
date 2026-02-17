@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Israeli Customs Tariff Book - Complete Structure (ספר מכס)
+  Source: https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/LinkReports
+  Date: February 17, 2026
+
+  This XML maps the COMPLETE structure of the Israeli customs tariff as published
+  by the Israel Tax Authority (רשות המסים בישראל).
+
+  Base URL for all PDF downloads:
+  https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=
+
+  Structure:
+  - Full tariff PDF (all-in-one)
+  - 22 Sections (I-XXII), each containing chapters with chapter notes (הערות לפרק)
+  - Discount codes (קודי הנחה)
+  - Framework order (צו מסגרת)
+  - Additions/Supplements 2-17 (תוספות שניה עד שבע עשר)
+ -->
+<CustomsTariffBook>
+<metadata>
+<source>רשות המסים בישראל - שער עולמי</source>
+<source_url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/LinkReports</source_url>
+<base_download_url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=</base_download_url>
+<date_captured>2026-02-17</date_captured>
+</metadata>
+
+<!--  ══════════════════════════════════════════════════════
+      Full Tariff (all-in-one PDF)
+      ══════════════════════════════════════════════════════  -->
+<FullTariff>
+<name_he>ספר המכס המלא</name_he>
+<name_en>Full Customs Book</name_en>
+<filename>FullCustomsBook.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=FullCustomsBook.pdf</url>
+</FullTariff>
+
+<!--  ══════════════════════════════════════════════════════
+      Discount Codes
+      ══════════════════════════════════════════════════════  -->
+<DiscountCodes>
+<name_he>קודי הנחה</name_he>
+<name_en>Discount Codes</name_en>
+<filename>DiscountCodes.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=DiscountCodes.pdf</url>
+</DiscountCodes>
+
+<!--  ══════════════════════════════════════════════════════
+      Framework Order
+      ══════════════════════════════════════════════════════  -->
+<FrameworkOrder>
+<name_he>צו מסגרת</name_he>
+<name_en>Framework Order</name_en>
+<filename>FrameOrder.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=FrameOrder.pdf</url>
+</FrameworkOrder>
+
+<!--  ══════════════════════════════════════════════════════
+      Sections I–XXII
+      ══════════════════════════════════════════════════════  -->
+<Sections>
+<Section number="I">
+<name_he>חיות חיות; מוצרים מן החי</name_he>
+<name_en>Live Animals; Animal Products</name_en>
+<filename>I.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=I.pdf</url>
+<chapters>
+<chapter number="01" name_he="חיות חיות" name_en="Live animals"/>
+<chapter number="02" name_he="בשר ושאר חלקים אכילים של בעלי חיים" name_en="Meat and edible meat offal"/>
+<chapter number="03" name_he="דגים, סרטנים, רכיכות ושאר חסרי חוליות חיים במים" name_en="Fish and crustaceans"/>
+<chapter number="04" name_he="מוצרי חלב; ביצי עופות; דבש טבעי" name_en="Dairy produce; eggs; honey"/>
+<chapter number="05" name_he="מוצרים אחרים מן החי" name_en="Other products of animal origin"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="II">
+<name_he>מוצרים מן הצומח</name_he>
+<name_en>Vegetable Products</name_en>
+<filename>II.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=II.pdf</url>
+<chapters>
+<chapter number="06" name_he="עצים חיים וצמחים אחרים" name_en="Live trees and other plants"/>
+<chapter number="07" name_he="ירקות" name_en="Edible vegetables"/>
+<chapter number="08" name_he="פירות אכילים; קליפות של פרי הדר או של אבטיחיים" name_en="Edible fruit and nuts"/>
+<chapter number="09" name_he="קפה, תה, מאטה ותבלינים" name_en="Coffee, tea, mate and spices"/>
+<chapter number="10" name_he="דגנים" name_en="Cereals"/>
+<chapter number="11" name_he="מוצרי תעשיית הטחינה" name_en="Products of the milling industry"/>
+<chapter number="12" name_he="זרעים ופירות שמניים" name_en="Oil seeds and oleaginous fruits"/>
+<chapter number="13" name_he="לכה; דבקים, שרפים ושאר לשדים ומיצויים מן הצומח" name_en="Lac; gums, resins"/>
+<chapter number="14" name_he="חומרי קליעה וצמח אחרים" name_en="Vegetable plaiting materials"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="III">
+<name_he>שומנים ושמנים מן החי או מן הצומח</name_he>
+<name_en>Animal or Vegetable Fats and Oils</name_en>
+<filename>III.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=III.pdf</url>
+<chapters>
+<chapter number="15" name_he="שומנים ושמנים מן החי או מן הצומח" name_en="Animal or vegetable fats and oils"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="IV">
+<name_he>מוצרי תעשיות המזון; משקאות, משקאות חריפים וחומץ; טבק</name_he>
+<name_en>Foodstuffs; Beverages, Spirits; Tobacco</name_en>
+<filename>IV.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=IV.pdf</url>
+<chapters>
+<chapter number="16" name_he="הכנות של בשר, של דגים או של סרטנים" name_en="Preparations of meat, fish"/>
+<chapter number="17" name_he="סוכר וממתקי סוכר" name_en="Sugars and sugar confectionery"/>
+<chapter number="18" name_he="קקאו והכנות קקאו" name_en="Cocoa and cocoa preparations"/>
+<chapter number="19" name_he="הכנות של דגנים, קמח, עמילן או חלב" name_en="Preparations of cereals, flour, starch or milk"/>
+<chapter number="20" name_he="הכנות של ירקות, פירות, אגוזים" name_en="Preparations of vegetables, fruit, nuts"/>
+<chapter number="21" name_he="הכנות מזון שונות" name_en="Miscellaneous edible preparations"/>
+<chapter number="22" name_he="משקאות, משקאות חריפים וחומץ" name_en="Beverages, spirits and vinegar"/>
+<chapter number="23" name_he="שאריות ופסולת של תעשיות המזון; מספוא מוכן לבעלי חיים" name_en="Residues and waste from food industries; animal fodder"/>
+<chapter number="24" name_he="טבק ותחליפי טבק מעובדים" name_en="Tobacco and manufactured tobacco substitutes"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="V">
+<name_he>מוצרי מחצבים</name_he>
+<name_en>Mineral Products</name_en>
+<filename>V.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=V.pdf</url>
+<chapters>
+<chapter number="25" name_he="מלח; גפרית; אדמות ואבן; חומרי גבס, סיד ומלט" name_en="Salt; sulphur; earths and stone; cement"/>
+<chapter number="26" name_he="עפרות, סיגים ואפר" name_en="Ores, slag and ash"/>
+<chapter number="27" name_he="דלק מינרלי, שמני מינרלים" name_en="Mineral fuels, mineral oils"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="VI">
+<name_he>מוצרים של תעשיות כימיות ושל תעשיות הקשורות בהן</name_he>
+<name_en>Products of the Chemical or Allied Industries</name_en>
+<filename>VI.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=VI.pdf</url>
+<chapters>
+<chapter number="28" name_he="כימיקלים אי-אורגניים" name_en="Inorganic chemicals"/>
+<chapter number="29" name_he="כימיקלים אורגניים" name_en="Organic chemicals"/>
+<chapter number="30" name_he="מוצרים פרמצבטיים" name_en="Pharmaceutical products"/>
+<chapter number="31" name_he="דשנים" name_en="Fertilizers"/>
+<chapter number="32" name_he="מיצויי צביעה; צבעים, פיגמנטים" name_en="Tanning or dyeing extracts; paints"/>
+<chapter number="33" name_he="שמני אתריים; מוצרי בשמים, קוסמטיקה" name_en="Essential oils; perfumery, cosmetics"/>
+<chapter number="34" name_he="סבון; חומרים אורגניים פעילי-שטח" name_en="Soap; organic surface-active agents"/>
+<chapter number="35" name_he="חומרים חלבוניים; דבקים" name_en="Albuminoidal substances; glues"/>
+<chapter number="36" name_he="חומרי נפץ; מוצרי זיקוקין" name_en="Explosives; pyrotechnic products"/>
+<chapter number="37" name_he="מוצרי צילום וקולנוע" name_en="Photographic or cinematographic goods"/>
+<chapter number="38" name_he="מוצרים כימיים שונים" name_en="Miscellaneous chemical products"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="VII">
+<name_he>פלסטיקה ומוצריה; גומי ומוצריו</name_he>
+<name_en>Plastics; Rubber</name_en>
+<filename>VII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=VII.pdf</url>
+<chapters>
+<chapter number="39" name_he="פלסטיקה ומוצריה" name_en="Plastics and articles thereof"/>
+<chapter number="40" name_he="גומי ומוצריו" name_en="Rubber and articles thereof"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="VIII">
+<name_he>עורות גולמיים, עורות מעובדים, עורות פרווה ומוצריהם</name_he>
+<name_en>Raw Hides and Skins, Leather, Furskins</name_en>
+<filename>VIII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=VIII.pdf</url>
+<chapters>
+<chapter number="41" name_he="עורות גולמיים ועורות מעובדים" name_en="Raw hides and skins, leather"/>
+<chapter number="42" name_he="מוצרי עור; מוצרי אוכף ורתמה; מוצרי נסיעה" name_en="Articles of leather; saddlery; travel goods"/>
+<chapter number="43" name_he="עורות פרווה ופרוות מלאכותיות; מוצריהן" name_en="Furskins and artificial fur"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="IX">
+<name_he>עץ ומוצרי עץ; פחם עץ; שעם; מוצרי קליעה</name_he>
+<name_en>Wood; Cork; Plaiting Materials</name_en>
+<filename>IX.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=IX.pdf</url>
+<chapters>
+<chapter number="44" name_he="עץ ומוצרי עץ; פחם עץ" name_en="Wood and articles of wood; wood charcoal"/>
+<chapter number="45" name_he="שעם ומוצריו" name_en="Cork and articles of cork"/>
+<chapter number="46" name_he="מוצרים של קש ושל חומרי קליעה אחרים" name_en="Manufactures of straw"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="X">
+<name_he>ציפת עץ; נייר וקרטון</name_he>
+<name_en>Pulp of Wood; Paper and Paperboard</name_en>
+<filename>X.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=X.pdf</url>
+<chapters>
+<chapter number="47" name_he="ציפת עץ; נייר ממוחזר" name_en="Pulp of wood; recovered paper"/>
+<chapter number="48" name_he="נייר וקרטון" name_en="Paper and paperboard"/>
+<chapter number="49" name_he="ספרים, עיתונים, תמונות; מוצרי דפוס" name_en="Books, newspapers; printed products"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XI">
+<name_he>חומרי טקסטיל ומוצרי טקסטיל</name_he>
+<name_en>Textiles and Textile Articles</name_en>
+<filename>XI.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XI.pdf</url>
+<chapters>
+<chapter number="50" name_he="משי" name_en="Silk"/>
+<chapter number="51" name_he="צמר, שיער בעלי חיים" name_en="Wool, fine or coarse animal hair"/>
+<chapter number="52" name_he="כותנה" name_en="Cotton"/>
+<chapter number="53" name_he="סיבי טקסטיל צמחיים אחרים" name_en="Other vegetable textile fibres"/>
+<chapter number="54" name_he="נימי-שזירה עשויים; רצועות" name_en="Man-made filaments"/>
+<chapter number="55" name_he="סיבי-שזירה עשויים" name_en="Man-made staple fibres"/>
+<chapter number="56" name_he="לבד, ארוגי סריגה; חבלים" name_en="Wadding, felt; twine, cordage"/>
+<chapter number="57" name_he="שטיחים וכיסויי רצפה טקסטיליים" name_en="Carpets and textile floor coverings"/>
+<chapter number="58" name_he="בדי ארגון מיוחדים; משטחי טקסטיל תפורים" name_en="Special woven fabrics"/>
+<chapter number="59" name_he="בדי טקסטיל מוספגים, מצופים" name_en="Impregnated, coated textile fabrics"/>
+<chapter number="60" name_he="בדים סרוגים" name_en="Knitted or crocheted fabrics"/>
+<chapter number="61" name_he="פרטי לבוש ואבזרי לבוש, סרוגים" name_en="Articles of apparel, knitted"/>
+<chapter number="62" name_he="פרטי לבוש ואבזרי לבוש, שאינם סרוגים" name_en="Articles of apparel, not knitted"/>
+<chapter number="63" name_he="מוצרי טקסטיל מוגמרים אחרים; סטים; ביגוד משומש" name_en="Other made up textile articles; worn clothing"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XII">
+<name_he>הנעלה, כובעים; מטריות; פרחים מלאכותיים</name_he>
+<name_en>Footwear, Headgear; Umbrellas; Artificial Flowers</name_en>
+<filename>XII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XII.pdf</url>
+<chapters>
+<chapter number="64" name_he="הנעלה, חותלות ומוצרים דומים" name_en="Footwear, gaiters"/>
+<chapter number="65" name_he="כובעים וחלקיהם" name_en="Headgear and parts thereof"/>
+<chapter number="66" name_he="מטריות, שמשיות, מקלות הליכה" name_en="Umbrellas, sun umbrellas, walking-sticks"/>
+<chapter number="67" name_he="נוצות ופלומה מעובדות; פרחים מלאכותיים" name_en="Prepared feathers; artificial flowers"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XIII">
+<name_he>מוצרי אבן, גבס, מלט; מוצרי קרמיקה; זכוכית</name_he>
+<name_en>Articles of Stone, Plaster, Cement; Ceramics; Glass</name_en>
+<filename>XIII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XIII.pdf</url>
+<chapters>
+<chapter number="68" name_he="מוצרי אבן, גבס, מלט, אסבסט" name_en="Articles of stone, plaster, cement"/>
+<chapter number="69" name_he="מוצרי קרמיקה" name_en="Ceramic products"/>
+<chapter number="70" name_he="זכוכית ומוצרי זכוכית" name_en="Glass and glassware"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XIV">
+<name_he>פנינים טבעיות; אבנים יקרות; מתכות יקרות</name_he>
+<name_en>Pearls; Precious Stones; Precious Metals</name_en>
+<filename>XIV.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XIV.pdf</url>
+<chapters>
+<chapter number="71" name_he="פנינים טבעיות; אבנים יקרות; מתכות יקרות" name_en="Pearls; precious stones; precious metals"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XV">
+<name_he>מתכות פשוטות ומוצרי מתכות פשוטות</name_he>
+<name_en>Base Metals and Articles of Base Metal</name_en>
+<filename>XV.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XV.pdf</url>
+<chapters>
+<chapter number="72" name_he="ברזל ופלדה" name_en="Iron and steel"/>
+<chapter number="73" name_he="מוצרי ברזל או פלדה" name_en="Articles of iron or steel"/>
+<chapter number="74" name_he="נחושת ומוצריה" name_en="Copper and articles thereof"/>
+<chapter number="75" name_he="ניקל ומוצריו" name_en="Nickel and articles thereof"/>
+<chapter number="76" name_he="אלומיניום ומוצריו" name_en="Aluminium and articles thereof"/>
+<chapter number="77" name_he="(שמור לשימוש עתידי)" name_en="(Reserved for future use)"/>
+<chapter number="78" name_he="עופרת ומוצריה" name_en="Lead and articles thereof"/>
+<chapter number="79" name_he="אבץ ומוצריו" name_en="Zinc and articles thereof"/>
+<chapter number="80" name_he="בדיל ומוצריו" name_en="Tin and articles thereof"/>
+<chapter number="81" name_he="מתכות פשוטות אחרות; קרמטים; מוצריהם" name_en="Other base metals; cermets"/>
+<chapter number="82" name_he="כלים, מוצרי סכו&quot;ם של מתכות פשוטות" name_en="Tools, cutlery of base metal"/>
+<chapter number="83" name_he="מוצרים שונים של מתכות פשוטות" name_en="Miscellaneous articles of base metal"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XVI">
+<name_he>מכונות ומיתקנים מכניים; ציוד חשמלי</name_he>
+<name_en>Machinery; Electrical Equipment</name_en>
+<filename>XVI.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XVI.pdf</url>
+<chapters>
+<chapter number="84" name_he="גרעינים וכלי קיטור; מכונות ומיתקנים מכניים" name_en="Nuclear reactors, boilers, machinery"/>
+<chapter number="85" name_he="מכונות חשמליות וציוד חשמלי" name_en="Electrical machinery and equipment"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XVII">
+<name_he>כלי רכב, כלי טיס, כלי שיט</name_he>
+<name_en>Vehicles, Aircraft, Vessels</name_en>
+<filename>XVII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XVII.pdf</url>
+<chapters>
+<chapter number="86" name_he="קטרי מסילת ברזל; ציוד מסילתי" name_en="Railway or tramway locomotives"/>
+<chapter number="87" name_he="כלי רכב שאינם של מסילת ברזל" name_en="Vehicles other than railway"/>
+<chapter number="88" name_he="כלי טיס, כלי רכב חלליים" name_en="Aircraft, spacecraft"/>
+<chapter number="89" name_he="כלי שיט" name_en="Ships, boats"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XVIII">
+<name_he>מכשירים ומיתקנים אופטיים, לצילום, לקולנוע; מכשירים רפואיים; שעונים; כלי נגינה</name_he>
+<name_en>Optical, Photographic, Medical Instruments; Clocks; Musical Instruments</name_en>
+<filename>XVIII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XVIII.pdf</url>
+<chapters>
+<chapter number="90" name_he="מכשירים ומיתקנים אופטיים, לצילום; מכשירים רפואיים" name_en="Optical, photographic, medical instruments"/>
+<chapter number="91" name_he="שעונים וחלקיהם" name_en="Clocks and watches"/>
+<chapter number="92" name_he="כלי נגינה; חלקיהם ואבזריהם" name_en="Musical instruments"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XIX">
+<name_he>נשק ותחמושת; חלקיהם ואבזריהם</name_he>
+<name_en>Arms and Ammunition</name_en>
+<filename>XIX.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XIX.pdf</url>
+<chapters>
+<chapter number="93" name_he="נשק ותחמושת; חלקיהם ואבזריהם" name_en="Arms and ammunition"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XX">
+<name_he>מוצרים שונים</name_he>
+<name_en>Miscellaneous Manufactured Articles</name_en>
+<filename>XX.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XX.pdf</url>
+<chapters>
+<chapter number="94" name_he="רהיטים; מיטות, מזרונים; מנורות; שלטי פרסומת מוארים; מבנים טרומיים" name_en="Furniture; bedding; lamps; prefabricated buildings"/>
+<chapter number="95" name_he="צעצועים, משחקים ומוצרי ספורט" name_en="Toys, games and sports requisites"/>
+<chapter number="96" name_he="מוצרים מעורבים שונים" name_en="Miscellaneous manufactured articles"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XXI">
+<name_he>יצירות אמנות, פריטי אספנות ועתיקות</name_he>
+<name_en>Works of Art, Collectors' Pieces and Antiques</name_en>
+<filename>XXI.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XXI.pdf</url>
+<chapters>
+<chapter number="97" name_he="יצירות אמנות, פריטי אספנות ועתיקות" name_en="Works of art, collectors' pieces and antiques"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+<Section number="XXII">
+<name_he>הוראות מיוחדות</name_he>
+<name_en>Special Provisions</name_en>
+<filename>XXII.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=XXII.pdf</url>
+<chapters>
+<chapter number="98" name_he="הוראות מיוחדות" name_en="Special provisions"/>
+</chapters>
+<contains>chapter_notes, section_notes, hs_codes, duty_rates</contains>
+</Section>
+</Sections>
+
+<!--  ══════════════════════════════════════════════════════
+      Additions / Supplements (תוספות)
+      ══════════════════════════════════════════════════════  -->
+<Additions>
+<Addition number="2">
+<name_he>תוספת שניה</name_he>
+<name_en>Second Addition</name_en>
+<filename>SecondAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=SecondAddition.pdf</url>
+</Addition>
+<Addition number="3">
+<name_he>תוספת שלישית WTO</name_he>
+<name_en>Third Addition (WTO)</name_en>
+<filename>ThirdAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=ThirdAddition.pdf</url>
+</Addition>
+<Addition number="4">
+<name_he>תוספת רביעית</name_he>
+<name_en>Fourth Addition</name_en>
+<filename>FourthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=FourthAddition.pdf</url>
+</Addition>
+<Addition number="5">
+<name_he>תוספת חמישית</name_he>
+<name_en>Fifth Addition</name_en>
+<filename>FifthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=FifthAddition.pdf</url>
+</Addition>
+<Addition number="6">
+<name_he>תוספת שישית</name_he>
+<name_en>Sixth Addition</name_en>
+<filename>SixthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=SixthAddition.pdf</url>
+</Addition>
+<Addition number="7">
+<name_he>תוספת שביעית</name_he>
+<name_en>Seventh Addition</name_en>
+<filename>SeventhAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=SeventhAddition.pdf</url>
+</Addition>
+<Addition number="8">
+<name_he>תוספת שמינית</name_he>
+<name_en>Eighth Addition</name_en>
+<filename>EighthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=EighthAddition.pdf</url>
+</Addition>
+<Addition number="9">
+<name_he>תוספת תשיעית</name_he>
+<name_en>Ninth Addition</name_en>
+<filename>NinthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=NinthAddition.pdf</url>
+</Addition>
+<Addition number="10">
+<name_he>תוספת עשירית</name_he>
+<name_en>Tenth Addition</name_en>
+<filename>TenthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=TenthAddition.pdf</url>
+</Addition>
+<Addition number="14">
+<name_he>תוספת ארבע עשר</name_he>
+<name_en>Fourteenth Addition</name_en>
+<filename>FourteenthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=FourteenthAddition.pdf</url>
+</Addition>
+<Addition number="15">
+<name_he>תוספת חמש עשר</name_he>
+<name_en>Fifteenth Addition</name_en>
+<filename>FifteenthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=FifteenthAddition.pdf</url>
+</Addition>
+<Addition number="16">
+<name_he>תוספת שש עשר</name_he>
+<name_en>Sixteenth Addition</name_en>
+<filename>SixteenthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=SixteenthAddition.pdf</url>
+</Addition>
+<Addition number="17">
+<name_he>תוספת שבע עשר</name_he>
+<name_en>Seventeenth Addition</name_en>
+<filename>SeventeenthAddition.pdf</filename>
+<url>https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Home/DownloadFileWithName?fileName=SeventeenthAddition.pdf</url>
+</Addition>
+<!--  Note: Additions 11, 12, 13 are not listed on the page (may have been repealed or merged)  -->
+</Additions>
+
+</CustomsTariffBook>
