@@ -247,11 +247,29 @@ Daily vessel schedule aggregation for Israeli ports (Haifa, Ashdod, Eilat).
 - Others may need scraping from shaarolami or manual entry
 - XI.pdf chapter pages have garbled encoding (cid:XXX) — same as main tariff PDF
 
-### Blocks C3-C8: NOT STARTED
-- C3-C7: Brain downloads (FIO, directives, pre-rulings)
-- C8: Duty rates — `AdditionRulesDetailsHistory.xml` (7.4MB) has צו מסגרת legal text, relevant for this
+### Block C3: Free Import Order (צו יבוא חופשי) — DONE (Session 32)
+**Status: 28,899 records parsed, 6,121 HS codes seeded, tool wired.**
+- `functions/seed_free_import_order_c3.py` — parses data.gov.il JSON → Firestore `free_import_order`
+- **Source**: `agent/free_import_order/20260201_download_20260201_141544.json` (39 MB, from Cloud Storage)
+- **Also available**: `צו יבוא חופשי.zip` (13.6 MB, 46 amendment PDFs 2014-2025) in Cloud Storage root
+- **6,121 unique HS codes** across 87 chapters, 28,899 regulatory requirement records
+- **3 appendices**: תוספת 2 (27,026 records), תוספת 1 (1,620), תוספת 4 (253)
+- **18 authorities** mapped: משרד הכלכלה, מכון התקנים, מעבדת בדיקה, משרד הבריאות, משרד החקלאות, משרד התחבורה + 12 more
+- **25,892 active records** (EndDate >= 2026), 3,007 expired (kept with is_active=false)
+- Per-HS doc: requirements list, authorities_summary, appendices, has_standards, has_lab_testing, conditions_type, inception_type
+- `tool_executors.py` `_check_regulatory()`: Now checks local `free_import_order` collection first (instant), falls back to live API
+- `tool_executors.py` `_lookup_local_fio()`: Exact match + parent code range query fallback
+- `librarian_index.py`: `free_import_order` collection registered, 6,121 docs indexed (prefix: fio_)
+- `free_import_order/_metadata`: Summary doc with collection stats
 
-### Block D: Elimination Engine — UNBLOCKED (C2 wired)
+### Blocks C4-C8: NOT STARTED
+- C4: Brain downloads: צו יצוא חופשי (Free Export Order)
+- C5: Brain downloads: צו המסגרת (Framework Order) — content already in knowledge collection
+- C6: Brain downloads: הנחיות סיווג (classification directives)
+- C7: Brain downloads: פרה-רולינג database
+- C8: Duty rates — `AdditionRulesDetailsHistory.xml` (7.4MB) has צו מסגרת legal text
+
+### Block D: Elimination Engine — UNBLOCKED (C2 + C3 done)
 
 ## Tariff XML Archive (fullCustomsBookData.zip)
 
@@ -462,3 +480,58 @@ HTML email report: 27,974 chars generated successfully.
 | `chapter_notes/chapter_98` | Marked: Israeli special chapter |
 | `keyword_index` | 1 new entry (239 skipped — already existed) |
 | `librarian_index` | 137 tariff_structure entries indexed |
+
+## Session 32 Summary (2026-02-17 evening) — Block C3: Free Import Order
+
+### What Was Done
+
+**1. Verified All 5 Session F Items — ALL COMPLETE**
+- tariff_structure 137 docs ✓
+- tool_executors C2 fields ✓
+- justification_engine Hebrew regex ✓
+- Chapters 50/53 resolved ✓
+- CLAUDE.md updated ✓
+
+**2. Block C3: צו יבוא חופשי — Free Import Order Seeded**
+Discovered structured JSON from data.gov.il (39 MB, 28,899 records) in Cloud Storage — far superior to PDF parsing.
+
+**Source data in Cloud Storage:**
+- `צו יבוא חופשי.zip` (13.6 MB) — 46 amendment PDFs (2014-2025)
+- `agent/free_import_order/20260201_download_20260201_141544.json` (39 MB) — structured data.gov.il API dump
+
+**`functions/seed_free_import_order_c3.py`** (NEW):
+- Parses data.gov.il JSON → groups by HS code → seeds Firestore
+- 6,121 docs in `free_import_order/` collection + `_metadata` doc
+- 6,121 entries in `librarian_index/` (prefix: fio_)
+- Handles active/expired records, computes summaries per HS code
+
+**`functions/lib/tool_executors.py`** (MODIFIED):
+- `_check_regulatory()`: Now checks local `free_import_order` first → live API fallback
+- `_lookup_local_fio()`: New method — exact doc match + parent code range query
+
+**`functions/lib/librarian_index.py`** (MODIFIED):
+- Added `free_import_order` to COLLECTION_FIELDS (doc_type: regulatory)
+
+### Data Coverage
+| Dimension | Count |
+|-----------|-------|
+| Total records | 28,899 |
+| Unique HS codes | 6,121 |
+| Chapters | 87 of 99 |
+| Active records | 25,892 |
+| Expired records | 3,007 |
+| Authorities | 18 |
+| Appendices | 3 (תוספת 1, 2, 4) |
+
+### Firestore Updates
+| Collection | Action |
+|-----------|--------|
+| `free_import_order` | 6,121 HS code docs + 1 metadata doc |
+| `librarian_index` | 6,121 entries (prefix: fio_) |
+
+### Block Status After Session 32
+- **C1**: Tariff descriptions ✓
+- **C2**: Chapter notes ✓
+- **C3**: Free Import Order ✓ ← NEW
+- **C4-C8**: Not started
+- **Block D**: Elimination Engine — READY (C1+C2+C3 provide data foundation)

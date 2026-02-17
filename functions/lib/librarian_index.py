@@ -288,6 +288,14 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "reference",
     },
+    # Block C3: צו יבוא חופשי — Free Import Order regulatory requirements
+    # Source: data.gov.il FIO dataset (28,899 records, 6,121 HS codes)
+    "free_import_order": {
+        "title_fields": ["goods_description"],
+        "keyword_fields": ["authorities_summary", "appendices", "confirmation_types"],
+        "hs_fields": ["hs_code", "hs_10"],
+        "doc_type": "regulatory",
+    },
 }
 
 # Document type by file extension

@@ -113,12 +113,20 @@ class ToolExecutor:
 
     def _check_regulatory(self, inp):
         """Wraps intelligence.route_to_ministries() + query_free_import_order().
-        Caches both to avoid repeat API calls for same HS code."""
+        C3: Checks local free_import_order collection first (instant), then
+        falls back to live API if not found locally.
+        Caches both to avoid repeat lookups for same HS code."""
         hs_code = inp.get("hs_code", "")
 
         # Free Import Order (cached per HS)
         if hs_code not in self._fio_cache:
-            self._fio_cache[hs_code] = intelligence.query_free_import_order(self.db, hs_code)
+            # C3: Try local Firestore collection first (seeded from data.gov.il)
+            local_fio = self._lookup_local_fio(hs_code)
+            if local_fio and local_fio.get("found"):
+                self._fio_cache[hs_code] = local_fio
+            else:
+                # Fallback to live API
+                self._fio_cache[hs_code] = intelligence.query_free_import_order(self.db, hs_code)
         fio = self._fio_cache[hs_code]
 
         # Ministry routing (cached per HS)
@@ -130,6 +138,104 @@ class ToolExecutor:
             "free_import_order": fio,
             "ministry_routing": ministry,
         }
+
+    def _lookup_local_fio(self, hs_code):
+        """C3: Look up Free Import Order requirements from local Firestore collection.
+        Checks exact match first, then parent code match."""
+        hs_clean = str(hs_code).replace(".", "").replace(" ", "").replace("/", "").replace("-", "")
+        hs_10 = hs_clean.ljust(10, "0")[:10]
+
+        # Build possible doc IDs (exact and with check digit variations)
+        candidates = [hs_clean]
+        # Also try with common check digit formats
+        if "/" in str(hs_code):
+            candidates.append(str(hs_code).replace("/", "_").replace(".", "").replace(" ", ""))
+
+        for doc_id in candidates:
+            try:
+                doc = self.db.collection("free_import_order").document(doc_id).get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    reqs = data.get("requirements", [])
+                    return {
+                        "hs_code": hs_code,
+                        "hs_10": hs_10,
+                        "found": True,
+                        "source": "local_free_import_order",
+                        "items": [{
+                            "hs_code": data.get("hs_code", ""),
+                            "description": data.get("goods_description", ""),
+                            "legal_requirements": [
+                                {
+                                    "name": r.get("confirmation_type", ""),
+                                    "authority": r.get("authority", ""),
+                                    "supplement": r.get("appendix", ""),
+                                    "conditions": r.get("conditions", ""),
+                                    "inception": r.get("inception", ""),
+                                }
+                                for r in reqs
+                            ],
+                        }],
+                        "authorities": [
+                            {"name": a} for a in data.get("authorities_summary", [])
+                        ],
+                        "has_standards": data.get("has_standards", False),
+                        "has_lab_testing": data.get("has_lab_testing", False),
+                        "appendices": data.get("appendices", []),
+                        "conditions_type": data.get("conditions_type", ""),
+                        "inception_type": data.get("inception_type", ""),
+                        "active_count": data.get("active_count", 0),
+                        "cached": False,
+                    }
+            except Exception:
+                continue
+
+        # Try parent code lookup (strip last 2 digits at a time)
+        for trim_len in [2, 4]:
+            if len(hs_clean) > trim_len:
+                parent = hs_clean[:-trim_len]
+                try:
+                    parent_10 = parent.ljust(10, "0")[:10]
+                    # Query by hs_10 prefix
+                    query = (
+                        self.db.collection("free_import_order")
+                        .where("hs_10", ">=", parent_10)
+                        .where("hs_10", "<", parent_10[:-1] + chr(ord(parent_10[-1]) + 1))
+                        .limit(5)
+                    )
+                    parent_docs = list(query.stream())
+                    if parent_docs:
+                        # Merge results from parent matches
+                        all_auths = set()
+                        all_items = []
+                        for pd in parent_docs:
+                            pd_data = pd.to_dict()
+                            all_auths.update(pd_data.get("authorities_summary", []))
+                            for r in pd_data.get("requirements", []):
+                                all_items.append({
+                                    "name": r.get("confirmation_type", ""),
+                                    "authority": r.get("authority", ""),
+                                    "supplement": r.get("appendix", ""),
+                                    "inherited_from_parent": True,
+                                })
+                        if all_items:
+                            return {
+                                "hs_code": hs_code,
+                                "hs_10": hs_10,
+                                "found": True,
+                                "source": "local_free_import_order_parent",
+                                "items": [{
+                                    "hs_code": parent_10,
+                                    "description": f"Parent code match ({len(parent_docs)} codes)",
+                                    "legal_requirements": all_items[:20],
+                                }],
+                                "authorities": [{"name": a} for a in sorted(all_auths)],
+                                "cached": False,
+                            }
+                except Exception:
+                    continue
+
+        return None
 
     def _lookup_fta(self, inp):
         """Wraps intelligence.lookup_fta()."""
