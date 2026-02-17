@@ -770,7 +770,7 @@ def _link_invoice_to_classifications(items, classifications):
     return classifications
 
 
-def run_full_classification(api_key, doc_text, db, gemini_key=None):
+def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=None):
     """Run complete multi-agent classification
     Session 15: Now accepts gemini_key for cost-optimized multi-model routing
     Session 18: Intelligence module runs BEFORE AI agents"""
@@ -1119,7 +1119,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None):
         audit = audit_before_send(
             pre_send, api_key=api_key, items=items,
             tariff=tariff, rules=rules, context=combined_context,
-            gemini_key=gemini_key, db=db,
+            gemini_key=gemini_key, db=db, openai_key=openai_key,
         )
         all_results["classification"]["classifications"] = audit["classifications"]
 
@@ -1172,11 +1172,11 @@ def _retry_classification(api_key, items, tariff, rules, context, gemini_key=Non
 
 
 def audit_before_send(results, api_key=None, items=None, tariff=None, rules=None,
-                      context=None, gemini_key=None, db=None):
+                      context=None, gemini_key=None, db=None, openai_key=None):
     """Quality gate — validate classification output before sending email.
 
     Returns dict:
-        action: "send" | "send_with_warning" | "send_unclassified"
+        action: "send" | "send_with_warning" | "send_clarification" | "send_unclassified"
         classifications: cleaned/retried classification list
         warning_banner: HTML string or None
         avg_confidence: numeric 0-100
@@ -1251,10 +1251,19 @@ def audit_before_send(results, api_key=None, items=None, tariff=None, rules=None
     classified = total - len(bad_indices)
 
     if total == 0 or classified == 0:
-        # ALL items unclassified
-        print(f"    ⚠️ QG: ALL {total} items unclassified — switching to info email")
-        action = "send_unclassified"
-        warning_banner = _build_unclassified_banner(items)
+        # ALL items unclassified — try to get candidates via GPT-4o
+        print(f"    ⚠️ QG: ALL {total} items unclassified — requesting candidates from GPT-4o")
+        candidates_result = _get_clarification_candidates(items, context, openai_key)
+        if candidates_result:
+            classifications = candidates_result["classifications"]
+            action = "send_clarification"
+            warning_banner = candidates_result["banner"]
+            print(f"    📋 QG: Got {len(classifications)} candidates — sending clarification")
+        else:
+            # Fallback: GPT-4o unavailable or failed
+            print(f"    ⚠️ QG: Candidate fetch failed — falling back to unclassified banner")
+            action = "send_unclassified"
+            warning_banner = _build_unclassified_banner(items)
     elif avg_confidence < 50:
         print(f"    ⚠️ QG: Low average confidence ({avg_confidence:.0f}%) — adding warning")
         action = "send_with_warning"
@@ -1280,6 +1289,144 @@ def audit_before_send(results, api_key=None, items=None, tariff=None, rules=None
         "warning_banner": warning_banner,
         "avg_confidence": avg_confidence,
     }
+
+
+def _get_clarification_candidates(items, context, openai_key):
+    """Ask GPT-4o for top 3 candidate HS codes when classification failed.
+
+    Returns dict with 'classifications' list and 'banner' HTML, or None on failure.
+    """
+    if not openai_key:
+        print("    ⚠️ No OpenAI key — cannot fetch candidates")
+        return None
+
+    # Build product descriptions from items
+    product_lines = []
+    for i, item in enumerate(items or []):
+        if isinstance(item, dict):
+            desc = item.get("description", item.get("item", ""))
+            if desc and _is_product_description(desc):
+                product_lines.append(f"- Item {i+1}: {desc[:300]}")
+    if not product_lines:
+        return None
+
+    products_text = "\n".join(product_lines)
+    system_prompt = (
+        "You are an Israeli customs classification expert. "
+        "You classify products into Israeli HS tariff codes (פרט מכס). "
+        "Israeli format: XX.XX.XXXXXX/X (chapter.heading.subheading/check-digit, e.g. 73.26.900002). "
+        "Always respond in valid JSON."
+    )
+    user_prompt = f"""The following products could not be automatically classified.
+Provide the top 3 candidate HS codes for each product.
+
+Products:
+{products_text}
+
+{f"Additional context: {context[:2000]}" if context else ""}
+
+Return JSON:
+{{
+  "candidates": [
+    {{
+      "item_index": 1,
+      "item_description": "...",
+      "options": [
+        {{"hs_code": "XX.XX.XXXXXX/X", "tariff_desc_he": "תיאור מתעריף המכס", "reasoning": "one sentence why"}},
+        {{"hs_code": "XX.XX.XXXXXX/X", "tariff_desc_he": "...", "reasoning": "..."}},
+        {{"hs_code": "XX.XX.XXXXXX/X", "tariff_desc_he": "...", "reasoning": "..."}}
+      ],
+      "distinguishing_info": "What information would distinguish between these candidates"
+    }}
+  ]
+}}"""
+
+    try:
+        raw = call_chatgpt(openai_key, system_prompt, user_prompt, max_tokens=2000, model="gpt-4o")
+        if not raw:
+            return None
+
+        import json as _json
+        # Strip markdown code fences if present
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+
+        data = _json.loads(cleaned)
+        candidates_list = data.get("candidates", [])
+        if not candidates_list:
+            return None
+
+        # Build classifications from candidates (use first option per item as primary)
+        new_classifications = []
+        for cand in candidates_list:
+            options = cand.get("options", [])
+            if options:
+                top = options[0]
+                new_classifications.append({
+                    "item": cand.get("item_description", ""),
+                    "hs_code": top.get("hs_code", "").replace(".", "").replace("/", "")[:10],
+                    "tariff_description": top.get("tariff_desc_he", ""),
+                    "reasoning": top.get("reasoning", ""),
+                    "confidence": "נמוכה",
+                    "clarification_candidates": options,
+                    "distinguishing_info": cand.get("distinguishing_info", ""),
+                })
+
+        if not new_classifications:
+            return None
+
+        # Build clarification banner HTML
+        banner = _build_clarification_banner(candidates_list)
+        return {"classifications": new_classifications, "banner": banner}
+
+    except Exception as e:
+        print(f"    ⚠️ GPT-4o candidates error: {e}")
+        return None
+
+
+def _build_clarification_banner(candidates_list):
+    """Build HTML banner showing candidate HS codes and clarification questions."""
+    rows_html = ""
+    questions_html = ""
+    for cand in candidates_list:
+        item_desc = cand.get("item_description", "")[:80]
+        dist_info = cand.get("distinguishing_info", "")
+        options = cand.get("options", [])
+
+        for j, opt in enumerate(options):
+            letter = chr(0x05D0 + j)  # א, ב, ג
+            rows_html += (
+                f'<tr><td style="padding:8px;border:1px solid #dee2e6">{letter}</td>'
+                f'<td style="padding:8px;border:1px solid #dee2e6;font-family:monospace">{opt.get("hs_code", "")}</td>'
+                f'<td style="padding:8px;border:1px solid #dee2e6">{opt.get("tariff_desc_he", "")}</td>'
+                f'<td style="padding:8px;border:1px solid #dee2e6">{opt.get("reasoning", "")}</td></tr>'
+            )
+
+        if dist_info:
+            questions_html += f'<li style="margin:5px 0"><strong>{item_desc}:</strong> {dist_info}</li>'
+
+    return f'''<div dir="rtl" style="background:#fff3cd;border:2px solid #ffc107;border-radius:5px;padding:20px;margin-bottom:20px;font-family:Arial,sans-serif">
+        <h3 style="color:#856404;margin:0">⚠️ דרושה הבהרה לסיווג מדויק</h3>
+        <p style="color:#856404;margin:10px 0">המערכת מצאה מספר אפשרויות סיווג. נא לבחור או לספק מידע נוסף:</p>
+        <table dir="rtl" style="width:100%;border-collapse:collapse;margin:10px 0;background:#fff">
+            <tr style="background:#f8f9fa">
+                <th style="padding:8px;border:1px solid #dee2e6;width:30px">#</th>
+                <th style="padding:8px;border:1px solid #dee2e6">פרט מכס</th>
+                <th style="padding:8px;border:1px solid #dee2e6">תיאור מתעריף</th>
+                <th style="padding:8px;border:1px solid #dee2e6">נימוק</th>
+            </tr>
+            {rows_html}
+        </table>
+        <div style="background:#fff;border:1px solid #ffc107;border-radius:3px;padding:15px;margin-top:10px">
+            <p style="margin:0 0 5px 0"><strong>לצורך סיווג מדויק, נא הבהירו:</strong></p>
+            <ul style="margin:5px 0;padding-right:20px">{questions_html}</ul>
+            <p style="margin:10px 0 0 0;color:#856404">נא להשיב למייל זה עם התשובות.</p>
+        </div>
+    </div>'''
 
 
 def _build_unclassified_banner(items):
@@ -2249,9 +2396,16 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 print(f"  ⚠️ Tool-calling error: {tc_err}, falling back to pipeline")
                 results = None
 
+        # Fetch OpenAI key for clarification fallback (Block A3)
+        openai_key = None
+        try:
+            openai_key = get_secret_func('OPENAI_API_KEY')
+        except Exception:
+            pass
+
         # ── FULL PIPELINE FALLBACK: 6-agent sequential classification ──
         if not results:
-            results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key)
+            results = run_full_classification(api_key, doc_text, db, gemini_key=gemini_key, openai_key=openai_key)
         if not results.get('success'):
             print(f"  ❌ Classification failed — sending pipeline error notification")
             _err_html = (
