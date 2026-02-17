@@ -332,3 +332,79 @@ Key files still inside the 7z:
 ## Git Commits (Session D — Tariff)
 - `f1b7a44` — Block C1: Shaarolami tariff description scraper + 2,104 descriptions filled
 - `3ea16b5` — Backup: audit docs + seed keywords script from C1/C2 sessions
+
+## Git Commits (Session E — Cost Optimization + Port Schedule Live Deploy)
+- `c01c431` — Cost optimization + Daily IL port schedule module
+- `7b265f9` — Fix Ashdod port schedule storage: sanitize vessel names and carrier keys
+
+## Session E Summary (2026-02-17) — Cost Optimization + Port Schedule Deploy & Test
+
+### What Was Done
+
+**1. Cost Optimization — AI Model Routing**
+Switched expensive Claude calls to cheaper Gemini where quality allows:
+
+**`functions/lib/tool_calling_engine.py`** (MODIFIED):
+- Added `_GEMINI_MODEL = "gemini-2.5-flash"` as PRIMARY for tool-calling
+- Added `_PREFER_GEMINI = True` flag (toggle to switch back to Claude)
+- Added `_call_gemini_with_tools()` — Gemini function calling format (functionCall/functionResponse)
+- Added `_run_gemini_tool_loop()` — full tool loop with Gemini, auto-falls back to Claude on failure
+- Imports `GEMINI_TOOLS` from tool_definitions.py (was already prepared but unused)
+- **Savings: ~$190/month** (tool-calling: $200 → $10)
+
+**`functions/lib/cross_checker.py`** (MODIFIED):
+- Replaced Claude Sonnet with Gemini Pro in 3-way cross-check
+- New lineup: Gemini Pro + Gemini Flash + GPT-4o-mini (3 independent models)
+- Added `_call_gemini_pro_check()` function
+- **Savings: ~$160/month** (cross-check: $200 → $40)
+
+**2. Daily IL Port Schedule Module — Created, Deployed, Live-Tested**
+
+**`functions/lib/schedule_il_ports.py`** (NEW ~750 lines):
+- 6 FREE data sources for vessel schedules at Israeli ports
+- Merge/dedup engine with priority: TaskYam > Carrier API > Haifa Port > ZIM > Email > AIS
+- `_sanitize_vessel_name()` — strips \r\n\t, collapses whitespace (fix for Ashdod bug)
+- `_store_port_schedule()` — stores to `port_schedules` (MD5 doc IDs from dedup key)
+- `_store_daily_report()` — stores to `daily_port_report` (doc ID: `ILHFA_2026-02-17`)
+- `build_schedule_email_html()` — Hebrew RTL HTML email with vessel tables per port
+- `is_schedule_email()` / `process_schedule_email()` — detect and parse schedule emails from CC
+
+**`functions/main.py`** (MODIFIED):
+- Added `rcb_port_schedule()` — Cloud Function, runs every 12 hours, 512MB, 300s timeout
+- Added schedule email detection in CC email handler (after tracker, before classification)
+
+**`functions/lib/librarian_index.py`** (MODIFIED):
+- Added `port_schedules` and `daily_port_report` to COLLECTION_FIELDS
+
+### Live Test Results (Production Firestore)
+| Port | Vessels | Collection | Status |
+|------|---------|------------|--------|
+| Haifa (ILHFA) | 36 | `daily_port_report/ILHFA_2026-02-17` | Stored OK |
+| Ashdod (ILASD) | 9 | `daily_port_report/ILASD_2026-02-17` | Stored OK (after fix) |
+| Eilat (ILELT) | 0 | N/A | Expected (port closed) |
+| **Total** | **45** | `port_schedules` (45 docs) | All OK |
+
+HTML email report: 27,974 chars generated successfully.
+
+### Bugs Found & Fixed During Live Test
+1. **Ashdod vessel name with newline**: `YM WITNESS\nVOY` → Fixed by `_sanitize_vessel_name()`
+2. **Empty Firestore map key**: `shipping_line: ""` created empty key in carrier_breakdown dict → Fixed: `v.get("shipping_line", "") or "Unknown"`
+3. **All string values sanitized** before Firestore storage (strip \r\n\t)
+
+### Known Limitations (Expected)
+- **Carrier APIs**: Return 0 locally (secrets only in Cloud Secret Manager) — will work in cloud
+- **Haifa Port portal**: Connection timeout (geo-restricted or down) — handled gracefully
+- **ZIM Expected Vessels**: 0 results (JS-rendered page, no embedded JSON) — handled gracefully
+- **AIS (aisstream.io)**: Needs `AISSTREAM_API_KEY` in Secret Manager (free registration)
+
+### Deployment Status
+- All 30 functions deployed to Firebase (2026-02-17)
+- `rcb_port_schedule` runs every 12 hours via Cloud Scheduler
+- Schedule email detection active in CC email handler
+
+### TODO for Future Sessions
+- Register at aisstream.io (free) and add `AISSTREAM_API_KEY` to Secret Manager
+- Configure carrier API secrets: `MAERSK_CONSUMER_KEY`, `ZIM_API_TOKEN`, `HAPAG_CLIENT_ID`, `HAPAG_CLIENT_SECRET`, `COSCO_API_KEY`, `COSCO_SECRET_KEY`
+- Monitor `rcb_port_schedule` cloud function logs to verify scheduled execution
+- Consider adding Ashdod Port scraper (ashdodport.co.il — ASP.NET, may need session handling)
+- Block C2 (Chapter Notes) still pending — handed to Cladi AI for XML parsing
