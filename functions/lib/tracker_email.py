@@ -262,24 +262,59 @@ def _build_html(deal, container_statuses, steps_summary,
     html += "  </tr>\n  </table>\n</td></tr>"
 
     # ════════════════════════════════════════════════════
-    #  GLOBAL TRACKING — Ocean sources (non-TaskYam)
+    #  GLOBAL TRACKING — Consolidated ocean events
     # ════════════════════════════════════════════════════
-    # Shows ocean-leg events from: Maersk, ZIM, Hapag-Lloyd, COSCO,
-    # Terminal49, INTTRA, VesselFinder
+    # One row per event type. Multiple sources merged.
+    # If timestamps differ across sources → show range.
+    # Source count shown as confidence indicator (e.g. "3/3").
     has_ocean = any(cs.get('ocean_events') for cs in container_statuses)
     if has_ocean:
-        ocean_sources = set()
+        # Merge events by code across all containers + sources
+        merged_by_code = {}  # code → {timestamps, locations, vessels, sources}
+        total_source_count = set()
         for cs in container_statuses:
             for src in (cs.get('ocean_sources') or []):
-                ocean_sources.add(src)
-        sources_label = ", ".join(sorted(ocean_sources)) if ocean_sources else "Ocean APIs"
+                total_source_count.add(src)
+            for evt in (cs.get('ocean_events') or []):
+                code = evt.get('code', '')
+                if not code:
+                    continue
+                if code not in merged_by_code:
+                    merged_by_code[code] = {
+                        'description': evt.get('description', code),
+                        'timestamps': [],
+                        'locations': set(),
+                        'vessels': set(),
+                        'sources': set(),
+                    }
+                m = merged_by_code[code]
+                ts = evt.get('timestamp', '')
+                if ts:
+                    m['timestamps'].append(ts)
+                loc = evt.get('location', '')
+                if loc:
+                    m['locations'].add(loc)
+                vsl = evt.get('vessel', '')
+                if vsl:
+                    m['vessels'].add(vsl)
+                for s in (evt.get('sources') or []):
+                    m['sources'].add(s)
 
-        html += f"""
+        if merged_by_code:
+            num_sources = len(total_source_count)
+
+            # Sort by earliest timestamp per event code
+            sorted_events = sorted(
+                merged_by_code.items(),
+                key=lambda x: min(x[1]['timestamps']) if x[1]['timestamps'] else '9999'
+            )
+
+            html += f"""
 <tr><td style="padding:15px 30px 5px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="font-size:15px;font-weight:bold;color:#2471a3;">&#127758; Global Tracking</td>
-    <td align="right" style="font-size:10px;color:#999;">Sources: {sources_label}</td>
+    <td align="right" style="font-size:10px;color:#999;">{num_sources} source{"s" if num_sources != 1 else ""} checked</td>
   </tr>
   </table>
 </td></tr>
@@ -290,37 +325,52 @@ def _build_html(deal, container_statuses, steps_summary,
     <td style="padding:5px 8px;font-weight:bold;">Date</td>
     <td style="padding:5px 8px;font-weight:bold;">Location</td>
     <td style="padding:5px 8px;font-weight:bold;">Vessel</td>
-    <td style="padding:5px 8px;font-weight:bold;">Sources</td>
+    <td style="padding:5px 4px;font-weight:bold;text-align:center;">Confirmed</td>
   </tr>"""
 
-        # Collect all unique ocean events across containers
-        seen_events = set()
-        all_ocean_events = []
-        for cs in container_statuses:
-            for evt in (cs.get('ocean_events') or []):
-                key = (evt.get('code', ''), evt.get('timestamp', '')[:10])
-                if key not in seen_events:
-                    seen_events.add(key)
-                    all_ocean_events.append(evt)
-        # Sort by timestamp
-        all_ocean_events.sort(key=lambda e: e.get('timestamp', '') or '9999')
+            for i, (code, m) in enumerate(sorted_events):
+                bg = "#eaf2f8" if i % 2 == 0 else "#ffffff"
+                desc = m['description']
 
-        for i, evt in enumerate(all_ocean_events):
-            bg = "#eaf2f8" if i % 2 == 0 else "#ffffff"
-            desc = evt.get('description', evt.get('code', ''))
-            ts = _format_date(evt.get('timestamp', ''))
-            loc = evt.get('location', '')
-            vsl = evt.get('vessel', '')[:25]
-            srcs = ", ".join(evt.get('sources', []))
-            html += f"""  <tr style="background:{bg};">
-    <td style="padding:4px 8px;font-size:11px;">{desc}</td>
-    <td style="padding:4px 8px;font-size:10px;color:#555;">{ts}</td>
-    <td style="padding:4px 8px;font-size:10px;color:#555;">{loc}</td>
-    <td style="padding:4px 8px;font-size:10px;color:#555;">{vsl}</td>
-    <td style="padding:4px 8px;font-size:9px;color:#888;">{srcs}</td>
+                # Date: show single date or range if sources disagree
+                timestamps = sorted(set(m['timestamps']))
+                if len(timestamps) == 0:
+                    date_str = ""
+                elif len(timestamps) == 1:
+                    date_str = _format_date(timestamps[0])
+                else:
+                    earliest = _format_date(timestamps[0])
+                    latest = _format_date(timestamps[-1])
+                    if earliest == latest:
+                        date_str = earliest
+                    else:
+                        date_str = f"{earliest} - {latest}"
+
+                loc = " / ".join(sorted(m['locations']))[:20] if m['locations'] else ""
+                vsl = " / ".join(sorted(m['vessels']))[:25] if m['vessels'] else ""
+
+                # Confidence: how many sources confirmed this event
+                confirmed = len(m['sources'])
+                if confirmed >= 2:
+                    conf_color = "#27ae60"  # Green — multiple sources agree
+                    conf_icon = "&#10003;&#10003;"
+                elif confirmed == 1:
+                    conf_color = "#3498db"  # Blue — single source
+                    conf_icon = "&#10003;"
+                else:
+                    conf_color = "#999"
+                    conf_icon = "?"
+                conf_label = f"{confirmed}/{num_sources}"
+
+                html += f"""  <tr style="background:{bg};">
+    <td style="padding:5px 8px;font-size:11px;font-weight:bold;">{desc}</td>
+    <td style="padding:5px 8px;font-size:10px;color:#555;">{date_str}</td>
+    <td style="padding:5px 8px;font-size:10px;color:#555;">{loc}</td>
+    <td style="padding:5px 8px;font-size:10px;color:#555;">{vsl}</td>
+    <td style="padding:5px 4px;text-align:center;font-size:11px;color:{conf_color};font-weight:bold;">{conf_icon} {conf_label}</td>
   </tr>\n"""
 
-        html += "  </table>\n</td></tr>"
+            html += "  </table>\n</td></tr>"
 
     # ════════════════════════════════════════════════════
     #  TASKYAM LOCAL TRACKING — Israeli port operations
