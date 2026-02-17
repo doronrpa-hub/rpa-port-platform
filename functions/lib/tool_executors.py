@@ -56,6 +56,7 @@ class ToolExecutor:
             "extract_invoice": self._extract_invoice,
             "assess_risk": self._assess_risk,
             "get_chapter_notes": self._get_chapter_notes,
+            "lookup_tariff_structure": self._lookup_tariff_structure,
             "search_pre_rulings": self._stub_not_available,
             "search_classification_directives": self._stub_not_available,
             "search_foreign_tariff": self._stub_not_available,
@@ -242,6 +243,98 @@ class ToolExecutor:
                     "hs_codes_count": len(old_data.get("hsCodes", [])),
                 }
             return {"found": False, "chapter": chapter, "message": f"Chapter {chapter} not found"}
+        except Exception as e:
+            return {"found": False, "error": str(e)}
+
+    def _lookup_tariff_structure(self, inp):
+        """Look up tariff structure: sections, chapters, additions, PDF URLs.
+        Reads from tariff_structure collection (seeded from israeli_customs_tariff_structure.xml)."""
+        query = str(inp.get("query", "")).strip()
+        if not query:
+            return {"found": False, "error": "No query provided"}
+
+        try:
+            # Case 1: Query by chapter number (e.g., "73", "03")
+            chapter_num = query.lstrip("0") if query.isdigit() else None
+            if chapter_num and 1 <= int(chapter_num) <= 98:
+                chapter_padded = query.zfill(2)
+                doc = self.db.collection("tariff_structure").document(f"chapter_{chapter_padded}").get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    # Also fetch the parent section
+                    section_num = data.get("section", "")
+                    section_data = {}
+                    if section_num:
+                        sec_doc = self.db.collection("tariff_structure").document(f"section_{section_num}").get()
+                        if sec_doc.exists:
+                            section_data = sec_doc.to_dict()
+                    return {
+                        "found": True,
+                        "type": "chapter",
+                        "chapter": chapter_padded,
+                        "name_he": data.get("name_he", ""),
+                        "name_en": data.get("name_en", ""),
+                        "section": section_num,
+                        "section_name_he": data.get("section_name_he", "") or section_data.get("name_he", ""),
+                        "section_name_en": data.get("section_name_en", "") or section_data.get("name_en", ""),
+                        "section_pdf_url": section_data.get("pdf_url", ""),
+                        "section_chapters": section_data.get("chapters", []),
+                    }
+
+            # Case 2: Query by section (Roman numeral, e.g., "XV", "I", "XVI")
+            roman_upper = query.upper()
+            valid_roman = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+                           "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII",
+                           "XIX", "XX", "XXI", "XXII"}
+            if roman_upper in valid_roman:
+                doc = self.db.collection("tariff_structure").document(f"section_{roman_upper}").get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    return {
+                        "found": True,
+                        "type": "section",
+                        "section": roman_upper,
+                        "name_he": data.get("name_he", ""),
+                        "name_en": data.get("name_en", ""),
+                        "chapters": data.get("chapters", []),
+                        "chapter_names": data.get("chapter_names", {}),
+                        "pdf_url": data.get("pdf_url", ""),
+                    }
+
+            # Case 3: "all_sections" — overview
+            if query.lower() in ("all_sections", "all", "overview"):
+                sections = []
+                for doc in self.db.collection("tariff_structure").where("type", "==", "section").stream():
+                    data = doc.to_dict()
+                    sections.append({
+                        "section": data.get("number", ""),
+                        "name_he": data.get("name_he", ""),
+                        "name_en": data.get("name_en", ""),
+                        "chapters": data.get("chapters", []),
+                    })
+                return {"found": True, "type": "overview", "sections": sections, "count": len(sections)}
+
+            # Case 4: Keyword search — search section/chapter names
+            query_lower = query.lower()
+            matches = []
+            for doc in self.db.collection("tariff_structure").stream():
+                data = doc.to_dict()
+                name_he = (data.get("name_he", "") or "").lower()
+                name_en = (data.get("name_en", "") or "").lower()
+                if query_lower in name_he or query_lower in name_en or query in (data.get("name_he", "") or ""):
+                    matches.append({
+                        "doc_id": doc.id,
+                        "type": data.get("type", ""),
+                        "name_he": data.get("name_he", ""),
+                        "name_en": data.get("name_en", ""),
+                        "section": data.get("section", "") or data.get("number", ""),
+                        "chapters": data.get("chapters", []),
+                    })
+            if matches:
+                return {"found": True, "type": "search", "query": query, "results": matches[:10]}
+
+            return {"found": False, "query": query, "message": "No matching section, chapter, or keyword found"}
+
         except Exception as e:
             return {"found": False, "error": str(e)}
 

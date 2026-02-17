@@ -1082,6 +1082,22 @@ def stream_7_cross_reference(db, tracker):
     except Exception:
         pass
 
+    # Pre-load tariff_structure for section↔chapter mapping
+    chapter_to_section = {}  # "73" -> {"section": "XV", "section_name_he": "...", "section_name_en": "..."}
+    try:
+        for doc in db.collection("tariff_structure").stream():
+            data = doc.to_dict()
+            if data.get("type") == "chapter":
+                ch = data.get("number", "")
+                chapter_to_section[ch] = {
+                    "section": data.get("section", ""),
+                    "section_name_he": data.get("section_name_he", ""),
+                    "section_name_en": data.get("section_name_en", ""),
+                }
+        tracker.record_firestore_ops(reads=len(chapter_to_section))
+    except Exception:
+        pass
+
     uk_codes_set = set()
     try:
         for doc in db.collection("tariff_uk").stream():
@@ -1143,9 +1159,15 @@ def stream_7_cross_reference(db, tracker):
         completeness = round(total_sources / 4 * 100)
         completeness_scores.append(completeness)
 
+        # Resolve section from tariff_structure
+        section_info = chapter_to_section.get(chapter, {})
+
         crossref = {
             "hs_code": code,
             "chapter": chapter,
+            "section": section_info.get("section", ""),
+            "section_name_he": section_info.get("section_name_he", ""),
+            "section_name_en": section_info.get("section_name_en", ""),
             "has_chapter_note": has_chapter_note,
             "has_uk_tariff": has_uk,
             "has_ai_enrichment": has_ai,

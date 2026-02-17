@@ -280,6 +280,14 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    # Tariff structure: sections, chapters, additions, PDF URLs
+    # Source: israeli_customs_tariff_structure.xml
+    "tariff_structure": {
+        "title_fields": ["name_he", "name_en"],
+        "keyword_fields": ["type", "section", "chapters"],
+        "hs_fields": [],
+        "doc_type": "reference",
+    },
 }
 
 # Document type by file extension
