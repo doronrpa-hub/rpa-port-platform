@@ -1041,6 +1041,22 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
 # CLASSIFICATION PROCESSING (called after acknowledgment)
 # ============================================================
 
+def _aggregate_deal_text(db, deal_id):
+    """Aggregate document text from all tracker observations for a deal."""
+    deal = db.collection("tracker_deals").document(deal_id).get()
+    if not deal.exists:
+        return ""
+    obs_ids = deal.to_dict().get('source_emails', [])
+    texts = []
+    for obs_id in obs_ids:
+        obs = db.collection("tracker_observations").document(obs_id).get()
+        if obs.exists:
+            preview = obs.to_dict().get('doc_text_preview', '')
+            if preview:
+                texts.append(preview)
+    return "\n\n---\n\n".join(texts)
+
+
 @scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     """Check rcb@rpa-port.co.il inbox - process emails from last 2 days"""
@@ -1160,9 +1176,10 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                     print(f"    ⚠️ Pupil CC error (non-fatal): {pe}")
 
             # Tracker: observe shipping updates (FREE — no notifications when is_direct=False)
+            tracker_result = None
             if TRACKER_AVAILABLE:
                 try:
-                    tracker_process_email(
+                    tracker_result = tracker_process_email(
                         msg, get_db(), firestore, access_token, rcb_email, get_secret,
                         is_direct=False
                     )
@@ -1216,6 +1233,38 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                         print(f"  ℹ️ CC invoice signal but no attachments — skipping classification")
                 except Exception as cc_cls_err:
                     print(f"  ⚠️ CC classification error (non-fatal): {cc_cls_err}")
+
+            # ── Gap 2: Auto-trigger classification from tracker deal ──
+            if (not _cc_classified
+                    and TRACKER_AVAILABLE
+                    and isinstance(tracker_result, dict)
+                    and tracker_result.get('deal_result', {}).get('classification_ready')):
+                try:
+                    _deal_id = tracker_result['deal_result']['deal_id']
+                    _agg_text = _aggregate_deal_text(get_db(), _deal_id)
+                    if _agg_text and len(_agg_text) > 100:
+                        _deal_doc = get_db().collection("tracker_deals").document(_deal_id).get()
+                        _deal_data = _deal_doc.to_dict() if _deal_doc.exists else {}
+                        _to = _deal_data.get('follower_email', from_email) or from_email
+                        print(f"  🔄 Auto-trigger: deal {_deal_id} classification-ready, {len(_agg_text)} chars")
+                        cc_rcb_id = generate_rcb_id(get_db(), firestore, RCBType.CLASSIFICATION)
+                        _cc_result = process_and_send_report(
+                            access_token, rcb_email, _to, subject,
+                            from_name, [], msg_id, get_secret,
+                            get_db(), firestore, helper_graph_send, extract_text_from_attachments,
+                            email_body=_agg_text,
+                            internet_message_id=internet_msg_id,
+                        )
+                        _cc_classified = _cc_result is True
+                        if _cc_classified:
+                            print(f"  ✅ Auto-trigger classification complete for deal {_deal_id}")
+                            if not _deal_data.get('rcb_classification_id'):
+                                get_db().collection("tracker_deals").document(_deal_id).update({
+                                    "rcb_classification_id": cc_rcb_id,
+                                    "updated_at": firestore.SERVER_TIMESTAMP,
+                                })
+                except Exception as at_err:
+                    print(f"  ⚠️ Auto-trigger error (non-fatal): {at_err}")
 
             get_db().collection("rcb_processed").document(safe_id_cc).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,

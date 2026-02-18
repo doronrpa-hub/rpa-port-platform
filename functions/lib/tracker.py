@@ -334,6 +334,7 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
         received_at = msg.get('receivedDateTime', '')
         has_attachments = msg.get('hasAttachments', False)
         conversation_id = msg.get('conversationId', '')
+        internet_message_id = msg.get('internetMessageId', '')
         cc_list = [r.get('emailAddress', {}).get('address', '')
                    for r in msg.get('ccRecipients', []) if r.get('emailAddress')]
 
@@ -495,6 +496,7 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             "subject": subject,
             "received_at": received_at,
             "conversation_id": conversation_id,
+            "internet_message_id": internet_message_id,
             "cc_list": cc_list,
             "sender_type": sender_type,
             "is_logistics": is_logistics,
@@ -502,6 +504,7 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             "attachment_names": attachment_names,
             "extractions": extractions,
             "observed_at": datetime.now(timezone.utc).isoformat(),
+            "doc_text_preview": full_text[:15000],
         }
         db.collection("tracker_observations").document(obs_id).set(observation)
         # Attach non-serializable refs for downstream use (NOT stored in Firestore)
@@ -1039,8 +1042,11 @@ def _match_or_create_deal(db, firestore_module, observation):
 
     if matched_deal_id:
         # Update existing deal with new info
-        _update_deal_from_observation(db, firestore_module, matched_deal_id, observation)
-        return {"action": "updated", "deal_id": matched_deal_id}
+        update_result = _update_deal_from_observation(db, firestore_module, matched_deal_id, observation)
+        result = {"action": "updated", "deal_id": matched_deal_id}
+        if isinstance(update_result, dict):
+            result["classification_ready"] = update_result.get("classification_ready", False)
+        return result
     else:
         # Create new deal if we have enough info
         # Booking with vessel/shipping_line also qualifies (BL comes later, links via booking)
@@ -1192,6 +1198,7 @@ def _create_deal(db, firestore_module, observation):
         "status": "active",
         "source_emails": [observation.get('obs_id', '')],
         "source_email_thread_id": observation.get('conversation_id', ''),
+        "source_internet_message_id": observation.get('internet_message_id', ''),
         "rcb_classification_id": '',
         "follower_email": observation.get('from_email', ''),
         "cc_list": observation.get('cc_list', []),
@@ -1452,7 +1459,18 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
             except Exception as ty_err:
                 print(f"    🚢 TaskYam cross-check skip (non-fatal): {ty_err}")
 
-    return deal_id
+    # Check if deal is now ready for auto-triggered classification
+    classification_ready = False
+    try:
+        merged_deal = {**deal, **updates}
+        classification_ready = _is_deal_classification_ready(merged_deal)
+        if classification_ready:
+            updates['classification_auto_triggered_at'] = datetime.now(timezone.utc).isoformat()
+            deal_ref.update({'classification_auto_triggered_at': updates['classification_auto_triggered_at']})
+    except Exception:
+        pass
+
+    return {"deal_id": deal_id, "classification_ready": classification_ready}
 
 
 def _infer_freight_kind(extractions):
@@ -1470,6 +1488,20 @@ def _infer_freight_kind(extractions):
 # ── Import/Export Lifecycle ──
 _IMPORT_LIFECYCLE = ['booking_confirmation', 'bill_of_lading', 'arrival_notice', 'delivery_order', 'customs_declaration']
 _EXPORT_LIFECYCLE = ['booking_confirmation', 'bill_of_lading', 'customs_declaration']
+
+
+def _is_deal_classification_ready(deal_data):
+    """Check if a deal has enough documents for auto-triggered classification."""
+    if deal_data.get('rcb_classification_id'):
+        return False  # Already classified
+    if deal_data.get('classification_auto_triggered_at'):
+        return False  # Already triggered (race guard)
+    if deal_data.get('status') != 'active':
+        return False
+    docs = set(deal_data.get('documents_received', []))
+    has_invoice = 'invoice' in docs
+    has_shipping = bool(docs & {'bill_of_lading', 'packing_list', 'arrival_notice', 'delivery_order'})
+    return has_invoice and has_shipping
 
 
 def _compute_expected_next_doc(documents_received, direction):
@@ -2215,10 +2247,13 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         # Try threaded reply first (needs original msg_id from observation)
         source_obs_ids = deal.get('source_emails', [])
         original_msg_id = None
+        internet_msg_id = ''
         if source_obs_ids:
             latest_obs = db.collection("tracker_observations").document(source_obs_ids[-1]).get()
             if latest_obs.exists:
-                original_msg_id = latest_obs.to_dict().get('msg_id', '')
+                obs_data = latest_obs.to_dict()
+                original_msg_id = obs_data.get('msg_id', '')
+                internet_msg_id = obs_data.get('internet_message_id', '')
 
         if original_msg_id and access_token:
             sent = helper_graph_reply(
@@ -2226,11 +2261,12 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
                 body_html, to_email=follower, cc_emails=cc_list
             )
 
-        # Fallback: send as new email
+        # Fallback: send as new email WITH threading headers
         if not sent and access_token:
             sent = helper_graph_send(
                 access_token, rcb_email, follower,
-                subject, body_html
+                subject, body_html,
+                internet_message_id=internet_msg_id
             )
 
         if sent:

@@ -67,12 +67,16 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
     # Summarize steps
     steps_summary = _summarize_steps(container_statuses, direction)
 
-    # Build subject
-    status_text = f"{completed}/{total} released" if direction != 'export' else f"{completed}/{total} sailed"
-    subject = f"[RCB-TRK] {bol}"
-    if vessel:
-        subject += f" | {vessel}"
-    subject += f" | {status_text}"
+    # Build subject — direction + BOL + status (vessel is in the body)
+    dir_label_subj = "Import" if direction != 'export' else "Export"
+    if update_type == "new_deal":
+        subject = f"[RCB-TRK] New {dir_label_subj} | {bol} | Tracking Started"
+    elif completed == total and total > 0:
+        all_word = "Released" if direction != 'export' else "Sailed"
+        subject = f"[RCB-TRK] {dir_label_subj} | {bol} | All {all_word}"
+    else:
+        status_word = "Released" if direction != 'export' else "Sailed"
+        subject = f"[RCB-TRK] {dir_label_subj} | {bol} | {completed}/{total} {status_word}"
 
     # Build HTML
     body = _build_html(deal, container_statuses, steps_summary,
@@ -334,21 +338,28 @@ def _build_html(deal, container_statuses, steps_summary,
 
     dir_label = "Import" if direction != 'export' else "Export"
     date_label = f"ETA: {eta}" if eta else (f"ETD: {etd}" if etd else "")
+    is_completed = completed == total and total > 0
+    header_bg = "#1e8449" if is_completed else "#1a5276"
+    status_badge = "Completed" if is_completed else "Active"
+    badge_bg = "#27ae60" if is_completed else "#3498db"
 
     html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+<html dir="rtl" lang="he">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body dir="rtl" style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;">
 <tr><td align="center">
-<table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
 
 <!-- HEADER -->
-<tr><td style="background:#1a5276;padding:20px 30px;">
+<tr><td style="background:{header_bg};padding:20px 30px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="color:#ffffff;font-size:22px;font-weight:bold;">&#9875; RCB Shipment Tracker</td>
-    <td align="right" style="color:#aed6f1;font-size:14px;">{dir_label} | {date_label}</td>
+    <td align="left" style="color:#aed6f1;font-size:14px;">
+      <span style="display:inline-block;background:{badge_bg};color:#fff;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:bold;">{status_badge}</span>
+      &nbsp; {dir_label} | {date_label}
+    </td>
   </tr>
   </table>
 </td></tr>
@@ -450,7 +461,7 @@ def _build_html(deal, container_statuses, steps_summary,
 
     step_width = int(100 / total_steps)
     for s in steps_summary:
-        html += f'    <td width="{step_width}%" align="center" style="color:#666;padding:3px 1px;font-size:10px;">{s["label"]}</td>\n'
+        html += f'    <td width="{step_width}%" align="center" style="color:#666;padding:3px 1px;font-size:11px;">{s["label"]}</td>\n'
     html += "  </tr>\n  <tr>\n"
 
     for s in steps_summary:
@@ -470,7 +481,7 @@ def _build_html(deal, container_statuses, steps_summary,
     html += "  </tr>\n  <tr>\n"
 
     for s in steps_summary:
-        html += f'    <td align="center" style="color:#888;padding:2px 1px;font-size:9px;">{s["latest_date"]}</td>\n'
+        html += f'    <td align="center" style="color:#888;padding:2px 1px;font-size:11px;">{s["latest_date"]}</td>\n'
 
     html += "  </tr>\n  </table>\n</td></tr>"
 
@@ -591,7 +602,7 @@ def _build_html(deal, container_statuses, steps_summary,
     <td style="padding:6px 8px;font-weight:bold;">Container</td>"""
 
         for s in steps_summary:
-            html += f'    <td align="center" style="padding:6px 2px;font-weight:bold;font-size:9px;">{s["label"]}</td>\n'
+            html += f'    <td align="center" style="padding:6px 2px;font-weight:bold;font-size:11px;">{s["label"]}</td>\n'
 
         html += "  </tr>\n"
 
@@ -607,25 +618,22 @@ def _build_html(deal, container_statuses, steps_summary,
                 date_val = proc.get(date_field, '')
                 if date_val:
                     formatted = _format_date(str(date_val))
-                    html += f'    <td align="center" style="background:#d4efdf;color:#27ae60;padding:3px 1px;font-size:9px;">&#10003; {formatted}</td>\n'
+                    html += f'    <td align="center" style="background:#d4efdf;color:#27ae60;padding:3px 1px;font-size:11px;">&#10003; {formatted}</td>\n'
                 else:
-                    html += f'    <td align="center" style="color:#ccc;padding:3px 1px;font-size:9px;">&#8212;</td>\n'
+                    html += f'    <td align="center" style="color:#ccc;padding:3px 1px;font-size:11px;">&#8212;</td>\n'
 
             html += "  </tr>\n"
 
         html += "  </table>\n</td></tr>"
 
-    # Footer
+    # Footer (Hebrew RTL)
     html += f"""
 <tr><td style="padding:15px 30px;border-top:1px solid #eee;background:#f8f9fa;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:11px;color:#888;">
-      RCB Tracker by RPA-PORT | Auto-updated every 30 min<br>
-      Reply "stop following" to stop updates
-    </td>
-    <td align="right" style="font-size:11px;color:#aaa;">
-      Powered by TaskYam + Ocean APIs
+    <td style="font-size:11px;color:#888;direction:rtl;text-align:right;">
+      RCB Tracker | RPA-PORT | &#1506;&#1491;&#1499;&#1493;&#1503; &#1488;&#1493;&#1496;&#1493;&#1502;&#1496;&#1497; &#1499;&#1500; 30 &#1491;&#1511;&#1493;&#1514;<br>
+      &#1492;&#1513;&#1489; &quot;stop following&quot; &#1500;&#1492;&#1508;&#1505;&#1511;&#1514; &#1506;&#1491;&#1499;&#1493;&#1504;&#1497;&#1501;
     </td>
   </tr>
   </table>
