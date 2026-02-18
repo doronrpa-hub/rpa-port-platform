@@ -518,6 +518,13 @@ COLLECTION_FIELDS = {
         "hs_fields": ["final_hs_code"],
         "doc_type": "cache",
     },
+    # Session 44-PARALLEL: Regression alerts from overnight guard
+    "regression_alerts": {
+        "title_fields": ["product"],
+        "keyword_fields": ["old_hs_code", "new_hs_code"],
+        "hs_fields": ["old_hs_code", "new_hs_code"],
+        "doc_type": "alert",
+    },
 }
 
 # Document type by file extension

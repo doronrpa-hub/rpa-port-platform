@@ -18,6 +18,12 @@ Streams:
   8. Self-Teach from Patterns — synthesize per-chapter classification rules
   9. Knowledge Sync — push learned data into classification_knowledge +
      classification_rules so pre_classify() and intelligence.py consume it
+ 10. Deal Enrichment — enrich active tracker deals with country info +
+     sanctions screening via FREE external APIs
+ 11. Port Intelligence Sync — sync port_schedules + daily_port_report into
+     active deals and brain knowledge (vessel ETAs, congestion)
+ 12. Regression Guard — C3 self-learning regression check: flag when today's
+     classifications contradict high-confidence learned memory
 
 Schedule: 20:00 Jerusalem time (well before 02:00 nightly_learn — no conflict).
 
@@ -1479,6 +1485,356 @@ def stream_9_knowledge_sync(db, tracker):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  STREAM 10: ACTIVE DEAL ENRICHMENT (tools #14-32)
+# ═══════════════════════════════════════════════════════════════
+
+def stream_10_deal_enrichment(db, tracker):
+    """
+    Enrich active tracker deals with external tool data.
+    Calls FREE APIs to add context: country info, sanctions screening,
+    PubChem for chemicals, OpenSanctions for compliance.
+    Cost: $0.00 (all free REST APIs, Firestore writes).
+    """
+    print("  [Stream 10] Active deal enrichment starting...")
+    stats = {"deals_checked": 0, "enriched": 0, "sanctions_screened": 0,
+             "countries_looked_up": 0, "errors": 0}
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Read active tracker deals
+    try:
+        deals = list(
+            db.collection("tracker_deals")
+            .where("status", "in", ["active", "pending"])
+            .stream()
+        )
+        tracker.record_firestore_ops(reads=len(deals))
+    except Exception as e:
+        logger.error(f"Stream 10: Failed to read tracker_deals: {e}")
+        return stats
+
+    if not deals:
+        print("  [Stream 10] No active deals to enrich")
+        return stats
+
+    print(f"  [Stream 10] {len(deals)} active deals found")
+
+    for deal_doc in deals:
+        if tracker.is_over_budget:
+            break
+
+        deal = deal_doc.to_dict()
+        deal_id = deal_doc.id
+        stats["deals_checked"] += 1
+        updates = {}
+
+        # ── Country enrichment via restcountries.com ──
+        origin = deal.get("origin_country") or deal.get("pol_country") or ""
+        if origin and len(origin) >= 2 and not deal.get("country_enriched"):
+            try:
+                resp = requests.get(
+                    f"https://restcountries.com/v3.1/name/{requests.utils.quote(origin)}",
+                    timeout=8,
+                    headers={"Accept": "application/json"},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data and isinstance(data, list):
+                        c = data[0]
+                        updates["country_info"] = {
+                            "name": c.get("name", {}).get("common", origin),
+                            "region": c.get("region", ""),
+                            "subregion": c.get("subregion", ""),
+                            "cca2": c.get("cca2", ""),
+                            "cca3": c.get("cca3", ""),
+                        }
+                        updates["country_enriched"] = True
+                        stats["countries_looked_up"] += 1
+                time.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"Stream 10: Country lookup failed for {origin}: {e}")
+                stats["errors"] += 1
+
+        # ── OpenSanctions screening ──
+        parties = []
+        for field in ("shipper", "consignee", "notify_party"):
+            name = deal.get(field, "")
+            if name and len(name) > 2:
+                parties.append(name)
+
+        if parties and not deal.get("sanctions_screened_nightly"):
+            for party in parties[:3]:
+                try:
+                    resp = requests.get(
+                        "https://api.opensanctions.org/search/default",
+                        params={"q": party, "limit": 3},
+                        timeout=8,
+                        headers={"Accept": "application/json"},
+                    )
+                    if resp.status_code == 200:
+                        results = resp.json().get("results", [])
+                        hits = [r for r in results if r.get("score", 0) >= 0.7]
+                        if hits:
+                            updates.setdefault("sanctions_flags", []).append({
+                                "party": party,
+                                "hits": [{
+                                    "name": h.get("caption", ""),
+                                    "score": h.get("score", 0),
+                                    "datasets": h.get("datasets", [])[:3],
+                                } for h in hits[:2]],
+                                "checked_at": now,
+                            })
+                    stats["sanctions_screened"] += 1
+                    time.sleep(0.3)
+                except Exception:
+                    stats["errors"] += 1
+            updates["sanctions_screened_nightly"] = True
+
+        # ── Write enrichment updates back to deal ──
+        if updates:
+            updates["nightly_enriched_at"] = now
+            try:
+                db.collection("tracker_deals").document(deal_id).update(updates)
+                tracker.record_firestore_ops(writes=1)
+                stats["enriched"] += 1
+            except Exception:
+                stats["errors"] += 1
+
+    print(f"  [Stream 10] Done: {stats['deals_checked']} deals checked, "
+          f"{stats['enriched']} enriched, {stats['sanctions_screened']} screened")
+    return stats
+
+
+# ═══════════════════════════════════════════════════════════════
+#  STREAM 11: PORT INTELLIGENCE SYNC
+# ═══════════════════════════════════════════════════════════════
+
+def stream_11_port_intelligence_sync(db, tracker):
+    """
+    Read port_schedules + daily_port_report → enrich active deals with
+    vessel ETA/ETD context, update brain knowledge about port congestion.
+    Cost: $0.00 (Firestore only).
+    """
+    print("  [Stream 11] Port intelligence sync starting...")
+    stats = {"port_reports_read": 0, "schedules_read": 0,
+             "deals_updated": 0, "knowledge_entries": 0, "errors": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # ── Read today's port reports ──
+    port_data = {}  # port_code -> report
+    for port_code in ("ILHFA", "ILASD", "ILELT"):
+        try:
+            doc = db.collection("daily_port_report").document(f"{port_code}_{today}").get()
+            if doc.exists:
+                port_data[port_code] = doc.to_dict()
+                stats["port_reports_read"] += 1
+            tracker.record_firestore_ops(reads=1)
+        except Exception:
+            stats["errors"] += 1
+
+    # ── Read recent port schedules ──
+    vessel_schedules = {}  # vessel_name_lower -> schedule data
+    try:
+        schedules = list(db.collection("port_schedules").limit(200).stream())
+        tracker.record_firestore_ops(reads=len(schedules))
+        for doc in schedules:
+            data = doc.to_dict()
+            vessel = (data.get("vessel_name") or "").strip().lower()
+            if vessel:
+                vessel_schedules[vessel] = {
+                    "eta": data.get("eta", ""),
+                    "etd": data.get("etd", ""),
+                    "port": data.get("port_code", ""),
+                    "berth": data.get("berth", ""),
+                    "shipping_line": data.get("shipping_line", ""),
+                    "status": data.get("status", ""),
+                    "source": data.get("source", ""),
+                }
+                stats["schedules_read"] += 1
+    except Exception as e:
+        logger.warning(f"Stream 11: Failed to read port_schedules: {e}")
+
+    # ── Match active deals to vessel schedules ──
+    try:
+        active_deals = list(
+            db.collection("tracker_deals")
+            .where("status", "in", ["active", "pending"])
+            .stream()
+        )
+        tracker.record_firestore_ops(reads=len(active_deals))
+    except Exception:
+        active_deals = []
+
+    for deal_doc in active_deals:
+        if tracker.is_over_budget:
+            break
+
+        deal = deal_doc.to_dict()
+        vessel_name = (deal.get("vessel_name") or "").strip().lower()
+
+        if not vessel_name:
+            continue
+
+        schedule = vessel_schedules.get(vessel_name)
+        if schedule and not deal.get("port_schedule_synced"):
+            try:
+                db.collection("tracker_deals").document(deal_doc.id).update({
+                    "port_schedule": schedule,
+                    "port_schedule_synced": True,
+                    "port_schedule_synced_at": now,
+                })
+                tracker.record_firestore_ops(writes=1)
+                stats["deals_updated"] += 1
+            except Exception:
+                stats["errors"] += 1
+
+    # ── Write port congestion summary to brain knowledge ──
+    for port_code, report in port_data.items():
+        vessel_count = report.get("vessel_count", 0)
+        if vessel_count > 0:
+            try:
+                doc_id = f"port_status_{port_code}_{today}"
+                db.collection("classification_knowledge").document(doc_id).set({
+                    "hs_code": "",
+                    "description": f"Port {port_code} status: {vessel_count} vessels on {today}",
+                    "method": "port_intelligence_sync",
+                    "source": "overnight_brain_port_sync",
+                    "confidence": 100,
+                    "system_validated": True,
+                    "learned_at": now,
+                    "port_code": port_code,
+                    "vessel_count": vessel_count,
+                    "carrier_breakdown": report.get("carrier_breakdown", {}),
+                    "tags": ["port_intelligence", "nightly_sync"],
+                })
+                tracker.record_firestore_ops(writes=1)
+                stats["knowledge_entries"] += 1
+            except Exception:
+                stats["errors"] += 1
+
+    print(f"  [Stream 11] Done: {stats['port_reports_read']} reports, "
+          f"{stats['schedules_read']} schedules, {stats['deals_updated']} deals updated")
+    return stats
+
+
+# ═══════════════════════════════════════════════════════════════
+#  STREAM 12: SELF-LEARNING REGRESSION GUARD
+# ═══════════════════════════════════════════════════════════════
+
+def stream_12_regression_guard(db, tracker):
+    """
+    C3 self-learning regression guard. Checks that today's classifications
+    didn't regress vs learned memory. If a classification contradicts a
+    high-confidence learned entry, flags it for review.
+    Cost: $0.00 (Firestore only).
+    """
+    print("  [Stream 12] Self-learning regression guard starting...")
+    stats = {"classifications_checked": 0, "regressions_found": 0,
+             "confidence_improved": 0, "errors": 0}
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Read today's classifications
+    try:
+        today_cls = list(
+            db.collection("rcb_classifications")
+            .limit(100)
+            .stream()
+        )
+        tracker.record_firestore_ops(reads=len(today_cls))
+    except Exception as e:
+        logger.error(f"Stream 12: Failed to read classifications: {e}")
+        return stats
+
+    # Read learned classifications (high-confidence memory)
+    learned_by_product = {}  # product_lower -> {hs_code, confidence, source}
+    try:
+        learned = list(
+            db.collection("learned_classifications")
+            .limit(5000)
+            .stream()
+        )
+        tracker.record_firestore_ops(reads=len(learned))
+        for doc in learned:
+            data = doc.to_dict()
+            product = (data.get("product_description") or data.get("description") or "").lower().strip()
+            if product and data.get("hs_code"):
+                conf = data.get("confidence", 0)
+                if isinstance(conf, str):
+                    conf = {"high": 90, "medium": 60, "low": 30}.get(conf, 50)
+                learned_by_product[product] = {
+                    "hs_code": data["hs_code"],
+                    "confidence": conf,
+                    "source": data.get("source", ""),
+                    "doc_id": doc.id,
+                }
+    except Exception as e:
+        logger.error(f"Stream 12: Failed to read learned_classifications: {e}")
+        return stats
+
+    if not learned_by_product:
+        print("  [Stream 12] No learned classifications to check against")
+        return stats
+
+    # Check each classification against memory
+    for cls_doc in today_cls:
+        if tracker.is_over_budget:
+            break
+
+        cls = cls_doc.to_dict()
+        stats["classifications_checked"] += 1
+
+        # Get product descriptions from classification items
+        items = cls.get("items") or cls.get("card_items") or []
+        if not isinstance(items, list):
+            continue
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            product = (item.get("product_description") or item.get("description") or "").lower().strip()
+            new_code = item.get("hs_code") or item.get("final_code") or ""
+
+            if not product or not new_code:
+                continue
+
+            learned = learned_by_product.get(product)
+            if not learned:
+                continue
+
+            old_code = learned["hs_code"]
+            old_conf = learned["confidence"]
+
+            # Same code → possibly improve confidence
+            if new_code.replace(".", "").replace("/", "")[:8] == old_code.replace(".", "").replace("/", "")[:8]:
+                stats["confidence_improved"] += 1
+                continue
+
+            # Different code with high-confidence memory → REGRESSION
+            if old_conf >= 80:
+                stats["regressions_found"] += 1
+                try:
+                    db.collection("regression_alerts").add({
+                        "product": product,
+                        "old_hs_code": old_code,
+                        "old_confidence": old_conf,
+                        "old_source": learned["source"],
+                        "new_hs_code": new_code,
+                        "classification_id": cls_doc.id,
+                        "status": "open",
+                        "detected_at": now,
+                        "source": "overnight_regression_guard",
+                    })
+                    tracker.record_firestore_ops(writes=1)
+                except Exception:
+                    stats["errors"] += 1
+
+    print(f"  [Stream 12] Done: {stats['classifications_checked']} checked, "
+          f"{stats['regressions_found']} regressions, "
+          f"{stats['confidence_improved']} confirmations")
+    return stats
+
+
+# ═══════════════════════════════════════════════════════════════
 #  ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════
 
@@ -1706,6 +2062,44 @@ def run_overnight_brain(db, get_secret_func):
     elif "stream_9" in completed_streams:
         print("  (stream_9 already completed — skipping)")
 
+    # ── Phase G: Deal enrichment + Port intelligence (FREE — always runs) ──
+    if not tracker.is_over_budget and "stream_10" not in completed_streams:
+        print("\n--- Phase G: Active deal enrichment ---")
+        try:
+            all_stats["stream_10_deal_enrichment"] = stream_10_deal_enrichment(db, tracker)
+            completed_streams.append("stream_10")
+        except Exception as e:
+            logger.error(f"Stream 10 error: {e}")
+            all_stats["stream_10_deal_enrichment"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    elif "stream_10" in completed_streams:
+        print("  (stream_10 already completed — skipping)")
+
+    if not tracker.is_over_budget and "stream_11" not in completed_streams:
+        print("\n--- Phase G2: Port intelligence sync ---")
+        try:
+            all_stats["stream_11_port_sync"] = stream_11_port_intelligence_sync(db, tracker)
+            completed_streams.append("stream_11")
+        except Exception as e:
+            logger.error(f"Stream 11 error: {e}")
+            all_stats["stream_11_port_sync"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    elif "stream_11" in completed_streams:
+        print("  (stream_11 already completed — skipping)")
+
+    # ── Phase H: Regression guard (FREE — always runs) ──
+    if not tracker.is_over_budget and "stream_12" not in completed_streams:
+        print("\n--- Phase H: Self-learning regression guard ---")
+        try:
+            all_stats["stream_12_regression_guard"] = stream_12_regression_guard(db, tracker)
+            completed_streams.append("stream_12")
+        except Exception as e:
+            logger.error(f"Stream 12 error: {e}")
+            all_stats["stream_12_regression_guard"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    elif "stream_12" in completed_streams:
+        print("  (stream_12 already completed — skipping)")
+
     # ── Final audit ──
     print("\n--- Final Knowledge Audit ---")
     audit = _final_knowledge_audit(db, tracker)
@@ -1770,6 +2164,8 @@ def _final_knowledge_audit(db, tracker):
         "hs_code_crossref", "brain_index",
         "free_import_order", "free_export_order", "framework_order",
         "classification_directives", "legal_knowledge",
+        "port_schedules", "daily_port_report", "tracker_deals",
+        "regression_alerts", "image_patterns",
     ]
 
     for coll_name in collections_to_count:

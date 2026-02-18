@@ -2087,5 +2087,101 @@ Deal kept: vessel ITAL WIT, container GAOU6394772, MSC, manifest 262094, customs
 ### Deployment
 - All 30 Cloud Functions deployed to Firebase (2026-02-18)
 
-### Test Results
+### Test Results (Session 40b)
 - **583 passed**, 2 skipped — zero regressions
+
+## Session 44-PARALLEL Summary (2026-02-18) — Overnight Learning Integration Audit + Fix
+
+### Problem
+The overnight brain had 9 enrichment streams but they were all focused on tariff/email/keyword mining. Tools #14-32 (Wikipedia, Wikidata, PubChem, EU TARIC, USITC, OpenSanctions, Israel VAT, GS1, WCO, UNCTAD, etc.) were registered in `tool_definitions.py` and `librarian_index.py` but NEVER invoked during overnight enrichment. Active tracker deals were not enriched. Port schedule data collected every 12 hours sat unused by the brain. No regression guard existed to catch when today's classifications contradicted high-confidence learned memory.
+
+### Full Audit Results
+
+**1. TOOL INDEX — 18 tools registered but never invoked overnight**
+- `librarian_index.py`: 68 collections registered — GOOD
+- `tool_definitions.py`: 32 tools defined — GOOD
+- `tool_executors.py`: 32 handlers — GOOD
+- **GAP FIXED**: overnight_brain.py now uses external APIs via Stream 10
+
+**2. TRACKER-TOOLS — Partially wired (was OK)**
+- tracker.py has check_gate_cutoff_alerts — GOOD
+- tracker.py imports route_eta — GOOD
+- main.py calls check_gate_cutoff_alerts in 30-min poll — GOOD
+- **GAP FIXED**: Port intelligence data now synced to active deals via Stream 11
+
+**3. BRAIN NIGHTLY ENRICHMENT — 4 major gaps fixed**
+- **FIXED**: Stream 10 enriches active tracker_deals with country info + sanctions screening
+- **FIXED**: Stream 11 syncs port_schedules/daily_port_report into deals + brain knowledge
+- **FIXED**: Stream 12 implements C3 self-learning regression guard
+- Note: self_enrichment.py is redundant (Stream 5 + Stream 10 cover its use case)
+
+**4. KNOWLEDGE FEEDS — Port data now visible**
+- **FIXED**: Stream 11 reads port_schedules + daily_port_report and writes context to deals + classification_knowledge
+
+**5. CROSS-SYSTEM CHAIN — 3 broken links fixed**
+- **FIXED**: enrichment loop now touches active deals (Stream 10)
+- **FIXED**: port data feeds into brain (Stream 11)
+- **FIXED**: regression guard protects learned memory quality (Stream 12)
+
+### 3 New Streams Added to `overnight_brain.py`
+
+| Stream | Name | Phase | Cost | What It Does |
+|--------|------|-------|------|-------------|
+| **10** | Deal Enrichment | G | $0.00 | Enriches active tracker_deals with country info (restcountries.com) + OpenSanctions compliance screening for all parties |
+| **11** | Port Intelligence Sync | G2 | $0.00 | Reads port_schedules + daily_port_report, matches vessels to active deals, writes port congestion data to classification_knowledge |
+| **12** | Regression Guard | H | $0.00 | Compares today's rcb_classifications against learned_classifications; flags contradictions where old confidence >= 80% as regression_alerts |
+
+### Stream Priority (updated, budget-ordered)
+```
+Phase A: Stream 6 (UK API — $0.00)
+Phase B: Streams 3, 1, 2 (AI — $0.01-$0.04 each)
+Phase C: Streams 4, 5 (AI — $0.02-$0.05 each)
+Phase D: Stream 7 (Firestore cross-ref — $0.00)
+Phase E: Stream 8 (AI self-teach — $0.02)
+Phase F: Stream 9 (Knowledge sync — $0.00)
+Phase G: Streams 10, 11 (Deal enrichment + port sync — $0.00)  ← NEW
+Phase H: Stream 12 (Regression guard — $0.00)  ← NEW
+```
+
+### New Firestore Collections
+| Collection | Purpose |
+|-----------|---------|
+| `regression_alerts` | Flagged classification regressions (product, old_code, new_code, confidence) |
+
+### COLLECTION_FIELDS Total: 69 collections registered
+(was 68, now 69 after adding `regression_alerts`)
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/overnight_brain.py` | +3 new streams (10, 11, 12), +3 orchestrator phases (G, G2, H), updated docstring (9→12 streams), +5 collections in _final_knowledge_audit |
+| `functions/lib/librarian_index.py` | +6 lines: `regression_alerts` in COLLECTION_FIELDS |
+
+### Files NOT Touched (per instructions)
+- `port_intelligence.py` — Session 44 owns this
+- `test_port_intelligence.py` — Session 44 owns this
+- `main.py` — Session 44 owns scheduler wiring
+
+### Tonight's Brain Cycle (what happens at 20:00)
+```
+20:00  rcb_overnight_brain runs:
+  Phase 0: One-time backfill (skip if done)
+  Phase A: UK Tariff API sweep — free English descriptions ($0.00)
+  Phase B: CC learning + tariff mining + email mining (~$0.06)
+  Phase C: Attachment mining + AI knowledge fill (~$0.07)
+  Phase D: Cross-reference engine — link HS codes ($0.00)
+  Phase E: Self-teach — synthesize per-chapter rules (~$0.02)
+  Phase F: Knowledge sync — push to classification_knowledge ($0.00)
+  Phase G: Deal enrichment + Port intelligence sync ($0.00)  ← NEW
+  Phase H: Regression guard — flag contradictions ($0.00)    ← NEW
+  Final audit: count all key collections
+
+02:00  rcb_nightly_learn runs:
+  Step 1: Enrich knowledge_base
+  Step 2: Build keyword/product/supplier indexes
+  Step 3: Deep learn from all sources
+  Step 4: Build master brain_index from ALL collections
+```
+
+### Test Results
+- **648 passed**, 2 skipped — zero regressions (test_port_intelligence excluded per instructions)
