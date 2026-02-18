@@ -1697,7 +1697,7 @@ def _search_tariff(db, keywords):
             score = sum(1 for kw in keywords_lower if kw in search_text)
             if score >= 2:
                 hs = data.get("hs_code", "")
-                if hs:
+                if hs and not data.get("corrupt_code"):
                     # Don't duplicate
                     already = any(r["hs_code"] == hs for r in results)
                     if not already:

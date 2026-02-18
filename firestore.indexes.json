@@ -48,6 +48,20 @@
         {"fieldPath": "category", "order": "ASCENDING"},
         {"fieldPath": "created_at", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "free_import_order",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "hs_10", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "free_export_order",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "hs_10", "order": "ASCENDING"}
+      ]
     }
   ]
 }

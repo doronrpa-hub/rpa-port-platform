@@ -774,6 +774,12 @@ class ToolExecutor:
 
         try:
             results = []
+            seen_ids = set()  # dedup across strategies
+
+            def _add(doc_id, data, limit):
+                if doc_id not in seen_ids and len(results) < limit:
+                    seen_ids.add(doc_id)
+                    results.append(self._format_directive(doc_id, data))
 
             # Strategy 1: Search by HS code (exact or prefix match)
             if hs_code:
@@ -794,7 +800,7 @@ class ToolExecutor:
                                 break
 
                     if match:
-                        results.append(self._format_directive(doc_id, data))
+                        _add(doc_id, data, 5)
                         if len(results) >= 5:
                             break
 
@@ -805,7 +811,7 @@ class ToolExecutor:
                     chapters_covered = [str(c).zfill(2) for c in data.get("chapters_covered", [])]
                     title = data.get("title", "")
                     if ch in chapters_covered or title.startswith(f"{ch}."):
-                        results.append(self._format_directive(doc_id, data))
+                        _add(doc_id, data, 10)
                         if len(results) >= 10:
                             break
 
@@ -814,7 +820,7 @@ class ToolExecutor:
                 if re.match(r'\d{1,3}/\d{2,4}', query):
                     for doc_id, data in all_docs:
                         if data.get("directive_id") == query:
-                            results.append(self._format_directive(doc_id, data))
+                            _add(doc_id, data, 5)
                             break
 
             # Strategy 4: Keyword search in title + content
@@ -828,7 +834,7 @@ class ToolExecutor:
                         " ".join(data.get("key_terms", [])),
                     ]).lower()
                     if q_lower in searchable:
-                        results.append(self._format_directive(doc_id, data))
+                        _add(doc_id, data, 5)
                         if len(results) >= 5:
                             break
 

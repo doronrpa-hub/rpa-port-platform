@@ -636,4 +636,71 @@ Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. 
 - **C6**: Classification Directives ✓ (218 enriched)
 - **C7**: Pre-Rulings — BLOCKED (no data source)
 - **C8**: Legal Knowledge ✓ (19 docs)
-- **Block D**: Elimination Engine — UNBLOCKED (all data foundation complete)
+- **Block D**: Elimination Engine — IN PROGRESS (D1-D5 committed by parallel session)
+
+## Session 33 Summary (2026-02-18) — Audit, Bug Verification, Caching, Merge, Cleanup
+
+### What Was Done
+
+**1. Full Audit Review**
+- Compared Feb 16 AUDIT_REPORT.md against current codebase state
+- Verified other Claude's Session 31+32 work
+- Identified remaining gaps and new observations
+
+**2. Git Remote Fixed + Pushed Working Copy**
+- Fixed remote URL on `Usersdoronrpa-port-platform` working copy
+- Pushed all local commits to origin/main (rebased over D-block commits)
+
+**3. Production Bug Verification (Feb 16 Audit)**
+All 3 critical bugs from the audit were ALREADY FIXED:
+- Bug 1 (tracker_email kwargs): `tracker_email.py:39` already accepts `observation=None, extractions=None`
+- Bug 2 (VAT 17%): `pdf_creator.py:151` already reads `vat_rate` with 18% default
+- Bug 3 (orphan decorator): All decorators in `main.py` properly attached
+- `seed_reference_data`: Already executed (29 docs exist: 11 container + 6 ULD + 12 package types)
+
+**4. Per-Request Caching in tool_executors.py (Firestore read optimization)**
+Reduced potential 5,000+ Firestore reads per elimination run to ~320:
+- Added lazy-load caches: `_directives_docs` (218), `_framework_order_docs` (85), `_legal_knowledge_docs` (19)
+- Added `_get_directives()`, `_get_framework_order()`, `_get_legal_knowledge()` cache methods
+- Moved `_FTA_COUNTRY_MAP` to module-level constant (89 country entries, not rebuilt per call)
+- Rewrote `_lookup_framework_order()`, `_search_classification_directives()`, `_search_legal_knowledge()` to use cached collections
+- Added word-boundary regex for legal_knowledge search (`_LEGAL_EU_KEYWORDS`, `_LEGAL_US_KEYWORDS`, `_LEGAL_AGENT_KEYWORDS`) — prevents "us" matching "status"
+- Fixed tool_definitions.py header "10 tools" → "12 tools"
+
+**5. Merged session31-enhancements Branch**
+- 9 commits, +917 lines merged to main with zero conflicts
+- Includes: FCL/LCL detection, lifecycle tracking, CC learning, reference data, cross-check, deal intelligence
+- Tests: 457 passed (up from 452)
+
+**6. Block D: Elimination Engine (by parallel Claude session)**
+- D1: Core tree-walking engine (`elimination_engine.py`, 801 lines)
+- D2+D3: Chapter notes integration + GIR Rule 1
+- D4+D5: GIR Rule 3 tiebreak logic (1,374 lines total)
+
+**7. Audit Cleanup Tasks**
+- Fixed dedup in `_search_classification_directives()` — added `seen_ids` set + `_add()` helper across all 4 search strategies
+- Investigated 188 corrupt tariff codes: 15 chapters, 137 in ch87 (vehicles), all have empty descriptions, already flagged `corrupt_code: true`
+- Added `corrupt_code` filtering in `intelligence.py:_search_tariff()` — corrupt codes now excluded from search results
+- Added Firestore composite indexes for FIO/FEO range queries to `firestore.indexes.json`
+
+### Files Modified This Session
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | Per-request collection caching, dedup fix, word-boundary regex, FTA_COUNTRY_MAP module-level |
+| `functions/lib/tool_definitions.py` | Header fix: "10 tools" → "12 tools" |
+| `functions/lib/intelligence.py` | Added `corrupt_code` filtering in `_search_tariff()` |
+| `firestore.indexes.json` | Added FIO + FEO `hs_10` range query indexes |
+
+### Git Commits This Session
+- Caching + country map + regex + header fix (tool_executors + tool_definitions)
+- Session31-enhancements merge
+- Dedup + corrupt code filter + indexes + CLAUDE.md update
+
+### Test Results
+- **457 passed**, 5 failed (pre-existing BS4 issues), 2 skipped
+
+### Block Status After Session 33
+- **C1-C6, C8**: All complete ✓
+- **C7**: Pre-Rulings — BLOCKED (no data source)
+- **Block D**: Elimination Engine — D1-D5 committed (tree-walking + GIR 1 + GIR 3)
+- **188 corrupt tariff codes**: Flagged + excluded from search (not fixable from available sources)
