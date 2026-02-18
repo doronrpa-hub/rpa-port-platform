@@ -593,19 +593,21 @@ The system tracks and reports its own growth:
 | C7 | Brain downloads: פרה-רולינג database |
 | C8 | Fill blank tariff descriptions + duty rates from shaarolami |
 
-### Block D: Elimination Engine (NEXT)
+### Block D: Elimination Engine — DONE (Session 33, D1-D8. D9 next.)
 
-| Step | What |
-|------|------|
-| D1 | elimination_engine.py — core tree-walking logic |
-| D2 | Chapter elimination using brain's chapter notes |
-| D3 | Heading elimination — specific to general |
-| D4 | Rule 3 (כלל 3) — 3א, 3ב, 3ג |
-| D5 | "אחרים" gate + "באופן עיקרי" test |
-| D6 | AI consultation hooks at decision points |
-| D7 | Devil's advocate before finalization |
-| D8 | Elimination logging for Phase 8 |
-| D9 | Wire into pipeline — method-first, AI-assist |
+**File:** `functions/lib/elimination_engine.py` (2,282 lines)
+
+| Step | What | Status |
+|------|------|--------|
+| D1 | Core tree walk (TariffCache, section/chapter/heading, data structures) | ✓ `2841a07` |
+| D2 | Chapter notes deep (preamble scope, conditional exclusions, cross-chapter redirects, definitions) | ✓ `8b9e370` |
+| D3 | GIR 1 heading match (specificity scoring, attribute matching, composite 0.5/0.25/0.25) | ✓ `8b9e370` |
+| D4 | GIR 3 tiebreak (3א most specific, 3ב essential character, 3ג last numerical) | ✓ `e485b65` |
+| D5 | "אחרים" gate + "באופן עיקרי" principally test | ✓ `e485b65` |
+| D6 | AI consultation (Gemini Flash primary, Claude fallback, >3 survivors trigger) | ✓ `e3913eb` |
+| D7 | Devil's advocate (counter-arguments per survivor, challenges[] in result) | ✓ `e3913eb` |
+| D8 | Elimination logging (Firestore `elimination_log`, full audit trail) | ✓ `e3913eb` |
+| D9 | Wire into pipeline — method-first, AI-assist | **NEXT SESSION** |
 
 ### Block E: Verification (Phases 4-6)
 

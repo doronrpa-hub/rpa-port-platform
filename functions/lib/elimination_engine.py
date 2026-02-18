@@ -1,26 +1,124 @@
 """
-Elimination Engine — Core tree-walking logic for HS code classification.
+Elimination Engine — Deterministic tariff tree walker for HS code classification.
+====================================================================================
 
-Phase 3 of the RCB target architecture. Walks the tariff tree deterministically,
-eliminating candidates using section scope, chapter exclusions/inclusions, and
-heading-level keyword matching. AI participates but the method has final say.
+Phase 3 of the RCB target architecture (Block D). Walks the Israeli customs tariff
+tree deterministically, eliminating HS code candidates level by level using section
+scope, chapter exclusions/inclusions, GIR rules, and AI consultation. The method
+has final say — AI participates but cannot override deterministic rules.
 
-D1: Core framework (data structures, cache, tree walk, chapter-level matching).
-D2: Chapter elimination using full chapter notes (preamble scope, definitions,
-    conditional exclusions, cross-chapter redirects).
-D3: Heading elimination — GIR 1 full semantics (specificity scoring, product
-    attribute matching, relative elimination, subheading notes).
-D4: GIR Rule 3 tiebreak (3א most specific, 3ב essential character, 3ג last numerical).
-D5: "אחרים" (Others) gate + "באופן עיקרי" (principally) composition test.
-D6: AI consultation at decision points (Gemini Flash primary, Claude fallback).
-D7: Devil's advocate — counter-arguments per survivor before finalization.
-D8: Elimination logging to Firestore elimination_log collection.
-D9: Wire into pipeline (separate session).
+Session 33, Blocks D1-D8. 2,282 lines. D9 (pipeline wiring) in separate session.
 
-Public API:
-    eliminate(db, product_info, candidates) -> EliminationResult
-    candidates_from_pre_classify(pre_classify_result) -> list[HSCandidate]
-    make_product_info(item_dict) -> ProductInfo
+Architecture — Pipeline Levels (executed in order)
+--------------------------------------------------
+Level 0  ENRICH            (D1)  Resolve chapter→section for each candidate via
+                                  TariffCache. Candidates without valid section are
+                                  kept alive (conservative).
+
+Level 1  SECTION SCOPE     (D1)  Group candidates by section, compare section
+                                  keywords against product. Requires >=5 section
+                                  keywords and zero overlap to eliminate (very
+                                  conservative — avoids false positives).
+
+Level 2a PREAMBLE SCOPE    (D2)  Load chapter preamble from chapter_notes. Check
+                                  if product falls outside preamble scope statement.
+
+Level 2b CHAPTER EXCL/INCL (D1+D2) Parse exclusions[] and inclusions[] from
+                                  chapter_notes. Match product keywords against each
+                                  rule's text. Exclusions eliminate, inclusions boost
+                                  confidence. Conditional exclusions (exception
+                                  clauses with "except"/"למעט") handled.
+
+Level 2c CROSS-CHAPTER     (D2)  When an exclusion says "see chapter X", boost
+         REDIRECT                 candidates in chapter X (they were pointed to).
+
+Level 2d DEFINITION MATCH  (D2)  Parse "in this chapter, X means Y" definitions.
+                                  Match product against defined terms. Products
+                                  matching a definition get boosted.
+
+Level 3  GIR 1 HEADING     (D3)  Composite score = 0.5×keyword_overlap +
+         MATCH                    0.25×specificity + 0.25×attribute_match.
+                                  Specificity: penalizes vague/others/n.e.s.
+                                  headings (score 0.1-0.3). Specific headings score
+                                  0.5-0.9. Attribute: matches material/form/use
+                                  terms. Bottom 30% of survivors eliminated (if >3
+                                  survive). At least 1 survivor always preserved.
+
+Level 3b SUBHEADING NOTES  (D3)  Apply subheading-level rules from chapter_notes
+                                  subheading_rules field.
+
+Level 4a GIR 3 TIEBREAK    (D4)  Only fires when >1 survivor remains.
+                                  3א: Most specific heading description wins.
+                                  3ב: Essential character (material composition
+                                      dominance, >=60% threshold for confident
+                                      elimination).
+                                  3ג: Last numerical order (fallback only).
+                                  Each sub-rule only fires if the previous didn't
+                                  resolve to a single winner.
+
+Level 4b OTHERS GATE +     (D5)  Detect "אחרים"/"others"/"n.e.s." catch-all
+         PRINCIPALLY              headings. Suppress when specific alternatives
+                                  exist. "באופן עיקרי"/"principally" test: verify
+                                  product meets material composition requirement.
+
+Level 4c AI CONSULTATION   (D6)  Fires only when >3 survivors remain. Gemini Flash
+                                  primary, Claude fallback via call_ai(). Structured
+                                  JSON prompt. No-op when API keys missing.
+
+Level 5  BUILD RESULT      (D1)  Assemble EliminationResult dict from survivors,
+                                  eliminated candidates, and elimination steps.
+
+Level 6  DEVIL'S ADVOCATE  (D7)  Per-survivor counter-arguments. Identifies
+                                  strongest alternative and risk areas. Results
+                                  stored as challenges[] in result. No-op when
+                                  API keys missing.
+
+Level 7  ELIMINATION LOG   (D8)  Write full audit trail to Firestore
+                                  `elimination_log` collection. Failure-safe
+                                  (try/except, never breaks classification).
+
+Data Structures (all plain dicts, no external deps)
+----------------------------------------------------
+ProductInfo:  description, description_he, material, form, use,
+              origin_country, seller_name, keywords (auto-extracted)
+
+HSCandidate:  hs_code, section, chapter, heading, subheading,
+              confidence, source, description, description_en, duty_rate,
+              alive (bool), elimination_reason, eliminated_at_level
+
+EliminationStep: level, action, rule_type, rule_ref, rule_text,
+                 candidates_before, candidates_after, eliminated_codes,
+                 kept_codes, reasoning
+
+EliminationResult: survivors[], eliminated[], steps[], challenges[],
+                   sections_checked[], chapters_checked[],
+                   input_count, survivor_count, needs_ai, needs_questions,
+                   timestamp
+
+Dependencies (reads from, does NOT modify)
+-------------------------------------------
+- chapter_notes collection     — exclusions, inclusions, preamble, definitions
+- tariff_structure collection  — section↔chapter mapping, section scope text
+- tariff collection            — heading descriptions for GIR 1 matching
+- classification_agents.call_ai() — D6/D7 AI routing (Gemini/Claude)
+
+Writes to:
+- elimination_log collection (D8) — one doc per elimination run
+
+Public API
+----------
+    eliminate(db, product_info, candidates, api_key=None, gemini_key=None)
+        -> EliminationResult dict
+    candidates_from_pre_classify(pre_classify_result)
+        -> list[HSCandidate dict]
+    make_product_info(item_dict)
+        -> ProductInfo dict
+
+Reused patterns (not reinvented):
+    _CHAPTER_REF_RE — from justification_engine.py:522
+    _STOP_WORDS     — from intelligence.py:1371-1378
+    _WORD_SPLIT_RE  — from intelligence.py
+    Chapter/section Firestore reads — same fields as tool_executors.py
 """
 
 import json

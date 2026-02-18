@@ -269,7 +269,60 @@ Daily vessel schedule aggregation for Israeli ports (Haifa, Ashdod, Eilat).
 - C7: Brain downloads: פרה-רולינג database
 - C8: Duty rates — `AdditionRulesDetailsHistory.xml` (7.4MB) has צו מסגרת legal text
 
-### Block D: Elimination Engine — UNBLOCKED (C2 + C3 done)
+### Block D: Elimination Engine — DONE (Session 33, D1-D8)
+**Status: Core engine complete. 2,282 lines. D9 (pipeline wiring) deferred to next session.**
+
+**File created:** `functions/lib/elimination_engine.py` (2,282 lines)
+
+**Pipeline levels (in order):**
+| Level | Name | Block | What It Does |
+|-------|------|-------|-------------|
+| 0 | ENRICH | D1 | Resolve chapter→section for each candidate |
+| 1 | SECTION SCOPE | D1 | Eliminate candidates from clearly wrong sections |
+| 2a | PREAMBLE SCOPE | D2 | Check chapter preamble scope statements |
+| 2b | CHAPTER EXCLUSIONS/INCLUSIONS | D1+D2 | Parse chapter notes, match product against exclusion/inclusion text |
+| 2c | CROSS-CHAPTER REDIRECT | D2 | Boost candidates referenced by other chapter exclusions |
+| 2d | DEFINITION MATCHING | D2 | Match product against "in this chapter X means..." definitions |
+| 3 | GIR 1 HEADING MATCH | D3 | Composite scoring: 0.5×keyword + 0.25×specificity + 0.25×attribute |
+| 3b | SUBHEADING NOTES | D3 | Apply subheading-level rules from chapter notes |
+| 4a | GIR 3 TIEBREAK | D4 | 3א most specific, 3ב essential character, 3ג last numerical |
+| 4b | OTHERS GATE + PRINCIPALLY | D5 | Suppress "אחרים" catch-alls when specific headings exist; composition test |
+| 4c | AI CONSULTATION | D6 | Gemini Flash primary, Claude fallback via call_ai() |
+| 5 | BUILD RESULT | D1 | Assemble EliminationResult from survivors/eliminated/steps |
+| 6 | DEVIL'S ADVOCATE | D7 | Counter-arguments per survivor; challenges[] in result |
+| 7 | ELIMINATION LOGGING | D8 | Write to Firestore `elimination_log` collection |
+
+**Public API:**
+```python
+eliminate(db, product_info, candidates, api_key=None, gemini_key=None) -> EliminationResult
+candidates_from_pre_classify(pre_classify_result) -> list[HSCandidate]
+make_product_info(item_dict) -> ProductInfo
+```
+
+**Key dependencies reused (not modified):**
+- `justification_engine.py:522` — Hebrew chapter reference regex
+- `intelligence.py:1369-1381` — Keyword extraction, stop words
+- `tool_executors.py:205-343` — Chapter notes + tariff structure Firestore reads
+- `classification_agents.py:466-494` — `call_ai()` router for D6/D7
+
+**Firestore collections used:**
+- `chapter_notes` (read) — chapter exclusions, inclusions, preamble, definitions
+- `tariff_structure` (read) — section→chapter mapping, section scope
+- `tariff` (read) — heading descriptions for GIR 1 matching
+- `elimination_log` (write, NEW) — full elimination audit trail per run
+
+**Git commits:**
+| Block | SHA | Description | Lines |
+|-------|-----|-------------|-------|
+| D1 | `2841a07` | Core tree walk, TariffCache, section/chapter/heading | +801 |
+| D2+D3 | `8b9e370` | Chapter notes + GIR 1 full semantics | +606 |
+| D4+D5 | `e485b65` | GIR 3 tiebreak + Others gate + principally test | +563 |
+| D6+D7+D8 | `e3913eb` | AI consultation + devil's advocate + elimination logging | +378 |
+
+**D9 (pipeline wiring) — NEXT SESSION:**
+- Wire `eliminate()` into classification pipeline (after pre_classify, before cross-check)
+- Register as tool in `tool_definitions.py` / `tool_executors.py`
+- Add `run_elimination` tool for tool-calling engine
 
 ## Tariff XML Archive (fullCustomsBookData.zip)
 
@@ -636,9 +689,9 @@ Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. 
 - **C6**: Classification Directives ✓ (218 enriched)
 - **C7**: Pre-Rulings — BLOCKED (no data source)
 - **C8**: Legal Knowledge ✓ (19 docs)
-- **Block D**: Elimination Engine — IN PROGRESS (D1-D5 committed by parallel session)
+- **Block D**: Elimination Engine — ✓ DONE (D1-D8, 2,282 lines)
 
-## Session 33 Summary (2026-02-18) — Audit, Bug Verification, Caching, Merge, Cleanup
+## Session 33a Summary (2026-02-18) — Audit, Bug Verification, Caching, Merge, Cleanup
 
 ### What Was Done
 
@@ -699,8 +752,44 @@ Reduced potential 5,000+ Firestore reads per elimination run to ~320:
 ### Test Results
 - **457 passed**, 5 failed (pre-existing BS4 issues), 2 skipped
 
+## Session 33b Summary (2026-02-18) — Block D: Elimination Engine (D1-D8)
+
+### Overview
+Built the complete elimination engine in one session — all 8 sub-blocks (D1-D8). Single file created: `functions/lib/elimination_engine.py` (2,282 lines). No existing files modified. D9 (pipeline wiring) deferred.
+
+### What Was Built
+
+**D1 — Core Framework:** TariffCache (per-request in-memory), ProductInfo/HSCandidate/EliminationStep/EliminationResult data structures, keyword extraction (bilingual), HS code utilities, section scope elimination, chapter exclusions/inclusions, basic heading match.
+
+**D2 — Chapter Notes Deep:** Preamble scope analysis, conditional exclusions (exception clause parsing), cross-chapter redirect detection and boosting, definition matching ("in this chapter X means...").
+
+**D3 — GIR 1 Full Semantics:** Heading specificity scoring (penalizes vague/others headings), product attribute matching (material/form/use terms), composite scoring (0.5×keyword + 0.25×specificity + 0.25×attribute), relative elimination (bottom 30% removed), subheading notes application.
+
+**D4 — GIR Rule 3 Tiebreak:** 3א (most specific description wins), 3ב (essential character — material composition dominance), 3ג (last numerical — fallback when 3a/3b inconclusive). Each stage only fires when needed.
+
+**D5 — Others Gate + Principally Test:** Detects "אחרים"/"others"/"n.e.s." catch-all headings, suppresses them when specific alternatives exist. "באופן עיקרי"/"principally" composition test for headings requiring material dominance.
+
+**D6 — AI Consultation:** Fires when >3 survivors remain after rule-based elimination. Gemini Flash primary, Claude fallback via `call_ai()`. Structured JSON prompt with product info + candidates + elimination history. Graceful no-op when API keys missing.
+
+**D7 — Devil's Advocate:** Generates counter-arguments for each surviving candidate. Identifies strongest alternative classification and risk areas. Results stored as `challenges[]` in EliminationResult. Graceful no-op when API keys missing.
+
+**D8 — Elimination Logging:** Writes full audit trail to Firestore `elimination_log` collection. Includes all steps, survivors, eliminated codes, AI consultations, devil's advocate challenges. All writes wrapped in try/except (logging failure never breaks classification).
+
+### Git Commits (Session 33b)
+- `2841a07` — D1: Core tree walk, TariffCache, section/chapter/heading (+801 lines)
+- `8b9e370` — D2+D3: Chapter notes deep + GIR 1 full semantics (+606 lines)
+- `e485b65` — D4+D5: GIR 3 tiebreak + Others gate + principally test (+563 lines)
+- `e3913eb` — D6+D7+D8: AI consultation + devil's advocate + elimination logging (+378 lines)
+
+### Files
+| Action | File | Lines |
+|--------|------|-------|
+| **CREATE** | `functions/lib/elimination_engine.py` | 2,282 |
+
 ### Block Status After Session 33
-- **C1-C6, C8**: All complete ✓
-- **C7**: Pre-Rulings — BLOCKED (no data source)
-- **Block D**: Elimination Engine — D1-D5 committed (tree-walking + GIR 1 + GIR 3)
+- **Block A**: ✓ (A1-A4)
+- **Block B**: ✓ (B1-B2)
+- **Block C**: ✓ (C1-C6, C8) — C7 blocked
+- **Block D**: ✓ (D1-D8) — **D9 pipeline wiring NEXT**
+- **Block E-H**: Not started
 - **188 corrupt tariff codes**: Flagged + excluded from search (not fixable from available sources)
