@@ -66,8 +66,8 @@ from lib.verification_loop import verify_all_classifications, learn_from_verific
 _CLAUDE_MODEL = "claude-sonnet-4-20250514"
 _GEMINI_MODEL = "gemini-2.5-flash"
 _MAX_TOKENS = 4096
-_MAX_ROUNDS = 8
-_TIME_BUDGET_SEC = 120  # Hard ceiling — abort tool loop after this
+_MAX_ROUNDS = 15   # Session 48: Increased from 8 — BALKI needed 10+ rounds to classify 13 items
+_TIME_BUDGET_SEC = 180  # Session 48: Increased from 120s — more rounds need more time
 
 # Cost optimization: Gemini Flash is ~20x cheaper than Claude Sonnet.
 # Try Gemini first for tool-calling, fall back to Claude if Gemini fails.
@@ -615,6 +615,23 @@ def _run_claude_tool_loop(api_key, user_prompt, executor):
 
         messages.append({"role": "user", "content": tool_results})
 
+    # Session 48: Force final answer when max rounds reached
+    print(f"  [TOOL ENGINE] Max rounds reached — requesting final answer...")
+    messages.append({"role": "user", "content": (
+        "STOP calling tools. You have used all available rounds. "
+        "Output your FINAL classification JSON now with whatever information you have gathered. "
+        "Use this exact format: {\"classifications\": [{\"item\": \"...\", \"hs_code\": \"...\", "
+        "\"confidence\": \"...\", \"reasoning\": \"...\"}], \"regulatory\": [], \"fta\": [], "
+        "\"risk\": {\"level\": \"נמוך\", \"items\": []}, \"synthesis\": \"סיווג חלקי\"}"
+    )})
+    response = _call_claude_with_tools(api_key, messages)
+    if response:
+        for block in response.get("content", []):
+            if block.get("type") == "text":
+                txt = block.get("text", "")
+                if txt:
+                    print(f"  [TOOL ENGINE] Got forced final answer ({len(txt)} chars)")
+                    return txt
     print(f"  [TOOL ENGINE] Max rounds reached, returning last text")
     return "\n".join(text_parts) if text_parts else None
 
@@ -697,6 +714,27 @@ def _run_gemini_tool_loop(gemini_key, user_prompt, executor, claude_api_key=None
             })
 
         contents.append({"role": "user", "parts": func_responses})
+
+    # Session 48: Force final answer when max rounds reached
+    print(f"  [TOOL ENGINE] Gemini max rounds — requesting final answer via Claude...")
+    if claude_api_key:
+        # Use Claude for the final forced answer (Gemini can't easily be told to stop)
+        final_prompt = (
+            "STOP calling tools. Output your FINAL classification JSON now with whatever "
+            "information you have gathered. Use this format: "
+            "{\"classifications\": [{\"item\": \"...\", \"hs_code\": \"...\", "
+            "\"confidence\": \"...\", \"reasoning\": \"...\"}], \"regulatory\": [], \"fta\": [], "
+            "\"risk\": {\"level\": \"נמוך\", \"items\": []}, \"synthesis\": \"סיווג חלקי\"}"
+        )
+        final_msgs = [{"role": "user", "content": user_prompt + "\n\n" + final_prompt}]
+        response = _call_claude_with_tools(claude_api_key, final_msgs)
+        if response:
+            for block in response.get("content", []):
+                if block.get("type") == "text":
+                    txt = block.get("text", "")
+                    if txt:
+                        print(f"  [TOOL ENGINE] Got forced final answer ({len(txt)} chars)")
+                        return txt
 
     print(f"  [TOOL ENGINE] Max rounds reached, returning last text")
     return "\n".join(text_parts) if text_parts else None

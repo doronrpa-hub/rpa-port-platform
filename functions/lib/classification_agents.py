@@ -2743,7 +2743,7 @@ def _enrich_results_for_email(results, invoice_data, db):
 # PRE-CLASSIFY BYPASS: Skip AI pipeline for high-confidence known products
 # =============================================================================
 
-def _try_pre_classify_bypass(db, doc_text, gemini_key=None):
+def _try_pre_classify_bypass(db, doc_text, gemini_key=None, api_key=None):
     """
     Attempt to classify using ONLY pre_classify (Firestore lookups, zero AI).
     Returns a full result dict (same format as run_full_classification) or None.
@@ -2752,13 +2752,15 @@ def _try_pre_classify_bypass(db, doc_text, gemini_key=None):
     - PRE_CLASSIFY_BYPASS_ENABLED is True
     - pre_classify returns a candidate with confidence >= PRE_CLASSIFY_BYPASS_THRESHOLD
     - The top candidate has a valid HS code
+
+    Session 48: Added api_key param so Claude fallback works when Gemini 429.
     """
     if not PRE_CLASSIFY_BYPASS_ENABLED or not INTELLIGENCE_AVAILABLE:
         return None
 
-    # We need a minimal invoice extraction first (Gemini Flash — cheap)
+    # We need a minimal invoice extraction first (Gemini Flash — cheap, Claude fallback)
     print("  [BYPASS] Checking pre-classify bypass...")
-    invoice = run_document_agent(None, doc_text, gemini_key=gemini_key)
+    invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key)
     if not isinstance(invoice, dict):
         invoice = {"items": [{"description": doc_text[:500]}]}
     items = invoice.get("items") or [{"description": doc_text[:500]}]
@@ -3048,7 +3050,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         results = None
         if PRE_CLASSIFY_BYPASS_ENABLED:
             try:
-                results = _try_pre_classify_bypass(db, doc_text, gemini_key=gemini_key)
+                results = _try_pre_classify_bypass(db, doc_text, gemini_key=gemini_key, api_key=api_key)
                 if results:
                     print(f"  ✅ PRE-CLASSIFY BYPASS: saved ~$0.05 (engine={results.get('_engine')})")
             except Exception as bp_err:
