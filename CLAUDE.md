@@ -1330,3 +1330,95 @@ Added `search_wikipedia` as the 14th tool in the tool-calling engine. FREE Wikip
 
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions
+
+## Session 38 Summary (2026-02-18) — Full System Audit Fixes + Automated Backup System
+
+### Overview
+Session 37 delivered a read-only full system audit (82 issues: 5 CRITICAL, 9 HIGH, 25 MEDIUM, 24 LOW). This session fixed the top-priority issues and built an automated backup system to close the biggest infrastructure gap.
+
+### Audit Fixes — 5 Issues Fixed (5 commits)
+
+| # | Issue | Severity | File(s) | Commit | Fix |
+|---|-------|----------|---------|--------|-----|
+| 1 | H9: sa-key.json not in .gitignore | HIGH | `.gitignore` | `ef93631` | Added `sa-key.json` to gitignore. Verified never committed to git history. |
+| 2 | H1+H2: Hebrew confidence vs numeric type mismatch | HIGH | `classification_agents.py` | `c1074d1` | VE Phase 5 and Cross-Check confidence adjustments were silently never applied because Agent 2 returns Hebrew strings ("גבוהה"/"בינונית"/"נמוכה") while adjustment code checked `isinstance(conf, (int, float))`. Added `_apply_confidence_adjustment()` helper that converts Hebrew→float, applies delta, converts back. Both VE (line 1084) and cross-check (line 2690) now use this. Also fixed cross_check_tier/note always being set. |
+| 3 | C1: Bare except:pass in 4 AI agent JSON parsers | CRITICAL | `classification_agents.py` | `24c345f` | Agents 2-5 (lines 680, 700, 719, 740) had bare `except: pass` silently swallowing all errors. Replaced with `except Exception as e:` + print with agent name, error, and first 200 chars of raw AI response. |
+| 4 | C3: Confidence regression in classification memory | CRITICAL | `self_learning.py` | `eb0bb2a` | `learn_classification()` unconditionally overwrote entries via `set(merge=True)`. Low-quality AI reclassification (confidence 0.5) could replace expert-validated result (confidence 0.95). Added read-before-write guard with method ranking: cross_validated > manual > ai. |
+| 5 | C4+C5: Firestore triggers without try/except | CRITICAL | `main.py` | `7517375` | `on_new_classification` and `on_classification_correction` had no top-level exception handler. Unhandled errors caused Firebase retry storms creating duplicate agent_tasks and learning_log entries. Both wrapped in try/except with traceback logging. |
+
+### New Feature: Automated Backup System (1 commit)
+
+**Commit:** `f51939d`
+
+**New Cloud Function: `rcb_daily_backup()`**
+- Scheduled daily at 02:00 Israel time (before TTL cleanup at 03:30)
+- Exports 4 critical collections to GCS as NDJSON:
+  - `learned_classifications` — irreplaceable classification memory
+  - `classification_directives` — 218 enriched directives
+  - `legal_knowledge` — customs ordinance + reforms
+  - `chapter_notes` — tariff chapter preambles/exclusions
+- Filename format: `backups/{collection}/YYYY-MM-DD.ndjson`
+- Sends confirmation email to doron@rpa-port.co.il with doc counts
+- Sends alert email on partial/full failure
+
+**Backup Guard on `rcb_ttl_cleanup()`**
+- Before any TTL deletion, verifies today's backup exists in GCS
+- If backup missing: aborts ALL deletions, logs to `security_log` collection, sends alert email
+- If GCS check itself fails: warns but proceeds (fail-open to avoid permanent block)
+
+**Daily Timeline:**
+```
+02:00  rcb_daily_backup → exports 4 collections to GCS
+03:30  rcb_ttl_cleanup  → verifies backup exists → then runs deletions
+```
+
+### New Constants/Functions in main.py
+- `_BACKUP_COLLECTIONS` — list of 4 collections to back up
+- `_BACKUP_PREFIX` — GCS path prefix ("backups")
+- `_BACKUP_ALERT_EMAIL` — "doron@rpa-port.co.il"
+- `_export_collection_to_gcs(db, bucket, collection, date)` — streams collection to NDJSON blob
+- `_check_backup_exists(bucket, collection, date)` — checks if blob exists in GCS
+
+### New Firestore Collection
+| Collection | Purpose |
+|-----------|---------|
+| `security_log` | Logs security-relevant events (TTL cleanup aborted, etc.) |
+
+### Backup Audit Findings (Read-Only)
+- **NO automated Firestore backups existed** before this session
+- GCS bucket was initialized but **never used**
+- `learned_classifications` was the only truly irreplaceable collection (no local source file)
+- Other critical collections (tariff, chapter_notes, etc.) are recoverable from local XML/text files
+- TTL cleanup jobs were deleting data without any backup verification
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `.gitignore` | +1 line (sa-key.json) |
+| `functions/lib/classification_agents.py` | +30 lines: `_CONFIDENCE_TO_FLOAT`, `_apply_confidence_adjustment()`, 4 bare except→logged, VE/CC adjustment fix |
+| `functions/lib/self_learning.py` | +23 lines: read-before-write guard with method ranking in `learn_classification()` |
+| `functions/main.py` | +167 lines: `rcb_daily_backup()` function, backup guard in `rcb_ttl_cleanup()`, try/except on both Firestore triggers |
+
+### Git Commits (6 total)
+- `ef93631` — H9: Add sa-key.json to .gitignore
+- `c1074d1` — H1+H2: Fix Hebrew confidence vs numeric type mismatch
+- `24c345f` — C1: Replace bare except:pass in 4 AI agent JSON parsers with logging
+- `eb0bb2a` — C3: Prevent confidence regression in classification memory
+- `7517375` — C4+C5: Add top-level try/except to Firestore triggers
+- `f51939d` — Add automated daily backup system with TTL cleanup guard
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+- `rcb_daily_backup` created as new function
+- `rcb_ttl_cleanup` updated with backup guard
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions after all 6 commits
+
+### Remaining Audit Issues (Not Fixed This Session)
+From the 82-issue audit, 77 remain. Highest priority for next session:
+- **C2**: tracker.py race guard — `except Exception: pass` silences Firestore write failure + TOCTOU flaw (line 1462-1471)
+- **H3**: `rcb_check_email` no top-level try/except on preamble (lines 521-547)
+- **H4**: Bare `except:` in `rcb_helpers.py` Graph API helpers (lines 682, 691)
+- **H5**: N+1 Firestore query patterns in tracker.py (~250 reads per poll cycle)
+- **H7**: Unauthenticated `api()` HTTP endpoint with open CORS
