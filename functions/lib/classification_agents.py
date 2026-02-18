@@ -1081,8 +1081,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
                     hs = c.get("hs_code", "")
                     ve = ve_results.get(hs, {})
                     adj = ve.get("phase5", {}).get("confidence_adjustment", 0)
-                    if adj and isinstance(c.get("confidence"), (int, float)):
-                        c["confidence"] = max(0, min(1, c["confidence"] + adj))
+                    _apply_confidence_adjustment(c, adj)
             except Exception as ve_err:
                 print(f"    Verification engine error (non-fatal): {ve_err}")
 
@@ -1267,7 +1266,33 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
 # =============================================================================
 
 _CONFIDENCE_SCORES = {"גבוהה": 80, "בינונית": 50, "נמוכה": 20}
+_CONFIDENCE_TO_FLOAT = {"גבוהה": 0.80, "בינונית": 0.50, "נמוכה": 0.20}
 _HEBREW_HS_PATTERNS = re.compile(r'[\u0590-\u05FF]')
+
+
+def _apply_confidence_adjustment(classification: dict, adjustment: float) -> None:
+    """Apply a numeric confidence adjustment to a classification dict.
+
+    Handles both Hebrew string confidence ('גבוהה'/'בינונית'/'נמוכה')
+    and numeric (int/float) confidence values.
+    """
+    if not adjustment:
+        return
+    conf = classification.get("confidence", "בינונית")
+    if isinstance(conf, (int, float)):
+        numeric = conf
+    elif isinstance(conf, str):
+        numeric = _CONFIDENCE_TO_FLOAT.get(conf, 0.50)
+    else:
+        return
+    numeric = max(0.0, min(1.0, numeric + adjustment))
+    # Convert back to Hebrew string for downstream email rendering
+    if numeric >= 0.65:
+        classification["confidence"] = "גבוהה"
+    elif numeric >= 0.35:
+        classification["confidence"] = "בינונית"
+    else:
+        classification["confidence"] = "נמוכה"
 
 
 def _retry_classification(api_key, items, tariff, rules, context, gemini_key=None):
@@ -2685,10 +2710,9 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                         # Apply confidence adjustments
                         for i, cc in enumerate(cc_results):
                             adj = cc.get("confidence_adjustment", 0)
-                            if adj != 0 and i < len(classifications):
-                                old_conf = classifications[i].get("confidence", "")
-                                if isinstance(old_conf, (int, float)):
-                                    classifications[i]["confidence"] = max(0, min(1, old_conf + adj))
+                            if i < len(classifications):
+                                if adj != 0:
+                                    _apply_confidence_adjustment(classifications[i], adj)
                                 classifications[i]["cross_check_tier"] = cc.get("tier", 0)
                                 classifications[i]["cross_check_note"] = cc.get("learning_note", "")
             except Exception as cc_err:
