@@ -545,6 +545,88 @@ def _aggregate_deal_text(db, deal_id):
     return "\n\n---\n\n".join(texts)
 
 
+def _screen_deal_parties(db, deal_id, get_secret_func, access_token=None, rcb_email=None):
+    """Screen shipper/consignee/notify party against OpenSanctions.
+    Flag-only — never block. Logs to security_log on hit."""
+    deal_doc = db.collection("tracker_deals").document(deal_id).get()
+    if not deal_doc.exists:
+        return
+    deal = deal_doc.to_dict()
+    # Skip if already screened recently
+    if deal.get("sanctions_screened"):
+        return
+    # Collect party names to screen
+    parties = []
+    for field in ("shipper", "consignee", "notify_party"):
+        name = (deal.get(field) or "").strip()
+        if name and len(name) > 2:
+            parties.append((field, name))
+    if not parties:
+        return
+    from lib.tool_executors import ToolExecutor, sanitize_external_text
+    api_key = ""
+    try:
+        api_key = get_secret_func("ANTHROPIC_API_KEY")
+    except Exception:
+        pass
+    executor = ToolExecutor(db, api_key)
+    any_hit = False
+    hit_details = []
+    for role, name in parties:
+        try:
+            result = executor.execute("check_opensanctions", {"query": name})
+            if isinstance(result, dict) and result.get("hit"):
+                any_hit = True
+                hit_details.append({
+                    "role": role,
+                    "name": name,
+                    "results": result.get("results", []),
+                })
+                print(f"  🚨 SANCTIONS HIT: {role}='{name}' in deal {deal_id}")
+        except Exception:
+            pass
+    # Mark deal as screened
+    try:
+        update = {"sanctions_screened": True, "sanctions_screened_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat()}
+        if any_hit:
+            update["sanctions_hit"] = True
+            update["sanctions_details"] = hit_details
+        db.collection("tracker_deals").document(deal_id).update(update)
+    except Exception:
+        pass
+    # If hit: log to security_log + send alert
+    if any_hit:
+        try:
+            from datetime import datetime, timezone
+            db.collection("security_log").add({
+                "type": "SANCTIONS_HIT",
+                "deal_id": deal_id,
+                "details": hit_details,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+        # Send alert email
+        try:
+            from lib.rcb_helpers import helper_graph_send_email
+            if access_token and rcb_email:
+                names_str = ", ".join(f"{d['role']}: {d['name']}" for d in hit_details)
+                helper_graph_send_email(
+                    access_token, rcb_email,
+                    "doron@rpa-port.co.il",
+                    f"🚨 SANCTIONS HIT — Deal {deal_id}",
+                    f"<p>Sanctions screening found matches:</p>"
+                    f"<p><b>{names_str}</b></p>"
+                    f"<p>Deal ID: {deal_id}</p>"
+                    f"<p>Action required: Manual review.</p>"
+                    f"<p>Details: {len(hit_details)} hit(s)</p>",
+                )
+                print(f"  📧 Sanctions alert sent to doron@rpa-port.co.il")
+        except Exception as e:
+            print(f"  ⚠️ Sanctions alert email failed: {e}")
+
+
 @scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     """Check rcb@rpa-port.co.il inbox - process emails from last 2 days"""
@@ -683,6 +765,14 @@ def _rcb_check_email_inner(event) -> None:
                     )
                 except Exception as te:
                     print(f"    ⚠️ Tracker CC error (non-fatal): {te}")
+
+            # Sanctions screening: check shipper/consignee from tracker deal
+            if tracker_result and tracker_result.get("deal_id"):
+                try:
+                    _screen_deal_parties(get_db(), tracker_result["deal_id"],
+                                         get_secret, access_token, rcb_email)
+                except Exception as san_err:
+                    print(f"    ⚠️ Sanctions screening error (non-fatal): {san_err}")
 
             # Schedule: detect vessel schedule emails (FREE — Firestore only)
             if SCHEDULE_AVAILABLE:

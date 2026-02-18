@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 20 tools available to the AI during classification.
+Defines the 32 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -479,6 +479,235 @@ CLAUDE_TOOLS = [
             "required": ["query"],
         },
     },
+    # --- Batch 2: Tools #21-32 ---
+    {
+        "name": "bank_of_israel_rates",
+        "description": (
+            "Get official Bank of Israel daily exchange rates. FREE and cached 6 hours. "
+            "Israeli customs law REQUIRES BOI official rates for customs valuation. "
+            "REPLACES convert_currency for customs duty calculation — use this for "
+            "legally correct ILS conversion. Output includes: rate, date, change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string",
+                    "description": "Currency code (e.g., 'USD', 'EUR', 'GBP', 'CNY', 'JPY')",
+                },
+            },
+            "required": ["currency"],
+        },
+    },
+    {
+        "name": "search_pubchem",
+        "description": (
+            "Search NIH PubChem for chemical compound data: IUPAC name, molecular formula, "
+            "molecular weight, CID, CAS number, GHS hazard class. FREE and cached 90 days. "
+            "Use when classifying chemical imports (chapters 28, 29, 38) — exact formula "
+            "determines correct HS sub-heading. Also flags dangerous goods and permit requirements."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Chemical name, compound name, or CAS number (English)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "lookup_eu_taric",
+        "description": (
+            "Look up EU TARIC tariff data for cross-reference validation. FREE and cached 30 days. "
+            "Input: 6-digit HS code — call AFTER candidate code is determined. "
+            "If EU classification agrees with Israeli classification, confidence increases. "
+            "If EU disagrees, flags CROSS_REF_CONFLICT for human review."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {
+                    "type": "string",
+                    "description": "6+ digit HS code to cross-reference (e.g., '401110')",
+                },
+            },
+            "required": ["hs_code"],
+        },
+    },
+    {
+        "name": "lookup_usitc",
+        "description": (
+            "Look up US HTS tariff data for cross-reference validation. FREE and cached 30 days. "
+            "Input: 6-digit HS code — call AFTER candidate code is determined. "
+            "Second cross-reference after EU TARIC. Both EU + US agree = +0.12 confidence."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {
+                    "type": "string",
+                    "description": "6+ digit HS code to cross-reference (e.g., '401110')",
+                },
+            },
+            "required": ["hs_code"],
+        },
+    },
+    {
+        "name": "israel_cbs_trade",
+        "description": (
+            "Query Israeli Central Bureau of Statistics for real import data by HS code. "
+            "FREE and cached 30 days. OVERNIGHT MODE ONLY. "
+            "Returns import values, volumes, and top origin countries. "
+            "Validates that the HS code is realistic for Israeli imports."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {
+                    "type": "string",
+                    "description": "HS code (6-8 digits, e.g., '401110')",
+                },
+            },
+            "required": ["hs_code"],
+        },
+    },
+    {
+        "name": "lookup_gs1_barcode",
+        "description": (
+            "Look up product by EAN/UPC barcode from Open Food Facts. FREE and cached 60 days. "
+            "Only call if a barcode was found in the invoice or shipping documents. "
+            "Barcode gives instant product identity, bypassing description ambiguity."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "barcode": {
+                    "type": "string",
+                    "description": "EAN-13, UPC-A, or other barcode number (8-14 digits)",
+                },
+            },
+            "required": ["barcode"],
+        },
+    },
+    {
+        "name": "search_wco_notes",
+        "description": (
+            "Fetch WCO (World Customs Organization) explanatory notes for an HS chapter. "
+            "FREE and cached 180 days. Gold standard for classification — authoritative text "
+            "on what belongs in each chapter. Feed to elimination engine and Agent 2."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "chapter": {
+                    "type": "string",
+                    "description": "HS chapter number (e.g., '84', '39', '29')",
+                },
+            },
+            "required": ["chapter"],
+        },
+    },
+    {
+        "name": "lookup_unctad_gsp",
+        "description": (
+            "Look up country GSP/development status from UNCTAD. FREE and cached 90 days. "
+            "Determines if origin country is eligible for Israeli preferential duty rates. "
+            "Feeds FTA/duty reduction flags in verification engine."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "ISO 2-letter country code (e.g., 'CN', 'IN', 'BD')",
+                },
+            },
+            "required": ["country_code"],
+        },
+    },
+    {
+        "name": "search_open_beauty",
+        "description": (
+            "Search Open Beauty Facts for cosmetics product data: ingredients, categories, brands. "
+            "FREE and cached 30 days. Use for HS chapter 33 (cosmetics/perfumery) — "
+            "ingredients determine correct sub-heading. "
+            "Search by product name or barcode."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Cosmetic/beauty product name (English)",
+                },
+                "barcode": {
+                    "type": "string",
+                    "description": "Product barcode (optional, if available)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "crossref_technical",
+        "description": (
+            "Search CrossRef for academic/technical papers about a product or material. "
+            "FREE and cached 90 days. OVERNIGHT MODE ONLY. "
+            "Builds knowledge for rare/technical imports where Wikipedia is insufficient."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Technical product or material name (English)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "check_opensanctions",
+        "description": (
+            "Screen a company or person name against international sanctions lists. "
+            "FREE tier (10,000 req/month) and cached 24 hours. "
+            "COMPLIANCE REQUIREMENT: Run on shipper + consignee names for every shipment. "
+            "Returns SANCTIONS_HIT flag with dataset name if match found. "
+            "Flag only — never block shipments."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Company name or person name to screen",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_israel_vat_rates",
+        "description": (
+            "Get Israeli purchase tax rate + VAT applicability for an HS code. "
+            "FREE and cached 7 days. Completes the customs cost picture: "
+            "duty + purchase tax + VAT. Clients ask 'what will this cost me total?' — "
+            "this tool answers that question accurately."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {
+                    "type": "string",
+                    "description": "HS code to check tax rates for",
+                },
+            },
+            "required": ["hs_code"],
+        },
+    },
 ]
 
 
@@ -539,6 +768,18 @@ WORKFLOW:
 18. Call search_comtrade for trade statistics (OVERNIGHT MODE ONLY — not available during real-time classification).
 19. Call lookup_food_product when classifying food items (chapters 1-24) to understand ingredients and composition. FREE and cached.
 20. Call check_fda_product when classifying pharmaceutical or medical products (chapters 30, 90) to identify active ingredients and product type. FREE and cached.
+21. Call bank_of_israel_rates for official BOI exchange rates — required by Israeli customs law for valuation. Use this INSTEAD of convert_currency for customs duty calculation. Include in output: "Customs value: X ILS (BOI rate YYYY-MM-DD)".
+22. Call search_pubchem when you encounter chemical keywords (acid, oxide, chloride, polymer, resin, compound, formula, CAS, solvent, reagent) — gets exact molecular formula for chapters 28/29/38 + dangerous goods flags.
+23. Call lookup_eu_taric AFTER determining candidate HS code — cross-reference with EU classification.
+24. Call lookup_usitc AFTER determining candidate HS code — second cross-reference with US HTS. Both EU + US agree = +0.12 confidence.
+25. Call israel_cbs_trade for real Israeli import statistics (OVERNIGHT MODE ONLY).
+26. Call lookup_gs1_barcode when a barcode is found in documents — instant product identification.
+27. Call search_wco_notes for WCO explanatory notes — gold standard classification reference.
+28. Call lookup_unctad_gsp to check if origin country gets preferential duty rates.
+29. Call search_open_beauty when cosmetics keywords detected (cream, lotion, shampoo, perfume, cosmetic, beauty, skincare, makeup, serum, moisturizer) — ingredients → correct chapter 33 sub-heading.
+30. Call crossref_technical for academic definitions of rare/technical products (OVERNIGHT MODE ONLY).
+31. Call check_opensanctions for EVERY shipper and consignee name — compliance requirement, flag sanctions hits.
+32. Call get_israel_vat_rates to complete the total import cost picture (duty + purchase tax + VAT).
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

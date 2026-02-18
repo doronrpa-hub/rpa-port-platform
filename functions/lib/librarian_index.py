@@ -419,6 +419,90 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "cache",
     },
+    # Tool #21: Bank of Israel official exchange rates (6-hour TTL)
+    "boi_rates": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #22: NIH PubChem chemical compound cache (90-day TTL)
+    "pubchem_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #23: EU TARIC tariff cross-reference cache (30-day TTL)
+    "eu_taric_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #24: US HTS cross-reference cache (30-day TTL)
+    "usitc_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #25: Israeli CBS trade statistics cache (30-day TTL, overnight only)
+    "cbs_trade_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #26: GS1 barcode product lookup cache (60-day TTL)
+    "barcode_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #27: WCO explanatory notes cache (180-day TTL)
+    "wco_notes_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #28: UNCTAD country GSP/development status cache (90-day TTL)
+    "unctad_country_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #29: Open Beauty Facts cosmetics cache (30-day TTL)
+    "beauty_products_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #30: CrossRef academic papers cache (90-day TTL, overnight only)
+    "crossref_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #31: OpenSanctions screening cache (24-hour TTL)
+    "sanctions_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #32: Israel VAT/purchase tax rates cache (7-day TTL)
+    "israel_tax_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
 }
 
 # Document type by file extension

@@ -92,6 +92,22 @@ _MEDICAL_TRIGGERS = {
     "תרופה", "רפואי", "כירורגי", "שתל", "מזרק", "תחבושת", "חיסון",
     "אנטיביוטיקה", "כדור", "קפסולה", "משחה",
 }
+_CHEMICAL_TRIGGERS = {
+    "acid", "oxide", "chloride", "polymer", "resin", "compound",
+    "formula", "cas", "solvent", "reagent", "chemical", "monomer",
+    "catalyst", "sulfate", "hydroxide", "carbonate", "phosphate",
+    "nitrate", "peroxide", "ether", "ester", "aldehyde", "ketone",
+    "חומצה", "תחמוצת", "כלוריד", "פולימר", "שרף", "תרכובת",
+    "ממס", "כימי", "מונומר", "קטליזטור",
+}
+_COSMETICS_TRIGGERS = {
+    "cream", "lotion", "shampoo", "perfume", "cosmetic", "beauty",
+    "skincare", "makeup", "serum", "moisturizer", "conditioner",
+    "lipstick", "mascara", "foundation", "sunscreen", "deodorant",
+    "nail polish", "fragrance", "soap", "cleanser",
+    "קרם", "שמפו", "בושם", "קוסמטיקה", "יופי", "סרום", "לחות",
+    "שפתון", "מסקרה", "סבון",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +255,50 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
                 pass
             break  # Only one FDA lookup per classification run
 
+    # Chemical compound lookup if chemical keywords detected (Tool #22)
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc_words = set(re.findall(r'\w+', (item.get("description", "") or "").lower()))
+        if desc_words & _CHEMICAL_TRIGGERS:
+            try:
+                chem_data = executor.execute("search_pubchem",
+                                              {"query": item["description"][:100]})
+                if isinstance(chem_data, dict) and chem_data.get("found"):
+                    enrichment[f"chemical_{item['description'][:30]}"] = chem_data
+                    print(f"  [TOOL ENGINE] Pre-enriched: chemical '{item['description'][:30]}'")
+            except Exception:
+                pass
+            break  # Only one chemical lookup per classification run
+
+    # Cosmetics product lookup if cosmetics keywords detected (Tool #29)
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc_words = set(re.findall(r'\w+', (item.get("description", "") or "").lower()))
+        if desc_words & _COSMETICS_TRIGGERS:
+            try:
+                beauty_data = executor.execute("search_open_beauty",
+                                                {"query": item["description"][:100]})
+                if isinstance(beauty_data, dict) and beauty_data.get("found"):
+                    enrichment[f"cosmetics_{item['description'][:30]}"] = beauty_data
+                    print(f"  [TOOL ENGINE] Pre-enriched: cosmetics '{item['description'][:30]}'")
+            except Exception:
+                pass
+            break  # Only one cosmetics lookup per classification run
+
+    # BOI official rate for customs valuation (Tool #21) — replaces open.er-api for legal purposes
+    if invoice_currency and invoice_currency not in ("ILS", "NIS", ""):
+        try:
+            boi_data = executor.execute("bank_of_israel_rates",
+                                         {"currency": invoice_currency})
+            if isinstance(boi_data, dict) and boi_data.get("found"):
+                enrichment["boi_rate"] = boi_data
+                rate = boi_data.get("rate", "?")
+                print(f"  [TOOL ENGINE] Pre-enriched: BOI {invoice_currency}/ILS = {rate}")
+        except Exception:
+            pass
+
     # ── Step 5: AI classification call (skip if ALL items hit memory) ──
     ai_response = None
     if len(memory_hits) < len(items):
@@ -308,6 +368,55 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
                 learn_from_verification(db, c)
     except Exception as e:
         print(f"  [TOOL ENGINE] Verification error: {e}")
+
+    # 7d2: Cross-reference pipeline (EU TARIC + US HTS confidence adjustment)
+    cross_ref_results = {}
+    try:
+        for c in validated[:3]:
+            hs = c.get("hs_code", "")
+            if not hs or not _is_valid_hs(hs):
+                continue
+            hs_clean = hs.replace(".", "").replace("/", "").replace(" ", "")
+            if len(hs_clean) < 6:
+                continue
+            eu_agrees = False
+            us_agrees = False
+            eu_result = executor.execute("lookup_eu_taric", {"hs_code": hs_clean})
+            if isinstance(eu_result, dict) and eu_result.get("found"):
+                cross_ref_results[f"eu_{hs}"] = eu_result
+                eu_desc = (eu_result.get("description", "") or "").lower()
+                item_desc = (c.get("item_description", "") or c.get("item", "") or "").lower()
+                if eu_desc and item_desc:
+                    item_words = set(re.findall(r'\w{3,}', item_desc))
+                    eu_words = set(re.findall(r'\w{3,}', eu_desc))
+                    if item_words & eu_words:
+                        eu_agrees = True
+            us_result = executor.execute("lookup_usitc", {"hs_code": hs_clean})
+            if isinstance(us_result, dict) and us_result.get("found"):
+                cross_ref_results[f"us_{hs}"] = us_result
+                us_desc = (us_result.get("description", "") or "").lower()
+                item_desc = (c.get("item_description", "") or c.get("item", "") or "").lower()
+                if us_desc and item_desc:
+                    item_words = set(re.findall(r'\w{3,}', item_desc))
+                    us_words = set(re.findall(r'\w{3,}', us_desc))
+                    if item_words & us_words:
+                        us_agrees = True
+            # Confidence adjustment based on cross-reference agreement
+            if eu_agrees and us_agrees:
+                c["cross_ref_adjustment"] = 0.12
+                c["cross_ref_note"] = "EU+US agree"
+            elif eu_agrees or us_agrees:
+                c["cross_ref_adjustment"] = 0.06
+                src = "EU" if eu_agrees else "US"
+                c["cross_ref_note"] = f"{src} agrees"
+            elif eu_result.get("found") or us_result.get("found"):
+                c["cross_ref_adjustment"] = -0.05
+                c["cross_ref_note"] = "CROSS_REF_CONFLICT"
+                print(f"  [TOOL ENGINE] CROSS_REF_CONFLICT for {hs}")
+        if cross_ref_results:
+            print(f"  [TOOL ENGINE] Cross-ref: {len(cross_ref_results)} lookups")
+    except Exception as e:
+        print(f"  [TOOL ENGINE] Cross-reference error (non-fatal): {e}")
 
     # 7e: Link invoice lines to classifications
     validated = _link_invoice_to_classifications(items, validated)
@@ -415,6 +524,7 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
         "ambiguity": ambiguity_info,
         "tracker": tracker_info,
         "audit": audit,
+        "cross_reference": cross_ref_results if cross_ref_results else None,
         "_engine": "tool_calling",
     }
 

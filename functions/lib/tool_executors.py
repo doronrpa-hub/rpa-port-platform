@@ -78,6 +78,25 @@ _DOMAIN_ALLOWLIST = {
     "comtradeapi.un.org",
     "world.openfoodfacts.org",
     "api.fda.gov",
+    # Batch 2 (Tools #21-32)
+    "boi.org.il",
+    "edge.boi.org.il",
+    "pubchem.ncbi.nlm.nih.gov",
+    "ec.europa.eu",
+    "dataweb.usitc.gov",
+    "api.cbs.gov.il",
+    "cbs.gov.il",
+    "world.openbeautyfacts.org",
+    "openbeautyfacts.org",
+    "gepir.gs1.org",
+    "wcoomd.org",
+    "www.wcoomd.org",
+    "unctadstat.unctad.org",
+    "api.crossref.org",
+    "api.opensanctions.org",
+    "gov.il",
+    "www.gov.il",
+    "taxes.gov.il",
 }
 
 # Wikidata property IDs → human-readable keys
@@ -215,6 +234,20 @@ class ToolExecutor:
             "search_comtrade": self._search_comtrade,
             "lookup_food_product": self._lookup_food_product,
             "check_fda_product": self._check_fda_product,
+            # Batch 2 (Tools #21-32)
+            "bank_of_israel_rates": self._bank_of_israel_rates,
+            "search_pubchem": self._search_pubchem,
+            "lookup_eu_taric": self._lookup_eu_taric,
+            "lookup_usitc": self._lookup_usitc,
+            "israel_cbs_trade": self._israel_cbs_trade,
+            "lookup_gs1_barcode": self._lookup_gs1_barcode,
+            "search_wco_notes": self._search_wco_notes,
+            "lookup_unctad_gsp": self._lookup_unctad_gsp,
+            "search_open_beauty": self._search_open_beauty,
+            "crossref_technical": self._crossref_technical,
+            "check_opensanctions": self._check_opensanctions,
+            "get_israel_vat_rates": self._get_israel_vat_rates,
+            # Stubs
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
             "search_wco_decisions": self._stub_not_available,
@@ -1616,6 +1649,660 @@ class ToolExecutor:
             return {"found": False, "query": query, "message": "No FDA product found"}
 
         return self._cached_external_lookup(query.lower(), "fda_products_cache", 30, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #21: bank_of_israel_rates
+    # ------------------------------------------------------------------
+
+    def _bank_of_israel_rates(self, inp):
+        """Get official Bank of Israel exchange rates. FREE, cached 6 hours.
+        Israeli customs law requires BOI official rates for valuation."""
+        currency = str(inp.get("currency", "USD")).strip().upper()
+
+        _ALLOWED = {"found", "source", "query", "currency", "rate",
+                     "change", "lastUpdate"}
+
+        def _fetch():
+            # Try SDMX endpoint first (structured data)
+            series_map = {
+                "USD": "RER_USD_ILS", "EUR": "RER_EUR_ILS",
+                "GBP": "RER_GBP_ILS", "CNY": "RER_CNY_ILS",
+                "JPY": "RER_JPY_ILS",
+            }
+            series = series_map.get(currency)
+            if series:
+                resp = _safe_get(
+                    f"https://edge.boi.org.il/FusionEdgeServer/sdmx/v2/data/dataflow/"
+                    f"BOI.STATISTICS/EXR/1.0/{series}",
+                    headers={"Accept": "application/json"},
+                    timeout=15,
+                )
+                if resp:
+                    try:
+                        data = resp.json()
+                        ds = data.get("dataSets", [{}])[0]
+                        series_data = ds.get("series", {})
+                        for key, val in series_data.items():
+                            obs = val.get("observations", {})
+                            if obs:
+                                last_key = max(obs.keys())
+                                rate_val = obs[last_key][0] if obs[last_key] else None
+                                if rate_val:
+                                    return {
+                                        "found": True,
+                                        "currency": currency,
+                                        "rate": rate_val,
+                                        "lastUpdate": data.get("meta", {}).get("prepared", ""),
+                                        "source": "boi_sdmx",
+                                    }
+                    except (KeyError, IndexError, ValueError):
+                        pass
+
+            # Fallback: PublicApi endpoint
+            resp2 = _safe_get(
+                "https://boi.org.il/PublicApi/GetExchangeRates",
+                timeout=15,
+            )
+            if resp2:
+                try:
+                    rates = resp2.json()
+                    if isinstance(rates, list):
+                        for r in rates:
+                            if r.get("key", "").upper() == currency:
+                                return {
+                                    "found": True,
+                                    "currency": currency,
+                                    "rate": r.get("currentExchangeRate", 0),
+                                    "change": r.get("currentChange", 0),
+                                    "lastUpdate": r.get("lastUpdate", ""),
+                                    "source": "boi_public_api",
+                                }
+                except (ValueError, KeyError):
+                    pass
+
+            return {"found": False, "currency": currency, "message": "BOI rate unavailable"}
+
+        return self._cached_external_lookup(
+            f"boi_{currency}", "boi_rates", 0.25, _fetch, _ALLOWED
+        )
+
+    # ------------------------------------------------------------------
+    # Tool #22: search_pubchem
+    # ------------------------------------------------------------------
+
+    def _search_pubchem(self, inp):
+        """Search PubChem for chemical compound data. FREE, cached 90 days.
+        Returns IUPAC name, formula, weight, CAS number, hazard class."""
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 2:
+            return {"found": False, "error": "Query too short"}
+
+        _ALLOWED = {"found", "source", "query", "IUPACName", "MolecularFormula",
+                     "MolecularWeight", "CID", "CASNumber", "HazardClass"}
+
+        def _fetch():
+            resp = _safe_get(
+                f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
+                f"{requests.utils.quote(query)}/JSON",
+                timeout=15,
+            )
+            if not resp:
+                return {"found": False, "query": query, "message": "PubChem lookup failed"}
+            try:
+                data = resp.json()
+                compounds = data.get("PC_Compounds", [])
+                if not compounds:
+                    return {"found": False, "query": query, "message": "No compound found"}
+                c = compounds[0]
+                cid = c.get("id", {}).get("id", {}).get("cid", "")
+                props = c.get("props", [])
+                result = {"found": True, "CID": cid, "source": "pubchem_api", "query": query}
+                for p in props:
+                    urn = p.get("urn", {})
+                    label = urn.get("label", "")
+                    val = p.get("value", {})
+                    sval = val.get("sval", "") or str(val.get("fval", ""))
+                    if label == "IUPAC Name" and urn.get("name") == "Preferred":
+                        result["IUPACName"] = sval
+                    elif label == "Molecular Formula":
+                        result["MolecularFormula"] = sval
+                    elif label == "Molecular Weight":
+                        result["MolecularWeight"] = sval
+                return result
+            except (ValueError, KeyError):
+                return {"found": False, "query": query, "message": "PubChem parse error"}
+
+        return self._cached_external_lookup(query.lower(), "pubchem_cache", 90, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #23: lookup_eu_taric
+    # ------------------------------------------------------------------
+
+    def _lookup_eu_taric(self, inp):
+        """Look up EU TARIC data for cross-reference validation. FREE, cached 30 days.
+        Input: 6-digit HS code. Returns commodity description + duty rate."""
+        hs_code = str(inp.get("hs_code", "")).replace(".", "").replace("/", "").replace(" ", "").strip()
+        if not hs_code or len(hs_code) < 6:
+            return {"found": False, "error": "Need at least 6-digit HS code"}
+        hs6 = hs_code[:6]
+
+        _ALLOWED = {"found", "source", "query", "commodityCode", "description",
+                     "dutyRate", "measures"}
+
+        def _fetch():
+            resp = _safe_get(
+                "https://ec.europa.eu/taxation_customs/dds2/taric/taric_consultation.jsp",
+                params={"Lang": "en", "Taric": hs6, "LangDescr": "en"},
+                timeout=20,
+            )
+            if not resp:
+                return {"found": False, "query": hs6, "message": "EU TARIC unavailable"}
+            text = resp.text[:5000]
+            # Parse basic info from HTML response
+            desc = ""
+            duty = ""
+            import re as _re
+            desc_match = _re.search(r'class="td_desc[^"]*"[^>]*>([^<]+)', text)
+            if desc_match:
+                desc = desc_match.group(1).strip()
+            duty_match = _re.search(r'(\d+(?:\.\d+)?)\s*%', text)
+            if duty_match:
+                duty = duty_match.group(0)
+            if desc or duty:
+                return {
+                    "found": True,
+                    "commodityCode": hs6,
+                    "description": sanitize_external_text(desc, max_length=500),
+                    "dutyRate": duty,
+                    "source": "eu_taric",
+                    "query": hs6,
+                }
+            return {"found": False, "query": hs6, "message": "No TARIC data parsed"}
+
+        return self._cached_external_lookup(f"taric_{hs6}", "eu_taric_cache", 30, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #24: lookup_usitc
+    # ------------------------------------------------------------------
+
+    def _lookup_usitc(self, inp):
+        """Look up US HTS data for cross-reference validation. FREE, cached 30 days.
+        Input: 6-digit HS code. Returns HTS number + description + duty rate."""
+        hs_code = str(inp.get("hs_code", "")).replace(".", "").replace("/", "").replace(" ", "").strip()
+        if not hs_code or len(hs_code) < 6:
+            return {"found": False, "error": "Need at least 6-digit HS code"}
+        hs6 = hs_code[:6]
+
+        _ALLOWED = {"found", "source", "query", "htsno", "description",
+                     "general", "special"}
+
+        def _fetch():
+            resp = _safe_get(
+                f"https://dataweb.usitc.gov/api/tariff-schedule",
+                params={"hts": hs6},
+                timeout=15,
+            )
+            if not resp:
+                return {"found": False, "query": hs6, "message": "USITC API unavailable"}
+            try:
+                data = resp.json()
+                records = data if isinstance(data, list) else data.get("data", [])
+                if not records:
+                    return {"found": False, "query": hs6, "message": "No US HTS data found"}
+                r = records[0] if isinstance(records, list) else records
+                return {
+                    "found": True,
+                    "htsno": str(r.get("htsno", hs6)),
+                    "description": sanitize_external_text(
+                        str(r.get("description", "")), max_length=400
+                    ),
+                    "general": str(r.get("general", "")),
+                    "special": str(r.get("special", "")),
+                    "source": "usitc_api",
+                    "query": hs6,
+                }
+            except (ValueError, KeyError):
+                return {"found": False, "query": hs6, "message": "USITC parse error"}
+
+        return self._cached_external_lookup(f"usitc_{hs6}", "usitc_cache", 30, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #25: israel_cbs_trade
+    # ------------------------------------------------------------------
+
+    def _israel_cbs_trade(self, inp):
+        """Query Israeli CBS trade statistics. FREE, cached 30 days.
+        OVERNIGHT ONLY — too slow for real-time."""
+        if not self._overnight_mode:
+            return {"available": False, "message": "CBS trade data available in overnight mode only"}
+
+        hs_code = str(inp.get("hs_code", "")).replace(".", "").replace("/", "").replace(" ", "").strip()
+        if not hs_code or len(hs_code) < 4:
+            return {"found": False, "error": "HS code too short"}
+
+        _ALLOWED = {"found", "source", "query", "code", "description",
+                     "importValue", "importVolume", "topOrigins", "year"}
+
+        def _fetch():
+            resp = _safe_get(
+                "https://api.cbs.gov.il/Index/GetCategoriesNodes",
+                params={"code": hs_code[:8]},
+                timeout=20,
+            )
+            if not resp:
+                return {"found": False, "query": hs_code, "message": "CBS API unavailable"}
+            try:
+                data = resp.json()
+                if not data:
+                    return {"found": False, "query": hs_code, "message": "No CBS data"}
+                node = data[0] if isinstance(data, list) else data
+                return {
+                    "found": True,
+                    "code": str(node.get("code", hs_code)),
+                    "description": sanitize_external_text(
+                        str(node.get("name", "")), max_length=300
+                    ),
+                    "importValue": node.get("importValue", 0),
+                    "importVolume": node.get("importVolume", 0),
+                    "topOrigins": node.get("topOrigins", []),
+                    "year": node.get("year", ""),
+                    "source": "cbs_api",
+                    "query": hs_code,
+                }
+            except (ValueError, KeyError):
+                return {"found": False, "query": hs_code, "message": "CBS parse error"}
+
+        return self._cached_external_lookup(f"cbs_{hs_code}", "cbs_trade_cache", 30, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #26: lookup_gs1_barcode
+    # ------------------------------------------------------------------
+
+    def _lookup_gs1_barcode(self, inp):
+        """Look up product by EAN/UPC barcode. FREE, cached 60 days.
+        Only call if barcode found in documents."""
+        barcode = str(inp.get("barcode", "")).strip()
+        if not barcode or len(barcode) < 8:
+            return {"found": False, "error": "Invalid barcode (need 8+ digits)"}
+
+        _ALLOWED = {"found", "source", "query", "product_name", "brands",
+                     "categories", "countries_tags", "quantity"}
+
+        def _fetch():
+            resp = _safe_get(
+                f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json",
+                timeout=10,
+            )
+            if not resp:
+                return {"found": False, "query": barcode, "message": "Barcode lookup failed"}
+            try:
+                data = resp.json()
+                product = data.get("product", {})
+                if not product or data.get("status") == 0:
+                    return {"found": False, "query": barcode, "message": "Barcode not found"}
+                return {
+                    "found": True,
+                    "product_name": sanitize_external_text(
+                        product.get("product_name", ""), max_length=200
+                    ),
+                    "brands": sanitize_external_text(
+                        product.get("brands", ""), max_length=200
+                    ),
+                    "categories": sanitize_external_text(
+                        product.get("categories", ""), max_length=300
+                    ),
+                    "countries_tags": product.get("countries_tags", [])[:10],
+                    "quantity": product.get("quantity", ""),
+                    "source": "openfoodfacts_barcode",
+                    "query": barcode,
+                }
+            except (ValueError, KeyError):
+                return {"found": False, "query": barcode, "message": "Barcode parse error"}
+
+        return self._cached_external_lookup(f"barcode_{barcode}", "barcode_cache", 60, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #27: search_wco_notes
+    # ------------------------------------------------------------------
+
+    def _search_wco_notes(self, inp):
+        """Fetch WCO explanatory notes for an HS chapter. FREE, cached 180 days.
+        Gold standard for classification — feeds elimination engine + Agent 2."""
+        chapter = str(inp.get("chapter", "")).strip().zfill(2)
+        if not chapter or not chapter.isdigit() or int(chapter) < 1 or int(chapter) > 99:
+            return {"found": False, "error": "Invalid chapter number (1-99)"}
+
+        _ALLOWED = {"found", "source", "query", "chapter", "title",
+                     "notes_text", "section"}
+
+        def _fetch():
+            resp = _safe_get(
+                f"https://www.wcoomd.org/en/topics/nomenclature/instrument-and-tools/"
+                f"hs-nomenclature-2022-edition/chapter-{chapter}.aspx",
+                timeout=20,
+            )
+            if not resp:
+                return {"found": False, "query": chapter, "message": "WCO notes unavailable"}
+            text = resp.text[:10000]
+            # Extract content from HTML
+            import re as _re
+            # Try to find main content area
+            content_match = _re.search(
+                r'<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)</div>',
+                text, _re.DOTALL | _re.IGNORECASE
+            )
+            notes_text = ""
+            if content_match:
+                raw = content_match.group(1)
+                notes_text = _re.sub(r'<[^>]+>', ' ', raw).strip()
+            else:
+                # Fallback: strip all tags
+                notes_text = _re.sub(r'<[^>]+>', ' ', text).strip()
+            notes_text = _re.sub(r'\s+', ' ', notes_text)
+            if len(notes_text) < 50:
+                return {"found": False, "query": chapter, "message": "No WCO notes parsed"}
+            return {
+                "found": True,
+                "chapter": chapter,
+                "notes_text": sanitize_external_text(notes_text, max_length=800),
+                "source": "wco_website",
+                "query": chapter,
+            }
+
+        return self._cached_external_lookup(
+            f"wco_ch_{chapter}", "wco_notes_cache", 180, _fetch, _ALLOWED
+        )
+
+    # ------------------------------------------------------------------
+    # Tool #28: lookup_unctad_gsp
+    # ------------------------------------------------------------------
+
+    def _lookup_unctad_gsp(self, inp):
+        """Look up country GSP/development status from UNCTAD. FREE, cached 90 days.
+        Used to determine preferential duty eligibility."""
+        country_code = str(inp.get("country_code", "")).strip().upper()
+        if not country_code or len(country_code) != 2:
+            return {"found": False, "error": "Need ISO 2-letter country code"}
+
+        _ALLOWED = {"found", "source", "query", "countryCode", "countryName",
+                     "gspStatus", "ldcStatus", "developmentStatus", "region"}
+
+        def _fetch():
+            resp = _safe_get(
+                "https://unctadstat.unctad.org/api/",
+                params={"country": country_code},
+                timeout=15,
+            )
+            if not resp:
+                return {"found": False, "query": country_code, "message": "UNCTAD API unavailable"}
+            try:
+                data = resp.json()
+                if not data:
+                    return {"found": False, "query": country_code, "message": "No UNCTAD data"}
+                node = data[0] if isinstance(data, list) else data
+                return {
+                    "found": True,
+                    "countryCode": country_code,
+                    "countryName": sanitize_external_text(
+                        str(node.get("countryName", "")), max_length=100
+                    ),
+                    "gspStatus": str(node.get("gspStatus", "")),
+                    "ldcStatus": str(node.get("ldcStatus", "")),
+                    "developmentStatus": str(node.get("developmentStatus", "")),
+                    "region": str(node.get("region", "")),
+                    "source": "unctad_api",
+                    "query": country_code,
+                }
+            except (ValueError, KeyError):
+                return {"found": False, "query": country_code, "message": "UNCTAD parse error"}
+
+        return self._cached_external_lookup(
+            f"unctad_{country_code}", "unctad_country_cache", 90, _fetch, _ALLOWED
+        )
+
+    # ------------------------------------------------------------------
+    # Tool #29: search_open_beauty
+    # ------------------------------------------------------------------
+
+    def _search_open_beauty(self, inp):
+        """Search Open Beauty Facts for cosmetics product data. FREE, cached 30 days.
+        Use for HS chapter 33 — ingredients determine correct sub-heading."""
+        query = str(inp.get("query", "")).strip()
+        barcode = str(inp.get("barcode", "")).strip()
+        if not query and not barcode:
+            return {"found": False, "error": "Need query or barcode"}
+
+        _ALLOWED = {"found", "source", "query", "product_name", "categories",
+                     "ingredients_text", "brands", "countries"}
+
+        def _fetch():
+            if barcode and len(barcode) >= 8:
+                resp = _safe_get(
+                    f"https://world.openbeautyfacts.org/api/v2/product/{barcode}",
+                    timeout=10,
+                )
+            else:
+                resp = _safe_get(
+                    "https://world.openbeautyfacts.org/cgi/search.pl",
+                    params={"search_terms": query, "json": "1", "page_size": "3"},
+                    timeout=10,
+                )
+            if not resp:
+                return {"found": False, "query": query or barcode, "message": "Open Beauty Facts unavailable"}
+            try:
+                data = resp.json()
+                product = data.get("product")
+                if not product:
+                    products = data.get("products", [])
+                    if not products:
+                        return {"found": False, "query": query or barcode, "message": "No beauty product found"}
+                    product = products[0]
+                return {
+                    "found": True,
+                    "product_name": sanitize_external_text(
+                        product.get("product_name", ""), max_length=200
+                    ),
+                    "categories": sanitize_external_text(
+                        product.get("categories", ""), max_length=300
+                    ),
+                    "ingredients_text": sanitize_external_text(
+                        product.get("ingredients_text", ""), max_length=600
+                    ),
+                    "brands": sanitize_external_text(
+                        product.get("brands", ""), max_length=200
+                    ),
+                    "countries": product.get("countries", ""),
+                    "source": "openbeautyfacts_api",
+                    "query": query or barcode,
+                }
+            except (ValueError, KeyError):
+                return {"found": False, "query": query or barcode, "message": "Beauty facts parse error"}
+
+        return self._cached_external_lookup(
+            (query or barcode).lower(), "beauty_products_cache", 30, _fetch, _ALLOWED
+        )
+
+    # ------------------------------------------------------------------
+    # Tool #30: crossref_technical
+    # ------------------------------------------------------------------
+
+    def _crossref_technical(self, inp):
+        """Search CrossRef for academic papers about a product. FREE, cached 90 days.
+        OVERNIGHT ONLY — builds knowledge for rare/technical imports."""
+        if not self._overnight_mode:
+            return {"available": False, "message": "CrossRef search available in overnight mode only"}
+
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 3:
+            return {"found": False, "error": "Query too short"}
+
+        _ALLOWED = {"found", "source", "query", "title", "abstract",
+                     "subject", "type"}
+
+        def _fetch():
+            resp = _safe_get(
+                "https://api.crossref.org/works",
+                params={"query": query, "filter": "type:journal-article", "rows": "2"},
+                headers={
+                    "User-Agent": "RCB-RPA-PORT/1.0 (mailto:rcb@rpa-port.co.il)"
+                },
+                timeout=20,
+            )
+            if not resp:
+                return {"found": False, "query": query, "message": "CrossRef API unavailable"}
+            try:
+                data = resp.json()
+                items = data.get("message", {}).get("items", [])
+                if not items:
+                    return {"found": False, "query": query, "message": "No articles found"}
+                results = []
+                for item in items[:2]:
+                    title_list = item.get("title", [])
+                    title = title_list[0] if title_list else ""
+                    abstract = item.get("abstract", "")
+                    results.append({
+                        "title": sanitize_external_text(title, max_length=200),
+                        "abstract": sanitize_external_text(abstract, max_length=400),
+                        "subject": item.get("subject", [])[:5],
+                        "type": item.get("type", ""),
+                    })
+                return {
+                    "found": True,
+                    "articles": results,
+                    "source": "crossref_api",
+                    "query": query,
+                }
+            except (ValueError, KeyError):
+                return {"found": False, "query": query, "message": "CrossRef parse error"}
+
+        return self._cached_external_lookup(query.lower(), "crossref_cache", 90, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #31: check_opensanctions
+    # ------------------------------------------------------------------
+
+    def _check_opensanctions(self, inp):
+        """Screen entity against OpenSanctions. FREE tier (10k/month), cached 24 hours.
+        IMPORTANT: Run on shipper + consignee names for every shipment.
+        Compliance requirement — flag only, never block."""
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 2:
+            return {"found": False, "error": "Entity name too short"}
+
+        _ALLOWED = {"found", "source", "query", "hit", "results",
+                     "id", "caption", "schema", "score", "datasets", "properties"}
+
+        def _fetch():
+            resp = _safe_get(
+                f"https://api.opensanctions.org/search/{requests.utils.quote(query)}",
+                params={"schema": "Company", "schema": "Person"},
+                timeout=15,
+            )
+            if not resp:
+                return {"found": True, "hit": False, "query": query,
+                        "message": "Sanctions API unavailable — manual check required",
+                        "source": "opensanctions_api"}
+            try:
+                data = resp.json()
+                results = data.get("results", [])
+                hits = []
+                for r in results[:5]:
+                    score = r.get("score", 0)
+                    if score >= 0.7:  # Only report high-confidence matches
+                        hits.append({
+                            "id": str(r.get("id", "")),
+                            "caption": sanitize_external_text(
+                                str(r.get("caption", "")), max_length=200
+                            ),
+                            "schema": str(r.get("schema", "")),
+                            "score": score,
+                            "datasets": r.get("datasets", [])[:5],
+                        })
+                return {
+                    "found": True,
+                    "hit": len(hits) > 0,
+                    "results": hits,
+                    "source": "opensanctions_api",
+                    "query": query,
+                }
+            except (ValueError, KeyError):
+                return {"found": True, "hit": False, "query": query,
+                        "message": "Sanctions parse error — manual check required",
+                        "source": "opensanctions_api"}
+
+        return self._cached_external_lookup(query.lower(), "sanctions_cache", 1, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #32: get_israel_vat_rates
+    # ------------------------------------------------------------------
+
+    def _get_israel_vat_rates(self, inp):
+        """Get Israeli purchase tax + VAT rates for an HS code. FREE, cached 7 days.
+        Completes the customs cost picture: duty + purchase tax + VAT."""
+        hs_code = str(inp.get("hs_code", "")).replace(".", "").replace("/", "").replace(" ", "").strip()
+        if not hs_code or len(hs_code) < 4:
+            return {"found": False, "error": "HS code too short"}
+
+        _ALLOWED = {"found", "source", "query", "hsCode", "purchaseTaxRate",
+                     "vatRate", "exemptions"}
+
+        def _fetch():
+            resp = _safe_get(
+                "https://www.gov.il/api/DataGovProxy/GetDynamicDataByQuery",
+                params={"hs_code": hs_code[:10]},
+                timeout=15,
+            )
+            if not resp:
+                # Fallback: return standard Israeli VAT (18%) with no purchase tax
+                return {
+                    "found": True,
+                    "hsCode": hs_code,
+                    "purchaseTaxRate": "",
+                    "vatRate": "18%",
+                    "exemptions": "",
+                    "source": "default_israel_vat",
+                    "query": hs_code,
+                    "note": "Using standard 18% VAT — specific rate unavailable",
+                }
+            try:
+                data = resp.json()
+                records = data.get("data", data.get("results", []))
+                if not records:
+                    return {
+                        "found": True,
+                        "hsCode": hs_code,
+                        "purchaseTaxRate": "",
+                        "vatRate": "18%",
+                        "exemptions": "",
+                        "source": "default_israel_vat",
+                        "query": hs_code,
+                    }
+                r = records[0] if isinstance(records, list) else records
+                return {
+                    "found": True,
+                    "hsCode": hs_code,
+                    "purchaseTaxRate": str(r.get("purchaseTaxRate", r.get("purchase_tax", ""))),
+                    "vatRate": str(r.get("vatRate", r.get("vat", "18%"))),
+                    "exemptions": sanitize_external_text(
+                        str(r.get("exemptions", "")), max_length=300
+                    ),
+                    "source": "gov_il_api",
+                    "query": hs_code,
+                }
+            except (ValueError, KeyError):
+                return {
+                    "found": True,
+                    "hsCode": hs_code,
+                    "purchaseTaxRate": "",
+                    "vatRate": "18%",
+                    "exemptions": "",
+                    "source": "default_israel_vat",
+                    "query": hs_code,
+                }
+
+        return self._cached_external_lookup(
+            f"vat_{hs_code}", "israel_tax_cache", 7, _fetch, _ALLOWED
+        )
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""
