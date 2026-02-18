@@ -1074,8 +1074,54 @@ def rcb_cleanup_old_processed(event: scheduler_fn.ScheduledEvent) -> None:
     timeout_sec=540,
 )
 def rcb_ttl_cleanup(event: scheduler_fn.ScheduledEvent) -> None:
-    """Daily TTL cleanup for large/growing collections."""
+    """Daily TTL cleanup for large/growing collections.
+
+    Safety: verifies today's backup exists in GCS before deleting anything.
+    If backup is missing, skips all deletions and sends an alert.
+    """
     print("🧹 TTL Cleanup starting...")
+
+    # ── Backup guard: verify today's backup exists before deleting anything ──
+    from datetime import datetime, timezone as tz
+    date_str = datetime.now(tz.utc).strftime("%Y-%m-%d")
+    try:
+        bucket_inst = get_bucket()
+        backup_ok = _check_backup_exists(bucket_inst, "learned_classifications", date_str)
+        if not backup_ok:
+            alert_msg = f"TTL cleanup ABORTED — no backup found for {date_str}"
+            print(f"    🛑 {alert_msg}")
+            # Log to security_log
+            try:
+                get_db().collection("security_log").add({
+                    "event": "ttl_cleanup_aborted",
+                    "reason": "backup_missing",
+                    "date": date_str,
+                    "timestamp": firestore.SERVER_TIMESTAMP,
+                })
+            except Exception:
+                pass
+            # Send alert email
+            try:
+                secrets = get_rcb_secrets_internal(get_secret)
+                if secrets:
+                    access_token = helper_get_graph_token(secrets)
+                    rcb_email = secrets.get("RCB_EMAIL", "rcb@rpa-port.co.il")
+                    if access_token:
+                        helper_graph_send(
+                            access_token, rcb_email, _BACKUP_ALERT_EMAIL,
+                            f"🛑 RCB TTL Cleanup ABORTED — {date_str} — No backup found",
+                            f'<div dir="rtl" style="font-family:Arial"><h2 style="color:#991b1b">'
+                            f'🛑 מחיקת TTL בוטלה</h2><p>לא נמצא גיבוי ל-{date_str}. '
+                            f'המחיקה בוטלה כדי למנוע אובדן נתונים.</p>'
+                            f'<p>יש לבדוק את rcb_daily_backup בלוגים.</p></div>'
+                        )
+            except Exception:
+                pass
+            print("🛑 TTL Cleanup ABORTED — no backup for today")
+            return
+        print(f"    ✅ Backup verified for {date_str}")
+    except Exception as guard_err:
+        print(f"    ⚠️ Backup guard check failed: {guard_err} — proceeding with cleanup")
 
     from lib.ttl_cleanup import cleanup_scanner_logs, cleanup_collection_by_field
 
@@ -1867,3 +1913,123 @@ def rcb_download_directives(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"Directives download error: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ============================================================
+# DAILY BACKUP — Exports critical collections to Cloud Storage
+# ============================================================
+_BACKUP_COLLECTIONS = [
+    "learned_classifications",
+    "classification_directives",
+    "legal_knowledge",
+    "chapter_notes",
+]
+_BACKUP_PREFIX = "backups"
+_BACKUP_ALERT_EMAIL = "doron@rpa-port.co.il"
+
+
+def _export_collection_to_gcs(db_inst, bucket_inst, collection_name, date_str):
+    """Export a Firestore collection to GCS as NDJSON. Returns doc count."""
+    import io
+    blob_path = f"{_BACKUP_PREFIX}/{collection_name}/{date_str}.ndjson"
+    blob = bucket_inst.blob(blob_path)
+
+    buf = io.BytesIO()
+    count = 0
+    for doc in db_inst.collection(collection_name).stream():
+        data = doc.to_dict()
+        data["_doc_id"] = doc.id
+        # Convert non-serializable types
+        line = json.dumps(data, ensure_ascii=False, default=str) + "\n"
+        buf.write(line.encode("utf-8"))
+        count += 1
+
+    buf.seek(0)
+    blob.upload_from_file(buf, content_type="application/x-ndjson")
+    print(f"    {collection_name}: {count} docs → gs://{bucket_inst.name}/{blob_path}")
+    return count
+
+
+def _check_backup_exists(bucket_inst, collection_name, date_str):
+    """Check if today's backup blob exists in GCS."""
+    blob_path = f"{_BACKUP_PREFIX}/{collection_name}/{date_str}.ndjson"
+    blob = bucket_inst.blob(blob_path)
+    return blob.exists()
+
+
+@scheduler_fn.on_schedule(
+    schedule="every day 02:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
+)
+def rcb_daily_backup(event: scheduler_fn.ScheduledEvent) -> None:
+    """Daily backup of critical Firestore collections to Cloud Storage as NDJSON.
+
+    Runs at 02:00 Israel time (before TTL cleanup at 03:30).
+    Exports: learned_classifications, classification_directives,
+             legal_knowledge, chapter_notes.
+    Sends confirmation email on success, alert email on failure.
+    """
+    print("💾 Daily backup starting...")
+    from datetime import datetime, timezone as tz
+    date_str = datetime.now(tz.utc).strftime("%Y-%m-%d")
+    db_inst = get_db()
+    bucket_inst = get_bucket()
+
+    results = {}
+    errors = []
+
+    for coll in _BACKUP_COLLECTIONS:
+        try:
+            count = _export_collection_to_gcs(db_inst, bucket_inst, coll, date_str)
+            results[coll] = count
+        except Exception as e:
+            error_msg = f"{coll}: {e}"
+            errors.append(error_msg)
+            print(f"    ❌ Backup failed for {coll}: {e}")
+
+    # Build summary
+    total_docs = sum(results.values())
+    total_collections = len(results)
+    failed_collections = len(errors)
+
+    # Send email notification
+    try:
+        secrets = get_rcb_secrets_internal(get_secret)
+        if secrets:
+            access_token = helper_get_graph_token(secrets)
+            rcb_email = secrets.get("RCB_EMAIL", "rcb@rpa-port.co.il")
+
+            if errors:
+                # Alert email — some backups failed
+                subject = f"⚠️ RCB Backup PARTIAL — {date_str} — {failed_collections} failed"
+                body = f"""<div dir="rtl" style="font-family:Arial,sans-serif">
+<h2 style="color:#991b1b">⚠️ גיבוי יומי — כשלון חלקי</h2>
+<p><b>תאריך:</b> {date_str}</p>
+<h3>הצליחו ({total_collections}):</h3>
+<ul>{''.join(f'<li>{c}: {n} docs</li>' for c, n in results.items())}</ul>
+<h3 style="color:#991b1b">נכשלו ({failed_collections}):</h3>
+<ul>{''.join(f'<li style="color:#991b1b">{e}</li>' for e in errors)}</ul>
+</div>"""
+            else:
+                # Success email
+                subject = f"✅ RCB Backup OK — {date_str} — {total_docs} docs"
+                body = f"""<div dir="rtl" style="font-family:Arial,sans-serif">
+<h2 style="color:#166534">✅ גיבוי יומי הושלם בהצלחה</h2>
+<p><b>תאריך:</b> {date_str}</p>
+<p><b>סה"כ:</b> {total_docs} מסמכים ב-{total_collections} אוספים</p>
+<ul>{''.join(f'<li>{c}: {n} docs</li>' for c, n in results.items())}</ul>
+<p style="color:#6b7280;font-size:12px">GCS: gs://{bucket_inst.name}/{_BACKUP_PREFIX}/</p>
+</div>"""
+
+            if access_token:
+                helper_graph_send(access_token, rcb_email, _BACKUP_ALERT_EMAIL, subject, body)
+                print(f"    📧 Backup notification sent to {_BACKUP_ALERT_EMAIL}")
+    except Exception as email_err:
+        print(f"    ❌ Failed to send backup notification email: {email_err}")
+
+    if errors:
+        print(f"⚠️ Daily backup PARTIAL: {total_collections} OK, {failed_collections} failed")
+    else:
+        print(f"✅ Daily backup complete: {total_docs} docs across {total_collections} collections")
