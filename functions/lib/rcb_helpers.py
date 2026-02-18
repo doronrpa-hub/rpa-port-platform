@@ -482,7 +482,7 @@ def extract_text_from_attachments(attachments_data, email_body=None):
         # Decode base64
         try:
             file_bytes = base64.b64decode(content_bytes)
-        except:
+        except Exception:
             continue
 
         name_lower = name.lower()
@@ -679,7 +679,8 @@ def helper_graph_messages(access_token, user_email, unread_only=True, max_result
             params['$filter'] = 'isRead eq false'
         response = requests.get(url, headers={'Authorization': f'Bearer {access_token}'}, params=params)
         return response.json().get('value', []) if response.status_code == 200 else []
-    except:
+    except Exception as e:
+        print(f"Graph messages error: {e}")
         return []
 
 def helper_graph_attachments(access_token, user_email, message_id):
@@ -688,7 +689,8 @@ def helper_graph_attachments(access_token, user_email, message_id):
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}/attachments"
         response = requests.get(url, headers={'Authorization': f'Bearer {access_token}'})
         return response.json().get('value', []) if response.status_code == 200 else []
-    except:
+    except Exception as e:
+        print(f"Graph attachments error: {e}")
         return []
 
 def helper_graph_mark_read(access_token, user_email, message_id):
@@ -696,8 +698,8 @@ def helper_graph_mark_read(access_token, user_email, message_id):
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}"
         requests.patch(url, headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}, json={'isRead': True})
-    except:
-        pass
+    except Exception as e:
+        print(f"Graph mark-read error: {e}")
 
 def helper_graph_send(access_token, user_email, to_email, subject, body_html, reply_to_id=None, attachments_data=None, internet_message_id=None):
     """Send email via Graph API.
@@ -832,5 +834,6 @@ def get_anthropic_key(get_secret_func):
     """Get Anthropic API key"""
     try:
         return get_secret_func('ANTHROPIC_API_KEY')
-    except:
+    except Exception as e:
+        print(f"Anthropic key error: {e}")
         return None

@@ -409,7 +409,8 @@ def graph_forward_email(access_token, user_email, message_id, to_email, comment)
         requests.post(url, headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
                      json={'comment': comment, 'toRecipients': [{'emailAddress': {'address': to_email}}]})
         return True
-    except:
+    except Exception as e:
+        print(f"Graph forward error: {e}")
         return False
 
 def get_anthropic_key():
