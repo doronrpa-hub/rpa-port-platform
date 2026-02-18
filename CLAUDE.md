@@ -2185,3 +2185,87 @@ Phase H: Stream 12 (Regression guard — $0.00)  ← NEW
 
 ### Test Results
 - **648 passed**, 2 skipped — zero regressions (test_port_intelligence excluded per instructions)
+
+## Session 44 Summary (2026-02-18) — Block I: I3 Alert Engine + I4 Morning/Afternoon Digest
+
+### What Was Done
+Wired `port_intelligence.py` (built by Session 43) into `main.py`. Added export cutoff alerts. Connected I3 alert engine to tracker poll and I4 digest to two daily schedulers (07:00 + 14:00 IL).
+
+### NEW: `functions/lib/port_intelligence.py` (~2700 lines)
+Pure-function library for Block I (I1–I4). Created by parallel Session 43, wired this session.
+
+| Component | Function | Purpose |
+|-----------|----------|---------|
+| **I1** | `link_deal_to_schedule()` | Links deals to vessel schedules from `port_schedules` |
+| **I2** | Direction-aware view builders | Import/export table renderers for 4 sea ports + airport |
+| **I3** | `check_port_intelligence_alerts()` | Per-deal alert engine (pure function, no I/O) |
+| **I4** | `build_morning_digest()` / `render_morning_digest_html()` | Full HTML digest from real deal + port data |
+
+### I3 Alert Types
+| Alert Type | Direction | Trigger | Severity |
+|-----------|-----------|---------|----------|
+| `do_missing` | Import | D/O not received after port unloading | warning |
+| `physical_exam` | Import | Physical exam flagged by customs | critical |
+| `storage_day3` | Both | Container in port ≥3 days (day 3=warning, day 4+=critical) |
+| `export_cutoff` | Export | VGM / doc cutoff / container cutoff approaching | warning→critical |
+
+Export cutoff thresholds: `_CUTOFF_WARNING_HOURS = 24`, `_CUTOFF_CRITICAL_HOURS = 6`.
+
+### I4 Digest — v4 HTML Template
+- Uses approved `rcb_morning_digest_v4.html` template exactly
+- 4 sea ports: ILHFA (חיפה), ILKRN (המפרץ), ILASD (אשדוד), ILASH (הדרום)
+- Airport: TLV · LLBG (נתב״ג)
+- Import columns: שם הספק, B/L, מכולות, סטטוס, ETA, D/O התקבל
+- Export columns: שם הלקוח, Booking, מכולות, סטטוס, ETD, סגירת דוקומנטים, VGM, סגירת מכולות
+- Port status cards with vessel counts + congestion badges
+- RTL Hebrew layout, inline CSS for Outlook compatibility
+- Subject: `RCB | דוח בוקר | DD.MM.YYYY HH:MM`
+
+### I3 Wiring in `main.py`
+- **Import guard**: `PORT_INTELLIGENCE_AVAILABLE` flag (matches existing pattern)
+- **`_run_port_intelligence_alerts(db, firestore_module, access_token, rcb_email)`** — ~85 lines
+  - Queries `tracker_deals` where status in ["active", "pending"]
+  - Loads `tracker_container_status` per deal
+  - Calls `check_port_intelligence_alerts()` (pure function)
+  - Sends alerts to `cc@rpa-port.co.il` via Graph API
+  - Dedup via `deal.port_alerts_sent[]` — each alert type sent once per deal
+- **Called from**: `rcb_tracker_poll` (every 30 min), after gate cutoff check
+
+### I4 Wiring in `main.py`
+- **`_send_digest(label)`** — shared helper for both triggers
+  - Gets secrets + Graph token
+  - Calls `build_morning_digest(db)` from port_intelligence
+  - Falls back to `brain_daily_digest()` if port_intelligence unavailable
+- **`rcb_daily_digest`** — `every day 07:00` Asia/Jerusalem (updated, was brain-only)
+- **`rcb_afternoon_digest`** — `every day 14:00` Asia/Jerusalem (NEW function)
+- Both: 512MB memory, 300s timeout, us-central1
+
+### New Cloud Function
+| Function | Schedule | Purpose |
+|----------|----------|---------|
+| `rcb_afternoon_digest` | every day 14:00 IL | Same digest as morning, second daily send |
+
+### New Deal Field
+| Field | Type | Purpose |
+|-------|------|---------|
+| `port_alerts_sent` | list of strings | Dedup: ["do_missing", "physical_exam", "storage_day3", "export_cutoff"] |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/port_intelligence.py` | Added `ALERT_EXPORT_CUTOFF` constant + `_check_export_cutoffs()` function (~45 lines) for VGM/doc/container cutoff alerts |
+| `functions/main.py` | +PORT_INTELLIGENCE import guard, +`_run_port_intelligence_alerts()` (~85 lines), +I3 call in tracker_poll, rewrote digest section with `_send_digest()` shared helper, +`rcb_afternoon_digest` at 14:00 |
+
+### Files Created (by parallel Session 43, committed this session)
+| File | Size | Purpose |
+|------|------|---------|
+| `functions/lib/port_intelligence.py` | ~2700 lines | Pure-function I1–I4 library |
+| `functions/tests/test_port_intelligence.py` | Tests | Unit tests for port intelligence |
+
+### Test Results
+- **814 passed**, 2 skipped — zero regressions
+
+### Deploy
+- Commit `dc43dd4` pushed to `origin/main`
+- All 30 functions deployed successfully to `rpa-port-customs`
+- `rcb_afternoon_digest` created as new Cloud Function
