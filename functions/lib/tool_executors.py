@@ -69,6 +69,29 @@ _WIKI_SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
 _WIKI_SEARCH_URL = "https://en.wikipedia.org/w/api.php"
 _WIKI_CACHE_TTL_DAYS = 30
 
+# Domain allowlist for external API calls — only these hosts can be queried
+_DOMAIN_ALLOWLIST = {
+    "en.wikipedia.org",
+    "www.wikidata.org",
+    "restcountries.com",
+    "open.er-api.com",
+    "comtradeapi.un.org",
+    "world.openfoodfacts.org",
+    "api.fda.gov",
+}
+
+# Wikidata property IDs → human-readable keys
+_WIKIDATA_PROPS = {
+    "P31": "instance_of",
+    "P279": "subclass_of",
+    "P186": "made_from_material",
+    "P274": "chemical_formula",
+    "P231": "cas_number",
+    "P366": "has_use",
+    "P2067": "mass",
+    "P2054": "density",
+}
+
 # Prompt injection sanitizer — applied to ALL external text before it enters AI context
 _INJECTION_PATTERNS = [
     "ignore previous instructions",
@@ -93,6 +116,21 @@ def sanitize_external_text(text, max_length=500):
     return text.strip()
 
 
+def _safe_get(url, params=None, headers=None, timeout=10):
+    """HTTP GET with domain whitelist enforcement. Returns Response or None."""
+    from urllib.parse import urlparse
+    domain = urlparse(url).hostname or ""
+    if domain not in _DOMAIN_ALLOWLIST:
+        print(f"  [SAFE_GET] Blocked: {domain} not in allowlist")
+        return None
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+        return resp if resp.status_code == 200 else None
+    except Exception as e:
+        print(f"  [SAFE_GET] {domain} error: {e}")
+        return None
+
+
 class ToolExecutor:
     """Routes tool calls to existing module functions."""
 
@@ -110,6 +148,8 @@ class ToolExecutor:
         self._framework_order_docs = None  # list of (doc_id, dict) for framework_order (85 docs)
         self._legal_knowledge_docs = None  # list of (doc_id, dict) for legal_knowledge (19 docs)
         self._wikipedia_cache = {}         # query_key -> wikipedia result (per-request)
+        self._ext_cache = {}               # shared cache for tools #15-20 (per-request)
+        self._overnight_mode = False       # set True by overnight_brain for Comtrade access
         # Stats
         self._stats = {}
 
@@ -169,6 +209,12 @@ class ToolExecutor:
             "search_legal_knowledge": self._search_legal_knowledge,
             "run_elimination": self._run_elimination,
             "search_wikipedia": self._search_wikipedia,
+            "search_wikidata": self._search_wikidata,
+            "lookup_country": self._lookup_country,
+            "convert_currency": self._convert_currency,
+            "search_comtrade": self._search_comtrade,
+            "lookup_food_product": self._lookup_food_product,
+            "check_fda_product": self._check_fda_product,
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
             "search_wco_decisions": self._stub_not_available,
@@ -1196,6 +1242,380 @@ class ToolExecutor:
                 pass  # Cache write failure is non-fatal
 
         return result
+
+    # ------------------------------------------------------------------
+    # Shared external API helper (Tools #15-20)
+    # ------------------------------------------------------------------
+
+    def _cached_external_lookup(self, cache_key, collection_name, ttl_days, fetcher_fn, allowed_keys=None):
+        """Shared external API lookup with per-request + Firestore caching.
+        fetcher_fn() should return a dict (the raw result)."""
+        ext_key = f"{collection_name}:{cache_key}"
+        if ext_key in self._ext_cache:
+            return self._ext_cache[ext_key]
+
+        doc_id = hashlib.md5(cache_key.encode()).hexdigest()
+        try:
+            cached_doc = self.db.collection(collection_name).document(doc_id).get()
+            if cached_doc.exists:
+                data = cached_doc.to_dict()
+                cached_at = data.get("cached_at", "")
+                if cached_at:
+                    from datetime import datetime, timezone, timedelta
+                    try:
+                        cached_dt = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+                        if datetime.now(timezone.utc) - cached_dt < timedelta(days=ttl_days):
+                            result = data.get("result", {})
+                            result["source"] = f"{collection_name}"
+                            self._ext_cache[ext_key] = result
+                            return result
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            pass
+
+        result = fetcher_fn()
+
+        if allowed_keys and isinstance(result, dict):
+            result = {k: v for k, v in result.items()
+                      if k in allowed_keys or k in ("found", "error", "source", "query", "message")}
+
+        if isinstance(result, dict):
+            for k, v in list(result.items()):
+                if isinstance(v, str) and k not in ("source", "query", "error", "message"):
+                    result[k] = sanitize_external_text(
+                        v, max_length=1000 if k in ("extract", "indications_and_usage") else 500
+                    )
+
+        self._ext_cache[ext_key] = result
+        if isinstance(result, dict) and result.get("found"):
+            try:
+                from datetime import datetime, timezone
+                self.db.collection(collection_name).document(doc_id).set({
+                    "cache_key": cache_key,
+                    "result": result,
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:
+                pass
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Tool #15: search_wikidata
+    # ------------------------------------------------------------------
+
+    def _search_wikidata(self, inp):
+        """Search Wikidata for structured product facts (material, formula, CAS).
+        FREE — no API key. Cached 60 days."""
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 2:
+            return {"found": False, "error": "Query too short"}
+
+        _ALLOWED = {"found", "source", "query", "qid", "label", "description",
+                     "instance_of", "subclass_of", "made_from_material",
+                     "chemical_formula", "cas_number", "has_use", "mass", "density"}
+
+        def _fetch():
+            headers = {"User-Agent": _WIKI_USER_AGENT}
+            # Step 1: Search for entity
+            resp = _safe_get(
+                "https://www.wikidata.org/w/api.php",
+                params={"action": "wbsearchentities", "search": query,
+                        "language": "en", "format": "json", "limit": "1"},
+                headers=headers,
+            )
+            if not resp:
+                return {"found": False, "query": query, "error": "Wikidata search failed"}
+            data = resp.json()
+            results = data.get("search", [])
+            if not results:
+                return {"found": False, "query": query, "message": "No Wikidata entity found"}
+
+            qid = results[0].get("id", "")
+            label = results[0].get("label", "")
+            desc = results[0].get("description", "")
+
+            # Step 2: Get entity claims
+            resp2 = _safe_get(
+                "https://www.wikidata.org/w/api.php",
+                params={"action": "wbgetentities", "ids": qid,
+                        "languages": "en", "format": "json", "props": "claims"},
+                headers=headers,
+            )
+            result = {"found": True, "qid": qid, "label": label,
+                      "description": desc, "source": "wikidata_api", "query": query}
+            if resp2:
+                entities = resp2.json().get("entities", {})
+                claims = entities.get(qid, {}).get("claims", {})
+                for prop_id, prop_name in _WIKIDATA_PROPS.items():
+                    if prop_id in claims:
+                        claim_list = claims[prop_id]
+                        values = []
+                        for c in claim_list[:3]:
+                            mv = c.get("mainsnak", {}).get("datavalue", {}).get("value", "")
+                            if isinstance(mv, dict):
+                                mv = mv.get("id", str(mv))
+                            values.append(str(mv))
+                        result[prop_name] = ", ".join(values) if len(values) > 1 else (values[0] if values else "")
+            return result
+
+        return self._cached_external_lookup(query.lower(), "wikidata_cache", 60, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #16: lookup_country
+    # ------------------------------------------------------------------
+
+    def _lookup_country(self, inp):
+        """Look up country data from restcountries.com. FREE, cached 90 days."""
+        country = str(inp.get("country", "")).strip()
+        if not country or len(country) < 2:
+            return {"found": False, "error": "Country name too short"}
+
+        _ALLOWED = {"found", "source", "query", "name", "official_name",
+                     "cca2", "cca3", "region", "subregion", "currencies",
+                     "languages", "borders"}
+
+        def _fetch():
+            resp = _safe_get(
+                f"https://restcountries.com/v3.1/name/{requests.utils.quote(country)}",
+                params={"fullText": "false",
+                        "fields": "name,cca2,cca3,region,subregion,currencies,languages,borders"},
+            )
+            if not resp:
+                return {"found": False, "query": country, "message": "Country not found"}
+            data = resp.json()
+            if not isinstance(data, list) or not data:
+                return {"found": False, "query": country, "message": "Country not found"}
+            c = data[0]
+            name_data = c.get("name", {})
+            currencies = c.get("currencies", {})
+            currency_list = [f"{code} ({v.get('name', '')})" for code, v in currencies.items()] if isinstance(currencies, dict) else []
+            languages = c.get("languages", {})
+            lang_list = list(languages.values()) if isinstance(languages, dict) else []
+            return {
+                "found": True,
+                "name": name_data.get("common", country),
+                "official_name": name_data.get("official", ""),
+                "cca2": c.get("cca2", ""),
+                "cca3": c.get("cca3", ""),
+                "region": c.get("region", ""),
+                "subregion": c.get("subregion", ""),
+                "currencies": ", ".join(currency_list),
+                "languages": ", ".join(lang_list[:5]),
+                "borders": c.get("borders", []),
+                "source": "restcountries_api",
+                "query": country,
+            }
+
+        return self._cached_external_lookup(country.lower(), "country_cache", 90, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #17: convert_currency
+    # ------------------------------------------------------------------
+
+    def _convert_currency(self, inp):
+        """Get exchange rates from open.er-api.com. FREE, cached 6 hours."""
+        base = str(inp.get("from_currency", "USD")).strip().upper()
+        target = str(inp.get("to_currency", "ILS")).strip().upper()
+        _TOP_CURRENCIES = {"ILS", "EUR", "GBP", "JPY", "CNY", "CHF", "CAD", "AUD", "INR", "KRW", "TRY", "USD"}
+
+        def _fetch():
+            resp = _safe_get(f"https://open.er-api.com/v6/latest/{base}")
+            if not resp:
+                return {"found": False, "error": f"Exchange rate API failed for {base}"}
+            data = resp.json()
+            if data.get("result") != "success":
+                return {"found": False, "error": "Exchange rate API returned error"}
+            all_rates = data.get("rates", {})
+            rates = {k: v for k, v in all_rates.items() if k in _TOP_CURRENCIES}
+            return {
+                "found": True,
+                "base": base,
+                "rates": rates,
+                "target_rate": all_rates.get(target),
+                "target": target,
+                "last_update": data.get("time_last_update_utc", ""),
+                "source": "open_er_api",
+            }
+
+        # TTL 0.25 days = 6 hours
+        return self._cached_external_lookup(f"{base}_{target}", "currency_rates", 0.25, _fetch)
+
+    # ------------------------------------------------------------------
+    # Tool #18: search_comtrade
+    # ------------------------------------------------------------------
+
+    def _search_comtrade(self, inp):
+        """Search UN Comtrade for global trade data. FREE, cached 30 days.
+        Only available in overnight mode (too slow for real-time)."""
+        if not self._overnight_mode:
+            return {"available": False, "message": "Comtrade search available in overnight mode only"}
+
+        hs_code = str(inp.get("hs_code", "")).replace(".", "").replace("/", "").replace(" ", "").strip()
+        reporter = str(inp.get("reporter", "376")).strip()  # 376 = Israel
+        period = str(inp.get("period", "2024")).strip()
+        if not hs_code or len(hs_code) < 4:
+            return {"found": False, "error": "HS code too short (need at least 4 digits)"}
+        cmd_code = hs_code[:6]  # Comtrade uses 6-digit HS
+
+        def _fetch():
+            resp = _safe_get(
+                "https://comtradeapi.un.org/data/v1/get/C/A/HS",
+                params={"reporterCode": reporter, "period": period,
+                        "cmdCode": cmd_code, "flowCode": "M"},
+                timeout=30,
+            )
+            if not resp:
+                return {"found": False, "query": cmd_code, "error": "Comtrade API failed"}
+            data = resp.json()
+            records = data.get("data", [])
+            if not records:
+                return {"found": False, "query": cmd_code, "message": "No Comtrade data found"}
+            items = []
+            for r in records[:5]:
+                items.append({
+                    "period": r.get("period", ""),
+                    "cmdCode": r.get("cmdCode", ""),
+                    "flowCode": r.get("flowCode", ""),
+                    "partner": r.get("partnerDesc", ""),
+                    "cifvalue": r.get("primaryValue", 0),
+                    "quantity": r.get("qty", 0),
+                    "netWgt": r.get("netWgt", 0),
+                })
+            return {
+                "found": True,
+                "cmd_code": cmd_code,
+                "reporter": reporter,
+                "period": period,
+                "records_count": len(records),
+                "items": items,
+                "source": "comtrade_api",
+                "query": cmd_code,
+            }
+
+        return self._cached_external_lookup(f"{reporter}_{period}_{cmd_code}", "comtrade_cache", 30, _fetch)
+
+    # ------------------------------------------------------------------
+    # Tool #19: lookup_food_product
+    # ------------------------------------------------------------------
+
+    def _lookup_food_product(self, inp):
+        """Search Open Food Facts for product data. FREE, cached 30 days."""
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 2:
+            return {"found": False, "error": "Query too short"}
+
+        _ALLOWED = {"found", "source", "query", "product_name", "brands",
+                     "categories", "ingredients_text", "nutrition_grades",
+                     "labels", "origins", "countries", "quantity"}
+
+        def _fetch():
+            resp = _safe_get(
+                "https://world.openfoodfacts.org/cgi/search.pl",
+                params={"search_terms": query, "search_simple": "1",
+                        "action": "process", "json": "1", "page_size": "3"},
+            )
+            if not resp:
+                return {"found": False, "query": query, "error": "Open Food Facts API failed"}
+            data = resp.json()
+            products = data.get("products", [])
+            if not products:
+                return {"found": False, "query": query, "message": "No food product found"}
+            p = products[0]
+            return {
+                "found": True,
+                "product_name": p.get("product_name", ""),
+                "brands": p.get("brands", ""),
+                "categories": p.get("categories", ""),
+                "ingredients_text": p.get("ingredients_text", ""),
+                "nutrition_grades": p.get("nutrition_grades", ""),
+                "labels": p.get("labels", ""),
+                "origins": p.get("origins", ""),
+                "countries": p.get("countries", ""),
+                "quantity": p.get("quantity", ""),
+                "source": "openfoodfacts_api",
+                "query": query,
+            }
+
+        return self._cached_external_lookup(query.lower(), "food_products_cache", 30, _fetch, _ALLOWED)
+
+    # ------------------------------------------------------------------
+    # Tool #20: check_fda_product
+    # ------------------------------------------------------------------
+
+    def _check_fda_product(self, inp):
+        """Search FDA drug/device database. FREE, cached 30 days."""
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 2:
+            return {"found": False, "error": "Query too short"}
+
+        _ALLOWED = {"found", "source", "query", "brand_name", "generic_name",
+                     "product_type", "route", "dosage_form", "active_ingredients",
+                     "indications_and_usage", "manufacturer_name", "product_code"}
+
+        def _fetch():
+            # Try drug labels first
+            resp = _safe_get(
+                "https://api.fda.gov/drug/label.json",
+                params={"search": query, "limit": "3"},
+            )
+            if resp:
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    r = results[0]
+                    openfda = r.get("openfda", {})
+                    # Parse active ingredients
+                    active = r.get("active_ingredient", [])
+                    if isinstance(active, list):
+                        ingredients_str = ", ".join(
+                            i.get("name", "") if isinstance(i, dict) else str(i)
+                            for i in active[:5]
+                        )
+                    else:
+                        ingredients_str = ", ".join(openfda.get("substance_name", [])[:5])
+                    # Parse indications
+                    indications = r.get("indications_and_usage", [""])
+                    indications_str = indications[0] if isinstance(indications, list) and indications else str(indications)
+                    return {
+                        "found": True,
+                        "product_type": "drug",
+                        "brand_name": ", ".join(openfda.get("brand_name", [])[:3]),
+                        "generic_name": ", ".join(openfda.get("generic_name", [])[:3]),
+                        "route": ", ".join(openfda.get("route", [])[:3]),
+                        "dosage_form": ", ".join(openfda.get("dosage_form", [])[:3]),
+                        "manufacturer_name": ", ".join(openfda.get("manufacturer_name", [])[:3]),
+                        "active_ingredients": ingredients_str,
+                        "indications_and_usage": indications_str,
+                        "source": "fda_api",
+                        "query": query,
+                    }
+
+            # Fallback: try device endpoint
+            resp2 = _safe_get(
+                "https://api.fda.gov/device/510k.json",
+                params={"search": query, "limit": "3"},
+            )
+            if resp2:
+                data = resp2.json()
+                results = data.get("results", [])
+                if results:
+                    r = results[0]
+                    return {
+                        "found": True,
+                        "product_type": "device",
+                        "brand_name": r.get("device_name", ""),
+                        "generic_name": r.get("generic_name", ""),
+                        "manufacturer_name": r.get("applicant", ""),
+                        "product_code": r.get("product_code", ""),
+                        "source": "fda_api",
+                        "query": query,
+                    }
+
+            return {"found": False, "query": query, "message": "No FDA product found"}
+
+        return self._cached_external_lookup(query.lower(), "fda_products_cache", 30, _fetch, _ALLOWED)
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""

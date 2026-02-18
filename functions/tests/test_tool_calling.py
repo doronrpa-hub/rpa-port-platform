@@ -24,7 +24,7 @@ from lib.tool_calling_engine import _extract_json, _parse_ai_response, _build_us
 class TestToolDefinitions:
 
     def test_claude_tools_count(self):
-        assert len(CLAUDE_TOOLS) == 14
+        assert len(CLAUDE_TOOLS) == 20
 
     def test_claude_tools_have_required_fields(self):
         for tool in CLAUDE_TOOLS:
@@ -44,13 +44,15 @@ class TestToolDefinitions:
             "get_chapter_notes", "lookup_tariff_structure", "lookup_framework_order",
             "search_classification_directives", "search_legal_knowledge",
             "run_elimination", "search_wikipedia",
+            "search_wikidata", "lookup_country", "convert_currency",
+            "search_comtrade", "lookup_food_product", "check_fda_product",
         }
         assert names == expected
 
     def test_gemini_tools_format(self):
         assert len(GEMINI_TOOLS) == 1
         declarations = GEMINI_TOOLS[0]["function_declarations"]
-        assert len(declarations) == 14
+        assert len(declarations) == 20
         for decl in declarations:
             assert "name" in decl
             assert "description" in decl

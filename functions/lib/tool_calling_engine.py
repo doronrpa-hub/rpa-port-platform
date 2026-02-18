@@ -73,6 +73,26 @@ _TIME_BUDGET_SEC = 120  # Hard ceiling — abort tool loop after this
 # Try Gemini first for tool-calling, fall back to Claude if Gemini fails.
 _PREFER_GEMINI = True
 
+# Pre-enrichment trigger keywords — auto-call food/medical tools if detected
+_FOOD_TRIGGERS = {
+    "food", "edible", "chocolate", "candy", "sugar", "flour", "rice", "wheat",
+    "meat", "fish", "dairy", "milk", "cheese", "butter", "oil", "olive",
+    "fruit", "vegetable", "nut", "spice", "tea", "coffee", "cocoa",
+    "sauce", "jam", "honey", "cereal", "pasta", "bread", "snack",
+    "beverage", "juice", "wine", "beer", "spirit", "vinegar",
+    "מזון", "שוקולד", "סוכר", "קמח", "אורז", "חיטה", "בשר", "דג", "דגים",
+    "חלב", "גבינה", "חמאה", "שמן", "זית", "פרי", "ירק", "תבלין",
+    "תה", "קפה", "קקאו", "דבש", "יין", "בירה", "מיץ",
+}
+_MEDICAL_TRIGGERS = {
+    "pharmaceutical", "drug", "medicine", "medical", "surgical", "implant",
+    "prosthetic", "catheter", "syringe", "bandage", "gauze", "suture",
+    "diagnostic", "reagent", "vaccine", "insulin", "antibiotic",
+    "tablet", "capsule", "ointment", "inhaler", "stent",
+    "תרופה", "רפואי", "כירורגי", "שתל", "מזרק", "תחבושת", "חיסון",
+    "אנטיביוטיקה", "כדור", "קפסולה", "משחה",
+}
+
 
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -161,13 +181,71 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
             memory_hits[desc[:50]] = mem
             print(f"  [TOOL ENGINE] Memory HIT (exact): {desc[:40]} → {mem.get('hs_code')}")
 
+    # ── Step 4b: Pre-enrichment — deterministic external lookups ──
+    enrichment = {}
+
+    # Country lookup if origin known
+    if origin and len(origin) >= 2:
+        try:
+            country_data = executor.execute("lookup_country", {"country": origin})
+            if isinstance(country_data, dict) and country_data.get("found"):
+                enrichment["country"] = country_data
+                print(f"  [TOOL ENGINE] Pre-enriched: country '{origin}' → {country_data.get('cca2', '?')}")
+        except Exception:
+            pass
+
+    # Currency lookup if non-ILS
+    invoice_currency = (invoice.get("currency", "") or "").upper()
+    if invoice_currency and invoice_currency not in ("ILS", "NIS", ""):
+        try:
+            currency_data = executor.execute("convert_currency",
+                                             {"from_currency": invoice_currency, "to_currency": "ILS"})
+            if isinstance(currency_data, dict) and currency_data.get("found"):
+                enrichment["currency"] = currency_data
+                rate = currency_data.get("target_rate", "?")
+                print(f"  [TOOL ENGINE] Pre-enriched: {invoice_currency}/ILS = {rate}")
+        except Exception:
+            pass
+
+    # Food product lookup if food keywords detected
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc_words = set(re.findall(r'\w+', (item.get("description", "") or "").lower()))
+        if desc_words & _FOOD_TRIGGERS:
+            try:
+                food_data = executor.execute("lookup_food_product",
+                                             {"query": item["description"][:100]})
+                if isinstance(food_data, dict) and food_data.get("found"):
+                    enrichment[f"food_{item['description'][:30]}"] = food_data
+                    print(f"  [TOOL ENGINE] Pre-enriched: food product '{item['description'][:30]}'")
+            except Exception:
+                pass
+            break  # Only one food lookup per classification run
+
+    # FDA product lookup if medical keywords detected
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc_words = set(re.findall(r'\w+', (item.get("description", "") or "").lower()))
+        if desc_words & _MEDICAL_TRIGGERS:
+            try:
+                fda_data = executor.execute("check_fda_product",
+                                            {"query": item["description"][:100]})
+                if isinstance(fda_data, dict) and fda_data.get("found"):
+                    enrichment[f"fda_{item['description'][:30]}"] = fda_data
+                    print(f"  [TOOL ENGINE] Pre-enriched: FDA product '{item['description'][:30]}'")
+            except Exception:
+                pass
+            break  # Only one FDA lookup per classification run
+
     # ── Step 5: AI classification call (skip if ALL items hit memory) ──
     ai_response = None
     if len(memory_hits) < len(items):
         print(f"  [TOOL ENGINE] {len(memory_hits)} memory hits, {len(items) - len(memory_hits)} need AI")
 
-        # Build user prompt with invoice data
-        user_prompt = _build_user_prompt(items, origin, invoice, doc_text)
+        # Build user prompt with invoice data + pre-enrichment
+        user_prompt = _build_user_prompt(items, origin, invoice, doc_text, enrichment=enrichment)
 
         # Multi-turn tool calling loop (Gemini primary, Claude fallback)
         ai_response = _run_tool_loop(api_key, user_prompt, executor, gemini_key=gemini_key)
@@ -595,7 +673,7 @@ def _call_claude_with_tools(api_key, messages):
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-def _build_user_prompt(items, origin, invoice, doc_text):
+def _build_user_prompt(items, origin, invoice, doc_text, enrichment=None):
     """Build the user prompt with invoice data for the AI."""
     parts = ["Classify the following items from the invoice:\n"]
 
@@ -623,6 +701,15 @@ def _build_user_prompt(items, origin, invoice, doc_text):
         parts.append(f"Currency: {invoice['currency']}")
     if invoice.get("incoterms"):
         parts.append(f"Incoterms: {invoice['incoterms']}")
+
+    # Include pre-enrichment data if available
+    if enrichment:
+        parts.append("\n--- Pre-loaded external data (already fetched) ---")
+        for key, data in enrichment.items():
+            if isinstance(data, dict) and data.get("found"):
+                summary = json.dumps(data, ensure_ascii=False, default=str)[:500]
+                parts.append(f"{key}: {summary}")
+        parts.append("")
 
     parts.append("\nClassify each item to the most specific Israeli HS code.")
     parts.append("Use the tools to check memory, search tariff DB, verify codes, and check regulatory requirements.")

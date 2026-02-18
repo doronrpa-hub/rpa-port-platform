@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 14 tools available to the AI during classification.
+Defines the 20 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -359,6 +359,126 @@ CLAUDE_TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "search_wikidata",
+        "description": (
+            "Search Wikidata for structured product facts: instance_of, material composition, "
+            "chemical formula, CAS number, density, uses. FREE and cached 60 days. "
+            "Use when you need precise chemical/material data for classification."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Product, material, or compound name (English)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "lookup_country",
+        "description": (
+            "Look up country data: ISO codes (cca2/cca3), region, subregion, currencies, "
+            "languages, borders. FREE and cached 90 days. "
+            "Use to validate origin country, get ISO codes for FTA lookups, or identify region."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "country": {
+                    "type": "string",
+                    "description": "Country name (English, e.g., 'China', 'Germany')",
+                },
+            },
+            "required": ["country"],
+        },
+    },
+    {
+        "name": "convert_currency",
+        "description": (
+            "Get current exchange rates. FREE and cached 6 hours. "
+            "Returns rates for ILS and top 10 trade currencies. "
+            "Use when invoice has non-ILS currency and you need to assess value."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "from_currency": {
+                    "type": "string",
+                    "description": "Base currency code (e.g., 'USD', 'EUR'). Default: 'USD'",
+                },
+                "to_currency": {
+                    "type": "string",
+                    "description": "Target currency code (e.g., 'ILS'). Default: 'ILS'",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "search_comtrade",
+        "description": (
+            "Search UN Comtrade for global trade statistics by HS code. FREE and cached 30 days. "
+            "Returns import/export values, quantities, and trade partners. "
+            "ONLY available in overnight mode — too slow for real-time classification."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {
+                    "type": "string",
+                    "description": "HS code (6 digits used, e.g., '401110')",
+                },
+                "reporter": {
+                    "type": "string",
+                    "description": "Reporter country UN code (default: '376' = Israel)",
+                },
+                "period": {
+                    "type": "string",
+                    "description": "Year (e.g., '2024'). Default: '2024'",
+                },
+            },
+            "required": ["hs_code"],
+        },
+    },
+    {
+        "name": "lookup_food_product",
+        "description": (
+            "Search Open Food Facts for food product data: ingredients, nutrition grade, "
+            "labels, origins. FREE and cached 30 days. "
+            "Use when classifying food products (chapters 1-24) to understand composition."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Food product name or description (English)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "check_fda_product",
+        "description": (
+            "Search FDA database for drug/device data: brand name, generic name, "
+            "active ingredients, indications, dosage form. FREE and cached 30 days. "
+            "Use when classifying pharmaceutical or medical device products (chapters 30, 90)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Drug name, device name, or active ingredient (English)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -413,6 +533,12 @@ WORKFLOW:
 12. Call search_legal_knowledge to check relevant legal provisions, standards reforms (EU/US), or customs agents law if needed.
 13. Call search_wikipedia when you need background knowledge about a product, material, or compound to inform classification (e.g., what is the product made of, what is it used for). FREE and cached.
 14. Call assess_risk for risk assessment.
+15. Call search_wikidata when you need structured data about a material or compound (chemical formula, CAS number, composition). FREE and cached.
+16. Call lookup_country to validate origin country data, get ISO codes, or identify trade region. FREE and cached.
+17. Call convert_currency when the invoice currency is not ILS and you need exchange rates for value assessment. FREE and cached.
+18. Call search_comtrade for trade statistics (OVERNIGHT MODE ONLY — not available during real-time classification).
+19. Call lookup_food_product when classifying food items (chapters 1-24) to understand ingredients and composition. FREE and cached.
+20. Call check_fda_product when classifying pharmaceutical or medical products (chapters 30, 90) to identify active ingredients and product type. FREE and cached.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

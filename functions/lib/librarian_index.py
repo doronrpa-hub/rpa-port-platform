@@ -377,6 +377,48 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "cache",
     },
+    # Tool #15: Wikidata structured facts cache (60-day TTL)
+    "wikidata_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #16: Country data cache (90-day TTL)
+    "country_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #17: Exchange rates cache (6-hour TTL)
+    "currency_rates": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #18: UN Comtrade trade data cache (30-day TTL)
+    "comtrade_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #19: Open Food Facts product cache (30-day TTL)
+    "food_products_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
+    # Tool #20: FDA drug/device cache (30-day TTL)
+    "fda_products_cache": {
+        "title_fields": ["cache_key"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
 }
 
 # Document type by file extension
