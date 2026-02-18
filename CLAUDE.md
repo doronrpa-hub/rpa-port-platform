@@ -2269,3 +2269,39 @@ Export cutoff thresholds: `_CUTOFF_WARNING_HOURS = 24`, `_CUTOFF_CRITICAL_HOURS 
 - Commit `dc43dd4` pushed to `origin/main`
 - All 30 functions deployed successfully to `rpa-port-customs`
 - `rcb_afternoon_digest` created as new Cloud Function
+
+## Session 44 Summary (2026-02-18) — I3+I4 Test Fixes + Deploy
+
+### What Was Done
+
+**1. Fixed I3+I4 Test Failures (2 test infrastructure issues)**
+Tests written in prior session had two bugs preventing execution:
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| `_make_now()` TypeError | Called without required `iso_str` arg in all 25+ I3/I4 tests | Added default: `iso_str="2026-02-18T10:00:00+02:00"` |
+| `_mock_container_status()` dict override ignored | Tests passed `{"import_process": {...}}` as first positional arg, which mapped to `container_id` param | Added `overrides` dict as first param with `cs.update(overrides)` + string fallback for backward compat |
+
+**2. Verified I3+I4 Wiring Already Complete**
+Both I3 and I4 were already wired into `main.py` from the prior session:
+- **I3**: `_run_port_intelligence_alerts()` at line 640, called from `rcb_tracker_poll` at line 1902
+- **I4**: `build_morning_digest()` at line 2034, called from `rcb_daily_digest` + `rcb_afternoon_digest`
+
+**3. Full Test Suite**
+- **814 passed**, 2 skipped — zero regressions
+
+### Git Commits
+- `306a697` — Session 44: Fix I3+I4 tests + add regression_alerts collection + overnight guard
+
+### Deploy
+- All 31 functions deployed to `rpa-port-customs`
+- 5 updated: `rcb_daily_digest`, `rcb_afternoon_digest`, `rcb_tracker_poll`, `rcb_port_schedule`, `rcb_pc_agent_runner`
+- 26 skipped (no changes detected)
+
+### Block I Status — COMPLETE
+| Component | Status | Description |
+|-----------|--------|-------------|
+| I1: Deal-Schedule Linker | Done (Session 43) | `link_deal_to_schedule()` in port_intelligence.py |
+| I2: Direction-Aware Views | Done (Session 43) | `build_port_intelligence_view()` with import/export/air variants |
+| I3: Alert Engine | Done (Session 43-44) | 4 alert types: D/O missing, physical exam, storage day 3, export cutoff |
+| I4: Morning Digest | Done (Session 43-44) | v4 HTML template, 4 sea ports, sent to cc@ at 07:00 + 14:00 IL |
