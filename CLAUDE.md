@@ -2396,3 +2396,78 @@ Returns `(approved: bool, reason: str)`. Fail-open at every level.
 
 ### Test Results
 - **865 passed**, 2 skipped — 814 existing + 51 new, zero regressions
+
+## Session 46 Summary (2026-02-18) — Document Identity Graph
+
+### What Was Built
+Unified identity layer that links every document identifier (B/L, AWB, container, invoice, PO, booking, file number, seped, etc.) to a single `deal_id`. Foundation for accurate self-learning and outcome tracking — when a customs declaration comes back, the identity graph matches it to the original classification.
+
+### NEW: `functions/lib/identity_graph.py` (~500 lines)
+
+**5 Core Functions:**
+| Function | Purpose |
+|----------|---------|
+| `find_deal_by_identifier(db, identifier)` | Search all 15 fields in priority order, return deal_id or None |
+| `register_identifier(db, deal_id, field, value)` | Add identifier to graph with dedup, update confidence |
+| `merge_deals(db, deal_id_a, deal_id_b)` | Merge all identifiers into deal_a, mark deal_b as `merged_into` |
+| `extract_identifiers_from_email(subject, body, attachments_text)` | 17 regex patterns, bilingual Hebrew/English |
+| `link_email_to_deal(db, email_data)` | Orchestrate: extract → search → register → return {deal_id, identifiers, action} |
+
+**Helper functions:** `register_deal_from_tracker()`, `_empty_graph()`, `_normalize_subject()`
+
+### Graph Document Schema (15 identifier fields)
+**Array fields** (Firestore `array_contains`):
+`bl_numbers`, `booking_refs`, `awb_numbers`, `container_numbers`, `invoice_numbers`, `po_numbers`, `packing_list_refs`, `email_thread_ids`
+
+**Scalar fields** (Firestore `==`):
+`client_name`, `client_ref`, `internal_file_ref`, `job_order_number`, `file_number` (prefix 4=import, 6=export), `import_number`, `export_number`, `seped_number` (ספד)
+
+**Metadata:** `email_subjects[]`, `last_updated`, `confidence` (0.5 base + 0.1 per identifier, max 1.0)
+
+### Search Priority Order
+thread_id → B/L → AWB → container → booking → invoice → PO → file_number → seped → client_ref → job_order
+
+### Regex Patterns (intentionally broad — overnight brain refines)
+BL (3 patterns), AWB (2), container (ISO 6346 check digit validated), booking (2), invoice, PO, packing list, client ref, internal ref, file number, job order, import number, export number, seped number
+
+### Firestore Collections (schema only — NOT seeded)
+| Collection | Doc ID | Purpose |
+|-----------|--------|---------|
+| `deal_identity_graph` | `{deal_id}` | One doc per deal, 15 identifier fields + metadata |
+| `learned_identifier_patterns` | auto | For overnight brain — refined regex from cc@ email history |
+
+### Files Created
+| File | Lines | Purpose |
+|------|-------|---------|
+| `functions/lib/identity_graph.py` | ~500 | Core identity graph module |
+| `functions/tests/test_identity_graph.py` | ~1,490 | 105 tests across 11 test classes |
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `functions/lib/librarian_index.py` | +17 lines: registered `deal_identity_graph` and `learned_identifier_patterns` |
+
+### Files NOT Touched
+`main.py`, `tracker.py`, `classification_agents.py`, `tool_executors.py`, `rcb_helpers.py` — zero changes to any existing module.
+
+### Test Results
+- **965 passed**, 5 failed (pre-existing BS4), 2 skipped — 105 new identity_graph tests, zero regressions
+
+### Git Commit
+- `15d7bec` — Session 46: Document Identity Graph — unified deal identifier linking
+
+### Wiring TODO (future sessions)
+1. Wire `link_email_to_deal()` into `tracker_process_email()` and `register_deal_from_tracker()` when deals are created
+2. Register classification results back to graph
+3. Wire `learned_identifier_patterns` into overnight brain for regex refinement
+4. Indirect feedback loop: declaration outcomes matched via identity graph to original classification
+
+### FUTURE — Forwarding Module (not started)
+- Same Firebase project, same repo
+- Function prefix: `fwd_`
+- New email group, new Outlook cluster
+- New document types: freight invoices, booking confirmations, freight quotes
+- New logic: pricing, carrier selection, accounting
+- Shared infrastructure: email pipeline, Firestore, identity graph, vessel tracking, port intelligence
+- Decision: build after RCB is stable (4-6 weeks real traffic minimum)
+- Risk of parallel development: high — defer until RCB feedback loop is closed
