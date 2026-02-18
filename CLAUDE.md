@@ -2340,3 +2340,59 @@ Agent ac88a41 reported "8 missing cache collections in librarian_index.py" but m
 - H1+H2 verification loop in overnight brain
 - Nightly digest email from brain output
 - Direct HS code assignment to unclassified deals
+
+## Session 45 Summary (2026-02-18) — Email Quality Gate
+
+### What Was Done
+Built a central email quality gate that every outgoing RCB email passes through before `helper_graph_send` dispatches to Graph API. Non-invasive patch — no other modules touched.
+
+### `email_quality_gate(recipient, subject, html_body, deal_id=None, alert_type=None, db=None)`
+Returns `(approved: bool, reason: str)`. Fail-open at every level.
+
+### 6 Rejection Rules
+| # | Rule | Reason Code | Requires db |
+|---|------|-------------|-------------|
+| 1 | Body empty or under 200 chars | `body_under_200` | No |
+| 2a | Subject empty/generic/Re:-only | `empty_subject` / `generic_subject` | No |
+| 2b | Subject unchanged from last send (same deal+recipient) | `unchanged_subject` | Yes |
+| 3 | All `<td>` data cells are "—" or "טרם הגיע" (>3 cells) | `all_placeholder_data` | No |
+| 4 | Same deal_id + alert_type sent within 4 hours | `dedup_4h` | Yes |
+| 5 | Recipient is `rcb@rpa-port.co.il` (self-send) | `self_send` | No |
+| 6 | Digest content identical to last digest (MD5 hash) | `duplicate_digest` | Yes |
+
+### Fail-Open Safety
+- Outer `try/except` catches any gate crash → `(True, "gate_error_failopen")`
+- Inner Firestore `try/except` catches DB errors → skips Firestore rules, local rules still run
+- `_log_email_quality` fire-and-forget — logging failure never affects gate decision
+- `helper_graph_send` wraps gate call in its own `try/except` — gate failure never blocks sending
+
+### Firestore Dedup Strategy
+- Document IDs encode dedup keys: `dedup_{deal_id}_{alert_type}`, `subj_{deal_id}_{hash}`, `digest_{hash}`
+- Single-document reads (no compound indexes needed)
+- On approval: updates dedup tracker docs + adds general log record
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/rcb_helpers.py` | +2 imports (`hashlib`, `timedelta`/`timezone`), +`email_quality_gate()`, +`_log_email_quality()`, +3 regex constants, gate call in `helper_graph_send` (3 new optional kwargs) |
+| `functions/lib/librarian_index.py` | +`email_quality_log` in COLLECTION_FIELDS |
+| `functions/tests/test_email_quality_gate.py` | **NEW** — 51 tests across 10 test classes |
+
+### Files NOT Touched
+`main.py`, `tracker.py`, `classification_agents.py`, `brain_commander.py`, `email_intent.py`, `port_intelligence.py`, `pupil.py` — zero changes to any module.
+
+### New Firestore Collection
+| Collection | Purpose |
+|-----------|---------|
+| `email_quality_log` | Gate decisions (approvals + rejections) + dedup tracker docs |
+
+### COLLECTION_FIELDS Total: 70 collections registered
+
+### Git Commit
+- `c672eeb` — Session 45: Central email quality gate — 6 rejection rules, fail-open, Firestore dedup
+
+### Deployment
+- All 31 Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **865 passed**, 2 skipped — 814 existing + 51 new, zero regressions
