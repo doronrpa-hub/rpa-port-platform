@@ -205,13 +205,34 @@ _FORM_TERMS = {
 # KEYWORD EXTRACTION (reuses intelligence.py pattern)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _extract_keywords(text):
-    """Extract meaningful keywords from text. Bilingual (Hebrew + English)."""
+_HE_PREFIX_RE = re.compile(r'^[מבלהוכש]')
+
+def _extract_keywords(text, limit=15):
+    """Extract meaningful keywords from text. Bilingual (Hebrew + English).
+
+    Also generates Hebrew prefix-stripped variants (מפלדה → פלדה) to handle
+    common prefixes (מ, ב, ל, ה, ו, כ, ש) that prevent matching.
+    """
     if not text:
         return []
     words = _WORD_SPLIT_RE.split(text.lower())
     keywords = [w for w in words if len(w) > 2 and w not in _STOP_WORDS]
-    return keywords[:15]
+    # Add Hebrew prefix-stripped variants
+    extra = []
+    for w in keywords:
+        if len(w) > 3 and '\u0590' <= w[0] <= '\u05FF':
+            stripped = _HE_PREFIX_RE.sub('', w)
+            if stripped and len(stripped) > 2 and stripped != w and stripped not in _STOP_WORDS:
+                extra.append(stripped)
+    keywords.extend(extra)
+    # Deduplicate while preserving order
+    seen = set()
+    result = []
+    for k in keywords:
+        if k not in seen:
+            seen.add(k)
+            result.append(k)
+    return result[:limit]
 
 
 def _keyword_overlap(text_a, text_b):
@@ -410,17 +431,20 @@ def make_product_info(item_dict):
         or item_dict.get("item_description_he")
         or ""
     )
-    combined_desc = f"{desc} {desc_he}".strip()
+    material = item_dict.get("material") or item_dict.get("materials") or ""
+    form = item_dict.get("form") or item_dict.get("product_form") or ""
+    use = item_dict.get("use") or item_dict.get("intended_use") or ""
+    combined_desc = f"{desc} {desc_he} {material} {form} {use}".strip()
 
     return {
         "description": desc,
         "description_he": desc_he,
-        "material": item_dict.get("material") or item_dict.get("materials") or "",
-        "form": item_dict.get("form") or item_dict.get("product_form") or "",
-        "use": item_dict.get("use") or item_dict.get("intended_use") or "",
+        "material": material,
+        "form": form,
+        "use": use,
         "origin_country": item_dict.get("origin_country") or item_dict.get("country") or "",
         "seller_name": item_dict.get("seller_name") or item_dict.get("supplier") or "",
-        "keywords": _extract_keywords(combined_desc),
+        "keywords": _extract_keywords(combined_desc, limit=30),
     }
 
 
@@ -519,7 +543,12 @@ def _apply_section_scope(cache, product_info, candidates, steps):
         ]
         chapter_names = sec_data.get("chapter_names", {})
         if isinstance(chapter_names, dict):
-            sec_text_parts.extend(chapter_names.values())
+            for cn_val in chapter_names.values():
+                if isinstance(cn_val, dict):
+                    sec_text_parts.append(cn_val.get("name_he", ""))
+                    sec_text_parts.append(cn_val.get("name_en", ""))
+                elif isinstance(cn_val, str):
+                    sec_text_parts.append(cn_val)
         # Also include chapter-level keywords from chapter_notes
         for sc in section_candidates:
             ch_notes = cache.get_chapter_notes(sc.get("chapter", ""))
@@ -529,19 +558,23 @@ def _apply_section_scope(cache, product_info, candidates, steps):
                 ch_kw = ch_notes.get("keywords", [])
                 if ch_kw:
                     sec_text_parts.extend(str(k) for k in ch_kw[:20])
-        sec_text = " ".join(sec_text_parts)
+        sec_text = " ".join(p for p in sec_text_parts if isinstance(p, str))
 
         # Need enough section text to make a meaningful comparison
-        sec_keywords = _extract_keywords(sec_text)
+        # Use higher limit (100) for section text — sections span many chapters
+        sec_keywords = set(_extract_keywords(sec_text, limit=100))
         if len(sec_keywords) < 5:
             continue  # Not enough signal to eliminate at section level
 
-        overlap_count, overlap_ratio = _keyword_overlap(
-            " ".join(product_kw), sec_text
-        )
+        overlap = product_kw & sec_keywords
+        overlap_count = len(overlap)
 
         # Only eliminate if ZERO keyword overlap — very conservative
-        if overlap_count == 0 and len(product_kw) >= 2:
+        # Safety: never eliminate ALL remaining alive candidates
+        alive_outside_section = sum(
+            1 for c in candidates if c["alive"] and c.get("section") != section
+        )
+        if overlap_count == 0 and len(product_kw) >= 2 and alive_outside_section > 0:
             before_count = sum(1 for c in candidates if c["alive"])
             eliminated = []
             for c in section_candidates:
