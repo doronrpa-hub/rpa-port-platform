@@ -382,6 +382,29 @@ def _build_html(deal, container_statuses, steps_summary,
     <td colspan="2"><b style="color:#1a5276;">Declaration:</b> {customs_dec}</td>
   </tr>"""
 
+    # Classification HS codes (from tracker↔classification bridge)
+    hs_codes = deal.get('classification_hs_codes', [])
+    rcb_code = deal.get('rcb_tracking_code', '')
+    if hs_codes:
+        hs_label = rcb_code if rcb_code else "Classification"
+        hs_items_html = ""
+        for hc in hs_codes[:5]:
+            hs_num = hc.get('hs_code', '')
+            hs_desc = hc.get('description', '')[:50]
+            hs_conf = hc.get('confidence', '')
+            conf_color = "#27ae60" if hs_conf in ("high", "גבוהה") else "#f39c12" if hs_conf in ("medium", "בינונית") else "#e74c3c"
+            hs_items_html += (
+                f'<span style="display:inline-block;background:#eaf2f8;border:1px solid #d4e6f1;'
+                f'border-radius:4px;padding:2px 8px;margin:2px;font-size:12px;">'
+                f'<b>{hs_num}</b> {hs_desc}'
+                f' <span style="color:{conf_color};font-size:10px;">&#9679;</span>'
+                f'</span>'
+            )
+        html += f"""
+  <tr>
+    <td colspan="2"><b style="color:#1a5276;">{hs_label}:</b><br>{hs_items_html}</td>
+  </tr>"""
+
     html += """
   </table>
 </td></tr>

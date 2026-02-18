@@ -2396,6 +2396,70 @@ def _try_pre_classify_bypass(db, doc_text, gemini_key=None):
     }
 
 
+def _link_classification_to_tracker(db, classification_doc_id, invoice_data, results, tracking_code):
+    """Bridge: link a completed classification to an existing tracker deal.
+    Looks up tracker_deals by BL or AWB from invoice data, writes back:
+      - rcb_classification_id (the Firestore doc ID in rcb_classifications)
+      - rcb_tracking_code (the human-readable RCB-XXXX code)
+      - classification_hs_codes (list of {hs_code, description, confidence})
+    """
+    bl = invoice_data.get('bl_number', '').strip()
+    awb = invoice_data.get('awb_number', '').strip()
+
+    if not bl and not awb:
+        return  # No shipment reference to match
+
+    # Find the tracker deal
+    deal_doc = None
+    if bl:
+        results_q = list(db.collection("tracker_deals")
+                         .where("bol_number", "==", bl)
+                         .where("status", "in", ["active", "pending", "completed"])
+                         .limit(1).stream())
+        if results_q:
+            deal_doc = results_q[0]
+    if not deal_doc and awb:
+        results_q = list(db.collection("tracker_deals")
+                         .where("awb_number", "==", awb)
+                         .where("status", "in", ["active", "pending", "completed"])
+                         .limit(1).stream())
+        if results_q:
+            deal_doc = results_q[0]
+
+    if not deal_doc:
+        print(f"  Bridge: no tracker deal found for BL={bl} AWB={awb}")
+        return
+
+    # Extract HS codes from classification results
+    hs_codes = []
+    try:
+        classifications = (results.get("agents", {}).get("classification", {})
+                          .get("classifications", []))
+        for c in classifications:
+            hs = c.get("hs_code", "")
+            if hs:
+                hs_codes.append({
+                    "hs_code": hs,
+                    "description": c.get("item", "")[:100],
+                    "confidence": c.get("confidence", ""),
+                })
+    except Exception:
+        pass
+
+    # Write back to tracker deal
+    from datetime import datetime, timezone
+    deal_doc.reference.update({
+        "rcb_classification_id": classification_doc_id,
+        "rcb_tracking_code": tracking_code,
+        "classification_hs_codes": hs_codes,
+        "classification_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    print(f"  Bridge: linked classification {tracking_code} → deal {deal_doc.id} "
+          f"({len(hs_codes)} HS codes)")
+
+
 def process_and_send_report(access_token, rcb_email, to_email, subject, sender_name, raw_attachments, msg_id, get_secret_func, db, firestore, helper_graph_send, extract_text_func, email_body=None, internet_message_id=None):
     """Main: Extract, classify, validate, send ONE consolidated email.
 
@@ -2808,7 +2872,16 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 save_data["cross_check_tiers"] = cc_tiers
                 save_data["cross_check_avg_tier"] = round(sum(cc_tiers) / len(cc_tiers), 1) if cc_tiers else 0
 
-            db.collection("rcb_classifications").add(save_data)
+            cls_ref = db.collection("rcb_classifications").add(save_data)
+            cls_doc_id = cls_ref[1].id if isinstance(cls_ref, tuple) else getattr(cls_ref, 'id', '')
+
+            # Session 33: Bridge classification → tracker deal
+            # Look up tracker deal by BL/AWB and write classification ID + HS codes back
+            try:
+                _link_classification_to_tracker(
+                    db, cls_doc_id, invoice_data, results, tracking_code)
+            except Exception as bridge_err:
+                print(f"  Bridge error (non-fatal): {bridge_err}")
 
             # Session 27 Assignment 12: Save structured classification report
             try:
