@@ -280,6 +280,14 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    # Tool #33: Route ETA cache — driving time from pickup to port (24h TTL)
+    # Source: OpenRouteService / OSRM
+    "route_cache": {
+        "title_fields": ["origin_address", "port_code"],
+        "keyword_fields": ["route_summary", "provider"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
     # Tariff structure: sections, chapters, additions, PDF URLs
     # Source: israeli_customs_tariff_structure.xml
     "tariff_structure": {

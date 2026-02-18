@@ -35,6 +35,66 @@ Scheduler (30min) → tracker_poll_active_deals() → Phase 1: TaskYam (always f
 - **Global Tracking**: BL number, container count, POL/POD timing (ETA/ATA/ETD/ATD), consolidated ocean events
 - **TaskYam Local Tracking**: per-container detail table from TaskYam
 
+## Session 41b — Land Transport ETA Alert System
+
+### NEW: `functions/lib/route_eta.py` (~250 lines)
+Tool #33: calculate_route_eta — driving time from pickup address to Israeli port/airport.
+
+| Component | Details |
+|-----------|---------|
+| **Geocoding** | Nominatim (free, no key, 1 req/sec rate limit) |
+| **Primary routing** | OpenRouteService (free, 2000 req/day, needs ORS_API_KEY in Secret Manager) |
+| **Fallback routing** | OSRM (completely free, no key) |
+| **Cache** | Firestore `route_cache`, TTL 24 hours, key = md5(origin+port) |
+
+Port coordinates hardcoded (ports don't move):
+- `ILHFA` (Haifa Port): 32.8191, 35.0442
+- `ILASD` (Ashdod Port): 31.8305, 34.6428
+- Ben Gurion Airport: 32.0055, 34.8854
+
+### MODIFIED: `functions/lib/tracker.py` (+~180 lines)
+Added `check_gate_cutoff_alerts()` — proactive gate cutoff alert system.
+
+- **Signature**: `check_gate_cutoff_alerts(db, firestore_module, get_secret_func, access_token, rcb_email)`
+- **Called by**: Cloud Scheduler every 30 minutes (wire in main.py)
+- **Queries**: `tracker_deals` where status in ["active", "pending"]
+- **Filters**: deals with `land_pickup_address` + `gate_cutoff` populated, not `port_arrived`, not `stopped`
+- **Alert thresholds**:
+  - buffer < 120 min → WARNING: `⚠️ RCB | {deal} | Gate cutoff in {X} min | {vessel}`
+  - buffer < 45 min → URGENT: `🚨 RCB | {deal} | URGENT gate cutoff risk | {vessel}`
+  - buffer < 0 min → CRITICAL: `🔴 RCB | {deal} | MISSED cutoff — late entry needed` + auto-draft
+- **Dedup**: tracks sent alerts in `deal.cutoff_alerts_sent[]` list
+- **Escalation**: warning→urgent→critical (each level sent only once)
+
+New deal fields (populated by email extraction or manual entry):
+- `land_pickup_address` (str) — pickup location for land transport
+- `gate_cutoff` (str, ISO 8601) — port gate cutoff datetime
+- `cutoff_alerts_sent` (list) — ["warning", "urgent", "critical"] tracking
+
+Helper functions added:
+- `_parse_gate_cutoff()` — parse ISO 8601 with Israel timezone handling
+- `_build_cutoff_subject()` — alert email subject per level
+- `_build_cutoff_alert_html()` — alert email body with RTL table layout
+
+### MODIFIED: `functions/lib/librarian_index.py` (+7 lines)
+Added `route_cache` to COLLECTION_FIELDS (doc_type: "cache").
+
+### NEW: `functions/tests/test_route_eta.py` (65 tests)
+- TestCacheKey (5), TestGetDestCoords (4), TestGeocoding (5)
+- TestRouteORS (4), TestRouteOSRM (3), TestCalculateRouteEta (9)
+- TestParseGateCutoff (6), TestBuildCutoffSubject (4), TestBuildCutoffAlertHtml (4)
+- TestCheckGateCutoffAlerts (16), TestConstants (5)
+
+### Wiring needed (main.py — NOT touched per instructions):
+```python
+from lib.tracker import check_gate_cutoff_alerts
+# Add to existing 30-min scheduler or create new one:
+# result = check_gate_cutoff_alerts(db, firestore, get_secret, access_token, rcb_email)
+```
+
+### Secret keys needed:
+- `ORS_API_KEY` — OpenRouteService (free at openrouteservice.org, 2000 req/day). Optional — falls back to OSRM.
+
 ## Files Modified/Created (Session B — Ocean Tracker)
 
 ### NEW: `functions/lib/ocean_tracker.py` (1,606 lines)
@@ -381,6 +441,7 @@ Key files still inside the 7z:
 | legal_documents | 4 | Has subcollection `sections` (8 docs about customs ordinance) |
 | files | 5,001+ | File metadata from Cloud Storage uploads |
 | pipeline_ingestion_log | 263 | All entries are classification_directives from shaarolami |
+| route_cache | — | Driving ETA cache: origin→port, 24h TTL. Source: ORS/OSRM |
 
 ## Cloud Storage Key Files
 | File | Size | Notes |

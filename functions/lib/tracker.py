@@ -2332,3 +2332,270 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         traceback.print_exc()
         return False
 
+
+# ══════════════════════════════════════════════════════════
+#  GATE CUTOFF ALERTS — proactive land transport ETA checks
+# ══════════════════════════════════════════════════════════
+
+# Israel timezone offset (UTC+2 winter, UTC+3 summer)
+try:
+    from zoneinfo import ZoneInfo
+    _IL_TZ = ZoneInfo("Asia/Jerusalem")
+except ImportError:
+    # Python < 3.9 fallback — approximate with fixed offset
+    _IL_TZ = timezone(timedelta(hours=2))
+
+
+def _parse_gate_cutoff(raw):
+    """Parse gate_cutoff string to timezone-aware datetime (Israel time).
+
+    Accepts ISO 8601 strings, with or without timezone info.
+    If naive, assumes Israel time.
+    """
+    if not raw:
+        return None
+    try:
+        if isinstance(raw, datetime):
+            dt = raw
+        else:
+            raw = str(raw).strip()
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+
+        # Ensure timezone-aware
+        if dt.tzinfo is None:
+            try:
+                dt = dt.replace(tzinfo=_IL_TZ)
+            except Exception:
+                dt = dt.replace(tzinfo=timezone(timedelta(hours=2)))
+        return dt
+    except Exception:
+        return None
+
+
+def _build_cutoff_alert_html(deal, deal_id, alert_level, buffer_minutes, eta_result):
+    """Build simple HTML body for gate cutoff alert email."""
+    deal_ref = deal.get('bol_number') or deal.get('booking_number') or deal_id[:12]
+    vessel = deal.get('vessel_name', '') or '—'
+    pickup = deal.get('land_pickup_address', '')
+    port_name = deal.get('port_name', '') or deal.get('port', '')
+    gate_cutoff = deal.get('gate_cutoff', '')
+    eta_min = eta_result.get('duration_minutes', '?')
+    distance = eta_result.get('distance_km', '?')
+
+    colors = {
+        "warning": ("#FFA500", "#FFF3E0", "⚠️"),
+        "urgent": ("#FF5722", "#FBE9E7", "🚨"),
+        "critical": ("#D32F2F", "#FFEBEE", "🔴"),
+    }
+    color, bg, icon = colors.get(alert_level, ("#FFA500", "#FFF3E0", "⚠️"))
+
+    buffer_display = abs(int(buffer_minutes))
+    if buffer_minutes < 0:
+        buffer_text = f"<b>Cutoff MISSED by {buffer_display} minutes</b>"
+    else:
+        buffer_text = f"Buffer remaining: <b>{buffer_display} minutes</b>"
+
+    html = f"""
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px;">
+      <div style="background: {color}; color: white; padding: 12px 16px; border-radius: 8px 8px 0 0;">
+        <h2 style="margin: 0; font-size: 18px;">{icon} RCB Gate Cutoff Alert — {alert_level.upper()}</h2>
+      </div>
+      <div style="background: {bg}; padding: 16px; border: 1px solid {color}; border-top: none; border-radius: 0 0 8px 8px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+          <tr><td style="padding: 6px 8px; font-weight: bold; width: 140px;">Deal</td><td style="padding: 6px 8px;">{deal_ref}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Vessel</td><td style="padding: 6px 8px;">{vessel}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Pickup</td><td style="padding: 6px 8px;">{pickup}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Destination</td><td style="padding: 6px 8px;">{port_name}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Gate Cutoff</td><td style="padding: 6px 8px;">{gate_cutoff}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">ETA to Port</td><td style="padding: 6px 8px;">{eta_min} min ({distance} km)</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold; color: {color};">Buffer</td><td style="padding: 6px 8px; color: {color};">{buffer_text}</td></tr>
+        </table>
+      </div>
+    """
+
+    if alert_level == "critical":
+        html += f"""
+      <div style="margin-top: 16px; padding: 12px 16px; background: #FFEBEE; border: 2px solid #D32F2F; border-radius: 8px;">
+        <h3 style="margin: 0 0 8px 0; color: #D32F2F;">🔴 Late Entry Request — Draft</h3>
+        <p style="font-size: 13px; margin: 4px 0;">
+          Subject: בקשת כניסה מאוחרת — {deal_ref}<br/>
+          Deal: {deal_ref} | Vessel: {vessel}<br/>
+          Gate cutoff was: {gate_cutoff}<br/>
+          Current ETA from pickup: {eta_min} min<br/>
+          <br/>
+          <i>Please review and submit the late entry request to the port authority.</i>
+        </p>
+      </div>
+    """
+
+    html += "</div>"
+    return html
+
+
+def _build_cutoff_subject(deal, deal_id, alert_level, buffer_minutes):
+    """Build email subject line per alert level."""
+    deal_ref = deal.get('bol_number') or deal.get('booking_number') or deal_id[:12]
+    vessel = deal.get('vessel_name', '') or ''
+
+    if alert_level == "warning":
+        mins = int(buffer_minutes)
+        return f"⚠️ RCB | {deal_ref} | Gate cutoff in {mins} min | {vessel}".strip()
+    elif alert_level == "urgent":
+        return f"🚨 RCB | {deal_ref} | URGENT gate cutoff risk | {vessel}".strip()
+    elif alert_level == "critical":
+        return f"🔴 RCB | {deal_ref} | MISSED cutoff — late entry needed"
+    return f"RCB | {deal_ref} | Gate cutoff alert"
+
+
+def check_gate_cutoff_alerts(db, firestore_module, get_secret_func, access_token=None, rcb_email=None):
+    """Check active deals for gate cutoff risk and send proactive alerts.
+
+    Called by Cloud Scheduler every 30 minutes.
+
+    For deals with land_pickup_address + gate_cutoff populated:
+    1. Calculate driving ETA to port
+    2. Determine buffer = gate_cutoff - now - eta
+    3. Send WARNING (<120 min), URGENT (<45 min), or CRITICAL (<0 min) alert
+    4. Track sent alerts in deal doc to avoid duplicates
+
+    Returns:
+        dict with status, deals_checked, alerts_sent
+    """
+    try:
+        from lib.route_eta import calculate_route_eta
+        from lib.rcb_helpers import helper_graph_send
+    except ImportError as e:
+        print(f"❌ Gate cutoff alerts: import error: {e}")
+        return {"status": "error", "error": f"import_failed: {e}"}
+
+    try:
+        active_deals = list(db.collection("tracker_deals")
+                           .where("status", "in", ["active", "pending"])
+                           .stream())
+    except Exception as e:
+        print(f"❌ Gate cutoff alerts: Firestore query error: {e}")
+        return {"status": "error", "error": str(e)}
+
+    if not active_deals:
+        return {"status": "ok", "deals_checked": 0, "alerts_sent": 0}
+
+    # Current time in Israel
+    try:
+        now_il = datetime.now(_IL_TZ)
+    except Exception:
+        now_il = datetime.now(timezone(timedelta(hours=2)))
+
+    deals_checked = 0
+    alerts_sent = 0
+
+    for deal_doc in active_deals:
+        deal = deal_doc.to_dict()
+        deal_id = deal_doc.id
+
+        # ── Filter: must have both land_pickup_address and gate_cutoff ──
+        pickup_address = (deal.get('land_pickup_address') or '').strip()
+        gate_cutoff_raw = deal.get('gate_cutoff')
+        if not pickup_address or not gate_cutoff_raw:
+            continue
+
+        # Skip deals already at port
+        current_step = (deal.get('current_step') or '').lower()
+        if current_step == 'port_arrived':
+            continue
+
+        # Skip stopped deals
+        if deal.get('follow_mode') == 'stopped':
+            continue
+
+        port_code = deal.get('port', '')
+        if not port_code:
+            continue
+
+        deals_checked += 1
+
+        # ── Parse gate cutoff ──
+        gate_cutoff_dt = _parse_gate_cutoff(gate_cutoff_raw)
+        if not gate_cutoff_dt:
+            print(f"    ⚠️ Gate cutoff: bad date format for deal {deal_id}: {gate_cutoff_raw}")
+            continue
+
+        # ── Calculate route ETA ──
+        try:
+            eta_result = calculate_route_eta(db, pickup_address, port_code, get_secret_func)
+        except Exception as e:
+            print(f"    ⚠️ Gate cutoff: ETA calc failed for deal {deal_id}: {e}")
+            continue
+
+        if not eta_result:
+            continue
+
+        eta_minutes = eta_result.get("duration_minutes", 0)
+
+        # ── Calculate buffer ──
+        # Convert gate_cutoff to Israel time for comparison
+        try:
+            gate_cutoff_il = gate_cutoff_dt.astimezone(_IL_TZ)
+        except Exception:
+            gate_cutoff_il = gate_cutoff_dt
+        buffer_td = gate_cutoff_il - now_il - timedelta(minutes=eta_minutes)
+        buffer_minutes = buffer_td.total_seconds() / 60
+
+        # ── Determine alert level ──
+        if buffer_minutes < 0:
+            alert_level = "critical"
+        elif buffer_minutes < 45:
+            alert_level = "urgent"
+        elif buffer_minutes < 120:
+            alert_level = "warning"
+        else:
+            continue  # No alert needed
+
+        # ── Dedup: check if this alert level was already sent ──
+        already_sent = deal.get("cutoff_alerts_sent", [])
+        if alert_level in already_sent:
+            continue
+
+        # ── Build and send email ──
+        subject = _build_cutoff_subject(deal, deal_id, alert_level, buffer_minutes)
+        body_html = _build_cutoff_alert_html(deal, deal_id, alert_level, buffer_minutes, eta_result)
+
+        sent = False
+        follower = deal.get('follower_email', '')
+        if follower and access_token and rcb_email:
+            try:
+                sent = helper_graph_send(
+                    access_token, rcb_email, follower,
+                    subject, body_html
+                )
+            except Exception as e:
+                print(f"    ❌ Gate cutoff email error for {deal_id}: {e}")
+
+        if sent:
+            alerts_sent += 1
+            # ── Update deal doc: append alert level to cutoff_alerts_sent ──
+            try:
+                new_alerts = list(already_sent) + [alert_level]
+                db.collection("tracker_deals").document(deal_id).update({
+                    "cutoff_alerts_sent": new_alerts,
+                    "last_cutoff_alert": alert_level,
+                    "last_cutoff_alert_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as e:
+                print(f"    ⚠️ Gate cutoff: failed to update deal {deal_id}: {e}")
+
+            # ── Log to timeline ──
+            _log_timeline(db, firestore_module, deal_id, {
+                "event_type": "gate_cutoff_alert",
+                "alert_level": alert_level,
+                "buffer_minutes": round(buffer_minutes, 1),
+                "eta_minutes": eta_minutes,
+                "to": follower,
+                "subject": subject[:100],
+            })
+            print(f"    🚛 Gate cutoff {alert_level.upper()} sent for deal {deal_id} ({int(buffer_minutes)} min buffer)")
+        else:
+            if follower:
+                print(f"    ⚠️ Gate cutoff alert NOT sent for deal {deal_id} (send failed or no token)")
+
+    print(f"🚛 Gate cutoff check: {deals_checked} deals checked, {alerts_sent} alerts sent")
+    return {"status": "ok", "deals_checked": deals_checked, "alerts_sent": alerts_sent}
