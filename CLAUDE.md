@@ -1759,3 +1759,54 @@ After classification + verification, automatically runs for each validated HS co
 
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions
+
+## Session 40c Summary (2026-02-18) — Self-learning from Image Analysis Results
+
+### Overview
+Added image pattern caching to the self-learning engine so repeat AI vision calls on the same image are avoided. Session A (40a) built `image_analyzer.py`; this session added the supporting cache/cost infrastructure in the 3 files we own.
+
+### What Was Built
+
+**`self_learning.py` — 2 new methods on `SelfLearningEngine` (+105 lines)**
+
+| Method | Purpose | Cost |
+|--------|---------|------|
+| `check_image_pattern(image_hash)` | Single Firestore doc read by hash. Returns cached dict (extracted_fields, final_hs_code, confidence, source) or None. 180-day TTL enforced on read. Increments `times_used` on hit (fire-and-forget). | 1 read |
+| `save_image_pattern(image_hash, extracted_fields, final_hs_code, confidence, source)` | Writes to `image_patterns/{image_hash}`. Read-before-write guard: never overwrites higher-confidence existing result. | 1 read + 1 write |
+
+**`cost_tracker.py` — `log_image_analysis()` method (+25 lines)**
+
+| Parameter | Behavior |
+|-----------|----------|
+| `cache_hit=True` | $0.000 — increments `image_cache_hits` only |
+| `cache_hit=False` | $0.002 default — increments `image_cache_misses`, adds to `total_spent` + `ai_cost` |
+
+New breakdown keys: `image_analyses`, `image_cache_hits`, `image_cache_misses`, `image_cost`.
+Class constant: `IMAGE_ANALYSIS_COST = 0.002`.
+
+**`librarian_index.py` — `image_patterns` in COLLECTION_FIELDS (+6 lines)**
+- `title_fields`: `["final_hs_code"]`, `keyword_fields`: `["image_hash"]`, `hs_fields`: `["final_hs_code"]`, `doc_type`: `"cache"`
+
+### Firestore Collection
+| Collection | Doc ID | Fields | TTL |
+|-----------|--------|--------|-----|
+| `image_patterns` | `{image_hash}` | image_hash, extracted_fields, final_hs_code, confidence, source, timestamp, times_used | 180 days |
+
+### COLLECTION_FIELDS Total: 68 collections registered
+(was 67, now 68 after adding `image_patterns`)
+
+### Files Modified (Session 40c owns only these 3)
+| File | Changes |
+|------|---------|
+| `functions/lib/self_learning.py` | +105 lines: `check_image_pattern()`, `save_image_pattern()`, `IMAGE_PATTERN_TTL_DAYS = 180` |
+| `functions/lib/cost_tracker.py` | +25 lines: `IMAGE_ANALYSIS_COST`, 4 breakdown keys, `log_image_analysis()` |
+| `functions/lib/librarian_index.py` | +6 lines: `image_patterns` in COLLECTION_FIELDS |
+
+### Files NOT Touched
+`image_analyzer.py`, `extraction_adapter.py`, `classification_agents.py`, `tracker_email.py`
+
+### Git Commit
+- `a32585e` — Session 40a: Image analysis for attachments with dual AI vision + pattern cache (combined commit with Session A)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
