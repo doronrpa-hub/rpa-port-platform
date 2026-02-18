@@ -1155,3 +1155,133 @@ Email intent system detected intents but sometimes key information was missing (
 
 ### Test Results
 - **583 passed**, 2 skipped — 80 email intent tests (73 existing + 7 new), zero regressions
+
+## Session 34-Audit Summary (2026-02-18) — Full System Audit + Cleanup
+
+### What Was Done
+
+**1. Full System Audit Across All Sessions (32-37, 19 commits)**
+Comprehensive audit of the entire codebase after a massive multi-session development day.
+
+| Area | Result |
+|------|--------|
+| **Test suite** | 576 passed, 0 failed, 2 skipped |
+| **Merge conflicts** | Zero conflict markers found |
+| **Imports** | 62/63 pass (1 pre-existing: `pdf_creator.py` needs `reportlab`) |
+| **Pipeline flow** | All 13 connection points verified end-to-end |
+| **Feature flags** | All enabled, all consistent |
+| **Dead code** | ~770 lines found in main.py + 23 backup files |
+| **Duplicates** | Zero duplicate functions from parallel sessions |
+| **Firestore refs** | ~35 collections used but not in librarian_index |
+
+**2. Dead Code Cleanup — main.py (-551 lines)**
+Removed 12 dead Session 13.1 Gmail/IMAP fallback functions:
+- `extract_reply_email()`, `send_ack_email()`, `send_classification_report()`
+- `check_email_scheduled()` (disabled scheduler), `_simple_email_check()`
+- `_extract_email()`, `_send_ack()`, `decode_email_header()`
+- `extract_body()`, `extract_attachments()`, `detect_document_type()`
+- `classify_and_store()`, `extract_invoice_fields()`
+- Removed unused imports: `imaplib`, `email as email_lib`, `decode_header`
+
+**3. Backup File Cleanup — 23 files deleted (-24,979 lines total)**
+Removed all stale `.bak*` and `.backup*` files from `functions/lib/`:
+- 12 `.bak_20260216` files, 4 `.bak2_20260216`, 4 `.bak3_20260216`
+- 3 `.backup_session14`, 1 `.backup_session6`, 1 `.backup_v1`, 1 `.backup`
+
+**4. Tracker Cleanup — tracker.py (-8 lines)**
+Removed `tracker_poll_active_shipments()` v1 compatibility alias (never called).
+
+**5. Librarian Index — 5 Collections Added**
+Added to `COLLECTION_FIELDS` so overnight brain and librarian can search them:
+- `elimination_log` — D8 elimination engine audit trail
+- `rcb_processed` — core pipeline processed email marker
+- `rcb_logs` — operational system logs
+- `section_notes` — C2 section-level tariff notes
+- `shipping_agents` — customs/clearing agent profiles
+- (`questions_log` and `system_instructions` were already present from Session 35)
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/main.py` | -551 lines: 12 dead functions + 3 unused imports removed |
+| `functions/lib/tracker.py` | -8 lines: removed v1 compat alias |
+| `functions/lib/librarian_index.py` | +35 lines: 5 new COLLECTION_FIELDS entries |
+| 23 `.bak*`/`.backup*` files | Deleted entirely |
+
+### COLLECTION_FIELDS Total: 55 collections registered
+(was 50, now 55 after adding 5)
+
+### Git Commit
+- `a1e9aef` — Session 34 audit cleanup: remove 551 lines dead code, 23 backup files, add 5 collections to librarian_index
+
+### Deployment
+- 29 Cloud Functions deployed to Firebase (2026-02-18) — no runtime changes detected (cleanup was non-functional files)
+
+### Test Results
+- **576 passed**, 2 skipped — zero regressions
+
+## Session 34E Summary (2026-02-18) — Block E: Verification Engine (Phases 4-6)
+
+### Problem
+After Block D (elimination engine) narrows candidates and Agent 2 classifies, there was no verification that the classification is correct. The methodology mandates bilingual verification, knowledge cross-checks, and proactive flagging before results go out.
+
+### What Was Built
+
+**`functions/lib/verification_engine.py`** (NEW, 743 lines):
+
+| Component | What It Does | Cost |
+|-----------|-------------|------|
+| **Phase 4: Bilingual Verification** | Cross-checks product description keywords against HE and EN official descriptions. If EN missing, fetches from UK tariff API (free, cached). If scores below 0.25 threshold, consults Gemini Flash AI (yes/no). | FREE → $0.001 |
+| **Phase 5: Knowledge Verification** | Scans 218 directives + 85 framework order docs (cached in-memory) for supporting/conflicting references. Checks chapter exclusions. Detects if Agent 2 chose an eliminated code (CRITICAL). | FREE |
+| **Proactive Flagging** | Generates 7 flag types per item: PERMIT, STANDARD, FTA, ANTIDUMPING, ELIMINATION_CONFLICT, DIRECTIVE, BILINGUAL_MISMATCH | FREE |
+| **HTML Renderer** | Email-safe badges with severity colors (green/amber/red) matching existing badge scheme | FREE |
+
+**Confidence adjustment table:**
+| Condition | Delta |
+|---|---|
+| Supporting directive | +0.05 |
+| Framework definition match | +0.05 |
+| Chapter exclusion hit | -0.20 |
+| Elimination conflict | -0.30 |
+| UK tariff EN confirms | +0.05 |
+| Total range | [-0.30, +0.20] |
+
+### Pipeline Wiring (6 insertions in `classification_agents.py`)
+1. Import + `VERIFICATION_ENGINE_AVAILABLE` guard
+2. `VERIFICATION_ENGINE_ENABLED = True` feature flag
+3. Pipeline call after verification loop, before `_link_invoice_to_classifications`
+4. `"verification_engine": ve_results` in result dict
+5. `ve_flags` + `ve_phase4` per item in `_enrich_results_for_email()`
+6. `build_verification_flags_html(c)` in email builder after justification/cross-check block
+
+### Audit Findings (2 bugs fixed in e3083d8)
+| Bug | Severity | Fix |
+|-----|----------|-----|
+| Antidumping `"in"` substring match (`"in" in "finland"` → true) | CRITICAL | Changed to exact set membership: `origin in _ANTIDUMPING_ORIGINS` |
+| Directive conflict keyword substring match (`"steel" in content_string`) | CRITICAL | Changed to set membership: `kw in content_kw` |
+
+### Files Created/Modified
+| Action | File | Lines |
+|--------|------|-------|
+| **CREATE** | `functions/lib/verification_engine.py` | 743 |
+| **CREATE** | `functions/tests/test_verification_engine.py` | 576 (46 tests) |
+| **CREATE** | `functions/test_verification_live.py` | 190 (3 live scenarios) |
+| **MODIFY** | `functions/lib/classification_agents.py` | +42 lines (6 targeted insertions) |
+
+### Git Commits
+- `d12ac50` — Block E: Verification Engine — Phase 4+5 bilingual verification + proactive flagging
+- `e3083d8` — Fix 2 audit bugs: antidumping substring + directive keyword match
+
+### Deployment
+- All Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **576 passed**, 2 skipped — zero regressions
+
+### Block Status After Session 34E
+- **Block A**: ✓ (A1-A4)
+- **Block B**: ✓ (B1-B2)
+- **Block C**: ✓ (C1-C6, C8) — C7 blocked
+- **Block D**: ✓ FULLY COMPLETE (D1-D9, 2,282 lines)
+- **Block E**: ✓ COMPLETE (Phase 4+5+Flagging, 743 lines)
+- **Block F-H**: Not started
