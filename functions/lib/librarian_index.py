@@ -525,6 +525,23 @@ COLLECTION_FIELDS = {
         "hs_fields": ["old_hs_code", "new_hs_code"],
         "doc_type": "alert",
     },
+    # Session 46: Deal Identity Graph — unified identifier linking
+    # Links B/L, AWB, container, invoice, PO, file number, seped to a single deal
+    "deal_identity_graph": {
+        "title_fields": ["client_name"],
+        "keyword_fields": ["bl_numbers", "container_numbers", "awb_numbers",
+                          "booking_refs", "invoice_numbers", "file_number",
+                          "seped_number", "job_order_number"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # Session 46: Learned identifier patterns — overnight brain refines from cc@ emails
+    "learned_identifier_patterns": {
+        "title_fields": ["field", "regex"],
+        "keyword_fields": ["field", "source", "client_name"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
     # Session 45: Email quality gate log
     "email_quality_log": {
         "title_fields": ["subject"],
