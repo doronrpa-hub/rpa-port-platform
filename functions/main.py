@@ -313,10 +313,30 @@ def enrich_knowledge(event: scheduler_fn.ScheduledEvent) -> None:
 # ============================================================
 # FUNCTION 5: HTTP API FOR WEB APP
 # ============================================================
+def _check_api_auth(req) -> bool:
+    """Verify Bearer token matches RCB_API_SECRET from Secret Manager."""
+    auth = req.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:]
+    if not token:
+        return False
+    try:
+        import hmac
+        expected = get_secret("RCB_API_SECRET")
+        if not expected:
+            return False
+        return hmac.compare_digest(token, expected)
+    except Exception:
+        return False
+
+
 @https_fn.on_request(cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"]))
 def api(req: https_fn.Request) -> https_fn.Response:
     """REST API for the web application"""
-    
+    if not _check_api_auth(req):
+        return https_fn.Response(json.dumps({"error": "Unauthorized"}), status=401, content_type="application/json")
+
     path = req.path.strip("/").replace("api/", "")
 
     method = req.method
@@ -422,8 +442,13 @@ def get_anthropic_key():
 def rcb_api(req: https_fn.Request) -> https_fn.Response:
     """RCB API endpoints"""
     path = req.path.strip("/").split("/")[-1] if req.path else ""
+
+    # Health check is public; everything else requires auth
+    if path not in ("", "health") and not _check_api_auth(req):
+        return https_fn.Response(json.dumps({"error": "Unauthorized"}), status=401, content_type="application/json")
+
     method = req.method
-    
+
     # Health check
     if path == "" or path == "health":
         return https_fn.Response(json.dumps({"status": "ok", "service": "RCB API"}), content_type="application/json")
