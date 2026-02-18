@@ -247,6 +247,7 @@ class ToolExecutor:
             "crossref_technical": self._crossref_technical,
             "check_opensanctions": self._check_opensanctions,
             "get_israel_vat_rates": self._get_israel_vat_rates,
+            "fetch_seller_website": self._fetch_seller_website,
             # Stubs
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
@@ -348,6 +349,14 @@ class ToolExecutor:
         # Also try with common check digit formats
         if "/" in str(hs_code):
             candidates.append(str(hs_code).replace("/", "_").replace(".", "").replace(" ", ""))
+        # Session 47: Also try with Luhn check digit appended (doc IDs are hs10_checkdigit)
+        if len(hs_10) == 10 and hs_10.isdigit():
+            try:
+                from lib.librarian import _hs_check_digit
+                check = _hs_check_digit(hs_10)
+                candidates.append(f"{hs_10}_{check}")
+            except Exception:
+                pass
 
         for doc_id in candidates:
             try:
@@ -2303,6 +2312,99 @@ class ToolExecutor:
         return self._cached_external_lookup(
             f"vat_{hs_code}", "israel_tax_cache", 7, _fetch, _ALLOWED
         )
+
+    def _fetch_seller_website(self, inp):
+        """Fetch seller website to confirm products they sell. FREE, cached 30 days.
+
+        Session 47: Infers domain from seller name, fetches homepage,
+        extracts product keywords via BeautifulSoup. Reuses _safe_get()
+        and _cached_external_lookup() infrastructure.
+        """
+        seller_name = str(inp.get("seller_name", "")).strip()
+        seller_domain = str(inp.get("seller_domain", "")).strip()
+        product_hint = str(inp.get("product_hint", "")).strip()
+
+        if not seller_name:
+            return {"found": False, "error": "seller_name required"}
+
+        # Infer domain if not provided
+        if not seller_domain:
+            seller_domain = self._infer_seller_domain(seller_name)
+
+        if not seller_domain:
+            return {
+                "found": False,
+                "seller_name": seller_name,
+                "note": "Could not infer domain from seller name",
+            }
+
+        _ALLOWED = {"found", "seller_name", "domain", "products_mentioned",
+                     "business_type", "raw_excerpt", "source", "note"}
+
+        def _fetch():
+            url = f"https://{seller_domain}"
+            # Direct request — seller domains are dynamic, not in static allowlist
+            try:
+                resp = requests.get(url, timeout=10, headers={
+                    "User-Agent": "Mozilla/5.0 (RCB Customs Classifier)"
+                })
+                if resp.status_code != 200:
+                    resp = None
+            except Exception:
+                resp = None
+            if not resp:
+                return {
+                    "found": False,
+                    "seller_name": seller_name,
+                    "domain": seller_domain,
+                    "note": "Website unreachable",
+                    "source": "seller_website",
+                }
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text[:100000], "html.parser")
+                for tag in soup(["script", "style", "nav", "footer"]):
+                    tag.decompose()
+                page_text = soup.get_text(separator=" ", strip=True)[:5000]
+                title = soup.title.string.strip() if soup.title and soup.title.string else ""
+            except Exception:
+                page_text = resp.text[:5000]
+                title = ""
+
+            return {
+                "found": True,
+                "seller_name": seller_name,
+                "domain": seller_domain,
+                "products_mentioned": sanitize_external_text(page_text, max_length=1500),
+                "business_type": sanitize_external_text(title, max_length=200),
+                "raw_excerpt": sanitize_external_text(page_text[:500], max_length=500),
+                "source": "seller_website",
+            }
+
+        return self._cached_external_lookup(
+            f"seller_{seller_domain}", "web_search_cache", 30, _fetch, _ALLOWED
+        )
+
+    @staticmethod
+    def _infer_seller_domain(seller_name):
+        """Infer seller website domain from company name. Simple heuristic."""
+        import re as _re
+        name = seller_name.lower().strip()
+        # Remove legal suffixes
+        for suffix in ("ltd", "llc", "inc", "corp", "co.", "gmbh", "s.a.",
+                       "b.v.", "s.r.l.", "sp. z o.o.", "jsc", "ojsc", "oao"):
+            name = name.replace(suffix, "")
+        # Keep only alphanumeric
+        name = _re.sub(r"[^a-z0-9]", "", name).strip()
+        if not name or len(name) < 3:
+            return ""
+        # Try common TLDs
+        for tld in (".com", ".by", ".cn", ".de", ".co.uk", ".ru", ".fr",
+                     ".it", ".es", ".nl", ".pl", ".kr", ".jp", ".in"):
+            candidate = f"{name}{tld}"
+            if len(candidate) > 6:
+                return candidate
+        return f"{name}.com"
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""

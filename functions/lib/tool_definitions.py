@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 32 tools available to the AI during classification.
+Defines the 33 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -708,6 +708,34 @@ CLAUDE_TOOLS = [
             "required": ["hs_code"],
         },
     },
+    # Tool #33 (Session 47): Seller website enrichment
+    {
+        "name": "fetch_seller_website",
+        "description": (
+            "Fetch seller/supplier website to confirm what products they sell. "
+            "Call AFTER seller name is identified in the invoice — use product "
+            "catalogue data to verify or enrich classification. FREE, cached 30 days. "
+            "Works best when seller_domain is known (e.g. 'belshina.by' for JSC BELSHINA)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "seller_name": {
+                    "type": "string",
+                    "description": "Seller company name (English or Hebrew)",
+                },
+                "seller_domain": {
+                    "type": "string",
+                    "description": "Seller website domain if known (e.g. 'belshina.by'). Optional.",
+                },
+                "product_hint": {
+                    "type": "string",
+                    "description": "Product being shipped — helps narrow website search",
+                },
+            },
+            "required": ["seller_name"],
+        },
+    },
 ]
 
 
@@ -780,6 +808,7 @@ WORKFLOW:
 30. Call crossref_technical for academic definitions of rare/technical products (OVERNIGHT MODE ONLY).
 31. Call check_opensanctions for EVERY shipper and consignee name — compliance requirement, flag sanctions hits.
 32. Call get_israel_vat_rates to complete the total import cost picture (duty + purchase tax + VAT).
+33. Call fetch_seller_website when seller is identified — check their product catalogue to confirm/enrich classification. Especially useful when item descriptions are vague or incomplete. FREE and cached.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

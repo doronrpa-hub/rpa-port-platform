@@ -135,6 +135,28 @@ def extract_text_from_attachments(attachments_data, email_body=None,
             except Exception as e:
                 logger.warning(f"  -> {name}: AI Vision analysis failed: {e}")
 
+        # Session 47: AI Vision fallback for scanned/low-text PDFs
+        # When text extraction yields < 200 chars from a PDF, it is likely
+        # a scanned image-based document. Render page 1 to PNG and run the
+        # same dual AI vision analysis used for image attachments.
+        if _is_pdf_file(name) and len(text) < 200 and (gemini_key or anthropic_key):
+            try:
+                _pdf_image_bytes = _render_pdf_first_page(file_bytes)
+                if _pdf_image_bytes:
+                    from .image_analyzer import analyze_image
+                    vision = analyze_image(
+                        _pdf_image_bytes, name.replace(".pdf", ".png"),
+                        gemini_key, anthropic_key,
+                    )
+                    if vision:
+                        all_text.append(
+                            f"=== {name} [AI Vision Analysis \u2014 Scanned PDF] ===\n"
+                            f"{json.dumps(vision, ensure_ascii=False, indent=2)}"
+                        )
+                        logger.info(f"  -> {name}: Scanned PDF AI Vision analysis added")
+            except Exception as e:
+                logger.warning(f"  -> {name}: Scanned PDF AI Vision failed: {e}")
+
     return "\n\n".join(all_text)
 
 
@@ -277,6 +299,36 @@ def _is_image_file(name):
         return False
     ext = name.rsplit(".", 1)[-1].lower()
     return ext in {"png", "jpg", "jpeg", "tiff", "tif", "bmp", "gif", "webp"}
+
+
+def _is_pdf_file(name):
+    """Check if filename is a PDF (Session 47)."""
+    if not name or "." not in name:
+        return False
+    return name.rsplit(".", 1)[-1].lower() == "pdf"
+
+
+def _render_pdf_first_page(file_bytes):
+    """Render first page of a PDF to PNG bytes for AI Vision analysis (Session 47).
+
+    Uses PyMuPDF (fitz) at 2x zoom (~144 DPI) for good OCR quality
+    while keeping the image size manageable for AI vision APIs.
+    Returns PNG bytes or None on failure.
+    """
+    try:
+        import fitz
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        if len(doc) == 0:
+            doc.close()
+            return None
+        page = doc[0]
+        mat = fitz.Matrix(2.0, 2.0)  # 2x zoom = ~144 DPI
+        pix = page.get_pixmap(matrix=mat)
+        png_bytes = pix.tobytes("png")
+        doc.close()
+        return png_bytes
+    except Exception:
+        return None
 
 
 def _guess_content_type(filename):

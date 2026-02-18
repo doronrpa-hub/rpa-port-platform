@@ -625,7 +625,9 @@ def _try_parse_agent1(result, model_name):
 def run_document_agent(api_key, doc_text, gemini_key=None):
     """Agent 1: Extract invoice data - Updated Session 11 with shipping details
     Session 15: Uses Gemini Flash (simple extraction task)"""
-    system = """אתה סוכן חילוץ מידע. חלץ מהמסמך JSON עם כל השדות הבאים:
+    system = """אתה סוכן חילוץ מידע ממסמכי סחר בינלאומי.
+המסמך יכול להיות: חשבונית מסחרית, חשבון פרופורמה, הצעת מחיר, רשימת מחירים, או כל מסמך המכיל פריטים לסיווג מכס.
+חלץ מהמסמך JSON עם כל השדות הבאים:
 {
     "seller": "",
     "buyer": "",
@@ -647,6 +649,8 @@ def run_document_agent(api_key, doc_text, gemini_key=None):
 
 הנחיות:
 - CRITICAL: Extract EACH product as a SEPARATE item in the items array. Every line item on the invoice must be its own entry. If the invoice has 10 products, return 10 items. Include the product name, quantity, unit price, total, and origin country for each.
+- אם המסמך הוא הצעת מחיר או פרופורמה — חלץ את הפריטים בדיוק כמו מחשבונית. השתמש במספר ההצעה כ-invoice_number.
+- כל שורה בטבלת מחירים/פריטים = item נפרד. אל תדלג על שורות.
 - Chinese product names (中文) must be translated to English in the description field.
 - Do NOT combine multiple products into one item. Do NOT summarize.
 - direction: "import" אם הסחורה מגיעה לישראל, "export" אם יוצאת מישראל
@@ -1556,7 +1560,7 @@ def _build_clarification_banner(candidates_list):
             letter = chr(0x05D0 + j)  # א, ב, ג
             rows_html += (
                 f'<tr><td style="padding:8px;border:1px solid #dee2e6">{letter}</td>'
-                f'<td style="padding:8px;border:1px solid #dee2e6;font-family:monospace">{opt.get("hs_code", "")}</td>'
+                f'<td style="padding:8px;border:1px solid #dee2e6;font-family:monospace">{get_israeli_hs_format(opt.get("hs_code", ""))}</td>'
                 f'<td style="padding:8px;border:1px solid #dee2e6">{opt.get("tariff_desc_he", "")}</td>'
                 f'<td style="padding:8px;border:1px solid #dee2e6">{opt.get("reasoning", "")}</td></tr>'
             )
@@ -2928,7 +2932,14 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
 
     Sends a single email containing: ack + classification report + clarification (if needed).
     Uses internet_message_id for proper Outlook/Gmail threading.
+
+    Session 47: to_email may be None for external senders with no @rpa-port.co.il in chain.
+    In that case, classification runs normally but NO reply email is sent.
     """
+    # Session 47: Reply suppression for external senders without team address
+    _suppress_reply = not to_email
+    if _suppress_reply:
+        print("  📬 No reply target (external sender, no team address) — will classify but NOT send email")
     try:
         print(f"  🤖 Starting: {subject[:50]}")
         _cost_tracker.reset()  # Session 27: Reset per-run cost accumulator
@@ -2984,11 +2995,12 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. | RCB — rcb@rpa-port.co.il</p>'
                 '</div></div>'
             )
-            try:
-                helper_graph_send(access_token, rcb_email, to_email, subject,
-                                  _fail_html, msg_id, internet_message_id=internet_message_id)
-            except Exception:
-                pass
+            if not _suppress_reply:
+                try:
+                    helper_graph_send(access_token, rcb_email, to_email, subject,
+                                      _fail_html, msg_id, internet_message_id=internet_message_id)
+                except Exception:
+                    pass
             try:
                 import hashlib as _hl_f
                 _safe_f = _hl_f.md5(msg_id.encode()).hexdigest()
@@ -3053,11 +3065,12 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. | RCB — rcb@rpa-port.co.il</p>'
                 '</div></div>'
             )
-            try:
-                helper_graph_send(access_token, rcb_email, to_email, subject,
-                                  _err_html, msg_id, internet_message_id=internet_message_id)
-            except Exception:
-                pass
+            if not _suppress_reply:
+                try:
+                    helper_graph_send(access_token, rcb_email, to_email, subject,
+                                      _err_html, msg_id, internet_message_id=internet_message_id)
+                except Exception:
+                    pass
             try:
                 import hashlib as _hl_p
                 _safe_p = _hl_p.md5(msg_id.encode()).hexdigest()
@@ -3205,9 +3218,13 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         
         # Determine status
         has_smart_questions = bool(results.get("smart_questions"))
+        _items_count = len(results.get("agents", {}).get("classification", {}).get("classifications", []))
         if invoice_validation and invoice_validation['score'] < 70:
             status = "CLARIFICATION"
         elif has_smart_questions:
+            status = "CLARIFICATION"
+        elif _items_count == 0:
+            # Session 47: No items extracted — ask sender for product details
             status = "CLARIFICATION"
         elif invoice_validation and invoice_validation['score'] >= 70:
             status = "FINAL"
@@ -3234,6 +3251,24 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         # ── Build clarification section (merged into same email) ──
         clarification_sent = False
         clarification_html = ""
+
+        # Session 47: If zero items were classified, ask sender for product details
+        if _items_count == 0:
+            clarification_html = (
+                '<div dir="rtl" style="background:#fff3cd;border:2px solid #ffc107;'
+                'border-radius:10px;padding:20px;margin-top:25px;font-family:Arial,sans-serif">'
+                '<h2 style="color:#856404;margin:0 0 10px 0">\U0001f4cb \u05d1\u05e7\u05e9\u05d4 \u05dc\u05d4\u05d1\u05d4\u05e8\u05d4</h2>'
+                '<p style="color:#856404;margin:8px 0;font-size:14px">'
+                '\u05dc\u05d0 \u05d4\u05e6\u05dc\u05d7\u05ea\u05d9 \u05dc\u05d6\u05d4\u05d5\u05ea \u05e4\u05e8\u05d9\u05d8\u05d9\u05dd \u05d1\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea. \u05d0\u05e0\u05d0 \u05e9\u05dc\u05d7:</p>'
+                '<ul style="color:#856404;margin:8px 0;padding-right:20px;font-size:14px;line-height:2">'
+                '<li>\u05ea\u05d9\u05d0\u05d5\u05e8 \u05d4\u05e1\u05d7\u05d5\u05e8\u05d4</li>'
+                '<li>\u05db\u05de\u05d5\u05ea \u05d5\u05d9\u05d7\u05d9\u05d3\u05d5\u05ea</li>'
+                '<li>\u05e2\u05e8\u05da \u05e4\u05e8\u05d9\u05d8</li>'
+                '</ul></div>'
+            )
+            clarification_sent = True
+            print("  \U0001f4cb Clarification: items=0, asking sender for product details")
+
         if MODULES_AVAILABLE and invoice_validation and invoice_validation['score'] < 70:
             try:
                 from lib.clarification_generator import (
@@ -3326,8 +3361,14 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 })
 
         print("  📤 Sending consolidated email...")
-        if helper_graph_send(access_token, rcb_email, to_email, subject_line, final_html, msg_id, attachments, internet_message_id=internet_message_id):
+        _email_sent = False
+        if _suppress_reply:
+            print("  📬 Reply suppressed (external sender, no team address)")
+            _email_sent = True  # Treat as "sent" for Firestore save flow
+        elif helper_graph_send(access_token, rcb_email, to_email, subject_line, final_html, msg_id, attachments, internet_message_id=internet_message_id):
             print(f"  ✅ Sent to {to_email}")
+            _email_sent = True
+        if _email_sent:
 
             # Save to Firestore
             save_data = {

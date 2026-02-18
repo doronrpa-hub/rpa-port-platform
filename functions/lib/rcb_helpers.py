@@ -945,6 +945,16 @@ def email_quality_gate(recipient, subject, html_body,
                                    subject, deal_id, alert_type, None)
                 return False, "all_placeholder_data"
 
+        # ── Rule 7 (Session 47): block empty classification emails ──
+        # A classification email (subject contains "סיווג") with zero HS codes
+        # means extraction failed — this should not reach the user.
+        if "\u05e1\u05d9\u05d5\u05d5\u05d2" in (subject or "") and "RCB-" in (subject or ""):
+            _hs_cells = re.findall(r'\d{2}\.\d{2}', html_body or "")
+            if not _hs_cells:
+                _log_email_quality(db, False, "empty_classification", recipient,
+                                   subject, deal_id, alert_type, None)
+                return False, "empty_classification"
+
         # ── Content hash for dedup ──
         content_hash = hashlib.md5(
             html_body.encode('utf-8', errors='replace')

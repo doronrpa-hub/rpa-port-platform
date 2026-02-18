@@ -434,10 +434,17 @@ class SelfLearningEngine:
             chapter = hs_code.split(".")[0] if "." in hs_code else hs_code[:4]
             keywords = self._extract_keywords(product_description)
 
+            # Session 47: Normalize HS code to Israeli full format XX.XX.XXXXXX/X
+            try:
+                from lib.librarian import get_israeli_hs_format
+                hs_code_stored = get_israeli_hs_format(hs_code)
+            except Exception:
+                hs_code_stored = hs_code
+
             doc_ref.set({
                 "product": product_description.strip(),
                 "product_lower": product_lower,
-                "hs_code": hs_code,
+                "hs_code": hs_code_stored,
                 "chapter": chapter,
                 "keywords": keywords[:50],
                 "method": method,

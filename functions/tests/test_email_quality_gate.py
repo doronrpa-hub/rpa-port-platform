@@ -336,6 +336,34 @@ class TestRule6DuplicateDigest:
 
 
 # ============================================================
+# Rule 7: Block empty classification (Session 47)
+# ============================================================
+
+class TestRule7EmptyClassification:
+    def test_classification_no_hs_codes_blocked(self):
+        """Classification email with no HS codes in body is blocked."""
+        body = '<html><body>' + 'x' * 300 + '</body></html>'
+        subject = "[RCB-20260218-BALKI] \u2705 \u05e1\u05d9\u05d5\u05d5\u05d2 \u05d9\u05d1\u05d5\u05d0 | JSC BELSHINA"
+        ok, reason = email_quality_gate("doron@rpa-port.co.il", subject, body)
+        assert not ok
+        assert reason == "empty_classification"
+
+    def test_classification_with_hs_codes_passes(self):
+        """Classification email containing HS codes is allowed."""
+        body = '<html><body>' + 'x' * 200 + '<td>40.11</td><td>12%</td>' + 'x' * 100 + '</body></html>'
+        subject = "[RCB-20260218-XYZAB] \u2705 \u05e1\u05d9\u05d5\u05d5\u05d2 \u05d9\u05d1\u05d5\u05d0 | Test Corp"
+        ok, reason = email_quality_gate("doron@rpa-port.co.il", subject, body)
+        assert ok
+
+    def test_non_classification_email_not_affected(self):
+        """Non-classification emails (tracker, digest) are not affected by Rule 7."""
+        body = '<html><body>' + 'x' * 300 + '</body></html>'
+        subject = "RCB | Tracker Update | MEDURS12345"
+        ok, reason = email_quality_gate("doron@rpa-port.co.il", subject, body)
+        assert ok
+
+
+# ============================================================
 # Fail-open behavior
 # ============================================================
 

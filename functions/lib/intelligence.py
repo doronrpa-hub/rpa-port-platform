@@ -718,7 +718,7 @@ _MINISTRY_ROUTES = {
         ],
     },
     "39": {
-        "cargo_he": "פלסטיק, גומי",
+        "cargo_he": "פלסטיק",
         "risk": "low",
         "ministries": [
             {"name": "SII", "name_he": "מכון התקנים",
@@ -726,6 +726,25 @@ _MINISTRY_ROUTES = {
              "documents": ["SII standard compliance", "Food-contact certificate"],
              "documents_he": ["עמידה בתקן ישראלי", "אישור מגע מזון"],
              "procedure": "Consumer products require SII mark. Food-contact materials need separate cert."},
+        ],
+    },
+    "40": {
+        "cargo_he": "גומי, צמיגים",
+        "risk": "medium",
+        "ministries": [
+            {"name": "MOT", "name_he": "משרד התחבורה",
+             "url": "https://www.gov.il/he/departments/ministry_of_transport_and_road_safety",
+             "documents": ["Israeli Standard SI 1022 (tyres)", "MOT type approval for pneumatic tyres"],
+             "documents_he": ["תקן ישראלי ת\"י 1022 (צמיגים)", "אישור סוג משרד התחבורה לצמיגים פנאומטיים"],
+             "procedure": "Pneumatic tyres (HS 4011) require MOT approval per SI 1022. "
+                          "Applies to all new tyres for motor vehicles and trucks. "
+                          "Import without MOT approval is prohibited."},
+            {"name": "SII", "name_he": "מכון התקנים",
+             "url": "https://www.sii.org.il",
+             "documents": ["SI 1022 compliance testing", "ECE R30/R54 marking"],
+             "documents_he": ["בדיקת עמידה בת\"י 1022", "סימון ECE R30/R54"],
+             "procedure": "SII tests tyres per SI 1022 (based on UNECE R30 for passenger, R54 for truck). "
+                          "Marking and labelling requirements must be met."},
         ],
     },
     "44": {
@@ -916,7 +935,7 @@ _CHAPTER_ALIASES = {
     "25": "28", "26": "28", "27": "28",  # minerals, fuels -> environment
     "29": "28", "38": "28",  # chemicals
     "31": "06",  # fertilizers -> MOA
-    "40": "39",  # rubber -> plastics/SII
+    # "40" removed from aliases — chapter 40 has its own route (tyres need MOT)
     "45": "44", "46": "44",  # cork, straw -> wood
     "51": "50", "52": "50", "53": "50", "54": "50", "55": "50",
     "56": "50", "57": "50", "58": "50", "59": "50", "60": "50",

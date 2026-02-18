@@ -389,9 +389,17 @@ def _compare_results(primary_hs, models):
 
 
 def _format_hs(code):
-    """Format HS code for display: XXXX.XX.XXXX"""
+    """Format HS code for display: XX.XX.XXXXXX/X (Israeli full format)."""
     if not code:
         return "N/A"
+    try:
+        from lib.librarian import get_israeli_hs_format
+        formatted = get_israeli_hs_format(code)
+        if formatted and formatted != code:
+            return formatted
+    except Exception:
+        pass
+    # Fallback: raw formatting
     c = str(code).replace(".", "").replace("/", "")
     if len(c) >= 8:
         return f"{c[:4]}.{c[4:6]}.{c[6:]}"

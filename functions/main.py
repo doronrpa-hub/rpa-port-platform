@@ -756,8 +756,8 @@ def _rcb_check_email_inner(event) -> None:
     
     # Get ALL messages from last 2 days (ignore read/unread)
     from datetime import datetime, timedelta, timezone
-    # TEMPORARY: 2-hour window to prevent reprocessing old emails after hash fix
-    two_days_ago = (datetime.utcnow() - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Session 47: Restored 2-day lookback (was temporarily 2h after hash fix)
+    two_days_ago = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     
     url = f"https://graph.microsoft.com/v1.0/users/{rcb_email}/mailFolders/inbox/messages"
     params = {
@@ -794,6 +794,8 @@ def _rcb_check_email_inner(event) -> None:
         # Skip system emails for all paths
         if from_email.lower() == rcb_email.lower():
             continue  # Never process our own outgoing emails (prevents feedback loop)
+        if from_email.lower() == 'cc@rpa-port.co.il':
+            continue  # Session 47: Digest group — read only, never process as sender
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
             continue
         if '[RCB-SELFTEST]' in subject:
@@ -978,9 +980,26 @@ def _rcb_check_email_inner(event) -> None:
             })
             continue
 
-        # ── Direct TO emails: full pipeline, only from @rpa-port.co.il ──
-        if not from_email.lower().endswith('@rpa-port.co.il'):
-            continue
+        # ── Direct TO emails: full pipeline from ANY sender ──
+        # Session 47: Process all senders. Reply only to @rpa-port.co.il.
+        # Determine reply-to address: team sender → reply to them.
+        # External sender → find @rpa-port.co.il in To/CC chain.
+        # No team address found → classify + store, but NO reply email.
+        _reply_to = None
+        if from_email.lower().endswith('@rpa-port.co.il'):
+            _reply_to = from_email  # Team sender — reply directly
+        else:
+            # External sender — find @rpa-port.co.il in To/CC recipients
+            _all_recipients = to_recipients + msg.get('ccRecipients', [])
+            for _r in _all_recipients:
+                _addr = _r.get('emailAddress', {}).get('address', '').lower()
+                if _addr.endswith('@rpa-port.co.il') and _addr != rcb_email.lower() and _addr != 'cc@rpa-port.co.il':
+                    _reply_to = _r.get('emailAddress', {}).get('address', '')
+                    break
+            if _reply_to:
+                print(f"    📬 External sender {from_email} → reply to {_reply_to}")
+            else:
+                print(f"    📬 External sender {from_email} → no team address in chain, will classify but NOT reply")
 
         # Check if already processed
         import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
@@ -1141,8 +1160,9 @@ def _rcb_check_email_inner(event) -> None:
                 email_body = _re.sub(r'<[^>]+>', ' ', email_body)
                 email_body = _re.sub(r'\s+', ' ', email_body).strip()
 
+            # Session 47: Reply routing — reply_to is @rpa-port.co.il or None
             process_and_send_report(
-                access_token, rcb_email, from_email, subject,
+                access_token, rcb_email, _reply_to, subject,
                 from_name, raw_attachments, msg_id, get_secret,
                 get_db(), firestore, helper_graph_send, extract_text_from_attachments,
                 email_body=email_body,
