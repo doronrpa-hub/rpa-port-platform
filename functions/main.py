@@ -692,6 +692,8 @@ def _rcb_check_email_inner(event) -> None:
         print(f"    DEBUG: {subject[:30]} from={from_email} is_direct={is_direct}")
 
         # Skip system emails for all paths
+        if from_email.lower() == rcb_email.lower():
+            continue  # Never process our own outgoing emails (prevents feedback loop)
         if 'undeliverable' in subject.lower() or 'backup' in subject.lower():
             continue
         if '[RCB-SELFTEST]' in subject:
