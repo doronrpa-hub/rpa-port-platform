@@ -642,7 +642,7 @@ Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. 
 - No alternative data source found
 - Stub remains in tool_executors.py dispatcher
 
-### Tool-Calling Engine: 13 Active Tools
+### Tool-Calling Engine: 14 Active Tools
 | # | Tool | Source | Wired |
 |---|------|--------|-------|
 | 1 | check_memory | classification_memory | Session A |
@@ -658,6 +658,7 @@ Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. 
 | 11 | search_classification_directives | classification_directives (C6) | C6 |
 | 12 | search_legal_knowledge | legal_knowledge (C8) | C8 |
 | 13 | run_elimination | elimination_engine (D1-D8) — deterministic tariff tree walk | D9 |
+| 14 | search_wikipedia | Wikipedia REST API (free, cached 30 days) — product/material knowledge | Session 37b |
 
 ### Firestore Collections Seeded This Session
 | Collection | Docs | Block |
@@ -1285,3 +1286,47 @@ After Block D (elimination engine) narrows candidates and Agent 2 classifies, th
 - **Block D**: ✓ FULLY COMPLETE (D1-D9, 2,282 lines)
 - **Block E**: ✓ COMPLETE (Phase 4+5+Flagging, 743 lines)
 - **Block F-H**: Not started
+
+## Session 37b Summary (2026-02-18) — Tool #14: Wikipedia API Integration
+
+### What Was Done
+
+Added `search_wikipedia` as the 14th tool in the tool-calling engine. FREE Wikipedia API integration for product/material knowledge lookup during classification.
+
+### How It Works
+
+1. **Per-request cache** — avoids duplicate Wikipedia calls within one classification run
+2. **Firestore cache** (`wikipedia_cache` collection, 30-day TTL) — avoids repeat API calls across runs
+3. **Two-step Wikipedia API**:
+   - Search API (`/w/api.php?action=query&list=search`) → find best matching title (top 3 results)
+   - Summary API (`/api/rest_v1/page/summary/{title}`) → plain text extract (max 2000 chars)
+4. **User-Agent**: `RCB-RPA-PORT/1.0 (rcb@rpa-port.co.il)`
+5. **Cost**: FREE — no API key, no billing
+6. **Safety**: No internal data sent (query is product/material name only)
+
+### Use Cases in RCB
+- Email intent KNOWLEDGE_QUERY: look up product before answering
+- Overnight brain: enrich product knowledge for unknown materials
+- Classification: understand product composition/use before HS code selection (e.g., "polyethylene terephthalate", "aramid fiber", "lithium iron phosphate")
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | +`_search_wikipedia()` method (124 lines), `_wikipedia_cache` in `__init__`, registered in dispatcher, added `hashlib`+`requests` imports, Wikipedia API constants |
+| `functions/lib/tool_definitions.py` | +`search_wikipedia` tool definition (Claude + Gemini auto-converted), system prompt step 13 added, header 13→14 tools |
+| `functions/lib/librarian_index.py` | +`wikipedia_cache` collection in COLLECTION_FIELDS |
+| `functions/tests/test_tool_calling.py` | Tool count 13→14, `search_wikipedia` in expected names set, Gemini declarations 13→14 |
+
+### New Firestore Collection
+| Collection | Purpose |
+|-----------|---------|
+| `wikipedia_cache` | Cached Wikipedia lookups, keyed by MD5(query.lower()), 30-day TTL |
+
+### Git Commit
+- `92d4b21` — Tool #14: search_wikipedia — free Wikipedia API integration for product knowledge
+
+### Deployment
+- All 29 Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
