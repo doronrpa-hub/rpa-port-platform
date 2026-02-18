@@ -334,6 +334,41 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    # Block D8: Elimination engine audit trail — full elimination steps per run
+    "elimination_log": {
+        "title_fields": ["product_description"],
+        "keyword_fields": ["survivors", "eliminated"],
+        "hs_fields": ["survivors"],
+        "doc_type": "record",
+    },
+    # Core pipeline marker — processed email records
+    "rcb_processed": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["from_email", "classification_type", "status"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # Operational logging — RCB system logs
+    "rcb_logs": {
+        "title_fields": ["message", "action"],
+        "keyword_fields": ["level", "source"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # C2: Section-level notes from tariff (distinct from chapter_notes)
+    "section_notes": {
+        "title_fields": ["section_title_he", "section_title_en", "notes_he"],
+        "keyword_fields": ["section_number", "keywords"],
+        "hs_fields": [],
+        "doc_type": "reference",
+    },
+    # Shipping agents — customs/clearing agent profiles (distinct from shipping_lines)
+    "shipping_agents": {
+        "title_fields": ["name", "company"],
+        "keyword_fields": ["agent_code", "port"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension

@@ -1565,7 +1565,9 @@ def _handle_command(command, msg, db, firestore_module, access_token, rcb_email,
         stopped = 0
         for d in deals:
             db.collection("tracker_deals").document(d.id).update({
+                "status": "stopped",
                 "follow_mode": "stopped",
+                "stopped_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             })
             stopped += 1
@@ -2288,10 +2290,3 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         traceback.print_exc()
         return False
 
-
-
-# tracker_poll_active_shipments is the old v1 name
-# Alias to new function for main.py compatibility
-def tracker_poll_active_shipments(db, firestore_module, get_secret_func, access_token=None, rcb_email=None):
-    """v1 compatibility alias"""
-    return tracker_poll_active_deals(db, firestore_module, get_secret_func, access_token, rcb_email)
