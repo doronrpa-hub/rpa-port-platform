@@ -1951,3 +1951,141 @@ Class constant: `IMAGE_ANALYSIS_COST = 0.002`.
 
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions
+
+## Session 41 Summary (2026-02-18) — Fix Email Quality: Empty Guards, Clean Subjects, Stable Threading
+
+### Problem
+Production tracker emails had 5 critical quality issues:
+1. **Empty tracker emails** being sent (Containers: 0, BL: blank, Vessel: blank, all dashes)
+2. **Subject lines** full of Re:Re:Re: thread garbage
+3. **Conversation threading** not working — emails about same deal not grouped
+4. **No empty email guard** — `helper_graph_send` had zero content validation
+5. **Specific empty deal** (RPA16666 / 6015697 / DARBOX → TEVA API) sent at 16:16
+
+### Root Causes Identified
+1. `_send_tracker_email()` had ZERO data guards — sent regardless of deal content
+2. `_send_tracker_email()` used `helper_graph_reply()` first, which inherited the original thread's garbage subject — clean subject only used on fallback
+3. Threading used the latest observation's message ID (changes with each email), not a stable per-deal anchor
+4. `helper_graph_send()` had no content validation gate
+5. Deal creation sent email BEFORE TaskYam enrichment populated data
+
+### Full Email Audit
+**34 email send points audited** across the entire codebase:
+- 22 via `helper_graph_send` direct calls
+- 13 via `_send_reply_safe` (email_intent system — all properly domain-gated)
+- 3 via `_send_tracker_email` (THE PROBLEM — no guards)
+- All other 29 send points had adequate guards
+
+### What Was Done
+
+**1. Centralized Email Quality Guards (`rcb_helpers.py`)**
+
+| Function | Purpose |
+|----------|---------|
+| `clean_email_subject(subject)` | Strips Re:/RE:/Fwd:/FW: prefix chains via compiled regex |
+| `validate_email_before_send(subject, body_html)` | Rejects empty subject, garbage subject, empty body, body-with-only-dashes templates |
+
+**2. Tracker Email Data Guard (`tracker.py`)**
+
+| Function | Purpose |
+|----------|---------|
+| `_deal_has_minimum_data(deal)` | Requires at least 1 container OR BL number OR vessel name |
+
+**3. Rewritten `_send_tracker_email()` v3 (`tracker.py`)**
+
+| Change | Before | After |
+|--------|--------|-------|
+| Data guard | None | `_deal_has_minimum_data()`, logs to `rcb_logs` if empty |
+| Content validation | None | `validate_email_before_send()` rejects invalid emails |
+| Subject cleaning | Raw subject | `clean_email_subject()` strips Re:/Fwd: chains |
+| Send method | `helper_graph_reply` first (inherits garbage subject) | Always `helper_graph_send` with clean subject |
+| Threading | Latest observation's message ID (unstable) | Stable `deal_thread_id` = `<rcb-trk-{deal_id}@rpa-port.co.il>` |
+| Empty deal handling | Sent empty email immediately | Skipped + logged, deferred to next poll after enrichment |
+
+**4. New Subject Format (`tracker_email.py`)**
+
+| Before | After |
+|--------|-------|
+| `[RCB-TRK] Import \| BOL \| 3/5 Released` | `RCB \| BOL \| 3/5 Released \| VESSEL NAME` |
+
+**5. Deal Thread ID for Stable Threading**
+- `_create_deal()` includes `deal_thread_id: ""` field
+- First email send generates `<rcb-trk-{deal_id}@rpa-port.co.il>` and saves to deal doc
+- ALL subsequent emails use this as In-Reply-To + References headers
+
+### RPA16666 Root Cause
+Email with BOL → deal created → 0 containers, no vessel → TaskYam quick-check skipped (no containers) → STEP 8 sends email immediately → empty email. Fix: `_deal_has_minimum_data()` blocks send; deferred to 30-min poll after enrichment.
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/rcb_helpers.py` | +35 lines: `_RE_FWD_PATTERN`, `clean_email_subject()`, `validate_email_before_send()` |
+| `functions/lib/tracker.py` | +63/-33 lines: `_deal_has_minimum_data()`, `_send_tracker_email()` v3, `deal_thread_id` in `_create_deal()` |
+| `functions/lib/tracker_email.py` | +8/-6 lines: New subject format `RCB \| identifier \| status \| vessel` |
+
+### Git Commit
+- `ed986f1` — Fix email quality: empty tracker guards, clean subjects, stable threading
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+- 27 first pass + 3 retried (HTTP 409)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
+
+## Session 40b Summary (2026-02-18) — Tracker Feedback Loop Fix + Data Cleanup
+
+### Problem
+Live tracker email sent with empty data for shipment RPA16666 / 6015697 / DARBOX >> TEVA API (2x40HC, Haifa to CIF Nhava Sheva). Investigation revealed a critical feedback loop:
+
+1. RCB sends tracker status email into the thread
+2. Next 30-min poll cycle picks up that email as a new CC observation
+3. Tracker processes RCB's own HTML email, extracts minimal/no logistics data
+4. Creates a new deal with empty fields (no BL, sometimes no containers)
+5. Sends another status email — loop repeats
+
+**Impact:** 9 duplicate deals created in ~4 hours, 64 self-observations from rcb@rpa-port.co.il, 79 rcb_processed entries. One deal per poll cycle.
+
+### Root Cause
+No sender filtering in the email processing loop — RCB processed its own outgoing emails as if they were external shipping correspondence.
+
+### Fix: Skip Own Emails (commit `d8802e9`)
+
+Added self-email skip at the top of the email processing loop in `main.py`, before all handlers (declarations, CC, direct):
+
+```python
+# Skip system emails for all paths
+if from_email.lower() == rcb_email.lower():
+    continue  # Never process our own outgoing emails (prevents feedback loop)
+```
+
+**Location:** `functions/main.py:696` — applies to ALL email paths (CC, direct, declarations).
+
+### Firestore Cleanup (194 documents deleted)
+
+Ran `cleanup_darbox_dupes.py --execute` to remove all duplicate data:
+
+| Collection | Deleted | Kept |
+|-----------|---------|------|
+| `tracker_deals` | 8 duplicate deals | 1 (`Vmn9cjhprQOfT9tQr9eq`, score=28, status=completed) |
+| `tracker_container_status` | 8 container docs | 1 (GAOU6394772 with full TaskYam data) |
+| `tracker_timeline` | 35 entries | 11 entries (deal_created + status_change + emails) |
+| `tracker_observations` | 64 self-observations | 0 (all were from rcb@) |
+| `rcb_processed` | 79 processed markers | 0 (all were for self-emails) |
+| **Total** | **194 deleted** | **13 kept** |
+
+Deal kept: vessel ITAL WIT, container GAOU6394772, MSC, manifest 262094, customs declaration 26014441623750, full TaskYam export process (already sailed 2026-02-05).
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `functions/main.py` | +2 lines: self-email skip at top of processing loop |
+
+### Git Commit
+- `d8802e9` — Fix tracker feedback loop: skip emails from own mailbox
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
