@@ -269,8 +269,8 @@ Daily vessel schedule aggregation for Israeli ports (Haifa, Ashdod, Eilat).
 - C7: Brain downloads: פרה-רולינג database
 - C8: Duty rates — `AdditionRulesDetailsHistory.xml` (7.4MB) has צו מסגרת legal text
 
-### Block D: Elimination Engine — DONE (Session 33, D1-D8)
-**Status: Core engine complete. 2,282 lines. D9 (pipeline wiring) deferred to next session.**
+### Block D: Elimination Engine — FULLY COMPLETE (Session 33, D1-D9)
+**Status: Engine built (2,282 lines) + wired into pipeline (D9). 13 tools total. All green.**
 
 **File created:** `functions/lib/elimination_engine.py` (2,282 lines)
 
@@ -318,11 +318,16 @@ make_product_info(item_dict) -> ProductInfo
 | D2+D3 | `8b9e370` | Chapter notes + GIR 1 full semantics | +606 |
 | D4+D5 | `e485b65` | GIR 3 tiebreak + Others gate + principally test | +563 |
 | D6+D7+D8 | `e3913eb` | AI consultation + devil's advocate + elimination logging | +378 |
+| D9 | `0bb0a2f` | Pipeline wiring: 13th tool, full pipeline + tool-calling integration | +235 |
 
-**D9 (pipeline wiring) — NEXT SESSION:**
-- Wire `eliminate()` into classification pipeline (after pre_classify, before cross-check)
-- Register as tool in `tool_definitions.py` / `tool_executors.py`
-- Add `run_elimination` tool for tool-calling engine
+**D9 (pipeline wiring) — DONE (Session 33):**
+- `classification_agents.py`: `eliminate()` wired between pre_classify and Agent 2 in `run_full_classification()`
+- `classification_agents.py`: `_build_elimination_context()` formats survivors/steps for Agent 2 context
+- `classification_agents.py`: `ELIMINATION_ENABLED = True` feature flag, `ELIMINATION_AVAILABLE` import guard
+- `classification_agents.py`: `elimination_results` included in final output dict
+- `tool_definitions.py`: `run_elimination` added as 13th tool (Claude + Gemini formats), system prompt updated
+- `tool_executors.py`: `_run_elimination()` handler — builds ProductInfo, runs eliminate(), returns concise summary
+- `tests/test_tool_calling.py`: Count 12→13, `run_elimination` in expected set
 
 ## Tariff XML Archive (fullCustomsBookData.zip)
 
@@ -637,7 +642,7 @@ Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. 
 - No alternative data source found
 - Stub remains in tool_executors.py dispatcher
 
-### Tool-Calling Engine: 12 Active Tools
+### Tool-Calling Engine: 13 Active Tools
 | # | Tool | Source | Wired |
 |---|------|--------|-------|
 | 1 | check_memory | classification_memory | Session A |
@@ -652,6 +657,7 @@ Completed 4 remaining C-blocks in one session. All 12 tools now wired and live. 
 | 10 | lookup_framework_order | framework_order (C5) | C5 |
 | 11 | search_classification_directives | classification_directives (C6) | C6 |
 | 12 | search_legal_knowledge | legal_knowledge (C8) | C8 |
+| 13 | run_elimination | elimination_engine (D1-D8) — deterministic tariff tree walk | D9 |
 
 ### Firestore Collections Seeded This Session
 | Collection | Docs | Block |
@@ -790,6 +796,6 @@ Built the complete elimination engine in one session — all 8 sub-blocks (D1-D8
 - **Block A**: ✓ (A1-A4)
 - **Block B**: ✓ (B1-B2)
 - **Block C**: ✓ (C1-C6, C8) — C7 blocked
-- **Block D**: ✓ (D1-D8) — **D9 pipeline wiring NEXT**
+- **Block D**: ✓ FULLY COMPLETE (D1-D9) — engine built + wired into pipeline + 13th tool
 - **Block E-H**: Not started
 - **188 corrupt tariff codes**: Flagged + excluded from search (not fixable from available sources)
