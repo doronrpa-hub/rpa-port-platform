@@ -677,7 +677,8 @@ def run_classification_agent(api_key, items, tariff_data, rules, knowledge_conte
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
             if start != -1: return json.loads(result[start:end])
-    except: pass
+    except Exception as e:
+        print(f"    ❌ Agent 2 (Classification) JSON parse error: {e} | raw[:200]={result[:200] if result else 'None'}")
     return {"classifications": []}
 
 
@@ -697,7 +698,8 @@ def run_regulatory_agent(api_key, classifications, ministry_data, gemini_key=Non
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
             if start != -1: return json.loads(result[start:end])
-    except: pass
+    except Exception as e:
+        print(f"    ❌ Agent 3 (Regulatory) JSON parse error: {e} | raw[:200]={result[:200] if result else 'None'}")
     return {"regulatory": []}
 
 
@@ -716,7 +718,8 @@ def run_fta_agent(api_key, classifications, origin_country, gemini_key=None):
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
             if start != -1: return json.loads(result[start:end])
-    except: pass
+    except Exception as e:
+        print(f"    ❌ Agent 4 (FTA) JSON parse error: {e} | raw[:200]={result[:200] if result else 'None'}")
     return {"fta": []}
 
 
@@ -737,7 +740,8 @@ def run_risk_agent(api_key, invoice_data, classifications, gemini_key=None):
         if result:
             start, end = result.find('{'), result.rfind('}') + 1
             if start != -1: return json.loads(result[start:end])
-    except: pass
+    except Exception as e:
+        print(f"    ❌ Agent 5 (Risk) JSON parse error: {e} | raw[:200]={result[:200] if result else 'None'}")
     return {"risk": {"level": "נמוך", "items": []}}
 
 
