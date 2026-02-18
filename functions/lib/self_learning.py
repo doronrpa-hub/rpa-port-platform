@@ -404,15 +404,37 @@ class SelfLearningEngine:
         if not product_description or not hs_code:
             return
 
+        _METHOD_RANK = {"cross_validated": 3, "manual": 2, "ai": 1}
+
         try:
             now = datetime.now(timezone.utc)
             product_lower = product_description.strip().lower()
             doc_id = self._make_id(f"cls_{product_lower}_{hs_code}")
 
+            # Guard: never overwrite higher-confidence expert-validated results
+            doc_ref = self.db.collection("learned_classifications").document(doc_id)
+            existing = doc_ref.get()
+            if existing.exists:
+                ex = existing.to_dict()
+                ex_conf = ex.get("confidence", 0) or 0
+                ex_method = ex.get("method", "ai")
+                ex_rank = _METHOD_RANK.get(ex_method, 0)
+                new_rank = _METHOD_RANK.get(method, 0)
+                # Skip if existing has higher confidence from same-or-better method
+                if ex_conf > confidence and ex_rank >= new_rank:
+                    print(f"    🧠 SelfLearning: skip overwrite '{product_description[:30]}' → {hs_code} "
+                          f"(existing conf={ex_conf:.2f}/{ex_method} > new {confidence:.2f}/{method})")
+                    return
+                # Also skip if existing method is strictly better regardless of confidence
+                if ex_rank > new_rank and ex_conf >= confidence:
+                    print(f"    🧠 SelfLearning: skip overwrite '{product_description[:30]}' → {hs_code} "
+                          f"(existing method {ex_method} outranks {method})")
+                    return
+
             chapter = hs_code.split(".")[0] if "." in hs_code else hs_code[:4]
             keywords = self._extract_keywords(product_description)
 
-            self.db.collection("learned_classifications").document(doc_id).set({
+            doc_ref.set({
                 "product": product_description.strip(),
                 "product_lower": product_lower,
                 "hs_code": hs_code,
