@@ -1292,14 +1292,18 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
     updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
     # Add new containers (merge, don't replace)
+    # Batch-read existing container status docs (single query instead of N reads)
+    existing_status_ids = set()
+    for d in db.collection("tracker_container_status").where("deal_id", "==", deal_id).stream():
+        existing_status_ids.add(d.to_dict().get("container_id", ""))
+
     existing_containers = deal.get('containers', [])
     for cn in ext.get('containers', []):
         if cn not in existing_containers:
             existing_containers.append(cn)
-            # Create container status doc
-            cn_doc = db.collection("tracker_container_status").document(f"{deal_id}_{cn}")
-            if not cn_doc.get().exists:
-                cn_doc.set({
+            # Create container status doc if not already present
+            if cn not in existing_status_ids:
+                db.collection("tracker_container_status").document(f"{deal_id}_{cn}").set({
                     "deal_id": deal_id,
                     "container_id": cn,
                     "import_process": {},
@@ -1938,14 +1942,15 @@ def _check_deal_completion(db, firestore_module, deal_id, deal):
     if not containers:
         return False
 
-    # Check all container statuses
+    # Check all container statuses (single query instead of N reads)
+    status_by_cn = {}
+    for d in db.collection("tracker_container_status").where("deal_id", "==", deal_id).stream():
+        status_by_cn[d.to_dict().get("container_id", "")] = d.to_dict()
+
     all_done = True
     for cn in containers:
-        doc = db.collection("tracker_container_status").document(f"{deal_id}_{cn}").get()
-        if not doc.exists:
-            all_done = False
-            break
-        if doc.to_dict().get('current_step') != terminal_step:
+        st = status_by_cn.get(cn)
+        if not st or st.get('current_step') != terminal_step:
             all_done = False
             break
 
@@ -2222,13 +2227,10 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         from lib.tracker_email import build_tracker_status_email
         from lib.rcb_helpers import helper_graph_reply, helper_graph_send
 
-        # Get all container statuses for this deal (sea freight only)
-        containers = deal.get('containers', [])
+        # Get all container statuses for this deal (single query instead of N reads)
         container_statuses = []
-        for cn in containers:
-            doc = db.collection("tracker_container_status").document(f"{deal_id}_{cn}").get()
-            if doc.exists:
-                container_statuses.append(doc.to_dict())
+        for d in db.collection("tracker_container_status").where("deal_id", "==", deal_id).stream():
+            container_statuses.append(d.to_dict())
 
         # Build email (v2: with observation context)
         email_data = build_tracker_status_email(
