@@ -503,6 +503,13 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "cache",
     },
+    # Session 40c: Image pattern cache — avoids repeat AI vision calls (180-day TTL)
+    "image_patterns": {
+        "title_fields": ["final_hs_code"],
+        "keyword_fields": ["image_hash"],
+        "hs_fields": ["final_hs_code"],
+        "doc_type": "cache",
+    },
 }
 
 # Document type by file extension

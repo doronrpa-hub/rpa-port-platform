@@ -17,6 +17,7 @@ NEW FILE — does not modify any existing code.
 
 import base64
 import io
+import json
 import re
 import logging
 
@@ -54,12 +55,14 @@ def extract_text_from_pdf_bytes(pdf_bytes):
 #  Drop-in replacement for rcb_helpers.extract_text_from_attachments
 # ═══════════════════════════════════════════════════════════
 
-def extract_text_from_attachments(attachments_data, email_body=None):
+def extract_text_from_attachments(attachments_data, email_body=None,
+                                   gemini_key=None, anthropic_key=None):
     """
     Drop-in replacement for ``rcb_helpers.extract_text_from_attachments``.
 
     Old signature:  extract_text_from_attachments(attachments_data, email_body=None) -> str
     New behaviour:  each attachment goes through the new smart extractor.
+    Session 40a: Added gemini_key/anthropic_key for dual AI vision analysis on images.
 
     The return value is the same concatenated string the old code produced,
     so all downstream code keeps working.
@@ -117,6 +120,20 @@ def extract_text_from_attachments(attachments_data, email_body=None):
             f"  -> {name}: {len(text)} chars, method={method}, "
             f"confidence={conf}, valid={result.get('valid')}"
         )
+
+        # Session 40a: Dual AI vision analysis for image attachments
+        if _is_image_file(name) and (gemini_key or anthropic_key):
+            try:
+                from .image_analyzer import analyze_image
+                vision = analyze_image(file_bytes, name, gemini_key, anthropic_key)
+                if vision:
+                    all_text.append(
+                        f"=== {name} [AI Vision Analysis] ===\n"
+                        f"{json.dumps(vision, ensure_ascii=False, indent=2)}"
+                    )
+                    logger.info(f"  -> {name}: AI Vision analysis added (confidence={vision.get('confidence', '?')})")
+            except Exception as e:
+                logger.warning(f"  -> {name}: AI Vision analysis failed: {e}")
 
     return "\n\n".join(all_text)
 
@@ -252,6 +269,14 @@ def _detect_language(text):
     if hebrew + english > 0:
         return "mixed"
     return "unknown"
+
+
+def _is_image_file(name):
+    """Check if filename is an image (Session 40a)."""
+    if not name or "." not in name:
+        return False
+    ext = name.rsplit(".", 1)[-1].lower()
+    return ext in {"png", "jpg", "jpeg", "tiff", "tif", "bmp", "gif", "webp"}
 
 
 def _guess_content_type(filename):

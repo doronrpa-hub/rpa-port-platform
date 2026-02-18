@@ -451,6 +451,112 @@ class SelfLearningEngine:
             print(f"    🧠 SelfLearning: learn classification error: {e}")
 
     # ════════════════════════════════════════════════════════════════════════
+    # IMAGE PATTERN CACHE — avoid repeat AI calls on same images
+    # ════════════════════════════════════════════════════════════════════════
+
+    IMAGE_PATTERN_TTL_DAYS = 180
+
+    def check_image_pattern(self, image_hash):
+        """Check if we already analyzed this image.
+
+        Single Firestore read by document ID. Returns cached result
+        if found and not expired (180 days), else None.
+
+        Args:
+            image_hash: str — hash of the image content (e.g. SHA-256)
+
+        Returns:
+            dict with extracted_fields, final_hs_code, confidence, source — or None
+        """
+        if not image_hash:
+            return None
+
+        try:
+            doc_ref = self.db.collection("image_patterns").document(image_hash)
+            doc = doc_ref.get()
+            if not doc.exists:
+                return None
+
+            data = doc.to_dict() or {}
+
+            # Check TTL — 180 days
+            timestamp = data.get("timestamp")
+            if timestamp:
+                if hasattr(timestamp, "timestamp"):
+                    # Firestore DatetimeWithNanoseconds → epoch
+                    ts = datetime.fromtimestamp(timestamp.timestamp(), tz=timezone.utc)
+                else:
+                    ts = timestamp
+                age = datetime.now(timezone.utc) - ts
+                if age.days > self.IMAGE_PATTERN_TTL_DAYS:
+                    print(f"    🧠 SelfLearning: image pattern expired ({age.days}d) for {image_hash[:12]}...")
+                    return None
+
+            # Increment times_used (fire-and-forget)
+            try:
+                doc_ref.update({"times_used": (data.get("times_used", 0) or 0) + 1})
+            except Exception:
+                pass
+
+            print(f"    🧠 SelfLearning: image pattern HIT for {image_hash[:12]}... → {data.get('final_hs_code', '?')}")
+            return {
+                "image_hash": image_hash,
+                "extracted_fields": data.get("extracted_fields", {}),
+                "final_hs_code": data.get("final_hs_code", ""),
+                "confidence": data.get("confidence", 0.0),
+                "source": data.get("source", ""),
+                "timestamp": data.get("timestamp"),
+                "times_used": (data.get("times_used", 0) or 0) + 1,
+            }
+        except Exception as e:
+            print(f"    🧠 SelfLearning: check_image_pattern error: {e}")
+            return None
+
+    def save_image_pattern(self, image_hash, extracted_fields, final_hs_code,
+                           confidence, source="image_analysis"):
+        """Cache image analysis result to avoid repeat AI calls.
+
+        Stores in Firestore image_patterns/{image_hash}. Never overwrites
+        a higher-confidence existing result.
+
+        Args:
+            image_hash: str — hash of the image content (e.g. SHA-256)
+            extracted_fields: dict — fields extracted from the image
+            final_hs_code: str — HS code determined from the image
+            confidence: float — 0.0-1.0
+            source: str — what produced the result (e.g. "gemini_vision")
+        """
+        if not image_hash or not final_hs_code:
+            return
+
+        try:
+            now = datetime.now(timezone.utc)
+            doc_ref = self.db.collection("image_patterns").document(image_hash)
+
+            # Guard: never overwrite higher-confidence result
+            existing = doc_ref.get()
+            if existing.exists:
+                ex = existing.to_dict() or {}
+                ex_conf = ex.get("confidence", 0) or 0
+                if ex_conf > confidence:
+                    print(f"    🧠 SelfLearning: skip image pattern overwrite {image_hash[:12]}... "
+                          f"(existing conf={ex_conf:.2f} > new {confidence:.2f})")
+                    return
+
+            doc_ref.set({
+                "image_hash": image_hash,
+                "extracted_fields": extracted_fields or {},
+                "final_hs_code": final_hs_code,
+                "confidence": confidence,
+                "source": source,
+                "timestamp": now,
+                "times_used": 0,
+            }, merge=True)
+            print(f"    🧠 SelfLearning: saved image pattern {image_hash[:12]}... → {final_hs_code}")
+        except Exception as e:
+            print(f"    🧠 SelfLearning: save_image_pattern error: {e}")
+
+    # ════════════════════════════════════════════════════════════════════════
     # ACTIVE ENRICHMENT — called by scheduler
     # ════════════════════════════════════════════════════════════════════════
 

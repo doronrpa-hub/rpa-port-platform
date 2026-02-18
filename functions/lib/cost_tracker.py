@@ -34,6 +34,9 @@ class CostTracker:
     FIRESTORE_READ = 0.06 / 100_000    # $0.06 per 100K reads
     FIRESTORE_WRITE = 0.18 / 100_000   # $0.18 per 100K writes
 
+    # Image analysis pricing (dual Gemini Flash vision call)
+    IMAGE_ANALYSIS_COST = 0.002  # ~$0.002 per dual AI call
+
     def __init__(self):
         self.total_spent = 0.0
         self.breakdown = {
@@ -44,6 +47,10 @@ class CostTracker:
             "firestore_writes": 0,
             "ai_cost": 0.0,
             "firestore_cost": 0.0,
+            "image_analyses": 0,
+            "image_cache_hits": 0,
+            "image_cache_misses": 0,
+            "image_cost": 0.0,
         }
         self._stopped = False
 
@@ -77,6 +84,28 @@ class CostTracker:
         self.breakdown["firestore_writes"] += writes
         self.breakdown["firestore_cost"] += cost
         self.total_spent += cost
+        return not self.is_over_budget
+
+    def log_image_analysis(self, cost=None, cache_hit=False):
+        """Record an image analysis event.
+
+        Args:
+            cost: float — actual cost (default IMAGE_ANALYSIS_COST for misses, 0 for hits)
+            cache_hit: bool — True if result came from image_patterns cache
+        """
+        self.breakdown["image_analyses"] += 1
+        if cache_hit:
+            self.breakdown["image_cache_hits"] += 1
+            # Cache hits are free — no cost added
+        else:
+            self.breakdown["image_cache_misses"] += 1
+            actual_cost = cost if cost is not None else self.IMAGE_ANALYSIS_COST
+            self.breakdown["image_cost"] += actual_cost
+            self.breakdown["ai_cost"] += actual_cost
+            self.total_spent += actual_cost
+            if self.is_over_budget:
+                self._stopped = True
+                logger.warning(f"BUDGET EXHAUSTED after image analysis: ${self.total_spent:.4f} / ${self.BUDGET_LIMIT}")
         return not self.is_over_budget
 
     def can_afford(self, estimated_input_tokens, estimated_output_tokens):
