@@ -342,6 +342,13 @@ class TestProactiveFlagging(unittest.TestCase):
         ad_flags = [f for f in flags if f["type"] == "ANTIDUMPING"]
         assert len(ad_flags) == 0
 
+    def test_no_antidumping_finland(self):
+        """Chapter 73 from Finland -> no ANTIDUMPING (regression: 'in' substring)."""
+        cls_item = {"hs_code": "7326.9000", "origin_country": "finland"}
+        flags = _generate_flags(cls_item)
+        ad_flags = [f for f in flags if f["type"] == "ANTIDUMPING"]
+        assert len(ad_flags) == 0, "Finland should NOT trigger antidumping ('in' substring bug)"
+
     def test_fta_flag(self):
         """FTA eligible -> FTA info flag."""
         cls_item = {

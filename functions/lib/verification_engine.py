@@ -347,7 +347,7 @@ def _run_phase5(cls_item, db, elimination_results=None):
                             adj += 0.05  # Supporting directive
                         # Check for explicit conflict indicators
                         if any(w in content for w in ["אינו כולל", "לא יסווג", "exclud", "not classif"]):
-                            if any(kw in content for kw in product_kw):
+                            if any(kw in content_kw for kw in product_kw):
                                 result["conflicts"].append(
                                     f"Directive {directive_info['directive_id']} may exclude this product"
                                 )
@@ -514,7 +514,7 @@ def _generate_flags(cls_item, phase4_result=None, phase5_result=None,
 
     # ── 4. ANTIDUMPING flag — chapter+origin heuristic ──
     if chapter in _ANTIDUMPING_CHAPTERS and origin:
-        if any(ao in origin for ao in _ANTIDUMPING_ORIGINS):
+        if origin in _ANTIDUMPING_ORIGINS:
             flags.append({
                 "type": "ANTIDUMPING",
                 "severity": "warning",
