@@ -12,7 +12,10 @@ D3: Heading elimination — GIR 1 full semantics (specificity scoring, product
     attribute matching, relative elimination, subheading notes).
 D4: GIR Rule 3 tiebreak (3א most specific, 3ב essential character, 3ג last numerical).
 D5: "אחרים" (Others) gate + "באופן עיקרי" (principally) composition test.
-D6-D9: AI hooks, devil's advocate, logging, and pipeline wiring.
+D6: AI consultation at decision points (Gemini Flash primary, Claude fallback).
+D7: Devil's advocate — counter-arguments per survivor before finalization.
+D8: Elimination logging to Firestore elimination_log collection.
+D9: Wire into pipeline (separate session).
 
 Public API:
     eliminate(db, product_info, candidates) -> EliminationResult
@@ -20,6 +23,7 @@ Public API:
     make_product_info(item_dict) -> ProductInfo
 """
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -1773,12 +1777,355 @@ def _check_others_gate(cache, product_info, candidates, steps):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LEVEL 4c: STUB — D6 fills this in
+# LEVEL 4c: D6 — AI consultation at decision points
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _ai_consultation_hook(db, product_info, candidates, steps):
-    """AI consultation at decision points. Stub — D6 implements."""
+_AI_CONSULTATION_SYSTEM = """You are a customs classification expert. You are given:
+- A product description
+- Surviving HS code candidates after deterministic elimination
+- The elimination steps already taken
+
+Your task: Pick the BEST candidate or explain why you can't decide.
+
+Respond in JSON only:
+{
+  "best_hs_code": "XXXXXXXX" or null,
+  "confidence": 0-100,
+  "reasoning": "one sentence",
+  "eliminate": ["codes to eliminate"] or [],
+  "needs_human": true/false
+}"""
+
+
+def _build_ai_consultation_prompt(product_info, candidates, steps):
+    """Build the user prompt for AI consultation."""
+    alive = [c for c in candidates if c["alive"]]
+
+    lines = [
+        f"Product: {product_info.get('description', '')}",
+        f"Product (Hebrew): {product_info.get('description_he', '')}",
+        f"Material: {product_info.get('material', '')}",
+        f"Form: {product_info.get('form', '')}",
+        f"Use: {product_info.get('use', '')}",
+        "",
+        f"Surviving candidates ({len(alive)}):",
+    ]
+    for c in alive:
+        lines.append(
+            f"  - {c['hs_code']} (ch{c.get('chapter','')}) "
+            f"conf={c.get('confidence',0)} "
+            f"desc=\"{c.get('description', '')[:100]}\""
+        )
+
+    lines.append("")
+    lines.append(f"Elimination steps taken ({len(steps)}):")
+    for s in steps[-10:]:  # Last 10 steps max
+        lines.append(
+            f"  - {s['level']}/{s['action']} {s['rule_type']}: "
+            f"{s['reasoning'][:120]}"
+        )
+
+    return "\n".join(lines)
+
+
+def _parse_ai_consultation_response(raw_text):
+    """Parse AI consultation JSON response. Tolerant of markdown fences."""
+    if not raw_text:
+        return None
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    try:
+        return json.loads(text.strip())
+    except (json.JSONDecodeError, ValueError):
+        logger.warning(f"D6: Failed to parse AI response: {text[:200]}")
+        return None
+
+
+def _ai_consultation_hook(db, product_info, candidates, steps,
+                          api_key=None, gemini_key=None):
+    """D6: AI consultation when elimination engine can't decide.
+
+    Called when multiple candidates survive the deterministic levels.
+    Uses Gemini Flash for speed, Claude as fallback.
+
+    Only invoked if needs_ai=True (>1 survivor). If API keys aren't
+    provided, this is a no-op (graceful degradation).
+    """
+    alive = [c for c in candidates if c["alive"]]
+    if len(alive) <= 1:
+        return candidates
+
+    # If no keys provided, try lazy import from environment
+    if not gemini_key and not api_key:
+        return candidates  # No keys = no-op, deterministic-only mode
+
+    prompt = _build_ai_consultation_prompt(product_info, candidates, steps)
+
+    # Call AI: Gemini Flash first, Claude fallback
+    raw_response = None
+    ai_source = "none"
+    try:
+        from lib.classification_agents import call_ai as _call_ai
+        raw_response = _call_ai(
+            api_key, gemini_key,
+            _AI_CONSULTATION_SYSTEM, prompt,
+            max_tokens=500, tier="fast"
+        )
+        ai_source = "gemini_flash"
+    except ImportError:
+        logger.info("D6: classification_agents not available, skipping AI consultation")
+        return candidates
+    except Exception as e:
+        logger.warning(f"D6: AI consultation failed: {e}")
+        return candidates
+
+    if not raw_response:
+        return candidates
+
+    parsed = _parse_ai_consultation_response(raw_response)
+    if not parsed:
+        return candidates
+
+    ai_source = "ai_consultation"
+    eliminate_codes = parsed.get("eliminate", [])
+    best_code = parsed.get("best_hs_code")
+    ai_confidence = parsed.get("confidence", 0)
+    reasoning = parsed.get("reasoning", "")
+
+    if not eliminate_codes and not best_code:
+        # AI couldn't decide either — record but don't act
+        steps.append(_make_step(
+            level="ai",
+            action="keep",
+            rule_type="ai_consultation",
+            rule_ref="D6 AI consultation (inconclusive)",
+            rule_text=reasoning[:500],
+            candidates_before=len(alive),
+            candidates_after=len(alive),
+            eliminated_codes=[],
+            kept_codes=[c["hs_code"] for c in alive],
+            reasoning=f"AI consulted but couldn't decide: {reasoning[:200]}",
+        ))
+        return candidates
+
+    # Apply AI eliminations
+    before_count = sum(1 for c in candidates if c["alive"])
+    eliminated = []
+    kept = []
+
+    for c in alive:
+        if c["hs_code"] in eliminate_codes:
+            c["alive"] = False
+            c["elimination_reason"] = (
+                f"D6 AI consultation: {reasoning[:150]}"
+            )
+            c["eliminated_at_level"] = "ai_consultation"
+            eliminated.append(c["hs_code"])
+        else:
+            # If AI picked a best code, boost it
+            if best_code and c["hs_code"] == _clean_hs(best_code):
+                boost = min(15, max(5, ai_confidence // 10))
+                c["confidence"] = min(100, c.get("confidence", 0) + boost)
+            kept.append(c["hs_code"])
+
+    # Safety: ensure at least 1 survivor
+    if eliminated and not kept:
+        best_c = alive[0]
+        best_c["alive"] = True
+        best_c["elimination_reason"] = ""
+        best_c["eliminated_at_level"] = ""
+        eliminated.remove(best_c["hs_code"])
+        kept.append(best_c["hs_code"])
+
+    after_count = sum(1 for c in candidates if c["alive"])
+
+    steps.append(_make_step(
+        level="ai",
+        action="eliminate" if eliminated else "boost",
+        rule_type="ai_consultation",
+        rule_ref=f"D6 AI consultation (conf={ai_confidence})",
+        rule_text=reasoning[:500],
+        candidates_before=before_count,
+        candidates_after=after_count,
+        eliminated_codes=eliminated,
+        kept_codes=kept,
+        reasoning=(
+            f"AI selected {best_code or 'none'} (conf={ai_confidence}), "
+            f"eliminated {len(eliminated)}: {reasoning[:150]}"
+        ),
+    ))
+
     return candidates
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LEVEL 5: D7 — Devil's advocate
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_DEVILS_ADVOCATE_SYSTEM = """You are a customs classification devil's advocate.
+For the given HS code classification, provide ONE concise counter-argument:
+why this code might be WRONG for this product.
+
+Consider: wrong chapter scope, excluded category, better-fitting heading,
+material mismatch, form vs function classification error.
+
+Respond in JSON:
+{
+  "counter_argument": "one sentence why this code might be wrong",
+  "alternative_code": "XXXX.XX" or null,
+  "severity": "low"|"medium"|"high"
+}"""
+
+
+def _build_devils_advocate_prompt(product_info, candidate, steps):
+    """Build prompt for devil's advocate challenge of one candidate."""
+    lines = [
+        f"Product: {product_info.get('description', '')}",
+        f"Material: {product_info.get('material', '')}",
+        f"Form: {product_info.get('form', '')}",
+        f"Use: {product_info.get('use', '')}",
+        "",
+        f"Proposed HS code: {candidate.get('hs_code', '')}",
+        f"Chapter: {candidate.get('chapter', '')}",
+        f"Description: {candidate.get('description', '')}",
+        f"Confidence: {candidate.get('confidence', 0)}",
+        "",
+        "Why might this classification be WRONG?",
+    ]
+    return "\n".join(lines)
+
+
+def _run_devils_advocate(product_info, survivors, steps,
+                         api_key=None, gemini_key=None):
+    """D7: Generate counter-arguments for each survivor.
+
+    For each surviving candidate, asks AI: "Why might this NOT be the right code?"
+    Returns a list of challenge dicts, one per survivor.
+
+    If no API keys available, returns empty list (graceful degradation).
+    """
+    if not survivors or (not gemini_key and not api_key):
+        return []
+
+    challenges = []
+    try:
+        from lib.classification_agents import call_ai as _call_ai
+    except ImportError:
+        logger.info("D7: classification_agents not available, skipping devil's advocate")
+        return []
+
+    for candidate in survivors[:5]:  # Cap at 5 to control costs
+        prompt = _build_devils_advocate_prompt(product_info, candidate, steps)
+
+        try:
+            raw = _call_ai(
+                api_key, gemini_key,
+                _DEVILS_ADVOCATE_SYSTEM, prompt,
+                max_tokens=300, tier="fast"
+            )
+        except Exception as e:
+            logger.warning(f"D7: devil's advocate call failed for {candidate.get('hs_code')}: {e}")
+            continue
+
+        if not raw:
+            continue
+
+        parsed = _parse_ai_consultation_response(raw)
+        if not parsed:
+            continue
+
+        challenges.append({
+            "hs_code": candidate.get("hs_code", ""),
+            "counter_argument": parsed.get("counter_argument", ""),
+            "alternative_code": parsed.get("alternative_code"),
+            "severity": parsed.get("severity", "low"),
+        })
+
+    return challenges
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# D8: Elimination logging to Firestore
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _log_elimination_run(db, product_info, result, challenges=None):
+    """D8: Log a complete elimination run to Firestore elimination_log collection.
+
+    Creates one document per run with full audit trail: input candidates,
+    each elimination step, survivors, AI consultations, and devil's advocate
+    challenges.
+
+    Safe: if db is None or write fails, logs warning and continues.
+    """
+    if db is None:
+        return
+
+    timestamp = datetime.now(timezone.utc)
+    doc_id = f"elim_{timestamp.strftime('%Y%m%d_%H%M%S')}_{id(result) % 10000:04d}"
+
+    # Sanitize candidates for Firestore (strip large fields)
+    def _sanitize_candidate(c):
+        return {
+            "hs_code": c.get("hs_code", ""),
+            "chapter": c.get("chapter", ""),
+            "heading": c.get("heading", ""),
+            "section": c.get("section", ""),
+            "confidence": c.get("confidence", 0),
+            "source": c.get("source", ""),
+            "description": str(c.get("description", ""))[:200],
+            "alive": c.get("alive", False),
+            "elimination_reason": str(c.get("elimination_reason", ""))[:300],
+            "eliminated_at_level": c.get("eliminated_at_level", ""),
+        }
+
+    # Sanitize steps (keep concise)
+    def _sanitize_step(s):
+        return {
+            "level": s.get("level", ""),
+            "action": s.get("action", ""),
+            "rule_type": s.get("rule_type", ""),
+            "rule_ref": str(s.get("rule_ref", ""))[:200],
+            "candidates_before": s.get("candidates_before", 0),
+            "candidates_after": s.get("candidates_after", 0),
+            "eliminated_codes": s.get("eliminated_codes", []),
+            "kept_codes": s.get("kept_codes", []),
+            "reasoning": str(s.get("reasoning", ""))[:300],
+        }
+
+    log_doc = {
+        "timestamp": timestamp.isoformat(),
+        "product_description": str(product_info.get("description", ""))[:500],
+        "product_description_he": str(product_info.get("description_he", ""))[:500],
+        "product_material": str(product_info.get("material", ""))[:200],
+        "product_form": str(product_info.get("form", ""))[:200],
+        "product_use": str(product_info.get("use", ""))[:200],
+        "input_count": result.get("input_count", 0),
+        "survivor_count": result.get("survivor_count", 0),
+        "needs_ai": result.get("needs_ai", False),
+        "needs_questions": result.get("needs_questions", False),
+        "survivors": [
+            _sanitize_candidate(c) for c in result.get("survivors", [])
+        ],
+        "eliminated": [
+            _sanitize_candidate(c) for c in result.get("eliminated", [])
+        ],
+        "steps": [
+            _sanitize_step(s) for s in result.get("steps", [])
+        ],
+        "sections_checked": result.get("sections_checked", []),
+        "chapters_checked": result.get("chapters_checked", []),
+        "step_count": len(result.get("steps", [])),
+        "challenges": challenges or [],
+    }
+
+    try:
+        db.collection("elimination_log").document(doc_id).set(log_doc)
+        logger.info(f"D8: Logged elimination run to elimination_log/{doc_id}")
+    except Exception as e:
+        logger.warning(f"D8: Failed to log elimination run: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1809,7 +2156,7 @@ def _build_result(candidates, steps, sections_checked, chapters_checked,
 # MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def eliminate(db, product_info, candidates):
+def eliminate(db, product_info, candidates, api_key=None, gemini_key=None):
     """Walk the tariff tree and eliminate candidates deterministically.
 
     Args:
@@ -1817,12 +2164,17 @@ def eliminate(db, product_info, candidates):
         product_info: ProductInfo dict (from make_product_info)
         candidates: list of HSCandidate dicts (from candidates_from_pre_classify
                     or manually constructed)
+        api_key: optional Anthropic API key for AI consultation (D6/D7)
+        gemini_key: optional Gemini API key for AI consultation (D6/D7)
 
     Returns:
-        EliminationResult dict with survivors, eliminated, steps, and metadata.
+        EliminationResult dict with survivors, eliminated, steps, metadata,
+        and challenges (D7 devil's advocate).
     """
     if not candidates:
-        return _build_result([], [], set(), set(), 0)
+        result = _build_result([], [], set(), set(), 0)
+        result["challenges"] = []
+        return result
 
     # Ensure all candidates have alive=True and required fields
     for c in candidates:
@@ -1897,13 +2249,30 @@ def eliminate(db, product_info, candidates):
     alive_count = sum(1 for c in candidates if c["alive"])
     logger.info(f"After others gate + principally: {alive_count}/{input_count} alive")
 
-    # Level 4c: STUB (D6)
-    candidates = _ai_consultation_hook(db, product_info, candidates, steps)
+    # Level 4c: D6 — AI CONSULTATION (when >1 survivor and keys available)
+    candidates = _ai_consultation_hook(
+        db, product_info, candidates, steps,
+        api_key=api_key, gemini_key=gemini_key
+    )
+    alive_count = sum(1 for c in candidates if c["alive"])
+    logger.info(f"After AI consultation: {alive_count}/{input_count} alive")
 
     # Level 5: BUILD RESULT
     result = _build_result(
         candidates, steps, sections_checked, chapters_checked, input_count
     )
+
+    # Level 6: D7 — DEVIL'S ADVOCATE
+    challenges = _run_devils_advocate(
+        product_info, result["survivors"], steps,
+        api_key=api_key, gemini_key=gemini_key
+    )
+    result["challenges"] = challenges
+    if challenges:
+        logger.info(f"D7: {len(challenges)} devil's advocate challenges generated")
+
+    # Level 7: D8 — LOG TO FIRESTORE
+    _log_elimination_run(db, product_info, result, challenges)
 
     logger.info(
         f"Elimination engine: {result['survivor_count']}/{input_count} survivors, "
