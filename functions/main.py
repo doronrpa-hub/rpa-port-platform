@@ -39,6 +39,16 @@ except ImportError as e:
     TRACKER_AVAILABLE = False
 
 try:
+    from lib.port_intelligence import (
+        check_port_intelligence_alerts, build_port_alert_subject,
+        build_port_alert_html, build_morning_digest, link_deal_to_schedule,
+    )
+    PORT_INTELLIGENCE_AVAILABLE = True
+except ImportError as e:
+    print(f"Port intelligence not available: {e}")
+    PORT_INTELLIGENCE_AVAILABLE = False
+
+try:
     from lib.pupil import pupil_process_email
     PUPIL_AVAILABLE = True
 except ImportError as e:
@@ -625,6 +635,96 @@ def _screen_deal_parties(db, deal_id, get_secret_func, access_token=None, rcb_em
                 print(f"  📧 Sanctions alert sent to doron@rpa-port.co.il")
         except Exception as e:
             print(f"  ⚠️ Sanctions alert email failed: {e}")
+
+
+def _run_port_intelligence_alerts(db, firestore_module, access_token, rcb_email):
+    """I3: Check all active deals for port intelligence alerts and send emails to CC.
+
+    Dedup via deal.port_alerts_sent[] — each alert type sent once per deal.
+    Sends to cc@rpa-port.co.il (the CC group, NOT a reply).
+    """
+    if not PORT_INTELLIGENCE_AVAILABLE:
+        return {"status": "skipped", "reason": "port_intelligence not available"}
+
+    cc_email = "cc@rpa-port.co.il"
+    alerts_sent = 0
+    deals_checked = 0
+
+    try:
+        deal_snaps = list(
+            db.collection("tracker_deals")
+            .where("status", "in", ["active", "pending"])
+            .stream()
+        )
+    except Exception as e:
+        print(f"  ⚠️ I3 alert query failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+    for snap in deal_snaps:
+        deal = snap.to_dict()
+        deal_id = snap.id
+        deals_checked += 1
+
+        # Load container statuses (batch query)
+        try:
+            cs_snaps = list(
+                db.collection("tracker_container_status")
+                .where("deal_id", "==", deal_id)
+                .stream()
+            )
+            container_statuses = [c.to_dict() for c in cs_snaps]
+        except Exception:
+            container_statuses = []
+
+        # Check alerts (pure function — no side effects)
+        try:
+            alerts = check_port_intelligence_alerts(
+                deal_id, deal, container_statuses
+            )
+        except Exception as ae:
+            print(f"  ⚠️ I3 alert check error for {deal_id}: {ae}")
+            continue
+
+        if not alerts:
+            continue
+
+        # Dedup: filter out already-sent alert types
+        already_sent = set(deal.get("port_alerts_sent", []))
+        new_alerts = [a for a in alerts if a["type"] not in already_sent]
+        if not new_alerts:
+            continue
+
+        # Send each new alert
+        sent_types = []
+        for alert in new_alerts:
+            try:
+                subject = build_port_alert_subject(alert)
+                body_html = build_port_alert_html(alert)
+                ok = helper_graph_send(
+                    access_token, rcb_email, cc_email, subject, body_html
+                )
+                if ok:
+                    sent_types.append(alert["type"])
+                    alerts_sent += 1
+                    print(f"  🚨 I3 alert sent: {subject}")
+            except Exception as se:
+                print(f"  ⚠️ I3 alert send error: {se}")
+
+        # Update deal with sent alert types
+        if sent_types:
+            try:
+                new_sent = list(already_sent | set(sent_types))
+                db.collection("tracker_deals").document(deal_id).update({
+                    "port_alerts_sent": new_sent,
+                })
+            except Exception as ue:
+                print(f"  ⚠️ I3 dedup update failed for {deal_id}: {ue}")
+
+    return {
+        "status": "ok",
+        "deals_checked": deals_checked,
+        "alerts_sent": alerts_sent,
+    }
 
 
 @scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
@@ -1797,6 +1897,15 @@ def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
     except Exception as ge:
         print(f"🚛 Gate cutoff check error: {ge}")
 
+    # ── I3: Port intelligence alerts (D/O missing, physical exam, storage, cutoffs) ──
+    try:
+        pi_result = _run_port_intelligence_alerts(
+            get_db(), firestore, access_token, rcb_email
+        )
+        print(f"🚨 I3 port intelligence alerts: {pi_result}")
+    except Exception as pie:
+        print(f"🚨 I3 alert engine error: {pie}")
+
 
 # ============================================================
 # PORT SCHEDULE: Daily vessel schedule aggregation
@@ -1897,34 +2006,84 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
 
 
 # ============================================================
-# BRAIN: Daily digest to doron@ (07:00 Israel time)
+# I4: Digest to cc@ (07:00 + 14:00 Israel time)
 # ============================================================
+
+def _send_digest(label):
+    """Shared I4 digest builder — called by both 07:00 and 14:00 triggers."""
+    print(f"📬 {label} digest starting...")
+    secrets = get_rcb_secrets_internal(get_secret)
+    access_token = helper_get_graph_token(secrets) if secrets else None
+    rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
+
+    if not access_token:
+        print("❌ No access token — cannot send digest")
+        return
+
+    cc_email = "cc@rpa-port.co.il"
+
+    if PORT_INTELLIGENCE_AVAILABLE:
+        digest_html = build_morning_digest(get_db())
+        if digest_html:
+            from datetime import datetime, timezone as tz
+            try:
+                from zoneinfo import ZoneInfo
+                now_il = datetime.now(ZoneInfo("Asia/Jerusalem"))
+            except ImportError:
+                now_il = datetime.now(tz.utc)
+            date_str = now_il.strftime("%d.%m.%Y")
+            time_str = now_il.strftime("%H:%M")
+            subject = f"RCB | דוח בוקר | {date_str} {time_str}"
+            ok = helper_graph_send(access_token, rcb_email, cc_email, subject, digest_html)
+            if ok:
+                print(f"📬 {label} digest sent to {cc_email}")
+            else:
+                print(f"⚠️ {label} digest send failed")
+            return
+        else:
+            print(f"  ℹ️ No active deals — skipping {label} digest")
+    else:
+        print("  ⚠️ Port intelligence not available — falling back to brain digest")
+
+    # Fallback: old brain_daily_digest
+    try:
+        from lib.brain_commander import brain_daily_digest
+        result = brain_daily_digest(get_db(), access_token, rcb_email)
+        print(f"🧠 Fallback daily digest result: {result}")
+    except ImportError:
+        print("  ⚠️ brain_commander not available either — no digest sent")
+
+
 @scheduler_fn.on_schedule(
     schedule="every day 07:00",
     timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
     region="us-central1",
-    memory=options.MemoryOption.MB_256,
-    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=300,
 )
 def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
-    """Send Doron a morning summary: arriving cargo, pending classifications, deals needing action."""
-    print("🧠 Brain daily digest starting...")
+    """I4: Morning digest — all active shipments + port status, sent to cc@rpa-port.co.il."""
     try:
-        from lib.brain_commander import brain_daily_digest
-
-        secrets = get_rcb_secrets_internal(get_secret)
-        access_token = helper_get_graph_token(secrets) if secrets else None
-        rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il') if secrets else 'rcb@rpa-port.co.il'
-
-        if not access_token:
-            print("❌ No access token — cannot send digest")
-            return
-
-        result = brain_daily_digest(get_db(), access_token, rcb_email)
-        print(f"🧠 Daily digest result: {result}")
-
+        _send_digest("Morning 07:00")
     except Exception as e:
-        print(f"❌ Daily digest error: {e}")
+        print(f"❌ Morning digest error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@scheduler_fn.on_schedule(
+    schedule="every day 14:00",
+    timezone=scheduler_fn.Timezone("Asia/Jerusalem"),
+    region="us-central1",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=300,
+)
+def rcb_afternoon_digest(event: scheduler_fn.ScheduledEvent) -> None:
+    """I4: Afternoon digest — same format as morning, sent to cc@rpa-port.co.il at 14:00 IL."""
+    try:
+        _send_digest("Afternoon 14:00")
+    except Exception as e:
+        print(f"❌ Afternoon digest error: {e}")
         import traceback
         traceback.print_exc()
 
