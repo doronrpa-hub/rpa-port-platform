@@ -522,6 +522,16 @@ def _aggregate_deal_text(db, deal_id):
 @scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
 def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     """Check rcb@rpa-port.co.il inbox - process emails from last 2 days"""
+    try:
+        _rcb_check_email_inner(event)
+    except Exception as e:
+        import traceback
+        print(f"❌ rcb_check_email top-level error: {e}")
+        traceback.print_exc()
+
+
+def _rcb_check_email_inner(event) -> None:
+    """Inner implementation — called by rcb_check_email with top-level guard."""
     print("🤖 RCB checking email via Graph API...")
     
     secrets = get_rcb_secrets_internal(get_secret)
