@@ -131,6 +131,14 @@ except ImportError as e:
     print(f"Elimination engine not available: {e}")
     ELIMINATION_AVAILABLE = False
 
+# Verification engine: Block E phases 4+5+flagging
+try:
+    from lib.verification_engine import run_verification_engine, build_verification_flags_html
+    VERIFICATION_ENGINE_AVAILABLE = True
+except ImportError as e:
+    print(f"Verification engine not available: {e}")
+    VERIFICATION_ENGINE_AVAILABLE = False
+
 # =============================================================================
 # FEATURE FLAGS (Session 26/27: cost optimization + cross-check)
 # =============================================================================
@@ -140,6 +148,7 @@ PRE_CLASSIFY_BYPASS_THRESHOLD = 90    # Minimum confidence to bypass
 COST_TRACKING_ENABLED = True          # Print per-call cost estimates
 CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after classification
 ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine between pre_classify and Agent 2
+VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
 
 # =============================================================================
 # SESSION 27: Per-Run Cost Accumulator
@@ -1057,6 +1066,26 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
             except Exception as e:
                 print(f"    ⚠️ Verification loop error: {e}")
 
+        # -- BLOCK E: Verification Engine (Phase 4 + 5 + Flagging) --
+        ve_results = {}
+        if VERIFICATION_ENGINE_ENABLED and VERIFICATION_ENGINE_AVAILABLE:
+            try:
+                ve_results = run_verification_engine(
+                    db, validated_classifications,
+                    elimination_results=elimination_results,
+                    free_import_results=free_import_results,
+                    api_key=api_key, gemini_key=gemini_key,
+                )
+                # Apply confidence adjustments from Phase 5
+                for c in validated_classifications:
+                    hs = c.get("hs_code", "")
+                    ve = ve_results.get(hs, {})
+                    adj = ve.get("phase5", {}).get("confidence_adjustment", 0)
+                    if adj and isinstance(c.get("confidence"), (int, float)):
+                        c["confidence"] = max(0, min(1, c["confidence"] + adj))
+            except Exception as ve_err:
+                print(f"    Verification engine error (non-fatal): {ve_err}")
+
         # ── LINK: Map invoice line items → classifications ──
         validated_classifications = _link_invoice_to_classifications(items, validated_classifications)
         classification["classifications"] = validated_classifications
@@ -1225,6 +1254,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
             "tracker": tracker_info,  # Shipment phase tracker
             "audit": audit,  # Quality gate results
             "elimination": elimination_results,  # Session 33 D9: Tariff tree elimination
+            "verification_engine": ve_results,  # Session 34 Block E: Phase 4+5+Flagging
         }
         return result
     except Exception as e:
@@ -1796,6 +1826,15 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
         except Exception:
             pass
 
+        # Block E: Verification flags
+        if _using_enriched:
+            try:
+                ve_html = build_verification_flags_html(c)
+                if ve_html:
+                    html += f'<div style="margin-top:8px">{ve_html}</div>'
+            except Exception:
+                pass
+
         # ── Per-item ministry approvals + FTA (enriched only) ──
         if _using_enriched:
             item_ministries = c.get("ministries", [])
@@ -2164,6 +2203,7 @@ def _enrich_results_for_email(results, invoice_data, db):
     ministry_routing = results.get("ministry_routing", {})
     fta_data = results.get("agents", {}).get("fta", {}).get("fta", [])
     free_import = results.get("free_import_order", {})
+    ve_results = results.get("verification_engine", {})
 
     seller = (invoice_data or {}).get("seller", "")
     buyer = (invoice_data or {}).get("buyer", "")
@@ -2240,6 +2280,8 @@ def _enrich_results_for_email(results, invoice_data, db):
             "hs_exact_match": cls.get("hs_exact_match", False),
             "ministries": ministries,
             "fta": item_fta,
+            "ve_flags": (ve_results.get(hs_code, {}).get("flags", []) if ve_results else []),
+            "ve_phase4": (ve_results.get(hs_code, {}).get("phase4", {}) if ve_results else {}),
         })
 
     return enriched

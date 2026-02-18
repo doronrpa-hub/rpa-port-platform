@@ -1042,3 +1042,65 @@ Audited all user-facing output text across 4 components. Created detailed HTML s
 
 ### Test Results
 - **530 passed**, 2 skipped — zero regressions
+
+## Session 37 Summary (2026-02-18) — Tracker Email Visual Redesign
+
+### What Was Done
+
+**Visual-only redesign of `tracker_email.py`** — no logic changes, no data flow changes, no tracker.py changes. Rewrote the monolithic `_build_html()` into 7 section builders + orchestrator. Matches RPA-PORT branding used in classification emails.
+
+### Architecture Change
+
+| Before | After |
+|--------|-------|
+| `_build_html()` — 320-line monolithic function | `_build_html()` — 12-line orchestrator calling 7 section builders |
+| No logo, generic blue header | RPA-PORT logo + company name + subtitle |
+| Shipper/consignee inline in deal info | Dedicated 3-column parties table |
+| HS codes inline in deal info | Dedicated goods section with container details |
+| Minimal text footer | Branded footer with logo, timestamp, Hebrew instructions |
+| No change banner | Light-blue banner showing update trigger |
+| 647 lines | 845 lines (+198) |
+
+### New Code Structure
+
+**Color constants added:**
+- `_RPA_BLUE`, `_RPA_ACCENT`, `_COLOR_OK`, `_COLOR_WARN`, `_COLOR_ERR`, `_COLOR_PENDING`, `_LOGO_URL`
+
+**Presentation helpers added:**
+- `_confidence_color()` — color hex for HS code confidence level
+- `_change_label()` — human-readable label for update_type
+- `_html_open()` / `_html_close()` — Outlook-safe HTML wrapper
+
+**7 section builders (all new):**
+| Function | Purpose | Lines |
+|----------|---------|-------|
+| `_section_header()` | RPA logo + company name + direction/status badges | ~30 |
+| `_section_change_banner()` | Light-blue bar showing update trigger | ~15 |
+| `_section_parties()` | 3-column: Consignee / Shipper / Customs Broker | ~30 |
+| `_section_shipment()` | 2-column key-value grid with deal metadata | ~55 |
+| `_section_progress()` | Progress bar + step grid + ocean tracking + TaskYam table | ~200 |
+| `_section_goods()` | Container type/weight table + HS code classification pills | ~70 |
+| `_section_footer()` | Branded footer with logo, timestamp, Hebrew stop instruction | ~30 |
+
+### What Was NOT Changed
+- `build_tracker_status_email()` — same signature, same subject line logic
+- `IMPORT_STEPS`, `EXPORT_STEPS`, `_get_steps()` — step constants
+- `_to_israel_time()`, `_format_date()`, `_time_style()` — date/timezone helpers
+- `_extract_ocean_times()`, `_summarize_steps()` — data aggregation
+- Progress percentage calculation, step completion color logic, ocean event confirmation colors
+- Container TaskYam per-row rendering, all data sources and field reads
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/tracker_email.py` | +7 color constants, +4 helpers, +7 section builders, `_build_html` rewritten as orchestrator |
+
+### Git Commit
+- `5b08ccf` — (included in Session 36 commit by parallel Claude session)
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **523 passed**, 2 skipped — zero regressions from tracker_email changes
+- 7 pre-existing failures in `test_report_builder.py` (Hebrew localization, unrelated)
