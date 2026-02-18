@@ -104,7 +104,7 @@ INSTRUCTION_PATTERNS = [
         r'(?:^|\s)(?:classify|לסווג)\s',
         r'(?:^|\s)(?:סווג|סיווג)\s+(?:את|the|this|these)',
         r'(?:add\s*container|הוסף\s*מכולה)',
-        r'(?:stop\s*follow|הפסק\s*(?:מעקב|עדכונים))',
+        r'(?:stop\s*(?:follow|track|send)|הפסק\s*(?:מעקב|עדכונים)|תפסיק\s*לעקוב)',
         r'(?:start\s*track|התחל\s*מעקב)',
     ]
 ]
@@ -225,10 +225,13 @@ def detect_email_intent(subject, body_text, from_email, privilege=None, get_secr
         m = pat.search(combined)
         if m:
             action = _classify_instruction(combined)
+            entities = {"action": action, "text": body_text.strip()}
+            if action == 'stop_tracking':
+                entities.update(_extract_status_entities(combined))
             return {
                 "intent": "INSTRUCTION",
                 "confidence": 0.9,
-                "entities": {"action": action, "text": body_text.strip()},
+                "entities": entities,
             }
 
     # 4. CUSTOMS_QUESTION
@@ -241,24 +244,31 @@ def detect_email_intent(subject, body_text, from_email, privilege=None, get_secr
                 "entities": hs_entities,
             }
 
-    # 5. STATUS_REQUEST — need both status keyword AND entity (BL/container)
+    # 5. STATUS_REQUEST — status keyword match; entities extracted if present
     entities = _extract_status_entities(combined)
-    if entities:
-        for pat in STATUS_PATTERNS:
-            if pat.search(combined):
-                return {
-                    "intent": "STATUS_REQUEST",
-                    "confidence": 0.9,
-                    "entities": entities,
-                }
+    has_status_keyword = any(pat.search(combined) for pat in STATUS_PATTERNS)
+
+    if entities and has_status_keyword:
+        return {
+            "intent": "STATUS_REQUEST",
+            "confidence": 0.9,
+            "entities": entities,
+        }
+    if entities and '?' in combined:
         # Has BL/container entity but no explicit status keyword —
         # check if subject implies status (common pattern: "BL MEDURS12345?")
-        if '?' in combined:
-            return {
-                "intent": "STATUS_REQUEST",
-                "confidence": 0.8,
-                "entities": entities,
-            }
+        return {
+            "intent": "STATUS_REQUEST",
+            "confidence": 0.8,
+            "entities": entities,
+        }
+    if has_status_keyword and not entities:
+        # Status keyword present but no entity — handler will send clarification
+        return {
+            "intent": "STATUS_REQUEST",
+            "confidence": 0.7,
+            "entities": {},
+        }
 
     # 6. KNOWLEDGE_QUERY — question pattern + domain context
     is_question = False
@@ -335,7 +345,7 @@ def _classify_instruction(text):
         return 'classify'
     if re.search(r'(?:add\s*container|הוסף\s*מכולה)', text_lower):
         return 'tracker_update'
-    if re.search(r'(?:stop\s*follow|הפסק\s*(?:מעקב|עדכונים))', text_lower):
+    if re.search(r'(?:stop\s*(?:follow|track|send)|הפסק\s*(?:מעקב|עדכונים)|תפסיק\s*לעקוב)', text_lower):
         return 'stop_tracking'
     if re.search(r'(?:start\s*track|התחל\s*מעקב)', text_lower):
         return 'start_tracking'
@@ -581,6 +591,119 @@ def _send_reply_safe(body_html, msg, access_token, rcb_email):
 
 
 # ═══════════════════════════════════════════
+#  CLARIFICATION LOGIC
+# ═══════════════════════════════════════════
+
+CLARIFICATION_MESSAGES = {
+    'missing_shipment_id': "של איזה משלוח? נא לציין מספר BL, מכולה או מספר תיק",
+    'missing_stop_target': "איזה משלוח להפסיק לעקוב? נא לציין מספר BL או מכולה",
+    'missing_attachment': "לא מצאתי מסמך מצורף. נא לשלוח חשבונית או מסמך לסיווג",
+    'ambiguous_intent': "לא הצלחתי להבין את הבקשה. אפשר לנסח מחדש?",
+}
+
+
+def _send_clarification(clarification_type, original_intent, original_entities,
+                        msg, db, firestore_module, access_token, rcb_email):
+    """Send clarification reply and store pending doc for follow-up matching."""
+    message_text = CLARIFICATION_MESSAGES.get(clarification_type, CLARIFICATION_MESSAGES['ambiguous_intent'])
+    reply_html = _wrap_html_rtl(message_text)
+    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+
+    # Store pending clarification doc (upsert per sender)
+    from_email = _get_sender_address(msg)
+    key = f"pending_{hashlib.sha256(from_email.lower().encode()).hexdigest()[:12]}"
+    try:
+        db.collection("questions_log").document(key).set({
+            "awaiting_clarification": True,
+            "original_intent": original_intent,
+            "original_entities": original_entities,
+            "clarification_type": clarification_type,
+            "from_email": from_email.lower(),
+            "created_at": firestore_module.SERVER_TIMESTAMP,
+            "msg_id": msg.get('id', ''),
+        })
+    except Exception as e:
+        logger.warning(f"Failed to store pending clarification: {e}")
+
+    return {
+        "status": "clarification_sent",
+        "intent": original_intent,
+        "clarification_type": clarification_type,
+        "cost_usd": 0.0,
+    }
+
+
+def _check_pending_clarification(db, from_email):
+    """Check if sender has a pending clarification (< 4h old)."""
+    key = f"pending_{hashlib.sha256(from_email.lower().encode()).hexdigest()[:12]}"
+    try:
+        doc = db.collection("questions_log").document(key).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        if not data.get('awaiting_clarification'):
+            return None
+        # Expire after 4 hours
+        created = data.get('created_at')
+        if created:
+            if hasattr(created, 'timestamp'):
+                created_dt = datetime.fromtimestamp(created.timestamp(), tz=timezone.utc)
+            elif isinstance(created, datetime):
+                created_dt = created.replace(tzinfo=timezone.utc) if created.tzinfo is None else created
+            else:
+                return data  # can't check age, assume valid
+            if (datetime.now(timezone.utc) - created_dt) > timedelta(hours=4):
+                return None
+        return data
+    except Exception as e:
+        logger.warning(f"Pending clarification check error: {e}")
+        return None
+
+
+def _resolve_clarification(pending, subject, body_text, msg, db, firestore_module,
+                           access_token, rcb_email, get_secret_func):
+    """Combine new email's entities with original intent, mark resolved, re-dispatch."""
+    # Extract entities from new email body
+    combined_text = f"{subject} {body_text}"
+    new_entities = _extract_status_entities(combined_text)
+    new_entities.update(_extract_customs_entities(combined_text))
+
+    # Merge with original entities
+    original_entities = pending.get('original_entities', {})
+    merged = {**original_entities, **{k: v for k, v in new_entities.items() if v}}
+
+    # If no new entities found, can't resolve
+    if not new_entities:
+        return None
+
+    # Mark pending doc as resolved
+    from_email = _get_sender_address(msg)
+    key = f"pending_{hashlib.sha256(from_email.lower().encode()).hexdigest()[:12]}"
+    try:
+        db.collection("questions_log").document(key).update({
+            "awaiting_clarification": False,
+        })
+    except Exception as e:
+        logger.warning(f"Failed to mark clarification resolved: {e}")
+
+    # Re-dispatch with original intent + merged entities
+    original_intent = pending.get('original_intent', 'NONE')
+    result = {"intent": original_intent, "entities": merged, "confidence": 0.9}
+
+    try:
+        handler_result = _dispatch(original_intent, result, msg, db, firestore_module,
+                                   access_token, rcb_email, get_secret_func)
+        if handler_result:
+            handler_result['entities'] = merged
+            handler_result['resolved_from_clarification'] = True
+            return handler_result
+    except Exception as e:
+        logger.warning(f"Clarification dispatch error: {e}")
+
+    return None
+
+
+# ═══════════════════════════════════════════
 #  INTENT HANDLERS
 # ═══════════════════════════════════════════
 
@@ -631,8 +754,16 @@ def _detect_instruction_scope(text):
     return 'general'
 
 
-def _handle_status_request(db, entities, msg, access_token, rcb_email):
+def _handle_status_request(db, entities, msg, access_token, rcb_email,
+                           firestore_module=None):
     """Handle STATUS_REQUEST — look up deal in tracker and reply with status."""
+    # Check if we have any shipment identifier
+    bol = entities.get('bol') or entities.get('bol_msc')
+    if not bol and not entities.get('container'):
+        if firestore_module:
+            return _send_clarification('missing_shipment_id', 'STATUS_REQUEST', entities,
+                                       msg, db, firestore_module, access_token, rcb_email)
+
     try:
         from lib.tracker import _find_deal_by_field, _find_deal_by_container
     except ImportError:
@@ -642,7 +773,6 @@ def _handle_status_request(db, entities, msg, access_token, rcb_email):
     lookup_key = ""
 
     # Try BL first
-    bol = entities.get('bol') or entities.get('bol_msc')
     if bol:
         deal_doc = _find_deal_by_field(db, 'bol_number', bol)
         lookup_key = f"BL {bol}"
@@ -886,18 +1016,24 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     }
 
 
-def _handle_instruction(db, entities, msg, access_token, rcb_email, get_secret_func):
+def _handle_instruction(db, entities, msg, access_token, rcb_email, get_secret_func,
+                        firestore_module=None):
     """Handle INSTRUCTION — route to appropriate action."""
     action = entities.get('action', 'unknown')
 
     if action == 'classify':
+        if not msg.get('hasAttachments', False):
+            if firestore_module:
+                return _send_clarification('missing_attachment', 'INSTRUCTION', entities,
+                                           msg, db, firestore_module, access_token, rcb_email)
         return {"status": "routed", "intent": "INSTRUCTION", "action": "classify", "cost_usd": 0.0}
 
     if action in ('tracker_update', 'start_tracking'):
         return {"status": "routed", "intent": "INSTRUCTION", "action": "tracker_update", "cost_usd": 0.0}
 
     if action == 'stop_tracking':
-        return {"status": "routed", "intent": "INSTRUCTION", "action": "stop_tracking", "cost_usd": 0.0}
+        return _execute_stop_tracking(db, entities, msg, access_token, rcb_email,
+                                      firestore_module=firestore_module)
 
     # Unknown instruction — acknowledge
     reply_html = _wrap_html_rtl(
@@ -908,6 +1044,73 @@ def _handle_instruction(db, entities, msg, access_token, rcb_email, get_secret_f
     )
     _send_reply_safe(reply_html, msg, access_token, rcb_email)
     return {"status": "replied", "intent": "INSTRUCTION", "action": action, "cost_usd": 0.0}
+
+
+def _stop_deal(db, deal_doc):
+    """Stop a single deal — set both status and follow_mode to stopped."""
+    db.collection("tracker_deals").document(deal_doc.id).update({
+        "status": "stopped",
+        "follow_mode": "stopped",
+        "stopped_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+def _execute_stop_tracking(db, entities, msg, access_token, rcb_email,
+                           firestore_module=None):
+    """Execute stop tracking — find deals and set status+follow_mode to stopped."""
+    # If no specific BL/container, ask for clarification instead of stopping all
+    bol = entities.get('bol') or entities.get('bol_msc')
+    container = entities.get('container')
+    if not bol and not container:
+        if firestore_module:
+            return _send_clarification('missing_stop_target', 'INSTRUCTION', entities,
+                                       msg, db, firestore_module, access_token, rcb_email)
+
+    from_email = _get_sender_address(msg)
+
+    try:
+        from lib.tracker import _find_deal_by_field, _find_deal_by_container
+    except ImportError:
+        from tracker import _find_deal_by_field, _find_deal_by_container
+
+    stopped_deals = []
+
+    if bol:
+        deal_doc = _find_deal_by_field(db, 'bol_number', bol)
+        if deal_doc:
+            _stop_deal(db, deal_doc)
+            stopped_deals.append(f"BL {bol}")
+
+    if container and not stopped_deals:
+        deal_doc = _find_deal_by_container(db, container)
+        if deal_doc:
+            _stop_deal(db, deal_doc)
+            stopped_deals.append(f"Container {container}")
+
+    if stopped_deals:
+        deals_text = ", ".join(stopped_deals)
+        reply_html = _wrap_html_rtl(
+            f"<b>מעקב הופסק</b><br>"
+            f"הפסקנו לעקוב אחרי: {deals_text}<br><br>"
+            f"<span style='color:#888;font-size:12px;'>כדי לחדש מעקב, השב עם: follow [מספר BL]</span>"
+        )
+    else:
+        reply_html = _wrap_html_rtl(
+            "לא נמצאו משלוחים פעילים במעקב שלך.<br>"
+            "אנא ציין מספר BL או מכולה ספציפי."
+        )
+
+    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+
+    return {
+        "status": "replied",
+        "intent": "INSTRUCTION",
+        "action": "stop_tracking",
+        "cost_usd": 0.0,
+        "deals_stopped": len(stopped_deals),
+        "answer_text": f"Stopped {len(stopped_deals)} deals",
+    }
 
 
 def _handle_non_work(msg, access_token, rcb_email):
@@ -937,11 +1140,13 @@ def _dispatch(intent, result, msg, db, firestore_module,
         return _handle_non_work(msg, access_token, rcb_email)
 
     if intent == 'STATUS_REQUEST':
-        return _handle_status_request(db, entities, msg, access_token, rcb_email)
+        return _handle_status_request(db, entities, msg, access_token, rcb_email,
+                                      firestore_module=firestore_module)
 
     if intent == 'INSTRUCTION':
         return _handle_instruction(db, entities, msg, access_token,
-                                   rcb_email, get_secret_func)
+                                   rcb_email, get_secret_func,
+                                   firestore_module=firestore_module)
 
     if intent == 'CUSTOMS_QUESTION':
         return _handle_customs_question(db, entities, msg, access_token,
@@ -1002,6 +1207,18 @@ def process_email_intent(msg, db, firestore_module, access_token, rcb_email, get
     if privilege == "NONE":
         return {"status": "skipped", "reason": "external_sender"}
 
+    # Check if this is a reply to a previous clarification (before body length check —
+    # a valid clarification reply may be just a BL number like "MEDURS12345")
+    pending = _check_pending_clarification(db, from_email)
+    if pending:
+        resolved = _resolve_clarification(pending, subject, body_text, msg, db,
+                                          firestore_module, access_token, rcb_email, get_secret_func)
+        if resolved:
+            _log_question(db, firestore_module, subject, body_text, from_email,
+                          {"intent": pending['original_intent'], "entities": resolved.get('entities', {})},
+                          resolved, msg.get('id', ''))
+            return resolved
+
     # Skip if body is too short (auto-generated/notification)
     if len(body_text.strip()) < 15:
         return {"status": "skipped", "reason": "body_too_short"}
@@ -1023,6 +1240,10 @@ def process_email_intent(msg, db, firestore_module, access_token, rcb_email, get
     intent = result['intent']
 
     if intent == 'NONE':
+        # For non-trivial body text, send ambiguous clarification
+        if len(body_text.strip()) >= 30:
+            return _send_clarification('ambiguous_intent', 'NONE', {},
+                                       msg, db, firestore_module, access_token, rcb_email)
         return {"status": "no_intent"}
 
     # ADMIN_INSTRUCTION only allowed for ADMIN
