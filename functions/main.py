@@ -32,7 +32,7 @@ except ImportError as e:
     BRAIN_COMMANDER_AVAILABLE = False
 
 try:
-    from lib.tracker import tracker_process_email, tracker_poll_active_deals
+    from lib.tracker import tracker_process_email, tracker_poll_active_deals, check_gate_cutoff_alerts
     TRACKER_AVAILABLE = True
 except ImportError as e:
     print(f"Tracker not available: {e}")
@@ -1786,6 +1786,16 @@ def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
         print("✈️ Air cargo tracker not available")
     except Exception as ae:
         print(f"✈️ Air cargo poll error: {ae}")
+
+    # ── Land transport: Gate cutoff ETA alerts ──
+    try:
+        cutoff_result = check_gate_cutoff_alerts(
+            get_db(), firestore, get_secret,
+            access_token=access_token, rcb_email=rcb_email
+        )
+        print(f"🚛 Gate cutoff check complete: {cutoff_result}")
+    except Exception as ge:
+        print(f"🚛 Gate cutoff check error: {ge}")
 
 
 # ============================================================
