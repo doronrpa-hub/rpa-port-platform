@@ -2540,3 +2540,60 @@ Tool #33: `fetch_seller_website` — domain inference, homepage fetch, product k
 - Shared infrastructure: email pipeline, Firestore, identity graph, vessel tracking, port intelligence
 - Decision: build after RCB is stable (4-6 weeks real traffic minimum)
 - Risk of parallel development: high — defer until RCB feedback loop is closed
+
+## Session 48 Summary (2026-02-18 evening) — AI Fallback Chain + Tool Engine Max Rounds
+
+### Root Cause Analysis
+BALKI re-test (RCB-20260218-182-CLS) after Session 47 deploy exposed 4 cascading AI failures:
+1. **Gemini 400**: `_claude_to_gemini()` dropped `items` for array types → `run_elimination.candidates` rejected
+2. **Gemini 429**: Free tier quota exhausted → every subsequent call wasted time retrying
+3. **Claude 401**: API key whitespace from Secret Manager → "x-api-key header is required"
+4. **Max rounds too low**: `_MAX_ROUNDS=8` insufficient for 13-item classification (needs 16+ tool calls)
+
+### Fixes Implemented
+
+**Commit `7829c87` — AI fallback chain fixes:**
+1. **Recursive `_convert_prop_to_gemini()`** — handles arrays with `items`, nested objects, enums, required fields
+2. **`_gemini_quota_exhausted` flag** — first 429 skips all Gemini for rest of run, resets per classification
+3. **`.strip()` on all API keys** from Secret Manager + None/empty guards with clear error messages
+4. **Agent 1 triple fallback**: Gemini → Claude → ChatGPT (gpt-4o-mini) — never 0 working models
+5. **`openai_key` fetched early** and passed through pipeline for Agent 1 third fallback
+
+**Commit `3bef381` — Max rounds + forced final answer:**
+1. **`_MAX_ROUNDS` 8→15** — BALKI 13 items need: search_tariff + chapter_notes + tariff_structure + 13×verify_hs_code = 16 calls
+2. **`_TIME_BUDGET_SEC` 120→180** — more rounds need more time
+3. **Forced final answer** — when max rounds hit, sends "output your final JSON now" to Claude, parses partial result
+4. **Pre-classify bypass** — now passes `api_key` so Claude fallback works when Gemini 429
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_definitions.py` | Recursive `_convert_prop_to_gemini()` replacing shallow converter |
+| `functions/lib/classification_agents.py` | +`_gemini_quota_exhausted` flag, 429 fast-fail, `.strip()` keys, None guard, ChatGPT fallback, bypass api_key |
+| `functions/lib/tool_calling_engine.py` | MAX_ROUNDS 8→15, TIME_BUDGET 120→180, forced final answer, 429 fast-fail, None guard |
+
+### Live Test Results (RCB-20260218-182-CLS)
+- **13 items extracted** via Claude (Gemini 429 → fast-fail to Claude)
+- **8 rounds of tool calls** completed: search_tariff, get_chapter_notes, lookup_tariff_structure, verify_hs_code
+- **BUT max rounds (8) hit** → returned partial text, no parseable JSON → **items=0**
+- Classification email sent to doron@rpa-port.co.il with empty result
+- **Fix deployed**: max rounds 15 + forced final answer should prevent this
+
+### Gemini API Configuration
+- **Current tier**: Google AI Studio free tier (`?key=` URL pattern)
+- **Free tier limits**: ~500 req/day (Flash), ~50 req/day (Pro), 2 req/min
+- **Impact**: Quota exhausted daily → Claude carries 100% of load when Gemini down
+- **TODO**: Consider paid tier ($0.075/M tokens Flash) for production stability
+
+### Outstanding Issues (NOT FIXED)
+1. **Quality gate Rule 7** — empty classification emails still going out despite rule being deployed. Gate may not be called correctly for classification emails, or HS code regex is wrong
+2. **Gemini paid tier** — free tier not production-ready, need billing upgrade
+3. **Memory hits returning 0** — BELSHINA seeded data not matching extracted product descriptions (format mismatch?)
+4. **Identity graph** — built Session 46, NOT yet wired into live pipeline
+
+### Git Commits
+- `7829c87` — Session 48: Fix AI fallback chain — Gemini schema, 429 fast-fail, triple fallback
+- `3bef381` — Session 48.2: Fix max rounds + forced final answer for tool-calling engine
+
+### Test Results
+- **968 passed**, 5 failed (pre-existing BS4), 2 skipped — zero regressions throughout
