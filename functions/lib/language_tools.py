@@ -51,14 +51,14 @@ ISRAEL_VAT_RATE_DISPLAY = "18%"
 ISRAEL_VAT_RATE_PERCENT = 18
 
 # Israeli HS code structure — 10 digits (international 6 + 4 Israeli national)
-# Display format: XX.XX.XXXXXX/X (e.g., 87.08.998000/0)
+# Display format: XX.XX.XXXXXX/X (e.g., 87.08.998000/4)
 # Internal format: 10 digits zero-padded (e.g., 8708998000)
 # Source: Israel Tax Authority — "פרט מכס הינו מספר בין 10 ספרות"
 # Note: librarian.py has get_israeli_hs_format() and normalize_hs_code() — use those
 #       for actual formatting. These constants are for reference and validation only.
 ISRAEL_HS_CODE_DIGITS = 10
 ISRAEL_HS_CODE_FORMAT = "XX.XX.XXXXXX/X"
-ISRAEL_HS_CODE_EXAMPLE = "87.08.998000/0"
+ISRAEL_HS_CODE_EXAMPLE = "87.08.998000/4"
 ISRAEL_HS_CODE_PATTERN = r'^\d{2}\.\d{2}\.\d{6}/\d$'  # Israeli display format
 
 # De minimis threshold for personal imports
@@ -438,16 +438,16 @@ class HebrewLanguageChecker:
         """
         Validate Israeli HS code format.
         
-        Israel uses 10-digit codes: XX.XX.XXXXXX/X (e.g., 87.08.998000/0)
+        Israel uses 10-digit codes: XX.XX.XXXXXX/X (e.g., 87.08.998000/4)
         - First 6 digits: international HS (WCO standard)
         - Digits 7-10: Israeli national subdivision
-        - Display format has dots and slash: XX.XX.XXXXXX/X
-        
+        - Display format has dots and slash: XX.XX.XXXXXX/X (Luhn check digit)
+
         Note: For actual formatting, prefer importing get_israeli_hs_format()
         from librarian.py rather than reimplementing here.
-        
+
         Accepted formats:
-        - 87.08.998000/0  (Israeli display format — XX.XX.XXXXXX/X)
+        - 87.08.998000/4  (Israeli display format — XX.XX.XXXXXX/X)
         - 8708998000       (flat 10-digit — for data systems)
         - 8708.99.80       (legacy 8-digit — will be zero-padded to 10)
         - 8471.30          (6-digit international HS — valid but incomplete)

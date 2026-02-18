@@ -525,6 +525,7 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
         "tracker": tracker_info,
         "audit": audit,
         "cross_reference": cross_ref_results if cross_ref_results else None,
+        "pre_enrichment": enrichment if enrichment else None,
         "_engine": "tool_calling",
     }
 

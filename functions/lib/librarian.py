@@ -475,13 +475,33 @@ def full_knowledge_search(db, query_terms, item_description=""):
 #  HS CODE FORMATTING & VALIDATION (Session 11)
 # ═══════════════════════════════════════════
 
+def _hs_check_digit(digits):
+    """Compute Luhn check digit for a 10-digit Israeli HS code."""
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2 == 0:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return str((10 - total % 10) % 10)
+
+
 def get_israeli_hs_format(hs_code):
-    """Convert HS code to Israeli format XX.XX.XXXX/XX"""
-    code = str(hs_code).replace('.', '').replace(' ', '').replace('/', '')
+    """Convert HS code to Israeli format XX.XX.XXXXXX/X (Luhn check digit)."""
+    raw = str(hs_code)
+    check = ""
+    if "/" in raw:
+        raw, check = raw.split("/", 1)
+
+    code = raw.replace('.', '').replace(' ', '')
     code = code.ljust(10, '0')[:10]
 
-    if len(code) >= 8:
-        return f"{code[:2]}.{code[2:4]}.{code[4:8]}/{code[8:10]}"
+    if len(code) >= 10 and code.isdigit():
+        if not check:
+            check = _hs_check_digit(code)
+        return f"{code[:2]}.{code[2:4]}.{code[4:10]}/{check}"
     return hs_code
 
 

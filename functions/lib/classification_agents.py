@@ -150,6 +150,23 @@ CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after 
 ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine between pre_classify and Agent 2
 VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
 
+# Session 40: Shared design constants from tracker email
+try:
+    from lib.tracker_email import (
+        _RPA_BLUE, _RPA_ACCENT, _COLOR_OK, _COLOR_WARN, _COLOR_ERR,
+        _LOGO_URL, _html_open, _html_close, _to_israel_time,
+    )
+except ImportError:
+    _RPA_BLUE = "#1e3a5f"
+    _RPA_ACCENT = "#2471a3"
+    _COLOR_OK = "#27ae60"
+    _COLOR_WARN = "#f39c12"
+    _COLOR_ERR = "#e74c3c"
+    _LOGO_URL = "https://rpa-port.com/wp-content/uploads/2016/09/logo.png"
+    _html_open = None
+    _html_close = None
+    _to_israel_time = None
+
 # =============================================================================
 # SESSION 27: Per-Run Cost Accumulator
 # =============================================================================
@@ -1452,7 +1469,7 @@ def _get_clarification_candidates(items, context, openai_key):
     system_prompt = (
         "You are an Israeli customs classification expert. "
         "You classify products into Israeli HS tariff codes (פרט מכס). "
-        "Israeli format: XX.XX.XXXXXX/X (chapter.heading.subheading/check-digit, e.g. 73.26.900002). "
+        "Israeli format: XX.XX.XXXXXX/X (chapter.heading.subheading/check-digit, e.g. 73.26.900002/9). "
         "Always respond in valid JSON."
     )
     user_prompt = f"""The following products could not be automatically classified.
@@ -1595,356 +1612,626 @@ def _build_low_confidence_banner(avg_confidence, classified, total):
     </div>'''
 
 
-def build_classification_email(results, sender_name, invoice_validation=None, tracking_code=None, invoice_data=None, enriched_items=None, original_email_body=None):
-    """Build HTML email report - renders pre-computed data from agents + intelligence."""
-    classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
-    regulatory = results.get("agents", {}).get("regulatory", {}).get("regulatory", [])
-    fta = results.get("agents", {}).get("fta", {}).get("fta", [])
-    risk = results.get("agents", {}).get("risk", {}).get("risk", {})
-    synthesis = results.get("synthesis", "")
-    # Rich data from Firestore lookups (bypasses weak AI agent guesses)
-    ministry_routing = results.get("ministry_routing", {})
-    intelligence = results.get("intelligence", {})
-    free_import_order = results.get("free_import_order", {})
-    
-    # Session 11: Generate tracking code if not provided
-    if not tracking_code:
-        tracking_code = generate_tracking_code()
-    
-    # --- Modern email template ---
-    html = f'''<div style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;direction:rtl;background:#f0f2f5;padding:0">
+# ═══════════════════════════════════════════════════════════════════════════
+# SESSION 40 — Block H: Classification Result Email (Redesigned)
+# Table-based, Outlook-safe, RTL, matches tracker_email.py design language.
+# Section builders return <tr>…</tr> blocks; orchestrator composes them.
+# ═══════════════════════════════════════════════════════════════════════════
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#0f2439 0%,#1a3a5c 50%,#245a8a 100%);color:#fff;padding:32px 30px 28px;border-radius:12px 12px 0 0">
-        <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
-            <td style="vertical-align:middle">
-                <h1 style="margin:0;font-size:22px;font-weight:700;letter-spacing:0.3px">דו״ח סיווג מכס</h1>
-                <p style="margin:6px 0 0 0;font-size:14px;opacity:0.85;font-weight:400">נוצר אוטומטית ע״י מערכת RCB</p>
-            </td>
-            <td style="text-align:left;vertical-align:middle">
-                <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:8px 14px;display:inline-block">
-                    <span style="font-size:10px;opacity:0.7;display:block;text-align:center;font-family:'Courier New',monospace">TRACKING</span>
-                    <span style="font-size:13px;font-family:'Courier New',monospace;font-weight:600;letter-spacing:1px">{tracking_code}</span>
-                </div>
-            </td>
-        </tr></table>
-    </div>
 
-    <!-- Body -->
-    <div style="background:#ffffff;padding:28px 30px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'''
+def _cls_html_open():
+    """Opening HTML/body/table wrapper (Outlook-safe, RTL) — local fallback."""
+    return ('<!DOCTYPE html>\n'
+            '<html dir="rtl" lang="he">\n'
+            '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>\n'
+            '<body dir="rtl" style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">\n'
+            '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;">\n'
+            '<tr><td align="center">\n'
+            '<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;'
+            'background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">\n')
 
-    # Session 11: Shipment info card
-    if invoice_data:
-        direction = invoice_data.get('direction', 'unknown')
-        direction_text = "יבוא לישראל" if direction == 'import' else "יצוא מישראל" if direction == 'export' else "לא ידוע"
-        freight = invoice_data.get('freight_type', 'unknown')
-        freight_text = "ים 🚢" if freight == 'sea' else "אוויר ✈️" if freight == 'air' else "לא ידוע"
-        seller = invoice_data.get('seller', 'לא ידוע')[:30]
-        buyer = invoice_data.get('buyer', 'לא ידוע')[:30]
-        bl = invoice_data.get('bl_number', '')
-        awb = invoice_data.get('awb_number', '')
-        ref = f"B/L: {bl}" if bl else f"AWB: {awb}" if awb else "אין מספר משלוח"
 
-        html += f'''<div style="background:#f8faff;border:1px solid #d4e3f5;border-radius:10px;padding:18px 20px;margin-bottom:22px">
-            <div style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">פרטי משלוח</div>
-            <table style="width:100%;font-size:14px;color:#333" cellpadding="0" cellspacing="0">
-                <tr>
-                    <td style="padding:5px 0;width:50%"><span style="color:#888;font-size:12px">כיוון</span><br><strong>{direction_text}</strong></td>
-                    <td style="padding:5px 0;width:50%"><span style="color:#888;font-size:12px">הובלה</span><br><strong>{freight_text}</strong></td>
-                </tr>
-                <tr>
-                    <td style="padding:5px 0"><span style="color:#888;font-size:12px">מוכר</span><br><strong>{seller}</strong></td>
-                    <td style="padding:5px 0"><span style="color:#888;font-size:12px">קונה</span><br><strong>{buyer}</strong></td>
-                </tr>
-                <tr>
-                    <td colspan="2" style="padding:5px 0"><span style="color:#888;font-size:12px">מס׳ משלוח</span><br><strong style="font-family:'Courier New',monospace">{ref}</strong></td>
-                </tr>
-            </table>
-        </div>'''
+def _cls_html_close():
+    """Closing tags matching _cls_html_open."""
+    return '</table>\n</td></tr></table>\n</body></html>'
 
-    # Session 10: Invoice validation
-    if invoice_validation:
-        score = invoice_validation.get('score', 0)
-        is_valid = invoice_validation.get('is_valid', False)
-        missing = invoice_validation.get('missing_fields', [])
-        bar_color = "#22c55e" if is_valid else "#f59e0b"
-        bar_bg = "#dcfce7" if is_valid else "#fef3c7"
-        text_color = "#166534" if is_valid else "#92400e"
-        icon = "✅" if is_valid else "⚠️"
-        label = "חשבון תקין" if is_valid else "חשבון חלקי"
 
-        html += f'''<div style="background:{bar_bg};border-radius:10px;padding:18px 20px;margin-bottom:22px;border:1px solid {bar_color}33">
-            <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
-                <td style="vertical-align:middle">
-                    <span style="font-size:16px;font-weight:700;color:{text_color}">{icon} {label}</span>
-                </td>
-                <td style="text-align:left;vertical-align:middle;width:160px">
-                    <div style="font-size:11px;color:{text_color};margin-bottom:4px;text-align:left">ציון: {score}/100</div>
-                    <div style="background:#fff;border-radius:20px;height:8px;overflow:hidden">
-                        <div style="background:{bar_color};height:100%;width:{score}%;border-radius:20px"></div>
-                    </div>
-                </td>
-            </tr></table>'''
-        if is_valid:
-            html += f'<p style="color:{text_color};margin:10px 0 0 0;font-size:13px">המסמכים מכילים את כל המידע הנדרש לפי תקנות המכס.</p>'
-        else:
-            html += f'<p style="color:{text_color};margin:10px 0 0 0;font-size:13px">חסרים {len(missing)} שדות בהתאם לתקנות (מס\' 2) תשל"ג-1972:</p>'
-            html += f'<div style="margin-top:8px">'
-            for field in missing[:5]:
-                html += f'<span style="display:inline-block;background:#fff;border:1px solid {bar_color}66;border-radius:20px;padding:3px 12px;margin:3px;font-size:12px;color:{text_color}">{field}</span>'
-            html += '</div>'
-        html += '</div>'
+def _cls_header(tracking_code):
+    """Section 1: Branded header with RPA-PORT logo and tracking code."""
+    return f"""
+<!-- HEADER -->
+<tr><td style="background:{_RPA_BLUE};padding:0;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="padding:20px 30px;" valign="middle">
+      <img src="{_LOGO_URL}" alt="RPA-PORT" width="48" height="48"
+           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;padding-left:12px;">
+        <span style="color:#ffffff;font-size:18px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
+        <span style="color:#aed6f1;font-size:13px;display:block;">&#1491;&#1493;&#1524;&#1495; &#1505;&#1497;&#1493;&#1493;&#1490; &#1502;&#1499;&#1505; &mdash; RCB</span>
+      </span>
+    </td>
+    <td align="left" style="padding:20px 30px;" valign="middle">
+      <table cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.15);border-radius:8px;">
+      <tr><td style="padding:6px 14px;text-align:center;">
+        <span style="font-size:10px;color:#aed6f1;display:block;font-family:'Courier New',monospace;">TRACKING</span>
+        <span style="font-size:13px;color:#ffffff;font-family:'Courier New',monospace;font-weight:bold;letter-spacing:1px;">{tracking_code or ''}</span>
+      </td></tr>
+      </table>
+    </td>
+  </tr>
+  </table>
+</td></tr>
+"""
 
-    # Quality Gate: Inject warning banner if present
-    audit_banner = results.get("audit", {}).get("warning_banner", "")
-    if audit_banner:
-        html += audit_banner
 
-    # Session 14: Synthesis
+def _cls_shipment_info(invoice_data):
+    """Shipment info: direction, freight, parties, reference number."""
+    if not invoice_data:
+        return ""
+    direction = invoice_data.get('direction', 'unknown')
+    dir_he = "\u05d9\u05d1\u05d5\u05d0 \u05dc\u05d9\u05e9\u05e8\u05d0\u05dc" if direction == 'import' else "\u05d9\u05e6\u05d5\u05d0 \u05de\u05d9\u05e9\u05e8\u05d0\u05dc" if direction == 'export' else "\u05dc\u05d0 \u05d9\u05d3\u05d5\u05e2"
+    freight = invoice_data.get('freight_type', 'unknown')
+    freight_he = "\u05d9\u05dd" if freight == 'sea' else "\u05d0\u05d5\u05d5\u05d9\u05e8" if freight == 'air' else "\u05dc\u05d0 \u05d9\u05d3\u05d5\u05e2"
+    seller = (invoice_data.get('seller', '') or '\u05dc\u05d0 \u05d9\u05d3\u05d5\u05e2')[:35]
+    buyer = (invoice_data.get('buyer', '') or '\u05dc\u05d0 \u05d9\u05d3\u05d5\u05e2')[:35]
+    bl = invoice_data.get('bl_number', '')
+    awb = invoice_data.get('awb_number', '')
+    ref = f"B/L: {bl}" if bl else f"AWB: {awb}" if awb else ""
+
+    def _kv(label, value):
+        v = value if value else '&#8212;'
+        return (f'  <tr>'
+                f'<td style="padding:6px 12px;color:{_RPA_BLUE};font-weight:bold;font-size:13px;'
+                f'width:35%;border-bottom:1px solid #f0f0f0;">{label}</td>'
+                f'<td style="padding:6px 12px;color:#333;font-size:13px;'
+                f'border-bottom:1px solid #f0f0f0;">{v}</td>'
+                f'</tr>\n')
+
+    html = f"""
+<!-- SHIPMENT INFO -->
+<tr><td style="padding:20px 30px 10px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};margin-bottom:8px;">
+  <tr><td>\u05e4\u05e8\u05d8\u05d9 \u05de\u05e9\u05dc\u05d5\u05d7</td></tr>
+  </table>
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">
+"""
+    html += _kv("\u05db\u05d9\u05d5\u05d5\u05df", dir_he)
+    html += _kv("\u05d4\u05d5\u05d1\u05dc\u05d4", freight_he)
+    html += _kv("\u05de\u05d5\u05db\u05e8", seller)
+    html += _kv("\u05e7\u05d5\u05e0\u05d4", buyer)
+    if ref:
+        html += _kv("\u05de\u05e1\u05f3 \u05de\u05e9\u05dc\u05d5\u05d7", f'<span style="font-family:\'Courier New\',monospace;">{ref}</span>')
+    html += """  </table>
+</td></tr>"""
+    return html
+
+
+def _cls_invoice_validation(invoice_validation):
+    """Invoice validation score bar."""
+    if not invoice_validation:
+        return ""
+    score = invoice_validation.get('score', 0)
+    is_valid = invoice_validation.get('is_valid', False)
+    missing = invoice_validation.get('missing_fields', [])
+    bar_color = _COLOR_OK if is_valid else _COLOR_WARN
+    text_color = "#166534" if is_valid else "#92400e"
+    label = "\u05d7\u05e9\u05d1\u05d5\u05df \u05ea\u05e7\u05d9\u05df" if is_valid else "\u05d7\u05e9\u05d1\u05d5\u05df \u05d7\u05dc\u05e7\u05d9"
+    icon = "&#10003;" if is_valid else "&#9888;"
+
+    html = f"""
+<!-- INVOICE VALIDATION -->
+<tr><td style="padding:10px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid {bar_color};border-radius:4px;overflow:hidden;">
+  <tr>
+    <td style="padding:12px 16px;vertical-align:middle;">
+      <span style="font-size:15px;font-weight:bold;color:{text_color};">{icon} {label}</span>
+    </td>
+    <td style="padding:12px 16px;width:160px;" align="left">
+      <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="font-size:11px;color:{text_color};padding-bottom:4px;">\u05e6\u05d9\u05d5\u05df: {score}/100</td></tr>
+      <tr><td>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f0;border-radius:10px;overflow:hidden;">
+        <tr><td style="width:{score}%;background:{bar_color};height:8px;border-radius:10px;">&nbsp;</td>
+            <td style="height:8px;">&nbsp;</td></tr>
+        </table>
+      </td></tr>
+      </table>
+    </td>
+  </tr>"""
+    if not is_valid and missing:
+        html += f"""  <tr><td colspan="2" style="padding:8px 16px 12px;border-top:1px solid #f0f0f0;">
+      <span style="font-size:12px;color:{text_color};">\u05d7\u05e1\u05e8\u05d9\u05dd {len(missing)} \u05e9\u05d3\u05d5\u05ea:</span><br>"""
+        for field in missing[:5]:
+            html += f'      <span style="display:inline-block;background:#fff;border:1px solid {bar_color};border-radius:12px;padding:2px 10px;margin:3px;font-size:11px;color:{text_color};">{field}</span>\n'
+        html += "    </td></tr>"
+    html += """  </table>
+</td></tr>"""
+    return html
+
+
+def _cls_synthesis(synthesis):
+    """Synthesis section — blue-bordered summary text."""
+    if not synthesis:
+        return ""
     if LANGUAGE_TOOLS_AVAILABLE:
         try:
             synthesis = _lang_checker.fix_all(synthesis)
         except Exception:
             pass
-    html += f'''<div style="background:#f8faff;padding:18px 20px;border-radius:10px;border-right:4px solid #1a3a5c;margin-bottom:28px;font-size:14px;line-height:1.7;color:#333">{synthesis}</div>'''
+    return f"""
+<!-- SYNTHESIS -->
+<tr><td style="padding:10px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #d4e3f5;border-radius:4px;overflow:hidden;">
+  <tr>
+    <td style="width:4px;background:{_RPA_BLUE};"></td>
+    <td style="padding:14px 18px;font-size:14px;line-height:1.7;color:#333;background:#f8faff;">
+      {synthesis}
+    </td>
+  </tr>
+  </table>
+</td></tr>"""
 
-    # Classifications header
-    html += '''<div style="margin-bottom:14px">
-        <span style="font-size:17px;font-weight:700;color:#0f2439">סיווגים</span>
-        <div style="height:3px;width:50px;background:linear-gradient(90deg,#1a3a5c,#245a8a);border-radius:2px;margin-top:6px"></div>
-    </div>'''
 
-    # Classification cards — use enriched_items when available, fallback to classifications
-    card_items = enriched_items if enriched_items else classifications
-    _using_enriched = bool(enriched_items)
+def _cls_section_title(title, color=None):
+    """Render a section title with gradient underline."""
+    c = color or _RPA_BLUE
+    accent = _RPA_ACCENT if c == _RPA_BLUE else c
+    return f"""
+<tr><td style="padding:20px 30px 5px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr><td style="font-size:16px;font-weight:bold;color:{c};">{title}</td></tr>
+  <tr><td style="padding-top:4px;">
+    <table width="50" cellpadding="0" cellspacing="0">
+    <tr><td style="height:3px;background:{accent};border-radius:2px;"></td></tr>
+    </table>
+  </td></tr>
+  </table>
+</td></tr>"""
+
+
+def _cls_result_table(card_items, using_enriched):
+    """Section 2: Classification result table — per-item cards with HS code + confidence."""
+    if not card_items:
+        return ""
+
+    html = _cls_section_title("\u05e1\u05d9\u05d5\u05d5\u05d2\u05d9\u05dd")
 
     for c in card_items:
-        conf = c.get("confidence", "בינונית")
-        if conf == "גבוהה":
-            conf_color = "#22c55e"
-            conf_bg = "#dcfce7"
+        conf = c.get("confidence", "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea")
+        if conf == "\u05d2\u05d1\u05d5\u05d4\u05d4":
+            conf_color = _COLOR_OK
             conf_width = "100"
-        elif conf == "בינונית":
-            conf_color = "#f59e0b"
-            conf_bg = "#fef3c7"
+        elif conf == "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea":
+            conf_color = _COLOR_WARN
             conf_width = "66"
         else:
-            conf_color = "#ef4444"
-            conf_bg = "#fee2e2"
+            conf_color = _COLOR_ERR
             conf_width = "33"
 
         hs_display = get_israeli_hs_format(c.get("hs_code", ""))
-        hs_note = ""
-        v_status = c.get('verification_status', '')
-        if c.get('hs_corrected'):
-            hs_note = f'<span style="color:#92400e;font-size:11px;background:#fef3c7;padding:2px 8px;border-radius:10px;margin-right:6px">⚠️ תוקן מ-{get_israeli_hs_format(c.get("original_hs_code", ""))}</span>'
-        elif v_status == 'official':
-            hs_note = '<span style="color:#166534;font-size:11px;background:#dcfce7;padding:2px 8px;border-radius:10px;margin-right:6px">✅ אומת רשמית</span>'
-        elif v_status == 'verified':
-            hs_note = '<span style="color:#166534;font-size:11px;background:#dcfce7;padding:2px 8px;border-radius:10px;margin-right:6px">✅ אומת</span>'
-        elif c.get('hs_warning'):
-            hs_note = '<span style="color:#991b1b;font-size:11px;background:#fee2e2;padding:2px 8px;border-radius:10px;margin-right:6px">⚠️ לא אומת</span>'
-        elif c.get('hs_validated') and c.get('hs_exact_match'):
-            hs_note = '<span style="color:#166534;font-size:11px;background:#dcfce7;padding:2px 8px;border-radius:10px;margin-right:6px">✅ אומת</span>'
-
-        pt = c.get("purchase_tax", {})
-        if isinstance(pt, dict) and pt.get("applies"):
-            pt_display = pt.get("rate_he", "חל")
-            pt_note = pt.get("note_he", "")
-            pt_html = f'{pt_display}'
-            if pt_note:
-                pt_html += f'<br><span style="color:#888;font-size:11px">{pt_note[:30]}</span>'
-        else:
-            pt_html = '<span style="color:#aaa">לא חל</span>'
-
-        vat_display = c.get("vat_rate", "18%")
-
-        # Invoice line data (from _link_invoice_to_classifications)
         line_num = c.get("line_number", 0)
-        inv_desc = c.get("invoice_description", "")
+        item_name = (c.get("item", "") or c.get("description", ""))[:55]
+        tariff_text = c.get("tariff_text_he", "") or c.get("official_description_he", "")
         qty = c.get("quantity", "")
         unit_px = c.get("unit_price", "")
         item_origin = c.get("origin_country", "")
-        tariff_text = c.get("tariff_text_he", "") or c.get("official_description_he", "")
-        line_label = f'שורה {line_num}' if line_num else ''
-        qty_price = f'{qty} \u00d7 ${unit_px}' if qty and unit_px else (str(qty) if qty else '')
+        qty_price = f'{qty} &times; ${unit_px}' if qty and unit_px else (str(qty) if qty else '')
 
-        html += '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)">'
-        html += '<div style="background:#f8faff;padding:14px 18px;border-bottom:1px solid #e5e7eb">'
-        html += '<table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle">'
-        if line_label:
-            html += f'<span style="background:#1a3a5c;color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px;margin-left:8px">{line_label}</span>'
-        html += f'<span style="font-size:15px;font-weight:700;color:#0f2439">{c.get("item", "")[:50]}</span></td>'
-        if qty_price:
-            html += f'<td style="text-align:left;vertical-align:middle"><span style="font-size:13px;color:#555;font-family:\'Courier New\',monospace">{qty_price}</span></td>'
-        html += '</tr></table>'
-        if inv_desc and inv_desc.lower().strip() != (c.get("item", "") or "").lower().strip():
-            html += f'<div style="font-size:12px;color:#888;margin-top:6px">חשבונית: {inv_desc[:80]}</div>'
-        if item_origin:
-            html += f'<div style="font-size:12px;color:#888;margin-top:3px">מקור: {item_origin}</div>'
-        # Seller/Buyer row (enriched items)
-        if _using_enriched:
-            _seller = c.get("seller", "")
-            _buyer = c.get("buyer", "")
-            if _seller or _buyer:
+        # Verification status badge
+        v_status = c.get('verification_status', '')
+        hs_badge = ""
+        if c.get('hs_corrected'):
+            hs_badge = '<span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;padding:2px 8px;border-radius:10px;">&#9888; \u05ea\u05d5\u05e7\u05df</span>'
+        elif v_status in ('official', 'verified'):
+            hs_badge = '<span style="display:inline-block;background:#dcfce7;color:#166534;font-size:10px;padding:2px 8px;border-radius:10px;">&#10003; \u05d0\u05d5\u05de\u05ea</span>'
+        elif c.get('hs_warning'):
+            hs_badge = '<span style="display:inline-block;background:#fee2e2;color:#991b1b;font-size:10px;padding:2px 8px;border-radius:10px;">&#9888; \u05dc\u05d0 \u05d0\u05d5\u05de\u05ea</span>'
+        elif c.get('hs_validated') and c.get('hs_exact_match'):
+            hs_badge = '<span style="display:inline-block;background:#dcfce7;color:#166534;font-size:10px;padding:2px 8px;border-radius:10px;">&#10003; \u05d0\u05d5\u05de\u05ea</span>'
+
+        # Purchase tax
+        pt = c.get("purchase_tax", {})
+        if isinstance(pt, dict) and pt.get("applies"):
+            pt_display = pt.get("rate_he", "\u05d7\u05dc")
+            pt_note = pt.get("note_he", "")
+            if pt_note:
+                pt_display += f'<br><span style="color:#888;font-size:10px;">{pt_note[:25]}</span>'
+        else:
+            pt_display = '<span style="color:#aaa;">\u05dc\u05d0 \u05d7\u05dc</span>'
+
+        vat_display = c.get("vat_rate", "18%")
+
+        # Seller/Buyer row
+        seller_buyer = ""
+        if using_enriched:
+            _s = c.get("seller", "")
+            _b = c.get("buyer", "")
+            if _s or _b:
                 parts = []
-                if _seller:
-                    parts.append(f'<span style="color:#888">מוכר:</span> {_seller}')
-                if _buyer:
-                    parts.append(f'<span style="color:#888">קונה:</span> {_buyer}')
-                html += f'<div style="font-size:12px;color:#555;margin-top:3px">{" &nbsp;|&nbsp; ".join(parts)}</div>'
-        html += '</div><div style="padding:16px 18px">'
-        html += '<div style="margin-bottom:14px">'
-        html += f'<span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px">קוד HS</span><br>'
-        html += f'<span style="font-family:\'Courier New\',monospace;font-size:18px;font-weight:700;color:#1a3a5c;letter-spacing:0.5px">{hs_display}</span> {hs_note}'
-        if tariff_text:
-            html += f'<div style="font-size:12px;color:#555;margin-top:4px;line-height:1.4;font-style:italic">{tariff_text[:120]}</div>'
-        html += '</div>'
-        html += f'''<!-- Taxes grid -->
-                <table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0">
-                    <tr>
-                        <td style="padding:8px 0;width:33%;border-top:1px solid #f0f0f0">
-                            <span style="font-size:11px;color:#888">מכס</span><br>
-                            <strong style="font-size:15px;color:#0f2439">{c.get("duty_rate", "")}</strong>
-                        </td>
-                        <td style="padding:8px 0;width:33%;border-top:1px solid #f0f0f0">
-                            <span style="font-size:11px;color:#888">מס קנייה</span><br>
-                            <span style="font-size:14px;color:#333">{pt_html}</span>
-                        </td>
-                        <td style="padding:8px 0;width:33%;border-top:1px solid #f0f0f0">
-                            <span style="font-size:11px;color:#888">מע״מ</span><br>
-                            <strong style="font-size:15px;color:#0f2439">{vat_display}</strong>
-                        </td>
-                    </tr>
-                </table>
-                <!-- Confidence bar -->
-                <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
-                    <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
-                        <td style="font-size:11px;color:#888;vertical-align:middle">ודאות</td>
-                        <td style="width:60%;vertical-align:middle;padding:0 10px">
-                            <div style="background:#f0f0f0;border-radius:20px;height:8px;overflow:hidden">
-                                <div style="background:{conf_color};height:100%;width:{conf_width}%;border-radius:20px"></div>
-                            </div>
-                        </td>
-                        <td style="font-size:12px;font-weight:700;color:{conf_color};vertical-align:middle;text-align:left">{conf}</td>
-                    </tr></table>
-                </div>'''
+                if _s:
+                    parts.append(f'\u05de\u05d5\u05db\u05e8: {_s}')
+                if _b:
+                    parts.append(f'\u05e7\u05d5\u05e0\u05d4: {_b}')
+                seller_buyer = f'<div style="font-size:11px;color:#555;margin-top:3px;">{" &nbsp;|&nbsp; ".join(parts)}</div>'
 
-        # ── SESSION 27 Assignment 12: Justification chain + challenge ──
+        # Per-item card
+        html += f"""
+<tr><td style="padding:4px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">
+  <!-- Item header -->
+  <tr style="background:#f8faff;">
+    <td colspan="3" style="padding:12px 16px;border-bottom:1px solid #e5e7eb;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align:middle;">"""
+        if line_num:
+            html += f'          <span style="display:inline-block;background:{_RPA_BLUE};color:#fff;font-size:11px;font-weight:bold;padding:2px 10px;border-radius:10px;margin-left:8px;">\u05e9\u05d5\u05e8\u05d4 {line_num}</span>'
+        html += f"""
+          <span style="font-size:14px;font-weight:bold;color:#0f2439;">{item_name}</span>
+        </td>"""
+        if qty_price:
+            html += f"""
+        <td style="text-align:left;vertical-align:middle;">
+          <span style="font-size:12px;color:#555;font-family:'Courier New',monospace;">{qty_price}</span>
+        </td>"""
+        html += """
+      </tr>
+      </table>"""
+        inv_desc = c.get("invoice_description", "")
+        if inv_desc and inv_desc.lower().strip() != (c.get("item", "") or "").lower().strip():
+            html += f'      <div style="font-size:11px;color:#888;margin-top:4px;">\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea: {inv_desc[:80]}</div>'
+        if item_origin:
+            html += f'      <div style="font-size:11px;color:#888;margin-top:3px;">\u05de\u05e7\u05d5\u05e8: {item_origin}</div>'
+        html += seller_buyer
+        html += f"""
+    </td>
+  </tr>
+  <!-- HS Code + Taxes + Confidence -->
+  <tr>
+    <td style="padding:14px 16px;width:40%;vertical-align:top;">
+      <span style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">\u05e7\u05d5\u05d3 HS</span><br>
+      <span style="font-family:'Courier New',monospace;font-size:18px;font-weight:bold;color:{_RPA_BLUE};letter-spacing:0.5px;">{hs_display}</span>
+      {hs_badge}"""
+        if tariff_text:
+            html += f"""
+      <div style="font-size:11px;color:#555;margin-top:4px;line-height:1.4;font-style:italic;">{tariff_text[:120]}</div>"""
+        html += f"""
+    </td>
+    <td style="padding:14px 8px;vertical-align:top;border-right:1px solid #f0f0f0;border-left:1px solid #f0f0f0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:2px 0;"><span style="font-size:10px;color:#888;">\u05de\u05db\u05e1</span><br><strong style="font-size:14px;color:#0f2439;">{c.get("duty_rate", "")}</strong></td></tr>
+      <tr><td style="padding:2px 0;border-top:1px solid #f0f0f0;"><span style="font-size:10px;color:#888;">\u05de\u05e1 \u05e7\u05e0\u05d9\u05d9\u05d4</span><br><span style="font-size:13px;color:#333;">{pt_display}</span></td></tr>
+      <tr><td style="padding:2px 0;border-top:1px solid #f0f0f0;"><span style="font-size:10px;color:#888;">\u05de\u05e2\u05f4\u05de</span><br><strong style="font-size:14px;color:#0f2439;">{vat_display}</strong></td></tr>
+      </table>
+    </td>
+    <td style="padding:14px 16px;width:25%;vertical-align:top;">
+      <span style="font-size:10px;color:#888;">\u05d5\u05d3\u05d0\u05d5\u05ea</span><br>
+      <span style="font-size:14px;font-weight:bold;color:{conf_color};">{conf}</span>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;">
+      <tr><td>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f0;border-radius:10px;overflow:hidden;">
+        <tr><td style="width:{conf_width}%;background:{conf_color};height:8px;border-radius:10px;">&nbsp;</td>
+            <td style="height:8px;">&nbsp;</td></tr>
+        </table>
+      </td></tr>
+      </table>
+    </td>
+  </tr>
+  </table>
+</td></tr>"""
+
+    return html
+
+
+def _cls_regulatory(ministry_routing, regulatory):
+    """Section 3: Regulatory flags table."""
+    has_routing = bool(ministry_routing)
+    if not has_routing and not regulatory:
+        return ""
+
+    html = _cls_section_title("\u05e8\u05d2\u05d5\u05dc\u05e6\u05d9\u05d4 \u05d5\u05d0\u05d9\u05e9\u05d5\u05e8\u05d9\u05dd")
+
+    if has_routing:
+        for hs_code, routing in ministry_routing.items():
+            ministries = routing.get("ministries", [])
+            if not ministries:
+                continue
+            summary = routing.get("summary_he", "")
+            html += f"""
+<tr><td style="padding:4px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">
+  <tr><td style="padding:10px 16px;background:#f8faff;border-bottom:1px solid #e5e7eb;">
+    <span style="font-family:'Courier New',monospace;font-weight:bold;color:{_RPA_BLUE};">{get_israeli_hs_format(hs_code)}</span>"""
+            if summary:
+                html += f' <span style="font-size:12px;color:#555;margin-right:12px;">{summary[:120]}</span>'
+            html += "</td></tr>"
+            for m in ministries:
+                official = '<span style="color:#166534;font-size:10px;background:#dcfce7;padding:1px 6px;border-radius:8px;margin-left:4px;">API</span>' if m.get("official") else ''
+                m_name = m.get("name_he", m.get("name", ""))
+                docs = m.get("documents_he", [])
+                proc = m.get("procedure", "")
+                url = m.get("url", "")
+                html += f'  <tr><td style="padding:8px 16px;border-bottom:1px solid #f0f0f0;">'
+                html += f'<span style="font-weight:bold;color:#1e40af;font-size:13px;">{official}{m_name}</span>'
+                if docs:
+                    html += '<br>'
+                    for d in docs[:4]:
+                        html += f'<span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:2px 10px;margin:2px;font-size:11px;color:#1e40af;">{d}</span>'
+                if proc:
+                    html += f'<br><span style="font-size:11px;color:#888;">{proc[:100]}</span>'
+                if url:
+                    html += f' <a href="{url}" style="font-size:11px;color:#2563eb;text-decoration:none;">\u05d0\u05ea\u05e8 \u05d4\u05de\u05e9\u05e8\u05d3</a>'
+                html += "</td></tr>\n"
+            html += "  </table>\n</td></tr>"
+    elif regulatory:
+        for r in regulatory:
+            ministries_list = [m for m in r.get("ministries", []) if m.get("required")]
+            if not ministries_list:
+                continue
+            html += f"""
+<tr><td style="padding:4px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">
+  <tr><td style="padding:10px 16px;background:#f8faff;">
+    <span style="font-family:'Courier New',monospace;font-weight:bold;color:{_RPA_BLUE};">{get_israeli_hs_format(r.get("hs_code", ""))}</span>
+  </td></tr>"""
+            for m in ministries_list:
+                html += f'  <tr><td style="padding:6px 16px;border-top:1px solid #f0f0f0;"><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:3px 12px;font-size:12px;color:#1e40af;">{m.get("name")} &mdash; {m.get("regulation", "")}</span></td></tr>\n'
+            html += "  </table>\n</td></tr>"
+
+    return html
+
+
+def _cls_cross_reference(results, card_items):
+    """Section 4: Cross-reference EU TARIC / US HTS."""
+    cross_ref = results.get("cross_reference")
+    if not cross_ref:
+        return ""
+    # Check if any items have cross-ref data
+    has_data = any(c.get("cross_ref_adjustment") is not None for c in card_items)
+    if not has_data:
+        return ""
+
+    html = _cls_section_title("\u05d1\u05d3\u05d9\u05e7\u05d4 \u05e6\u05d5\u05dc\u05d1\u05ea (EU / US)")
+    html += f"""
+<tr><td style="padding:8px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;font-size:12px;">
+  <tr style="background:{_RPA_BLUE};color:#fff;">
+    <td style="padding:8px 12px;font-weight:bold;">HS Code</td>
+    <td style="padding:8px 12px;font-weight:bold;text-align:center;">EU TARIC</td>
+    <td style="padding:8px 12px;font-weight:bold;text-align:center;">US HTS</td>
+    <td style="padding:8px 12px;font-weight:bold;text-align:center;">\u05d4\u05ea\u05d0\u05de\u05d4</td>
+  </tr>"""
+
+    for i, c in enumerate(card_items[:5]):
+        hs = c.get("hs_code", "")
+        if not hs:
+            continue
+        bg = "#f8f9fa" if i % 2 == 0 else "#ffffff"
+        adj = c.get("cross_ref_adjustment")
+        note = c.get("cross_ref_note", "")
+
+        eu_key = f"eu_{hs}"
+        us_key = f"us_{hs}"
+        eu_found = eu_key in cross_ref
+        us_found = us_key in cross_ref
+
+        eu_icon = f'<span style="color:{_COLOR_OK};font-weight:bold;">&#10003;</span>' if eu_found else '<span style="color:#ccc;">&#8212;</span>'
+        us_icon = f'<span style="color:{_COLOR_OK};font-weight:bold;">&#10003;</span>' if us_found else '<span style="color:#ccc;">&#8212;</span>'
+
+        if adj is not None:
+            if adj > 0.08:
+                match_color = _COLOR_OK
+                match_text = f"+{int(adj * 100)}%"
+            elif adj > 0:
+                match_color = _COLOR_WARN
+                match_text = f"+{int(adj * 100)}%"
+            else:
+                match_color = _COLOR_ERR
+                match_text = f"{int(adj * 100)}%"
+        else:
+            match_color = "#ccc"
+            match_text = "&#8212;"
+
+        html += f"""  <tr style="background:{bg};">
+    <td style="padding:6px 12px;font-family:'Courier New',monospace;font-weight:bold;color:{_RPA_BLUE};">{get_israeli_hs_format(hs)}</td>
+    <td style="padding:6px 12px;text-align:center;">{eu_icon}</td>
+    <td style="padding:6px 12px;text-align:center;">{us_icon}</td>
+    <td style="padding:6px 12px;text-align:center;color:{match_color};font-weight:bold;">{match_text}</td>
+  </tr>
+"""
+
+    html += """  </table>
+</td></tr>"""
+    return html
+
+
+def _cls_customs_value(invoice_data, results):
+    """Section 5: Customs value with BOI exchange rate."""
+    if not invoice_data:
+        return ""
+    currency = (invoice_data.get("currency", "") or "").upper()
+    if not currency or currency in ("ILS", "NIS", ""):
+        return ""
+
+    # Calculate total from items
+    items = invoice_data.get("items", [])
+    total_value = 0
+    for item in (items or []):
+        if isinstance(item, dict):
+            try:
+                t = float(str(item.get("total", 0)).replace(",", ""))
+                total_value += t
+            except (ValueError, TypeError):
+                pass
+    if not total_value:
+        try:
+            total_value = float(str(invoice_data.get("total_value", 0)).replace(",", ""))
+        except (ValueError, TypeError):
+            pass
+
+    # BOI rate from pre-enrichment
+    pre_enrichment = results.get("pre_enrichment") or {}
+    boi_data = pre_enrichment.get("boi_rate") or {}
+    boi_rate = boi_data.get("rate") if boi_data else None
+    boi_date = boi_data.get("lastUpdate", "") if boi_data else ""
+
+    html = _cls_section_title("\u05e2\u05e8\u05da \u05de\u05db\u05e1")
+    html += """
+<tr><td style="padding:8px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">"""
+
+    def _vr(label, value, bold=False):
+        s = "font-weight:bold;font-size:15px;" if bold else "font-size:13px;"
+        return (f'  <tr><td style="padding:8px 16px;color:{_RPA_BLUE};font-weight:bold;font-size:13px;'
+                f'width:45%;border-bottom:1px solid #f0f0f0;">{label}</td>'
+                f'<td style="padding:8px 16px;color:#333;{s}'
+                f'border-bottom:1px solid #f0f0f0;">{value}</td></tr>\n')
+
+    html += _vr("\u05de\u05d8\u05d1\u05e2 \u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea", currency)
+    if total_value:
+        html += _vr("\u05e1\u05d4\u05f4\u05db \u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea", f'{total_value:,.2f} {currency}')
+    if boi_rate:
+        html += _vr("\u05e9\u05e2\u05e8 \u05d1\u05e0\u05e7 \u05d9\u05e9\u05e8\u05d0\u05dc", f'{boi_rate} ILS/{currency}')
+        if boi_date:
+            html += _vr("\u05ea\u05d0\u05e8\u05d9\u05da \u05e9\u05e2\u05e8", str(boi_date)[:16])
+        if total_value:
+            try:
+                customs_value_ils = total_value * float(boi_rate)
+                html += _vr("\u05e2\u05e8\u05da \u05de\u05db\u05e1 (ILS)", f'&#8362; {customs_value_ils:,.2f}', bold=True)
+            except (ValueError, TypeError):
+                pass
+    else:
+        html += _vr("\u05e9\u05e2\u05e8 \u05d1\u05e0\u05e7 \u05d9\u05e9\u05e8\u05d0\u05dc", '<span style="color:#999;">\u05de\u05de\u05ea\u05d9\u05df \u05dc\u05e2\u05d3\u05db\u05d5\u05df</span>')
+
+    html += """  </table>
+</td></tr>"""
+    return html
+
+
+def _cls_justification_details(card_items, using_enriched):
+    """Section 6: Per-item justification, challenge, gaps, verification flags."""
+    if not card_items:
+        return ""
+
+    # Check if any items have justification content
+    has_any = False
+    for c in card_items:
+        j = c.get("justification")
+        ch = c.get("challenge")
+        if (j and j.get("chain")) or (ch and ch.get("alternatives")):
+            has_any = True
+            break
+        if using_enriched and (c.get("ve_flags") or c.get("ve_phase4")):
+            has_any = True
+            break
+
+    if not has_any:
+        return ""
+
+    html = _cls_section_title("\u05e0\u05d9\u05de\u05d5\u05e7 \u05de\u05e9\u05e4\u05d8\u05d9")
+
+    for c in card_items:
+        hs = c.get("hs_code", "")
+        item_name = (c.get("item", "") or c.get("description", ""))[:50]
+        item_justification = c.get("justification")
+        item_challenge = c.get("challenge")
+
+        has_content = False
+        item_html = ""
+
+        # Justification chain + challenge + gaps + cross-check
         try:
             from lib.report_builder import (
                 build_justification_html, build_challenge_html,
                 build_gaps_summary_html, build_cross_check_badge,
             )
-            item_justification = c.get("justification")
             if item_justification and item_justification.get("chain"):
-                html += build_justification_html(item_justification)
-
-            item_challenge = c.get("challenge")
+                item_html += build_justification_html(item_justification)
+                has_content = True
             if item_challenge and item_challenge.get("alternatives"):
-                html += build_challenge_html(item_challenge)
-
+                item_html += build_challenge_html(item_challenge)
+                has_content = True
             if item_justification and item_justification.get("gaps"):
-                html += build_gaps_summary_html(item_justification["gaps"])
-
+                item_html += build_gaps_summary_html(item_justification["gaps"])
+                has_content = True
             cc_badge = build_cross_check_badge(c)
             if cc_badge:
-                html += f'<div style="margin-top:6px">{cc_badge}</div>'
+                item_html += f'<div style="margin-top:6px;">{cc_badge}</div>'
+                has_content = True
         except ImportError:
             pass
         except Exception:
             pass
 
-        # Block E: Verification flags
-        if _using_enriched:
+        # Verification flags (Block E)
+        if using_enriched:
             try:
                 ve_html = build_verification_flags_html(c)
                 if ve_html:
-                    html += f'<div style="margin-top:8px">{ve_html}</div>'
+                    item_html += f'<div style="margin-top:8px;">{ve_html}</div>'
+                    has_content = True
             except Exception:
                 pass
 
-        # ── Per-item ministry approvals + FTA (enriched only) ──
-        if _using_enriched:
+        # Per-item ministry approvals
+        if using_enriched:
             item_ministries = c.get("ministries", [])
             if item_ministries:
-                html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">'
-                html += '<span style="font-size:11px;color:#888">אישורי משרדים נדרשים</span><br>'
+                item_html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;">'
+                item_html += '<span style="font-size:11px;color:#888;">\u05d0\u05d9\u05e9\u05d5\u05e8\u05d9 \u05de\u05e9\u05e8\u05d3\u05d9\u05dd \u05e0\u05d3\u05e8\u05e9\u05d9\u05dd</span><br>'
                 for m in item_ministries:
                     m_name = m.get("name_he", m.get("name", ""))
-                    m_docs = ", ".join((m.get("documents_he") or m.get("documents") or [])[:3])
-                    html += f'<span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;margin:3px;font-size:12px;color:#1e40af">{m_name}</span>'
-                    if m_docs:
-                        html += f'<div style="font-size:11px;color:#666;margin:2px 0 4px 14px">{m_docs[:80]}</div>'
-                html += '</div>'
+                    item_html += f'<span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:3px 10px;margin:2px;font-size:11px;color:#1e40af;">{m_name}</span>'
+                item_html += '</div>'
+                has_content = True
 
+        # Per-item FTA
+        if using_enriched:
             item_fta = c.get("fta")
             if item_fta and item_fta.get("eligible"):
                 agreement = item_fta.get("agreement", item_fta.get("agreement_name", ""))
                 pref_rate = item_fta.get("preferential", item_fta.get("preferential_rate", ""))
                 origin_proof = item_fta.get("origin_proof", item_fta.get("documents_needed", ""))
-                html += f'<div style="margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px">'
-                html += f'<strong style="color:#166534">FTA:</strong> {agreement} '
-                html += f'<span style="color:#166534;font-weight:700">מכס מופחת {pref_rate}</span>'
+                item_html += f'<div style="margin-top:6px;padding:6px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;font-size:12px;">'
+                item_html += f'<strong style="color:#166534;">FTA:</strong> {agreement} '
+                item_html += f'<span style="color:#166534;font-weight:bold;">\u05de\u05db\u05e1 \u05de\u05d5\u05e4\u05d7\u05ea {pref_rate}</span>'
                 if origin_proof:
-                    html += f' <span style="color:#555">| תעודה: {origin_proof}</span>'
-                html += '</div>'
+                    item_html += f' <span style="color:#555;">| \u05ea\u05e2\u05d5\u05d3\u05d4: {origin_proof}</span>'
+                item_html += '</div>'
+                has_content = True
 
-        html += '''
-            </div>
-        </div>'''
-    # end classification cards
+        if not has_content:
+            continue
 
-    # Regulatory: prefer ministry_routing (Firestore data) over AI agent guesses
-    has_routing = bool(ministry_routing)
-    if has_routing:
-        html += '''<div style="margin:28px 0 14px">
-            <span style="font-size:17px;font-weight:700;color:#0f2439">רגולציה ואישורים</span>
-            <div style="height:3px;width:50px;background:linear-gradient(90deg,#1a3a5c,#245a8a);border-radius:2px;margin-top:6px"></div>
-        </div>'''
-        for hs_code, routing in ministry_routing.items():
-            if not routing.get("ministries"):
-                continue
-            summary = routing.get("summary_he", "")
-            html += f'<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:10px">'
-            html += f'<div style="font-family:\'Courier New\',monospace;font-weight:700;color:#1a3a5c;margin-bottom:10px">{get_israeli_hs_format(hs_code)}</div>'
-            if summary:
-                html += f'<div style="font-size:13px;color:#555;margin-bottom:12px">{summary[:150]}</div>'
-            for m in routing.get("ministries", []):
-                official_badge = '<span style="color:#166534;font-size:10px;background:#dcfce7;padding:1px 6px;border-radius:8px;margin-left:4px">API</span>' if m.get("official") else ''
-                html += f'<div style="background:#f8faff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:8px">'
-                html += f'<div style="font-weight:700;color:#1e40af;font-size:13px">{official_badge}{m.get("name_he", m.get("name", ""))}</div>'
-                docs = m.get("documents_he", [])
-                if docs:
-                    html += '<div style="margin-top:6px">'
-                    for d in docs[:4]:
-                        html += f'<span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;margin:2px;font-size:11px;color:#1e40af">{d}</span>'
-                    html += '</div>'
-                proc = m.get("procedure", "")
-                if proc:
-                    html += f'<div style="font-size:11px;color:#888;margin-top:4px">{proc[:100]}</div>'
-                url = m.get("url", "")
-                if url:
-                    html += f'<div style="font-size:11px;margin-top:4px"><a href="{url}" style="color:#2563eb;text-decoration:none">אתר המשרד &larr;</a></div>'
-                html += '</div>'
-            html += '</div>'
-    elif regulatory:
-        # Fallback to AI agent output
-        html += '''<div style="margin:28px 0 14px">
-            <span style="font-size:17px;font-weight:700;color:#0f2439">רגולציה</span>
-            <div style="height:3px;width:50px;background:linear-gradient(90deg,#1a3a5c,#245a8a);border-radius:2px;margin-top:6px"></div>
-        </div>'''
-        for r in regulatory:
-            ministries_html = ""
-            for m in r.get("ministries", []):
-                if m.get("required"):
-                    ministries_html += f'<span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;margin:3px;font-size:12px;color:#1e40af">{m.get("name")} — {m.get("regulation", "")}</span>'
-            if ministries_html:
-                html += f'<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
-                html += f'<div style="font-family:\'Courier New\',monospace;font-weight:700;color:#1a3a5c;margin-bottom:8px">{get_israeli_hs_format(r.get("hs_code", ""))}</div>'
-                html += f'{ministries_html}</div>'
+        html += f"""
+<tr><td style="padding:4px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">
+  <tr><td style="padding:10px 16px;background:#f8faff;border-bottom:1px solid #e5e7eb;">
+    <span style="font-family:'Courier New',monospace;font-weight:bold;color:{_RPA_BLUE};font-size:13px;">{get_israeli_hs_format(hs)}</span>
+    <span style="font-size:12px;color:#555;margin-right:8px;">{item_name}</span>
+  </td></tr>
+  <tr><td style="padding:12px 16px;">
+    {item_html}
+  </td></tr>
+  </table>
+</td></tr>"""
 
-    # FTA: prefer intelligence FTA data (Firestore lookup) over AI agent guesses
+    return html
+
+
+def _cls_fta_benefits(intelligence, fta):
+    """FTA benefits section."""
     intel_fta_list = []
     if intelligence:
         for k, v in intelligence.items():
@@ -1952,114 +2239,211 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
                 fta_data = v.get("fta")
                 if isinstance(fta_data, dict) and fta_data.get("eligible"):
                     intel_fta_list.append(fta_data)
+    ai_fta = [f for f in (fta or []) if f.get("eligible")]
 
-    if intel_fta_list:
-        html += '''<div style="margin:28px 0 14px">
-            <span style="font-size:17px;font-weight:700;color:#166534">הטבות סחר (FTA)</span>
-            <div style="height:3px;width:50px;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:2px;margin-top:6px"></div>
-        </div>'''
-        for ft in intel_fta_list:
-            agreement = ft.get("agreement_name_he") or ft.get("agreement_name", "")
-            pref_rate = ft.get("preferential_rate", "")
-            origin_proof = ft.get("origin_proof", "")
-            origin_alt = ft.get("origin_proof_alt", "")
-            cumulation = ft.get("cumulation", "")
-            legal = ft.get("legal_basis", "")
-            country = ft.get("origin_country", "")
+    if not intel_fta_list and not ai_fta:
+        return ""
 
-            html += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 18px;margin-bottom:10px">'
-            html += f'<table style="width:100%" cellpadding="0" cellspacing="0"><tr>'
-            html += f'<td style="vertical-align:middle"><strong style="color:#166534;font-size:14px">{country}</strong>'
-            html += f'<span style="color:#555;font-size:13px"> — {agreement}</span></td>'
-            if pref_rate:
-                html += f'<td style="text-align:left;vertical-align:middle"><span style="background:#22c55e;color:#fff;font-weight:700;padding:4px 14px;border-radius:20px;font-size:13px">מכס {pref_rate}</span></td>'
-            html += '</tr></table>'
-            # Details row
-            details = []
-            if origin_proof:
-                details.append(f'הוכחת מקור: <strong>{origin_proof}</strong>')
-            if origin_alt:
-                details.append(f'חלופה: {origin_alt}')
-            if cumulation:
-                details.append(f'צבירה: {cumulation}')
-            if legal:
-                details.append(f'בסיס משפטי: {legal}')
-            if details:
-                html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #bbf7d0">'
-                for d in details:
-                    html += f'<div style="font-size:12px;color:#555;margin-bottom:3px">{d}</div>'
-                html += '</div>'
-            html += '</div>'
-    elif [f for f in fta if f.get("eligible")]:
-        # Fallback to AI agent output
-        html += '''<div style="margin:28px 0 14px">
-            <span style="font-size:17px;font-weight:700;color:#166534">הטבות FTA</span>
-            <div style="height:3px;width:50px;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:2px;margin-top:6px"></div>
-        </div>'''
-        for f in fta:
-            if f.get("eligible"):
-                html += f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
-                html += f'<table style="width:100%" cellpadding="0" cellspacing="0"><tr>'
-                html += f'<td style="vertical-align:middle"><strong style="color:#166534">{f.get("country", "")}</strong><span style="color:#555;font-size:13px"> — {f.get("agreement", "")}</span></td>'
-                html += f'<td style="text-align:left;vertical-align:middle"><span style="background:#22c55e;color:#fff;font-weight:700;padding:4px 14px;border-radius:20px;font-size:13px">מכס {f.get("preferential", "")}</span></td>'
-                html += '</tr></table></div>'
+    html = _cls_section_title("\u05d4\u05d8\u05d1\u05d5\u05ea \u05e1\u05d7\u05e8 (FTA)", color="#166534")
 
-    if risk.get("level") in ["גבוה", "בינוני"]:
-        risk_color = "#ef4444" if risk.get("level") == "גבוה" else "#f59e0b"
-        risk_bg = "#fef2f2" if risk.get("level") == "גבוה" else "#fffbeb"
-        risk_border = "#fca5a5" if risk.get("level") == "גבוה" else "#fde68a"
-        html += f'''<div style="margin:28px 0 14px">
-            <span style="font-size:17px;font-weight:700;color:{risk_color}">סיכון: {risk.get("level", "")}</span>
-            <div style="height:3px;width:50px;background:{risk_color};border-radius:2px;margin-top:6px"></div>
-        </div>'''
-        for i in risk.get("items", []):
-            html += f'''<div style="background:{risk_bg};border:1px solid {risk_border};border-radius:10px;padding:14px 18px;margin-bottom:10px">
-                <strong style="color:#333">{i.get("item", "")}</strong>
-                <p style="margin:6px 0 0;color:#555;font-size:13px">{i.get("issue", "")}</p>
-            </div>'''
+    fta_items = intel_fta_list if intel_fta_list else ai_fta
+    for ft in fta_items:
+        agreement = ft.get("agreement_name_he") or ft.get("agreement_name", ft.get("agreement", ""))
+        pref_rate = ft.get("preferential_rate", ft.get("preferential", ""))
+        country = ft.get("origin_country", ft.get("country", ""))
+        origin_proof = ft.get("origin_proof", ft.get("documents_needed", ""))
+        cumulation = ft.get("cumulation", "")
+        legal = ft.get("legal_basis", "")
 
-    # Phase E: Smart questions section
-    smart_q = results.get("smart_questions", [])
-    if smart_q and SMART_QUESTIONS_AVAILABLE:
-        try:
-            item_desc = ""
-            if classifications:
-                item_desc = classifications[0].get("item", "")
-            questions_html = format_questions_html(smart_q, item_description=item_desc)
-            if questions_html:
-                html += questions_html
-        except Exception:
-            pass
+        html += f"""
+<tr><td style="padding:4px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #bbf7d0;border-radius:4px;overflow:hidden;background:#f0fdf4;">
+  <tr>
+    <td style="padding:12px 16px;vertical-align:middle;">
+      <strong style="color:#166534;font-size:14px;">{country}</strong>
+      <span style="color:#555;font-size:13px;"> &mdash; {agreement}</span>
+    </td>"""
+        if pref_rate:
+            html += f"""
+    <td style="padding:12px 16px;text-align:left;vertical-align:middle;">
+      <span style="display:inline-block;background:{_COLOR_OK};color:#fff;font-weight:bold;padding:4px 14px;border-radius:12px;font-size:13px;">\u05de\u05db\u05e1 {pref_rate}</span>
+    </td>"""
+        html += """
+  </tr>"""
+        details = []
+        if origin_proof:
+            details.append(f'\u05d4\u05d5\u05db\u05d7\u05ea \u05de\u05e7\u05d5\u05e8: <strong>{origin_proof}</strong>')
+        if cumulation:
+            details.append(f'\u05e6\u05d1\u05d9\u05e8\u05d4: {cumulation}')
+        if legal:
+            details.append(f'\u05d1\u05e1\u05d9\u05e1 \u05de\u05e9\u05e4\u05d8\u05d9: {legal}')
+        if details:
+            html += '  <tr><td colspan="2" style="padding:6px 16px 12px;border-top:1px solid #bbf7d0;">'
+            for d in details:
+                html += f'<div style="font-size:12px;color:#555;margin-bottom:2px;">{d}</div>'
+            html += '</td></tr>'
+        html += """  </table>
+</td></tr>"""
 
-    # Original email quoting
-    if original_email_body and len(original_email_body.strip()) > 10:
-        import html as html_mod
-        quoted = html_mod.escape(original_email_body.strip())
-        if len(quoted) > 2000:
-            quoted = quoted[:2000] + "..."
-        html += f'''<div style="margin-top:28px;padding-top:20px;border-top:2px solid #e0e0e0">
-            <div style="font-size:12px;color:#888;margin-bottom:8px">הודעה מקורית:</div>
-            <blockquote style="margin:0;padding:12px 16px;border-right:3px solid #ccc;background:#f9f9f9;border-radius:4px;font-size:13px;color:#555;white-space:pre-wrap;direction:rtl">{quoted}</blockquote>
-        </div>'''
+    return html
 
-    # Footer
-    html += '''</div>
-    <!-- Footer -->
-    <div style="background:#f8faff;padding:24px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">
-        <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
-            <td style="vertical-align:middle;width:60px">
-                <img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
-            </td>
-            <td style="vertical-align:middle;border-right:3px solid #1a3a5c;padding-right:16px">
-                <strong style="color:#0f2439;font-size:14px">RCB — AI Customs Broker</strong><br>
-                <span style="color:#666;font-size:12px">R.P.A. PORT LTD</span>
-                <span style="color:#ccc;margin:0 6px">|</span>
-                <span style="color:#1a3a5c;font-size:12px">rcb@rpa-port.co.il</span>
-            </td>
-        </tr></table>
-        <p style="font-size:10px;color:#aaa;margin:16px 0 0 0;line-height:1.5;border-top:1px solid #e8e8e8;padding-top:12px">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. דו״ח זה הופק באופן אוטומטי ואינו מהווה ייעוץ רשמי.</p>
-    </div>
-    </div>'''
+
+def _cls_risk(risk):
+    """Risk section."""
+    if not risk or risk.get("level") not in ("\u05d2\u05d1\u05d5\u05d4", "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9"):
+        return ""
+    level = risk.get("level", "")
+    risk_color = _COLOR_ERR if level == "\u05d2\u05d1\u05d5\u05d4" else _COLOR_WARN
+    risk_border = "#fca5a5" if level == "\u05d2\u05d1\u05d5\u05d4" else "#fde68a"
+
+    html = _cls_section_title(f"\u05e1\u05d9\u05db\u05d5\u05df: {level}", color=risk_color)
+
+    for item in risk.get("items", []):
+        html += f"""
+<tr><td style="padding:4px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid {risk_border};border-radius:4px;overflow:hidden;">
+  <tr><td style="padding:10px 16px;">
+    <strong style="color:#333;">{item.get("item", "")}</strong>
+    <div style="font-size:13px;color:#555;margin-top:4px;">{item.get("issue", "")}</div>
+  </td></tr>
+  </table>
+</td></tr>"""
+
+    return html
+
+
+def _cls_smart_questions(smart_q, classifications):
+    """Section 7: Smart questions when confidence is low."""
+    if not smart_q or not SMART_QUESTIONS_AVAILABLE:
+        return ""
+    try:
+        item_desc = ""
+        if classifications:
+            item_desc = classifications[0].get("item", "")
+        questions_html = format_questions_html(smart_q, item_description=item_desc)
+        if questions_html:
+            return f"""
+<!-- SMART QUESTIONS -->
+<tr><td style="padding:10px 30px;">
+  {questions_html}
+</td></tr>"""
+    except Exception:
+        pass
+    return ""
+
+
+def _cls_original_email(original_email_body):
+    """Original email quote."""
+    if not original_email_body or len(original_email_body.strip()) <= 10:
+        return ""
+    import html as html_mod
+    quoted = html_mod.escape(original_email_body.strip())
+    if len(quoted) > 2000:
+        quoted = quoted[:2000] + "..."
+    return f"""
+<!-- ORIGINAL EMAIL -->
+<tr><td style="padding:10px 30px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr><td style="font-size:12px;color:#888;padding-bottom:6px;">\u05d4\u05d5\u05d3\u05e2\u05d4 \u05de\u05e7\u05d5\u05e8\u05d9\u05ea:</td></tr>
+  <tr><td style="padding:10px 14px;border-right:3px solid #ccc;background:#f9f9f9;border-radius:4px;font-size:13px;color:#555;direction:rtl;">
+    {quoted}
+  </td></tr>
+  </table>
+</td></tr>"""
+
+
+def _cls_footer():
+    """Section 8: Branded footer with logo, timestamp, disclaimer."""
+    from datetime import datetime, timezone
+    if _to_israel_time:
+        now = _to_israel_time(datetime.now(timezone.utc))
+    else:
+        now = datetime.now(timezone.utc)
+    timestamp = f"{now.day:02d}/{now.month:02d}/{now.year} {now.hour:02d}:{now.minute:02d} IL"
+
+    return f"""
+<!-- FOOTER -->
+<tr><td style="padding:20px 30px;border-top:2px solid #e0e0e0;background:#f8f9fa;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="padding-bottom:10px;">
+      <img src="{_LOGO_URL}" alt="RPA-PORT" width="32" height="32"
+           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;padding-left:8px;">
+        <span style="font-size:12px;font-weight:bold;color:{_RPA_BLUE};">RCB &#8212; AI Customs Broker</span><br>
+        <span style="font-size:11px;color:#888;">R.P.A. PORT LTD</span>
+        <span style="color:#ccc;margin:0 6px;">|</span>
+        <span style="font-size:11px;color:{_RPA_BLUE};">rcb@rpa-port.co.il</span>
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:10px;color:#999;padding-top:6px;border-top:1px solid #eee;">
+      {timestamp}
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:10px;color:#aaa;padding-top:8px;direction:rtl;text-align:right;line-height:1.5;">
+      &#9888; \u05d4\u05de\u05dc\u05e6\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d9\u05ea \u05d1\u05dc\u05d1\u05d3. \u05d9\u05e9 \u05dc\u05d0\u05de\u05ea \u05e2\u05dd \u05e2\u05de\u05d9\u05dc \u05de\u05db\u05e1 \u05de\u05d5\u05e1\u05de\u05da.<br>
+      \u05d3\u05d5\u05f4\u05d7 \u05d6\u05d4 \u05d4\u05d5\u05e4\u05e7 \u05d1\u05d0\u05d5\u05e4\u05df \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9 \u05d5\u05d0\u05d9\u05e0\u05d5 \u05de\u05d4\u05d5\u05d5\u05d4 \u05d9\u05d9\u05e2\u05d5\u05e5 \u05e8\u05e9\u05de\u05d9.
+    </td>
+  </tr>
+  </table>
+</td></tr>
+"""
+
+
+def build_classification_email(results, sender_name, invoice_validation=None, tracking_code=None, invoice_data=None, enriched_items=None, original_email_body=None):
+    """Build HTML email report — table-based, Outlook-safe, RTL, branded.
+
+    Session 40: Redesigned to match tracker_email.py design language.
+    8 sections: header, result table, regulatory, cross-reference,
+    customs value, justification, smart questions, footer.
+    """
+    classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
+    regulatory = results.get("agents", {}).get("regulatory", {}).get("regulatory", [])
+    fta = results.get("agents", {}).get("fta", {}).get("fta", [])
+    risk = results.get("agents", {}).get("risk", {}).get("risk", {})
+    synthesis = results.get("synthesis", "")
+    ministry_routing = results.get("ministry_routing", {})
+    intelligence = results.get("intelligence", {})
+
+    if not tracking_code:
+        tracking_code = generate_tracking_code()
+
+    card_items = enriched_items if enriched_items else classifications
+    _using_enriched = bool(enriched_items)
+
+    # Use tracker_email wrappers if available, else local fallback
+    open_fn = _html_open if _html_open else _cls_html_open
+    close_fn = _html_close if _html_close else _cls_html_close
+
+    # ── Compose email from section builders ──
+    html = open_fn()
+    html += _cls_header(tracking_code)
+    html += _cls_shipment_info(invoice_data)
+    html += _cls_invoice_validation(invoice_validation)
+
+    # Quality Gate banner
+    audit_banner = results.get("audit", {}).get("warning_banner", "")
+    if audit_banner:
+        html += f'<tr><td style="padding:10px 30px;">{audit_banner}</td></tr>'
+
+    html += _cls_synthesis(synthesis)
+    html += _cls_result_table(card_items, _using_enriched)
+    html += _cls_regulatory(ministry_routing, regulatory)
+    html += _cls_cross_reference(results, card_items)
+    html += _cls_customs_value(invoice_data, results)
+    html += _cls_justification_details(card_items, _using_enriched)
+    html += _cls_fta_benefits(intelligence, fta)
+    html += _cls_risk(risk)
+    html += _cls_smart_questions(results.get("smart_questions", []), classifications)
+    html += _cls_original_email(original_email_body)
+    html += _cls_footer()
+    html += close_fn()
+
     return html
 
 def build_excel_report(results, enriched_items=None):
@@ -2311,6 +2695,14 @@ def _enrich_results_for_email(results, invoice_data, db):
             "fta": item_fta,
             "ve_flags": (ve_results.get(hs_code, {}).get("flags", []) if ve_results else []),
             "ve_phase4": (ve_results.get(hs_code, {}).get("phase4", {}) if ve_results else {}),
+            "cross_ref_adjustment": cls.get("cross_ref_adjustment"),
+            "cross_ref_note": cls.get("cross_ref_note", ""),
+            "item": cls.get("item", inv.get("description", "")),
+            "item_description": cls.get("item_description", cls.get("item", inv.get("description", ""))),
+            "justification": cls.get("justification"),
+            "challenge": cls.get("challenge"),
+            "cross_check_tier": cls.get("cross_check_tier", 0),
+            "cross_check_note": cls.get("cross_check_note", ""),
         })
 
     return enriched
@@ -2563,7 +2955,8 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             print("  ℹ️ Gemini key not configured - all agents will use Claude")
         
         print("  📄 Extracting text...")
-        doc_text = extract_text_func(raw_attachments, email_body=email_body)
+        doc_text = extract_text_func(raw_attachments, email_body=email_body,
+                                     gemini_key=gemini_key, anthropic_key=api_key)
         if not doc_text or len(doc_text) < 50:
             print("  ⚠️ No text — sending extraction failure notification")
             _fail_html = (
