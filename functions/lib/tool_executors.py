@@ -69,6 +69,29 @@ _WIKI_SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
 _WIKI_SEARCH_URL = "https://en.wikipedia.org/w/api.php"
 _WIKI_CACHE_TTL_DAYS = 30
 
+# Prompt injection sanitizer — applied to ALL external text before it enters AI context
+_INJECTION_PATTERNS = [
+    "ignore previous instructions",
+    "ignore all instructions",
+    "you are now",
+    "act as",
+    "forget everything",
+    "new instructions",
+]
+
+
+def sanitize_external_text(text, max_length=500):
+    """Sanitize text from external APIs (Wikipedia, etc.) before passing to AI.
+    Hard-truncates at max_length and rejects text containing injection patterns."""
+    if not text:
+        return ""
+    text = text[:max_length]  # hard truncate
+    lower = text.lower()
+    for pattern in _INJECTION_PATTERNS:
+        if pattern in lower:
+            return ""  # discard entire field, don't try to clean it
+    return text.strip()
+
 
 class ToolExecutor:
     """Routes tool calls to existing module functions."""
@@ -1070,6 +1093,12 @@ class ToolExecutor:
                         cached_dt = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
                         if datetime.now(timezone.utc) - cached_dt < timedelta(days=_WIKI_CACHE_TTL_DAYS):
                             result = data.get("result", {})
+                            # Re-sanitize cached content (may predate sanitizer)
+                            for field in ("title", "extract", "description"):
+                                if field in result:
+                                    result[field] = sanitize_external_text(
+                                        result[field], max_length=2000 if field == "extract" else 300
+                                    )
                             result["source"] = "wikipedia_cache"
                             self._wikipedia_cache[cache_key] = result
                             return result
@@ -1101,7 +1130,12 @@ class ToolExecutor:
                 if hits:
                     title = hits[0].get("title", "")
                     search_results = [
-                        {"title": h.get("title", ""), "snippet": re.sub(r"<[^>]+>", "", h.get("snippet", ""))}
+                        {
+                            "title": sanitize_external_text(h.get("title", ""), max_length=200),
+                            "snippet": sanitize_external_text(
+                                re.sub(r"<[^>]+>", "", h.get("snippet", "")), max_length=500
+                            ),
+                        }
                         for h in hits[:3]
                     ]
         except Exception as e:
@@ -1120,9 +1154,9 @@ class ToolExecutor:
                 data = resp.json()
                 result = {
                     "found": True,
-                    "title": data.get("title", title),
-                    "extract": data.get("extract", "")[:2000],
-                    "description": data.get("description", ""),
+                    "title": sanitize_external_text(data.get("title", title), max_length=200),
+                    "extract": sanitize_external_text(data.get("extract", ""), max_length=2000),
+                    "description": sanitize_external_text(data.get("description", ""), max_length=300),
                     "categories": data.get("categories", []),
                     "lang_links": data.get("lang_links", []),
                     "page_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
@@ -1133,8 +1167,10 @@ class ToolExecutor:
                 # Fallback: return search results without summary
                 result = {
                     "found": True,
-                    "title": title,
-                    "extract": search_results[0].get("snippet", "") if search_results else "",
+                    "title": sanitize_external_text(title, max_length=200),
+                    "extract": sanitize_external_text(
+                        search_results[0].get("snippet", "") if search_results else "", max_length=500
+                    ),
                     "source": "wikipedia_search",
                     "other_results": search_results[1:] if len(search_results) > 1 else [],
                 }
