@@ -1104,3 +1104,54 @@ Audited all user-facing output text across 4 components. Created detailed HTML s
 ### Test Results
 - **523 passed**, 2 skipped — zero regressions from tracker_email changes
 - 7 pre-existing failures in `test_report_builder.py` (Hebrew localization, unrelated)
+
+## Session 38 Summary (2026-02-18) — Clarification Logic for Email Intent System
+
+### Problem
+Email intent system detected intents but sometimes key information was missing (no BL number for status, no attachment for classify). RCB would either silently do nothing or act on incomplete data (e.g., stop ALL active deals when no specific BL given). Now RCB replies asking for the missing piece and matches follow-up replies back to the original intent.
+
+### What Was Built
+
+**4 Clarification Triggers:**
+| # | Trigger | Condition | Hebrew Reply |
+|---|---------|-----------|-------------|
+| 1 | STATUS_REQUEST missing entity | No BL/container extracted | "של איזה משלוח? נא לציין מספר BL, מכולה או מספר תיק" |
+| 2 | stop_tracking missing target | No BL/container in text | "איזה משלוח להפסיק לעקוב? נא לציין מספר BL או מכולה" |
+| 3 | classify missing attachment | `msg.hasAttachments` is False | "לא מצאתי מסמך מצורף. נא לשלוח חשבונית או מסמך לסיווג" |
+| 4 | Ambiguous intent | NONE intent + body >= 30 chars | "לא הצלחתי להבין את הבקשה. אפשר לנסח מחדש?" |
+
+**3 New Functions:**
+- `_send_clarification()` — sends Hebrew RTL reply, stores pending doc in `questions_log` with key `pending_{email_hash}`
+- `_check_pending_clarification()` — single Firestore doc read, 4-hour expiry
+- `_resolve_clarification()` — extracts entities from follow-up email, merges with original, re-dispatches to original intent handler
+
+**Detection Fix:**
+- `detect_email_intent()` now returns STATUS_REQUEST (confidence 0.7) when status keywords match but no entities found — handler sends clarification instead of silently dropping
+
+**Behavioral Change:**
+- `_execute_stop_tracking()` no longer stops ALL active deals when no BL/container specified — sends clarification instead
+- Pending clarification check runs before body length check (a valid reply may be just a BL number like "MEDURS12345")
+
+### What Does NOT Get Clarification
+- NON_WORK → canned reply (no clarification needed)
+- ADMIN_INSTRUCTION → admin knows what they're doing
+- KNOWLEDGE_QUERY → answer what we can, fallback to Claude
+- CUSTOMS_QUESTION with product description → search by description (works fine)
+- Body < 15 chars → already skipped (auto-generated)
+- Body 15-29 chars with NONE intent → stay silent (too short to be a real question)
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/email_intent.py` | +3 new functions, CLARIFICATION_MESSAGES dict, 4 handler modifications, detection fix for STATUS_REQUEST without entities, pending check in process_email_intent |
+| `functions/tests/test_email_intent.py` | +7 new tests, updated imports and _make_msg helper |
+
+### Git Commit
+- `69fa580` — Add clarification logic for email intent system
+
+### Deployment
+- 29 Cloud Functions deployed to Firebase (2026-02-18)
+- Stale `check_email_scheduled` function cleaned up
+
+### Test Results
+- **583 passed**, 2 skipped — 80 email intent tests (73 existing + 7 new), zero regressions
