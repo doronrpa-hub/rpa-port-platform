@@ -996,3 +996,49 @@ Cost-aware intent classifier that detects 6 intent types in email bodies, routes
 
 ### Test Results
 - **530 passed**, 2 skipped — 73 new tests added, zero regressions
+
+## Session 36 Summary (2026-02-18) — Content Quality Audit + Error Template Improvements
+
+### What Was Done
+
+**1. Content Quality Audit — 4 HTML Sample Files**
+Audited all user-facing output text across 4 components. Created detailed HTML sample files with realistic customs data, current vs proposed comparisons, and scored each component.
+
+| # | File | Component | Score |
+|---|------|-----------|-------|
+| 01 | `functions/content_samples/01_smart_questions_sample.html` | Smart Questions | 8.4/10 |
+| 02 | `functions/content_samples/02_justification_sample.html` | Justification Engine | 5.6/10 |
+| 03 | `functions/content_samples/03_classification_report_sample.html` | Classification Report | 8.7/10 |
+| 04 | `functions/content_samples/04_error_messages_sample.html` | Error Messages | 6.2/10 |
+
+**2. Error Template Improvements (template/CSS only, no logic changes)**
+
+**`functions/lib/classification_agents.py`** (MODIFIED):
+- **Extraction failure template** (lines ~2498): Wrapped in RCB branded header (gradient) + footer. Changed color `#d63384` (pink) → `#991b1b` (system red). Added diagnostic hints: scanned image, password-protected PDF, unsupported format. Added clear recovery actions.
+- **Pipeline error template** (lines ~2570): Wrapped in RCB branded header + footer. Changed color `#d63384` → `#991b1b`. Replaced misleading "אנחנו עובדים על כך" with honest "נתקלנו בשגיאה טכנית" + actionable steps (resend, contact team).
+- **API badge RTL fix** (line 1846): Changed `margin-right:4px` → `margin-left:4px` so badge appears correctly before ministry name in RTL flow.
+
+### Key Audit Findings (for future reference)
+- **Justification chain text is ALL English** — `justification_engine.py` generates English `decision`/`source_text` fields. Hebrew step labels wrap English content. Biggest content gap (scored 5.6/10). Fix requires generating parallel `decision_he` fields.
+- **Error templates had no branding** — bare HTML fragments without RCB header/footer/tracking. Now fixed.
+- **Mixed Hebrew/English is acceptable** — Israeli customs industry standard. Don't translate English labels to Hebrew.
+
+### Files Created/Modified
+| Action | File | Changes |
+|--------|------|---------|
+| **CREATE** | `functions/content_samples/01_smart_questions_sample.html` | 6 question scenarios with audit notes |
+| **CREATE** | `functions/content_samples/02_justification_sample.html` | Chain + gap + devil's advocate audit |
+| **CREATE** | `functions/content_samples/03_classification_report_sample.html` | Full 11-section report audit |
+| **CREATE** | `functions/content_samples/04_error_messages_sample.html` | 5 error/warning templates audit |
+| **MODIFY** | `functions/lib/classification_agents.py` | Error template branding, color fix, RTL fix |
+| **MODIFY** | `functions/lib/tracker_email.py` | RTL Hebrew support, direction labels, status badges |
+
+### Git Commit
+- `5b08ccf` — Content audit: improve error templates, add content quality samples
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+- 6 functions updated, 24 skipped (no changes detected)
+
+### Test Results
+- **530 passed**, 2 skipped — zero regressions
