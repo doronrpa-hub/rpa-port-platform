@@ -1526,3 +1526,68 @@ Pre-enrichment data injected into `_build_user_prompt()` as "Pre-loaded external
 
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions
+
+## Session 38c Summary (2026-02-18) — Fix 3 HIGH Audit Issues (H3, H4, H7)
+
+### What Was Done
+
+Fixed the 3 remaining HIGH-severity issues from the full system audit, one commit per fix, 583 tests passing after each.
+
+### Fix 1: H3 — Top-level try/except on `rcb_check_email` (commit `260f43b`)
+
+**Problem:** The preamble of `rcb_check_email` (secrets lookup, Graph token acquisition, HTTP inbox request at lines 527-553) ran outside any try/except. An unhandled exception (network timeout, JSON decode, secrets outage) would crash the Cloud Function and trigger Firebase retry storms.
+
+**Fix:** Extracted the entire function body into `_rcb_check_email_inner()` and wrapped the call in try/except with `traceback.print_exc()`. No behavior change on happy path.
+
+| File | Change |
+|------|--------|
+| `functions/main.py` | +10 lines: `_rcb_check_email_inner()` extraction + top-level guard |
+
+### Fix 2: H4 — Bare `except:` in Graph API helpers (commit `9835db9`)
+
+**Problem:** 6 bare `except:` clauses caught `SystemExit`/`KeyboardInterrupt` and silently swallowed all errors with zero logging.
+
+**Fix:** Replaced all with `except Exception as e:` + `print()` logging.
+
+| Location | Function |
+|----------|----------|
+| `rcb_helpers.py:485` | `extract_text_from_attachments` (base64 decode) — `except Exception:` (continue) |
+| `rcb_helpers.py:682` | `helper_graph_messages` — + print |
+| `rcb_helpers.py:691` | `helper_graph_attachments` — + print |
+| `rcb_helpers.py:699` | `helper_graph_mark_read` — + print |
+| `rcb_helpers.py:835` | `get_anthropic_key` — + print |
+| `main.py:412` | `graph_forward_email` — + print |
+
+| File | Change |
+|------|--------|
+| `functions/lib/rcb_helpers.py` | 5 bare except → except Exception |
+| `functions/main.py` | 1 bare except → except Exception |
+
+### Fix 3: H7 — Unauthenticated API endpoints with open CORS (commit `986b793`)
+
+**Problem:** Both `api()` (line 317) and `rcb_api()` (line 421) had `cors_origins="*"` with zero authentication. Exposed Firestore reads (classifications, sellers, knowledge_base, inbox, learning_log, rcb_logs, session_backups) and Firestore writes (classification corrections, backup creation + email trigger) to anyone on the internet.
+
+**Fix:** Added `_check_api_auth()` helper using Bearer token verified with `hmac.compare_digest` against `RCB_API_SECRET` from Secret Manager.
+- `api()` — all routes require auth
+- `rcb_api()` — `/health` remains public, all other routes require auth
+- `RCB_API_SECRET` created in Secret Manager (project `rpa-port-customs`, version 1)
+
+| File | Change |
+|------|--------|
+| `functions/main.py` | +`_check_api_auth()` helper (15 lines), auth gate on `api()` and `rcb_api()` |
+
+### Secret Manager
+| Secret | Status | Purpose |
+|--------|--------|---------|
+| `RCB_API_SECRET` | Created (v1) | Bearer token for `api()` and `rcb_api()` HTTP endpoints |
+
+### Git Commits
+- `260f43b` — H3: Add top-level try/except to rcb_check_email
+- `9835db9` — H4: Replace bare except: with except Exception in Graph API helpers
+- `986b793` — H7: Add bearer token auth to api() and rcb_api() endpoints
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions after all 3 commits
