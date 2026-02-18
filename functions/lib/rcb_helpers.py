@@ -765,6 +765,49 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
 
 
 # ============================================================
+# EMAIL QUALITY GUARDS
+# ============================================================
+
+_RE_FWD_PATTERN = re.compile(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+')
+
+
+def clean_email_subject(subject):
+    """Strip accumulated Re:/RE:/Fwd:/FW: prefix chains from a subject line."""
+    if not subject:
+        return ""
+    cleaned = _RE_FWD_PATTERN.sub('', subject).strip()
+    return cleaned if cleaned else subject
+
+
+def validate_email_before_send(subject, body_html):
+    """Check email has meaningful subject and body content.
+
+    Returns (is_valid, reason) tuple.
+    Rejects: empty subject, garbage subject, empty body, body with only template dashes.
+    """
+    # Check subject
+    if not subject or not subject.strip():
+        return False, "empty_subject"
+    cleaned_subj = clean_email_subject(subject)
+    if not cleaned_subj or len(cleaned_subj.strip()) < 3:
+        return False, "garbage_subject"
+    # Check body
+    if not body_html or not body_html.strip():
+        return False, "empty_body"
+    # Strip HTML tags and entities, check remaining text
+    text_only = re.sub(r'<[^>]+>', '', body_html)
+    text_only = re.sub(r'&[a-zA-Z]+;|&#\d+;', ' ', text_only)
+    text_only = text_only.strip()
+    if len(text_only) < 20:
+        return False, "body_too_short"
+    # Reject templates that are all dashes / em-dashes / whitespace
+    meaningful = re.sub(r'[\s\-\u2014\u2013]+', '', text_only)
+    if len(meaningful) < 10:
+        return False, "body_only_dashes"
+    return True, "ok"
+
+
+# ============================================================
 # HEBREW NAMES
 # ============================================================
 

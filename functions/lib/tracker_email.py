@@ -76,16 +76,22 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
     # Summarize steps
     steps_summary = _summarize_steps(container_statuses, direction)
 
-    # Build subject — direction + BOL + status (vessel is in the body)
-    dir_label_subj = "Import" if direction != 'export' else "Export"
+    # Build subject — clean format: RCB | identifier | status | vessel
+    # Primary identifier: BOL, then AWB, then deal_id prefix
+    deal_id_str = deal.get('deal_id', '')
+    identifier = bol if bol and bol != 'Unknown' else deal.get('awb_number', '') or deal_id_str[:8]
+
     if update_type == "new_deal":
-        subject = f"[RCB-TRK] New {dir_label_subj} | {bol} | Tracking Started"
+        status_label = "Tracking Started"
     elif completed == total and total > 0:
-        all_word = "Released" if direction != 'export' else "Sailed"
-        subject = f"[RCB-TRK] {dir_label_subj} | {bol} | All {all_word}"
+        status_label = "All Released" if direction != 'export' else "All Sailed"
     else:
         status_word = "Released" if direction != 'export' else "Sailed"
-        subject = f"[RCB-TRK] {dir_label_subj} | {bol} | {completed}/{total} {status_word}"
+        status_label = f"{completed}/{total} {status_word}"
+
+    # Include vessel if known
+    vessel_part = f" | {vessel[:20]}" if vessel else ""
+    subject = f"RCB | {identifier} | {status_label}{vessel_part}"
 
     # Build HTML
     body = _build_html(deal, container_statuses, steps_summary,

@@ -1203,6 +1203,7 @@ def _create_deal(db, firestore_module, observation):
         "follower_email": observation.get('from_email', ''),
         "cc_list": observation.get('cc_list', []),
         "follow_mode": "auto",
+        "deal_thread_id": "",  # Populated on first email send for stable threading
         "created_at": now,
         "updated_at": now,
     }
@@ -2220,57 +2221,96 @@ def _classify_sender(email_addr):
 #  EMAIL OUTPUT — send status updates via threaded reply
 # ══════════════════════════════════════════════════════════
 
+def _deal_has_minimum_data(deal):
+    """Check deal has minimum required data for a meaningful tracker email.
+
+    Must have at least one of: containers, BOL number, or vessel name.
+    Without these, the email would be empty/useless.
+    """
+    has_containers = bool(deal.get('containers'))
+    has_bol = bool((deal.get('bol_number') or '').strip())
+    has_vessel = bool((deal.get('vessel_name') or '').strip())
+    return has_containers or has_bol or has_vessel
+
+
 def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type="status_update",
                         observation=None, extractions=None):
-    """Build and send tracker status email for a deal. v2: sea + air aware."""
+    """Build and send tracker status email for a deal. v3: data guards + clean threading."""
     try:
         from lib.tracker_email import build_tracker_status_email
-        from lib.rcb_helpers import helper_graph_reply, helper_graph_send
+        from lib.rcb_helpers import helper_graph_send, clean_email_subject, validate_email_before_send
+
+        # ── Guard 1: minimum data ──
+        if not _deal_has_minimum_data(deal):
+            print(f"    ⏭️ Tracker: deal {deal_id} has no containers/BL/vessel — skipping email, logging instead")
+            try:
+                db.collection("rcb_logs").add({
+                    "type": "tracker_email_skipped",
+                    "deal_id": deal_id,
+                    "reason": "no_minimum_data",
+                    "update_type": update_type,
+                    "bol": deal.get('bol_number', ''),
+                    "containers": len(deal.get('containers', [])),
+                    "vessel": deal.get('vessel_name', ''),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:
+                pass
+            return False
 
         # Get all container statuses for this deal (single query instead of N reads)
         container_statuses = []
         for d in db.collection("tracker_container_status").where("deal_id", "==", deal_id).stream():
             container_statuses.append(d.to_dict())
 
-        # Build email (v2: with observation context)
+        # Build email (with observation context)
         email_data = build_tracker_status_email(
             deal, container_statuses, update_type,
             observation=observation, extractions=extractions)
-        subject = email_data['subject']
+        subject = clean_email_subject(email_data['subject'])
         body_html = email_data['body_html']
 
-        follower = deal.get('follower_email', '')
-        cc_list = deal.get('cc_list', [])
+        # ── Guard 2: validate email content ──
+        is_valid, reason = validate_email_before_send(subject, body_html)
+        if not is_valid:
+            print(f"    ⏭️ Tracker: email for deal {deal_id} failed validation ({reason}) — skipping")
+            try:
+                db.collection("rcb_logs").add({
+                    "type": "tracker_email_invalid",
+                    "deal_id": deal_id,
+                    "reason": reason,
+                    "subject": subject[:100],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:
+                pass
+            return False
 
+        follower = deal.get('follower_email', '')
         if not follower:
             print(f"    ⚠️ Tracker: no follower for deal {deal_id}, skipping email")
             return False
 
+        # ── Stable deal threading ──
+        # Use a stable Message-ID per deal so all emails thread together
+        deal_thread_id = deal.get('deal_thread_id', '')
+        if not deal_thread_id:
+            deal_thread_id = f"<rcb-trk-{deal_id}@rpa-port.co.il>"
+            try:
+                db.collection("tracker_deals").document(deal_id).update({
+                    "deal_thread_id": deal_thread_id
+                })
+            except Exception:
+                pass  # Non-fatal: threading is best-effort
+
+        # ── Always use helper_graph_send with threading headers ──
+        # (NOT helper_graph_reply which inherits garbage subject lines)
         sent = False
-
-        # Try threaded reply first (needs original msg_id from observation)
-        source_obs_ids = deal.get('source_emails', [])
-        original_msg_id = None
-        internet_msg_id = ''
-        if source_obs_ids:
-            latest_obs = db.collection("tracker_observations").document(source_obs_ids[-1]).get()
-            if latest_obs.exists:
-                obs_data = latest_obs.to_dict()
-                original_msg_id = obs_data.get('msg_id', '')
-                internet_msg_id = obs_data.get('internet_message_id', '')
-
-        if original_msg_id and access_token:
-            sent = helper_graph_reply(
-                access_token, rcb_email, original_msg_id,
-                body_html, to_email=follower, cc_emails=cc_list
-            )
-
-        # Fallback: send as new email WITH threading headers
-        if not sent and access_token:
+        if access_token:
             sent = helper_graph_send(
                 access_token, rcb_email, follower,
                 subject, body_html,
-                internet_message_id=internet_msg_id
+                internet_message_id=deal_thread_id
             )
 
         if sent:
