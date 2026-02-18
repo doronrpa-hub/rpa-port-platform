@@ -1422,3 +1422,107 @@ From the 82-issue audit, 77 remain. Highest priority for next session:
 - **H4**: Bare `except:` in `rcb_helpers.py` Graph API helpers (lines 682, 691)
 - **H5**: N+1 Firestore query patterns in tracker.py (~250 reads per poll cycle)
 - **H7**: Unauthenticated `api()` HTTP endpoint with open CORS
+
+## Session 38b Summary (2026-02-18) — Tools #15-20: External API Batch (6 New Tools)
+
+### Overview
+Added 6 new external API tools to the tool-calling engine, bringing the total from 14 to 20. All FREE APIs with domain-whitelisted HTTP, per-request + Firestore caching, key stripping, and text sanitization. Deterministic pre-enrichment (Step 4b) auto-fires relevant tools before the AI loop based on invoice data.
+
+### 6 New Tools
+
+| # | Tool | API Source | Cost | Cache TTL |
+|---|------|-----------|------|-----------|
+| 15 | `search_wikidata` | wikidata.org (search + claims) | FREE | 30 days |
+| 16 | `lookup_country` | restcountries.com | FREE | 30 days |
+| 17 | `convert_currency` | open.er-api.com | FREE | 24 hours |
+| 18 | `search_comtrade` | comtradeapi.un.org | FREE | 7 days |
+| 19 | `lookup_food_product` | world.openfoodfacts.org | FREE | 30 days |
+| 20 | `check_fda_product` | api.fda.gov (drugs + 510k) | FREE | 30 days |
+
+### Shared Infrastructure
+
+**`_safe_get()` — Domain-whitelisted HTTP:**
+- 7 allowed domains: `en.wikipedia.org`, `www.wikidata.org`, `restcountries.com`, `open.er-api.com`, `comtradeapi.un.org`, `world.openfoodfacts.org`, `api.fda.gov`
+- All other domains silently blocked — no internal data can leak
+
+**`_cached_external_lookup()` — Shared caching helper:**
+- Per-request dict cache (instant, zero cost)
+- Firestore document cache with configurable TTL (1 read per cache hit)
+- Key stripping: each handler specifies `_ALLOWED` keys — only permitted fields returned to AI
+- `sanitize_external_text()` applied to all external string fields (prompt injection defense)
+
+**`_WIKIDATA_PROPS` — 8 property mappings:**
+- P31 (instance_of), P279 (subclass_of), P186 (made_from_material), P274 (chemical_formula), P231 (cas_number), P366 (has_use), P2067 (mass), P2054 (density)
+
+### Step 4b: Deterministic Pre-Enrichment
+
+Added between Step 4 (memory check) and Step 5 (AI loop) in `tool_calling_engine.py`. Fires relevant tools BEFORE AI sees the items — zero AI cost for these lookups.
+
+| Trigger | Condition | Tool Called |
+|---------|-----------|------------|
+| Country lookup | `origin` >= 2 chars | `lookup_country` |
+| Currency lookup | Invoice currency not ILS/NIS | `convert_currency` |
+| Food product | Item words ∩ `_FOOD_TRIGGERS` (60 bilingual keywords) | `lookup_food_product` |
+| Medical product | Item words ∩ `_MEDICAL_TRIGGERS` (33 bilingual keywords) | `check_fda_product` |
+
+Pre-enrichment data injected into `_build_user_prompt()` as "Pre-loaded external data" section.
+
+### Special Behaviors
+- **Comtrade** gated by `_overnight_mode` flag — only available during overnight brain runs (rate-limited API)
+- **FDA** tries drug labels first, falls back to 510(k) device search
+- **Wikidata** 2-step: search entity by name → fetch structured claims (materials, formulas, CAS numbers)
+- **Currency** returns top 12 currencies only (USD, EUR, GBP, JPY, CNY, ILS, CHF, CAD, AUD, KRW, INR, THB)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | +~380 lines: `_DOMAIN_ALLOWLIST`, `_WIKIDATA_PROPS`, `_safe_get()`, `_ext_cache`+`_overnight_mode` in `__init__`, 6 dispatcher entries, `_cached_external_lookup()`, 6 handler methods |
+| `functions/lib/tool_definitions.py` | +~128 lines: header 14→20 tools, 6 new CLAUDE_TOOLS entries, system prompt steps 15-20 |
+| `functions/lib/tool_calling_engine.py` | +~93 lines: `_FOOD_TRIGGERS` (60 kw), `_MEDICAL_TRIGGERS` (33 kw), Step 4b pre-enrichment block, `_build_user_prompt()` enrichment parameter |
+| `functions/lib/librarian_index.py` | +42 lines: 6 new COLLECTION_FIELDS cache entries |
+| `functions/tests/test_tool_calling.py` | Tool counts 14→20, 6 new tool names in expected set |
+
+### New Firestore Collections (6 caches)
+| Collection | Purpose |
+|-----------|---------|
+| `wikidata_cache` | Wikidata entity claims, 30-day TTL |
+| `country_cache` | Country info from restcountries.com, 30-day TTL |
+| `currency_rates` | Exchange rates from open.er-api.com, 24-hour TTL |
+| `comtrade_cache` | UN Comtrade trade data, 7-day TTL |
+| `food_products_cache` | Open Food Facts product data, 30-day TTL |
+| `fda_products_cache` | FDA drug labels + 510(k) device data, 30-day TTL |
+
+### Tool-Calling Engine: 20 Active Tools
+| # | Tool | Source | Wired |
+|---|------|--------|-------|
+| 1 | check_memory | classification_memory | Session A |
+| 2 | search_tariff | tariff, keyword_index, product_index, supplier_index | Session A |
+| 3 | check_regulatory | regulatory baseline + free_import_order (C3) + free_export_order (C4) | C3+C4 |
+| 4 | lookup_fta | FTA rules + framework_order FTA clauses (C5) | C5 |
+| 5 | verify_hs_code | tariff collection | Session A |
+| 6 | extract_invoice | Gemini Flash | Session A |
+| 7 | assess_risk | Rule-based (dual-use chapters, high-risk origins) | Session A |
+| 8 | get_chapter_notes | chapter_notes (C2) | C2 |
+| 9 | lookup_tariff_structure | tariff_structure (C2) | C2 |
+| 10 | lookup_framework_order | framework_order (C5) | C5 |
+| 11 | search_classification_directives | classification_directives (C6) | C6 |
+| 12 | search_legal_knowledge | legal_knowledge (C8) | C8 |
+| 13 | run_elimination | elimination_engine (D1-D8) | D9 |
+| 14 | search_wikipedia | Wikipedia REST API | Session 37b |
+| 15 | search_wikidata | Wikidata API | Session 38b |
+| 16 | lookup_country | restcountries.com | Session 38b |
+| 17 | convert_currency | open.er-api.com | Session 38b |
+| 18 | search_comtrade | UN Comtrade API (overnight only) | Session 38b |
+| 19 | lookup_food_product | Open Food Facts API | Session 38b |
+| 20 | check_fda_product | FDA API (drugs + 510k) | Session 38b |
+
+### Git Commit
+- `8d099c3` — Tools #15-20: 6 external API tools + domain whitelist + pre-enrichment
+
+### Deployment
+- All 29 Cloud Functions deployed to Firebase (2026-02-18)
+- Initial deploy had 5 HTTP 409 conflicts (previous deploy still in flight) — resolved on retry
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
