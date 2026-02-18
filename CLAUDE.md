@@ -1592,6 +1592,49 @@ Fixed the 3 remaining HIGH-severity issues from the full system audit, one commi
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions after all 3 commits
 
+### Session 38c Continued — H5, H6, H8 Audit Fixes
+
+**H5: N+1 Firestore queries in tracker.py (commit `ab25a16`)**
+
+Replaced per-container `.document(id).get()` loops with single `.where("deal_id", "==", deal_id).stream()` batch queries at 3 sites:
+
+| Site | Function | Lines | Before | After |
+|------|----------|-------|--------|-------|
+| 1 | `_check_deal_completion()` | 1941-1950 | N reads per deal | 1 query per deal |
+| 2 | `_update_deal_from_observation()` | 1294-1316 | N reads to check existence | 1 query to load existing IDs |
+| 3 | `_send_tracker_email()` | 2225-2231 | N reads per email | 1 query per email |
+
+Reduces ~250 Firestore reads per 30-min poll cycle to ~50.
+
+**H6: Synthesis race condition — DOWNGRADED TO LOW**
+
+Investigation confirmed the entire classification pipeline (lines 1030-1236 in `classification_agents.py`) is fully synchronous — no threads, no async. Agent 6 always runs after all lookups complete. The silent-failure behavior (try/except returning empty dicts) is intentional fail-open resilience. No fix needed.
+
+**H8: Crash recovery for overnight_brain.py (commit `7e017ab`)**
+
+Added lightweight checkpointing to the orchestrator via `brain_run_progress/{date}` Firestore doc:
+
+| Capability | Before | After |
+|-----------|--------|-------|
+| Budget persistence | In-memory only, lost on crash | Persisted to Firestore after each stream |
+| Stream skip on resume | None — all 9 streams re-run | Completed streams skipped via `completed_streams` list |
+| Progress visibility | Report only at very end | Checkpoint updated after every stream |
+| Crash detection | None | Existing checkpoint doc detected on startup |
+
+3 new helper functions: `_checkpoint_key()`, `_load_checkpoint()`, `_save_checkpoint()`. No changes to individual stream functions.
+
+New Firestore collection: `brain_run_progress` (one doc per calendar day).
+
+### Git Commits (H5 + H8)
+- `ab25a16` — H5: Replace N+1 Firestore reads with batch queries in tracker.py
+- `7e017ab` — H8: Add crash recovery checkpointing to overnight_brain.py
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions after both commits
+
 ## Session 39 Summary (2026-02-18) — External APIs Batch 2 (Tools #21-32)
 
 ### Overview
