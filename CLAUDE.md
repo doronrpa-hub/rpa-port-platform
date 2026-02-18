@@ -2305,3 +2305,38 @@ Both I3 and I4 were already wired into `main.py` from the prior session:
 | I2: Direction-Aware Views | Done (Session 43) | `build_port_intelligence_view()` with import/export/air variants |
 | I3: Alert Engine | Done (Session 43-44) | 4 alert types: D/O missing, physical exam, storage day 3, export cutoff |
 | I4: Morning Digest | Done (Session 43-44) | v4 HTML template, 4 sea ports, sent to cc@ at 07:00 + 14:00 IL |
+
+## Session 44-PARALLEL Close (2026-02-18) — Audit Complete + Deploy
+
+### Final Status
+All 6 audit agents completed and confirmed alignment with fixes. No additional code changes needed.
+
+### Cache Collection Gap — FALSE POSITIVE
+Agent ac88a41 reported "8 missing cache collections in librarian_index.py" but manual verification confirmed **all 18 tool cache collections were already registered** (added in Sessions 38b + 39). The agent ran against a stale file snapshot.
+
+### Deploy
+- Git: `origin/main` at `306a697` — all changes pushed
+- Firebase: 30/30 Cloud Functions deployed to `rpa-port-customs`
+  - 25 skipped (no changes), 5 retried after HTTP 409 (previous deploy in flight) — all succeeded
+
+### COLLECTION_FIELDS: 69 collections registered (verified complete)
+18 tool caches + 51 data/operational collections. Zero gaps between `tool_executors.py` and `librarian_index.py`.
+
+### Complete Nightly Schedule (Jerusalem Time)
+| Time | Function | Streams |
+|------|----------|---------|
+| **20:00** | `rcb_overnight_brain` | 12 streams (Phases A-H), $3.50 cap |
+| **02:00** | `rcb_nightly_learn` | 4-step index builder |
+| **02:00** | `rcb_overnight_audit` | Diagnostic scan |
+| **02:00** | `rcb_daily_backup` | 4 collections → GCS NDJSON |
+| **03:30** | `rcb_ttl_cleanup` | TTL cleanup (backup-guarded) |
+| **04:00** | `rcb_download_directives` | Shaarolami directives |
+| **07:00** | `rcb_daily_digest` | Morning port digest (I4) |
+| **14:00** | `rcb_afternoon_digest` | Afternoon port digest (I4) |
+
+### Phase 2 Items (deferred, not in scope)
+- Wire `tracker.py` → `port_intelligence.py` (Session 44 scope)
+- `learned_corrections` → `pre_classify()` feedback loop
+- H1+H2 verification loop in overnight brain
+- Nightly digest email from brain output
+- Direct HS code assignment to unclassified deals
