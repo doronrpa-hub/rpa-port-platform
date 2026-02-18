@@ -1482,20 +1482,65 @@ def stream_9_knowledge_sync(db, tracker):
 #  ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════
 
+def _checkpoint_key():
+    """Today's checkpoint document ID (one run per calendar day)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _load_checkpoint(db):
+    """Load today's checkpoint if it exists (crash recovery)."""
+    doc = db.collection("brain_run_progress").document(_checkpoint_key()).get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
+
+
+def _save_checkpoint(db, tracker, all_stats, completed_streams):
+    """Persist progress so a crash+retry can resume."""
+    try:
+        db.collection("brain_run_progress").document(_checkpoint_key()).set({
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "budget_spent": round(tracker.total_spent, 6),
+            "completed_streams": completed_streams,
+            "stream_stats": all_stats,
+        })
+    except Exception as e:
+        print(f"  ⚠️ Checkpoint save error (non-fatal): {e}")
+
+
 def run_overnight_brain(db, get_secret_func):
     """
     Master orchestrator. HARD CAP: $3.50.
     Runs all 9 enrichment streams in priority order.
+    Crash-safe: checkpoints progress to brain_run_progress/{date}.
     """
     tracker = CostTracker()
     t0 = time.time()
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    print("=" * 60)
-    print("  OVERNIGHT BRAIN EXPLOSION")
-    print(f"  Time: {now_str} UTC")
-    print(f"  Budget: ${tracker.BUDGET_LIMIT} (hard cap)")
-    print("=" * 60)
+    # ── Crash recovery: restore budget + skip completed streams ──
+    checkpoint = _load_checkpoint(db)
+    completed_streams = []
+    if checkpoint:
+        prior_spent = checkpoint.get("budget_spent", 0)
+        completed_streams = checkpoint.get("completed_streams", [])
+        # Restore budget consumed by prior attempt
+        if prior_spent > 0:
+            tracker.total_spent = prior_spent
+            tracker.breakdown["ai_cost"] = prior_spent  # approximate
+        print("=" * 60)
+        print("  OVERNIGHT BRAIN EXPLOSION — RESUMING")
+        print(f"  Time: {now_str} UTC")
+        print(f"  Prior spend: ${prior_spent:.4f}")
+        print(f"  Completed streams: {completed_streams}")
+        print(f"  Budget remaining: ${tracker.budget_remaining:.4f}")
+        print("=" * 60)
+    else:
+        print("=" * 60)
+        print("  OVERNIGHT BRAIN EXPLOSION")
+        print(f"  Time: {now_str} UTC")
+        print(f"  Budget: ${tracker.BUDGET_LIMIT} (hard cap)")
+        print("=" * 60)
 
     # Get Gemini API key
     gemini_key = None
@@ -1508,7 +1553,7 @@ def run_overnight_brain(db, get_secret_func):
     if not has_ai:
         print("  WARNING: No Gemini API key — AI streams will be skipped")
 
-    all_stats = {}
+    all_stats = checkpoint.get("stream_stats", {}) if checkpoint else {}
 
     # ── Phase 0: One-time historical backfill (FREE, runs once) ──
     try:
@@ -1533,35 +1578,53 @@ def run_overnight_brain(db, get_secret_func):
 
     # ── Phase A: FREE first (UK API sweep) ──
     print("\n--- Phase A: Free API sweep ---")
-    try:
-        all_stats["stream_6_uk_tariff"] = stream_6_uk_tariff_sweep(db, tracker)
-    except Exception as e:
-        logger.error(f"Stream 6 error: {e}")
-        all_stats["stream_6_uk_tariff"] = {"error": str(e)}
+    if "stream_6" not in completed_streams:
+        try:
+            all_stats["stream_6_uk_tariff"] = stream_6_uk_tariff_sweep(db, tracker)
+            completed_streams.append("stream_6")
+        except Exception as e:
+            logger.error(f"Stream 6 error: {e}")
+            all_stats["stream_6_uk_tariff"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    else:
+        print("  (stream_6 already completed — skipping)")
     print(f"  Budget after Phase A: ${tracker.total_spent:.4f}")
 
     # ── Phase B: High-value AI streams (skip if no API key) ──
     if has_ai:
         print("\n--- Phase B: High-value AI streams ---")
-        try:
-            all_stats["stream_3_cc_learning"] = stream_3_cc_email_learning(db, gemini_key, tracker)
-        except Exception as e:
-            logger.error(f"Stream 3 error: {e}")
-            all_stats["stream_3_cc_learning"] = {"error": str(e)}
+        if "stream_3" not in completed_streams:
+            try:
+                all_stats["stream_3_cc_learning"] = stream_3_cc_email_learning(db, gemini_key, tracker)
+                completed_streams.append("stream_3")
+            except Exception as e:
+                logger.error(f"Stream 3 error: {e}")
+                all_stats["stream_3_cc_learning"] = {"error": str(e)}
+            _save_checkpoint(db, tracker, all_stats, completed_streams)
+        else:
+            print("  (stream_3 already completed — skipping)")
 
-        if not tracker.is_over_budget:
+        if not tracker.is_over_budget and "stream_1" not in completed_streams:
             try:
                 all_stats["stream_1_tariff_mine"] = stream_1_tariff_deep_mine(db, gemini_key, tracker)
+                completed_streams.append("stream_1")
             except Exception as e:
                 logger.error(f"Stream 1 error: {e}")
                 all_stats["stream_1_tariff_mine"] = {"error": str(e)}
+            _save_checkpoint(db, tracker, all_stats, completed_streams)
+        elif "stream_1" in completed_streams:
+            print("  (stream_1 already completed — skipping)")
 
-        if not tracker.is_over_budget:
+        if not tracker.is_over_budget and "stream_2" not in completed_streams:
             try:
                 all_stats["stream_2_email_mine"] = stream_2_email_archive_mine(db, gemini_key, tracker)
+                completed_streams.append("stream_2")
             except Exception as e:
                 logger.error(f"Stream 2 error: {e}")
                 all_stats["stream_2_email_mine"] = {"error": str(e)}
+            _save_checkpoint(db, tracker, all_stats, completed_streams)
+        elif "stream_2" in completed_streams:
+            print("  (stream_2 already completed — skipping)")
 
         print(f"  Budget after Phase B: ${tracker.total_spent:.4f}")
     else:
@@ -1573,18 +1636,27 @@ def run_overnight_brain(db, get_secret_func):
     # ── Phase C: Bulk processing (skip if no AI key or tight budget) ──
     if has_ai and not tracker.is_over_budget:
         print("\n--- Phase C: Bulk processing ---")
-        try:
-            all_stats["stream_4_attachments"] = stream_4_attachment_mine(db, gemini_key, tracker)
-        except Exception as e:
-            logger.error(f"Stream 4 error: {e}")
-            all_stats["stream_4_attachments"] = {"error": str(e)}
+        if "stream_4" not in completed_streams:
+            try:
+                all_stats["stream_4_attachments"] = stream_4_attachment_mine(db, gemini_key, tracker)
+                completed_streams.append("stream_4")
+            except Exception as e:
+                logger.error(f"Stream 4 error: {e}")
+                all_stats["stream_4_attachments"] = {"error": str(e)}
+            _save_checkpoint(db, tracker, all_stats, completed_streams)
+        else:
+            print("  (stream_4 already completed — skipping)")
 
-        if not tracker.is_over_budget:
+        if not tracker.is_over_budget and "stream_5" not in completed_streams:
             try:
                 all_stats["stream_5_ai_fill"] = stream_5_ai_knowledge_fill(db, gemini_key, tracker)
+                completed_streams.append("stream_5")
             except Exception as e:
                 logger.error(f"Stream 5 error: {e}")
                 all_stats["stream_5_ai_fill"] = {"error": str(e)}
+            _save_checkpoint(db, tracker, all_stats, completed_streams)
+        elif "stream_5" in completed_streams:
+            print("  (stream_5 already completed — skipping)")
 
         print(f"  Budget after Phase C: ${tracker.total_spent:.4f}")
     elif not has_ai:
@@ -1592,35 +1664,47 @@ def run_overnight_brain(db, get_secret_func):
         all_stats["stream_5_ai_fill"] = {"skipped": "no_gemini_key"}
 
     # ── Phase D: Cross-reference (Firestore only — always runs) ──
-    if not tracker.is_over_budget:
+    if not tracker.is_over_budget and "stream_7" not in completed_streams:
         print("\n--- Phase D: Cross-reference ---")
         try:
             all_stats["stream_7_crossref"] = stream_7_cross_reference(db, tracker)
+            completed_streams.append("stream_7")
         except Exception as e:
             logger.error(f"Stream 7 error: {e}")
             all_stats["stream_7_crossref"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    elif "stream_7" in completed_streams:
+        print("  (stream_7 already completed — skipping)")
 
     # ── Phase E: Self-teach (needs AI) ──
-    if has_ai and not tracker.is_over_budget:
+    if has_ai and not tracker.is_over_budget and "stream_8" not in completed_streams:
         print("\n--- Phase E: Self-teach ---")
         try:
             all_stats["stream_8_self_teach"] = stream_8_self_teach(db, gemini_key, tracker)
+            completed_streams.append("stream_8")
         except Exception as e:
             logger.error(f"Stream 8 error: {e}")
             all_stats["stream_8_self_teach"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    elif "stream_8" in completed_streams:
+        print("  (stream_8 already completed — skipping)")
     elif not has_ai:
         all_stats["stream_8_self_teach"] = {"skipped": "no_gemini_key"}
 
     # ── Phase F: Knowledge sync (Firestore only — always runs) ──
     # Pushes learned_patterns + ai_enrichments → classification_knowledge
     # so intelligence.py pre_classify() can consume them.
-    if not tracker.is_over_budget:
+    if not tracker.is_over_budget and "stream_9" not in completed_streams:
         print("\n--- Phase F: Knowledge sync ---")
         try:
             all_stats["stream_9_knowledge_sync"] = stream_9_knowledge_sync(db, tracker)
+            completed_streams.append("stream_9")
         except Exception as e:
             logger.error(f"Stream 9 error: {e}")
             all_stats["stream_9_knowledge_sync"] = {"error": str(e)}
+        _save_checkpoint(db, tracker, all_stats, completed_streams)
+    elif "stream_9" in completed_streams:
+        print("  (stream_9 already completed — skipping)")
 
     # ── Final audit ──
     print("\n--- Final Knowledge Audit ---")
@@ -1642,6 +1726,18 @@ def run_overnight_brain(db, get_secret_func):
         db.collection("enrichment_reports").document(doc_id).set(report)
     except Exception as e:
         logger.error(f"Failed to save enrichment report: {e}")
+
+    # Mark run as fully complete in checkpoint
+    try:
+        db.collection("brain_run_progress").document(_checkpoint_key()).set({
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "budget_spent": round(tracker.total_spent, 6),
+            "completed_streams": completed_streams,
+            "status": "complete",
+            "duration_seconds": total_time,
+        })
+    except Exception as e:
+        print(f"  ⚠️ Final checkpoint error (non-fatal): {e}")
 
     # Print summary
     print("\n" + "=" * 60)
