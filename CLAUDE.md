@@ -2462,6 +2462,75 @@ BL (3 patterns), AWB (2), container (ISO 6346 check digit validated), booking (2
 3. Wire `learned_identifier_patterns` into overnight brain for regex refinement
 4. Indirect feedback loop: declaration outcomes matched via identity graph to original classification
 
+## Session 47 Summary (2026-02-18) — BALKI Fixes: Scanned PDF, Price Offers, MOT, Email Routing
+
+### Root Cause Analysis
+Test email (RCB-20260218-BALKI) from JSC BELSHINA (Belarus tyre manufacturer) exposed cascading failures:
+- **Scanned PDF**: Image-based PDF → text extractors return garbage → AI Vision never called for PDFs
+- **Document type**: Price offer letter, not invoice → Agent 1 prompt too narrow → items=0
+- **Empty email**: items=0 → quality gate missing → sent empty ✅ email
+- **No MOT warning**: Tyre imports (4011.xx) need MOT approval per SI 1022
+
+### 7 Fixes Implemented
+
+| # | Fix | File(s) | Impact |
+|---|-----|---------|--------|
+| 1 | Scanned PDF AI Vision fallback | `extraction_adapter.py` | Detect text<200, render page 1 via PyMuPDF, route to image_analyzer |
+| 2 | Agent 1 prompt: price offers/proforma | `classification_agents.py` | System prompt accepts הצעת מחיר, פרופורמה, רשימת מחירים |
+| 3 | Seller website tool #33 | `tool_definitions.py`, `tool_executors.py` | `fetch_seller_website` — domain inference, homepage fetch, cached 30 days |
+| 4 | Quality gate Rule 7 + items=0 clarification | `rcb_helpers.py`, `classification_agents.py` | Block empty classification emails; items=0 → CLARIFICATION status |
+| 5 | BELSHINA learning data | `seed_belshina_learning.py` | 13 tire models, belshina.by patterns, price offer doc type |
+| 6 | MOT check for tyres (chapter 40) | `intelligence.py`, `tool_executors.py` | Separate chapter 40 route (MOT + SII), SI 1022, FIO Luhn fallback |
+| 7 | Email sender routing | `main.py`, `classification_agents.py` | Process ALL senders, reply only to @rpa-port.co.il |
+
+### Email Processing Policy (Fix 7)
+- `rcb@rpa-port.co.il` → SKIP (self-loop prevention)
+- `cc@rpa-port.co.il` → SKIP (digest group, read only)
+- `doron@rpa-port.co.il` → PROCESS + reply to sender ✓
+- Any `@rpa-port.co.il` → PROCESS + reply to sender ✓
+- External sender → PROCESS + find @rpa-port.co.il in To/CC chain → reply there
+- External, no team in chain → PROCESS + store, NO reply email
+- 2-day lookback restored (was temporarily 2h)
+
+### HS Code Format Mandate
+**XX.XX.XXXXXX/X** enforced everywhere:
+- Classification email template (already using `get_israeli_hs_format()`)
+- Clarification banner (fixed: was raw format)
+- `learned_classifications` storage (normalized before save)
+- Cross-checker display (`_format_hs()` now uses Israeli format)
+
+### Tool-Calling Engine: 33 Active Tools
+Tool #33: `fetch_seller_website` — domain inference, homepage fetch, product keyword extraction
+
+### Firestore Collections Seeded
+| Collection | Docs | Source |
+|-----------|------|--------|
+| `learned_classifications` | 13 | BELSHINA tire models (manual, confidence 1.0) |
+| `learned_identifier_patterns` | 2 | belshina.by domain + email patterns |
+| `learned_document_types` | 2 + metadata | price_offer + proforma_invoice detection |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/extraction_adapter.py` | +`_is_pdf_file()`, +`_render_pdf_first_page()`, scanned PDF AI Vision block |
+| `functions/lib/classification_agents.py` | Agent 1 prompt broadened, items=0→CLARIFICATION, reply suppression for external |
+| `functions/lib/rcb_helpers.py` | Rule 7: `empty_classification` in email quality gate |
+| `functions/lib/tool_definitions.py` | +`fetch_seller_website` tool def, GEMINI_TOOLS sync, system prompt step 33 |
+| `functions/lib/tool_executors.py` | +`_fetch_seller_website()`, FIO Luhn check digit lookup |
+| `functions/lib/intelligence.py` | Chapter 40 routing (MOT + SII, SI 1022) |
+| `functions/lib/cross_checker.py` | `_format_hs()` → Israeli format |
+| `functions/lib/self_learning.py` | Normalize HS code to Israeli format before storing |
+| `functions/main.py` | Remove sender restriction, add cc@ skip, 2-day lookback, reply routing |
+| `functions/tests/test_tool_calling.py` | Tool count 32→33, `fetch_seller_website` |
+| `functions/tests/test_email_quality_gate.py` | +3 tests for Rule 7 |
+| `functions/seed_belshina_learning.py` | NEW: BELSHINA learning data seeder |
+
+### Test Results
+- **968 passed**, 5 failed (pre-existing BS4), 2 skipped — zero regressions
+
+### Git Commit
+- `c212fe1` — Session 47: BALKI fixes — scanned PDF vision, price offers, seller website, quality gate, MOT, email routing
+
 ### FUTURE — Forwarding Module (not started)
 - Same Firebase project, same repo
 - Function prefix: `fwd_`
