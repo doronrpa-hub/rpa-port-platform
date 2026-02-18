@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 13 tools available to the AI during classification.
+Defines the 14 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -338,6 +338,27 @@ CLAUDE_TOOLS = [
             "required": ["product_description", "candidates"],
         },
     },
+    {
+        "name": "search_wikipedia",
+        "description": (
+            "Search Wikipedia for background knowledge about a product, material, "
+            "chemical compound, or industry term. FREE — no API key required. "
+            "Results are cached for 30 days to avoid repeat lookups. "
+            "Use this when you need to understand what a product IS (material, composition, "
+            "use) before classifying it — e.g., 'polyethylene terephthalate', "
+            "'lithium iron phosphate', 'aramid fiber'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Product, material, or term to look up on Wikipedia (English)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -390,7 +411,8 @@ WORKFLOW:
 10. Call lookup_framework_order to check legal definitions or classification rules from the Framework Order if needed.
 11. Call search_classification_directives to check if an official classification directive exists for the product or HS code.
 12. Call search_legal_knowledge to check relevant legal provisions, standards reforms (EU/US), or customs agents law if needed.
-13. Call assess_risk for risk assessment.
+13. Call search_wikipedia when you need background knowledge about a product, material, or compound to inform classification (e.g., what is the product made of, what is it used for). FREE and cached.
+14. Call assess_risk for risk assessment.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

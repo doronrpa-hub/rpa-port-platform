@@ -7,10 +7,13 @@ Each tool_name maps to a method that calls the real code.
 No new logic — just routing + caching + error handling.
 """
 
+import hashlib
 import json
 import re
 import time
 import traceback
+
+import requests
 
 from lib.self_learning import SelfLearningEngine
 from lib import intelligence
@@ -60,6 +63,12 @@ _LEGAL_EU_KEYWORDS = re.compile(r'\b(?:europe|eu)\b|אירופ|ce mark', re.IGNO
 _LEGAL_US_KEYWORDS = re.compile(r'\b(?:usa|united states)\b|america|\bfda\b|\bul\b|ארצות הברית|ארה', re.IGNORECASE)
 _LEGAL_AGENT_KEYWORDS = re.compile(r'\bagent\b|\bbroker\b|סוכנ|עמיל', re.IGNORECASE)
 
+# Wikipedia API constants
+_WIKI_USER_AGENT = "RCB-RPA-PORT/1.0 (rcb@rpa-port.co.il)"
+_WIKI_SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
+_WIKI_SEARCH_URL = "https://en.wikipedia.org/w/api.php"
+_WIKI_CACHE_TTL_DAYS = 30
+
 
 class ToolExecutor:
     """Routes tool calls to existing module functions."""
@@ -77,6 +86,7 @@ class ToolExecutor:
         self._directives_docs = None      # list of (doc_id, dict) for classification_directives (218 docs)
         self._framework_order_docs = None  # list of (doc_id, dict) for framework_order (85 docs)
         self._legal_knowledge_docs = None  # list of (doc_id, dict) for legal_knowledge (19 docs)
+        self._wikipedia_cache = {}         # query_key -> wikipedia result (per-request)
         # Stats
         self._stats = {}
 
@@ -135,6 +145,7 @@ class ToolExecutor:
             "search_classification_directives": self._search_classification_directives,
             "search_legal_knowledge": self._search_legal_knowledge,
             "run_elimination": self._run_elimination,
+            "search_wikipedia": self._search_wikipedia,
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
             "search_wco_decisions": self._stub_not_available,
@@ -1031,6 +1042,124 @@ class ToolExecutor:
             ][:8],
             "needs_questions": result.get("needs_questions", False),
         }
+
+    def _search_wikipedia(self, inp):
+        """Search Wikipedia for product/material knowledge.
+        FREE — no API key needed. Caches in Firestore (30-day TTL).
+        Two-step: search API to find best title, then summary API for extract."""
+        query = str(inp.get("query", "")).strip()
+        if not query or len(query) < 2:
+            return {"found": False, "error": "Query too short"}
+
+        # Per-request cache
+        cache_key = query.lower()
+        if cache_key in self._wikipedia_cache:
+            return self._wikipedia_cache[cache_key]
+
+        # Firestore cache (30-day TTL)
+        doc_id = hashlib.md5(cache_key.encode()).hexdigest()
+        try:
+            cached_doc = self.db.collection("wikipedia_cache").document(doc_id).get()
+            if cached_doc.exists:
+                data = cached_doc.to_dict()
+                cached_at = data.get("cached_at", "")
+                # Check TTL (30 days)
+                if cached_at:
+                    from datetime import datetime, timezone, timedelta
+                    try:
+                        cached_dt = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+                        if datetime.now(timezone.utc) - cached_dt < timedelta(days=_WIKI_CACHE_TTL_DAYS):
+                            result = data.get("result", {})
+                            result["source"] = "wikipedia_cache"
+                            self._wikipedia_cache[cache_key] = result
+                            return result
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            pass
+
+        # Step 1: Search Wikipedia for best matching title
+        headers = {"User-Agent": _WIKI_USER_AGENT}
+        title = None
+        search_results = []
+        try:
+            resp = requests.get(
+                _WIKI_SEARCH_URL,
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "format": "json",
+                    "srlimit": 3,
+                },
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                hits = data.get("query", {}).get("search", [])
+                if hits:
+                    title = hits[0].get("title", "")
+                    search_results = [
+                        {"title": h.get("title", ""), "snippet": re.sub(r"<[^>]+>", "", h.get("snippet", ""))}
+                        for h in hits[:3]
+                    ]
+        except Exception as e:
+            return {"found": False, "error": f"Wikipedia search failed: {e}"}
+
+        if not title:
+            result = {"found": False, "query": query, "message": "No Wikipedia article found"}
+            self._wikipedia_cache[cache_key] = result
+            return result
+
+        # Step 2: Get page summary via REST API
+        try:
+            summary_url = _WIKI_SUMMARY_URL.format(title=requests.utils.quote(title))
+            resp = requests.get(summary_url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                result = {
+                    "found": True,
+                    "title": data.get("title", title),
+                    "extract": data.get("extract", "")[:2000],
+                    "description": data.get("description", ""),
+                    "categories": data.get("categories", []),
+                    "lang_links": data.get("lang_links", []),
+                    "page_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
+                    "source": "wikipedia_api",
+                    "other_results": search_results[1:] if len(search_results) > 1 else [],
+                }
+            else:
+                # Fallback: return search results without summary
+                result = {
+                    "found": True,
+                    "title": title,
+                    "extract": search_results[0].get("snippet", "") if search_results else "",
+                    "source": "wikipedia_search",
+                    "other_results": search_results[1:] if len(search_results) > 1 else [],
+                }
+        except Exception as e:
+            result = {"found": False, "error": f"Wikipedia summary failed: {e}"}
+            self._wikipedia_cache[cache_key] = result
+            return result
+
+        # Cache in per-request memory
+        self._wikipedia_cache[cache_key] = result
+
+        # Cache in Firestore (30-day TTL) — non-blocking, fire-and-forget
+        if result.get("found"):
+            try:
+                from datetime import datetime, timezone
+                self.db.collection("wikipedia_cache").document(doc_id).set({
+                    "query": query,
+                    "cache_key": cache_key,
+                    "result": result,
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:
+                pass  # Cache write failure is non-fatal
+
+        return result
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""

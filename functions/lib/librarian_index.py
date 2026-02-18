@@ -369,6 +369,14 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    # Tool #14: Wikipedia lookup cache — product/material knowledge (30-day TTL)
+    # Source: Wikipedia REST API (free, no key)
+    "wikipedia_cache": {
+        "title_fields": ["query"],
+        "keyword_fields": ["cache_key"],
+        "hs_fields": [],
+        "doc_type": "cache",
+    },
 }
 
 # Document type by file extension
