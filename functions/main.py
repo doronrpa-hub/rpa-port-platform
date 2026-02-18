@@ -103,79 +103,82 @@ def get_bucket():
 @firestore_fn.on_document_created(document="classifications/{classId}")
 def on_new_classification(event: firestore_fn.Event) -> None:
     """When a new classification is created, try to auto-classify using knowledge base"""
-    
-    data = event.data.to_dict()
-    if data.get("status") != "pending_classification":
-        return
+    try:
+        data = event.data.to_dict()
+        if data.get("status") != "pending_classification":
+            return
 
-    class_id = event.params["classId"]
-    product = data.get("product_description", "")
-    seller = data.get("seller", "")
-    supplier_hs = data.get("supplier_hs", "")
+        class_id = event.params["classId"]
+        product = data.get("product_description", "")
+        seller = data.get("seller", "")
+        supplier_hs = data.get("supplier_hs", "")
 
-    # Step 1: Check if we've seen this seller + product before
-    suggested_hs = None
-    confidence = 0
+        # Step 1: Check if we've seen this seller + product before
+        suggested_hs = None
+        confidence = 0
 
-    # Check seller history
-    if seller:
-        seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
-        seller_doc = get_db().collection("sellers").document(seller_id).get()
-        if seller_doc.exists:
-            seller_data = seller_doc.to_dict()
-            known_hs = seller_data.get("known_hs_codes", [])
-            if len(known_hs) == 1:
-                suggested_hs = known_hs[0]
-                confidence = 70
-                print(f"Seller match: {seller} -> {suggested_hs}")
+        # Check seller history
+        if seller:
+            seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
+            seller_doc = get_db().collection("sellers").document(seller_id).get()
+            if seller_doc.exists:
+                seller_data = seller_doc.to_dict()
+                known_hs = seller_data.get("known_hs_codes", [])
+                if len(known_hs) == 1:
+                    suggested_hs = known_hs[0]
+                    confidence = 70
+                    print(f"Seller match: {seller} -> {suggested_hs}")
 
-    # Check knowledge base for product match
-    if product:
-        kb_docs = get_db().collection("knowledge_base").where("category", "==", "hs_classifications").stream()
-        for doc in kb_docs:
-            kb = doc.to_dict()
-            content = kb.get("content", {})
-            products_seen = content.get("products", [])
-            for p in products_seen:
-                if any(word.lower() in product.lower() for word in p.split() if len(word) > 3):
-                    suggested_hs = content.get("hs", "")
-                    confidence = max(confidence, 60)
-                    print(f"Product match: {product} -> {suggested_hs}")
+        # Check knowledge base for product match
+        if product:
+            kb_docs = get_db().collection("knowledge_base").where("category", "==", "hs_classifications").stream()
+            for doc in kb_docs:
+                kb = doc.to_dict()
+                content = kb.get("content", {})
+                products_seen = content.get("products", [])
+                for p in products_seen:
+                    if any(word.lower() in product.lower() for word in p.split() if len(word) > 3):
+                        suggested_hs = content.get("hs", "")
+                        confidence = max(confidence, 60)
+                        print(f"Product match: {product} -> {suggested_hs}")
+                        break
+
+        # If supplier provided an HS code, validate it
+        if supplier_hs:
+            # Check if supplier HS matches our knowledge
+            kb_match = get_db().collection("knowledge_base").where("category", "==", "hs_classifications").stream()
+            for doc in kb_match:
+                kb = doc.to_dict()
+                if kb.get("content", {}).get("hs", "").replace(".", "") == supplier_hs.replace(".", ""):
+                    suggested_hs = supplier_hs
+                    confidence = 80
+                    print(f"Supplier HS confirmed: {supplier_hs}")
                     break
 
-    # If supplier provided an HS code, validate it
-    if supplier_hs:
-        # Check if supplier HS matches our knowledge
-        kb_match = get_db().collection("knowledge_base").where("category", "==", "hs_classifications").stream()
-        for doc in kb_match:
-            kb = doc.to_dict()
-            if kb.get("content", {}).get("hs", "").replace(".", "") == supplier_hs.replace(".", ""):
-                suggested_hs = supplier_hs
-                confidence = 80
-                print(f"Supplier HS confirmed: {supplier_hs}")
-                break
-
-    # Update classification with suggestion
-    if suggested_hs and confidence >= 60:
-        get_db().collection("classifications").document(class_id).update({
-            "suggested_hs": suggested_hs,
-            "suggestion_confidence": confidence,
-            "suggestion_source": "auto_knowledge_base",
-            "status": "pending_review"
-        })
-        print(f"Auto-suggested {suggested_hs} (confidence: {confidence}%) for {class_id}")
-    else:
-        # Need Claude AI for complex classification
-        get_db().collection("agent_tasks").add({
-            "type": "ai_classification",
-            "classification_id": class_id,
-            "product_description": product,
-            "seller": seller,
-            "supplier_hs": supplier_hs,
-            "status": "pending",
-            "created_at": firestore.SERVER_TIMESTAMP
-        })
-        print(f"Created AI classification task for {class_id}")
+        # Update classification with suggestion
+        if suggested_hs and confidence >= 60:
+            get_db().collection("classifications").document(class_id).update({
+                "suggested_hs": suggested_hs,
+                "suggestion_confidence": confidence,
+                "suggestion_source": "auto_knowledge_base",
+                "status": "pending_review"
+            })
+            print(f"Auto-suggested {suggested_hs} (confidence: {confidence}%) for {class_id}")
+        else:
+            # Need Claude AI for complex classification
+            get_db().collection("agent_tasks").add({
+                "type": "ai_classification",
+                "classification_id": class_id,
+                "product_description": product,
+                "seller": seller,
+                "supplier_hs": supplier_hs,
+                "status": "pending",
+                "created_at": firestore.SERVER_TIMESTAMP
+            })
+            print(f"Created AI classification task for {class_id}")
+    except Exception as e:
+        print(f"on_new_classification error (non-fatal, suppressed to prevent retry storm): {e}")
+        import traceback; traceback.print_exc()
 
 
 # ============================================================
@@ -184,92 +187,95 @@ def on_new_classification(event: firestore_fn.Event) -> None:
 @firestore_fn.on_document_updated(document="classifications/{classId}")
 def on_classification_correction(event: firestore_fn.Event) -> None:
     """When user corrects a classification, learn from it"""
-    
-    before = event.data.before.to_dict()
-    after = event.data.after.to_dict()
+    try:
+        before = event.data.before.to_dict()
+        after = event.data.after.to_dict()
 
-    # Check if this is a correction (status changed to confirmed/corrected)
-    if after.get("status") not in ("confirmed", "corrected"):
-        return
-    if before.get("status") == after.get("status"):
-        return
+        # Check if this is a correction (status changed to confirmed/corrected)
+        if after.get("status") not in ("confirmed", "corrected"):
+            return
+        if before.get("status") == after.get("status"):
+            return
 
-    class_id = event.params["classId"]
-    final_hs = after.get("our_hs_code", "")
-    product = after.get("product_description", "")
-    seller = after.get("seller", "")
-    suggested_hs = before.get("suggested_hs", "")
+        class_id = event.params["classId"]
+        final_hs = after.get("our_hs_code", "")
+        product = after.get("product_description", "")
+        seller = after.get("seller", "")
+        suggested_hs = before.get("suggested_hs", "")
 
-    if not final_hs:
-        return
+        if not final_hs:
+            return
 
-    print(f"Learning from correction: {class_id}")
-    print(f"  Product: {product}")
-    print(f"  Final HS: {final_hs}")
-    if suggested_hs and suggested_hs != final_hs:
-        print(f"  Was suggested: {suggested_hs} (WRONG)")
+        print(f"Learning from correction: {class_id}")
+        print(f"  Product: {product}")
+        print(f"  Final HS: {final_hs}")
+        if suggested_hs and suggested_hs != final_hs:
+            print(f"  Was suggested: {suggested_hs} (WRONG)")
 
-    # Update seller knowledge
-    if seller:
-        seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
-        seller_ref = get_db().collection("sellers").document(seller_id)
-        seller_doc = seller_ref.get()
-        if seller_doc.exists:
-            existing = seller_doc.to_dict()
-            known_hs = existing.get("known_hs_codes", [])
-            if final_hs not in known_hs:
-                known_hs.append(final_hs)
-            seller_ref.update({"known_hs_codes": known_hs, "last_classification": datetime.now().isoformat()})
+        # Update seller knowledge
+        if seller:
+            seller_id = re.sub(r'[^a-zA-Z0-9]', '_', seller.lower())[:50]
+            seller_ref = get_db().collection("sellers").document(seller_id)
+            seller_doc = seller_ref.get()
+            if seller_doc.exists:
+                existing = seller_doc.to_dict()
+                known_hs = existing.get("known_hs_codes", [])
+                if final_hs not in known_hs:
+                    known_hs.append(final_hs)
+                seller_ref.update({"known_hs_codes": known_hs, "last_classification": datetime.now().isoformat()})
+            else:
+                seller_ref.set({
+                    "name": seller,
+                    "known_hs_codes": [final_hs],
+                    "last_classification": datetime.now().isoformat()
+                })
+
+        # Update HS knowledge base
+        hs_id = f"hs_{final_hs.replace('.', '_')}"
+        hs_ref = get_db().collection("knowledge_base").document(hs_id)
+        hs_doc = hs_ref.get()
+        if hs_doc.exists:
+            existing = hs_doc.to_dict()
+            content = existing.get("content", {})
+            products = content.get("products", [])
+            sellers_list = content.get("sellers", [])
+            if product and product not in products:
+                products.append(product[:200])
+            if seller and seller not in sellers_list:
+                sellers_list.append(seller)
+            content["products"] = products
+            content["sellers"] = sellers_list
+            hs_ref.update({"content": content, "last_updated": datetime.now().isoformat()})
         else:
-            seller_ref.set({
-                "name": seller,
-                "known_hs_codes": [final_hs],
-                "last_classification": datetime.now().isoformat()
+            hs_ref.set({
+                "title": f"HS {final_hs} - Learned from classification",
+                "category": "hs_classifications",
+                "content": {
+                    "hs": final_hs,
+                    "products": [product[:200]] if product else [],
+                    "sellers": [seller] if seller else [],
+                    "learned_from": [class_id]
+                },
+                "source": "classification_learning",
+                "created_at": firestore.SERVER_TIMESTAMP
             })
 
-    # Update HS knowledge base
-    hs_id = f"hs_{final_hs.replace('.', '_')}"
-    hs_ref = get_db().collection("knowledge_base").document(hs_id)
-    hs_doc = hs_ref.get()
-    if hs_doc.exists:
-        existing = hs_doc.to_dict()
-        content = existing.get("content", {})
-        products = content.get("products", [])
-        sellers_list = content.get("sellers", [])
-        if product and product not in products:
-            products.append(product[:200])
-        if seller and seller not in sellers_list:
-            sellers_list.append(seller)
-        content["products"] = products
-        content["sellers"] = sellers_list
-        hs_ref.update({"content": content, "last_updated": datetime.now().isoformat()})
-    else:
-        hs_ref.set({
-            "title": f"HS {final_hs} - Learned from classification",
-            "category": "hs_classifications",
-            "content": {
-                "hs": final_hs,
-                "products": [product[:200]] if product else [],
-                "sellers": [seller] if seller else [],
-                "learned_from": [class_id]
-            },
-            "source": "classification_learning",
-            "created_at": firestore.SERVER_TIMESTAMP
+        # Log the learning event
+        get_db().collection("learning_log").add({
+            "type": "classification_correction",
+            "classification_id": class_id,
+            "final_hs": final_hs,
+            "suggested_hs": suggested_hs,
+            "was_correct": suggested_hs == final_hs,
+            "product": product,
+            "seller": seller,
+            "learned_at": firestore.SERVER_TIMESTAMP
         })
 
-    # Log the learning event
-    get_db().collection("learning_log").add({
-        "type": "classification_correction",
-        "classification_id": class_id,
-        "final_hs": final_hs,
-        "suggested_hs": suggested_hs,
-        "was_correct": suggested_hs == final_hs,
-        "product": product,
-        "seller": seller,
-        "learned_at": firestore.SERVER_TIMESTAMP
-    })
-
-    print(f"  Learned: {product[:50]} -> {final_hs}")
+        print(f"  Learned: {product[:50]} -> {final_hs}")
+    except Exception as e:
+        print(f"on_classification_correction error (non-fatal, suppressed to prevent retry storm): {e}")
+        import traceback; traceback.print_exc()
 
 
 # ============================================================
