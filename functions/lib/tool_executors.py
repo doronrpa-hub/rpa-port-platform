@@ -24,6 +24,42 @@ _DUAL_USE_CHAPTERS = {"28", "29", "36", "84", "85", "87", "90", "93"}
 # High-risk origins
 _HIGH_RISK_ORIGINS = {"iran", "north korea", "syria", "cuba", "איראן", "צפון קוריאה", "סוריה", "קובה"}
 
+# FTA country name/code → framework_order doc ID (module-level constant, not rebuilt per call)
+_FTA_COUNTRY_MAP = {
+    "eu": "eu", "european union": "eu", "האיחוד האירופי": "eu",
+    "germany": "eu", "france": "eu", "italy": "eu", "spain": "eu",
+    "netherlands": "eu", "belgium": "eu", "austria": "eu", "poland": "eu",
+    "czech republic": "eu", "czechia": "eu", "romania": "eu",
+    "portugal": "eu", "greece": "eu", "sweden": "eu", "denmark": "eu",
+    "finland": "eu", "ireland": "eu", "hungary": "eu", "slovakia": "eu",
+    "croatia": "eu", "bulgaria": "eu", "lithuania": "eu", "slovenia": "eu",
+    "latvia": "eu", "estonia": "eu", "cyprus": "eu", "luxembourg": "eu",
+    "malta": "eu",
+    "efta": "efta", "switzerland": "efta", "norway": "efta",
+    "iceland": "efta", "liechtenstein": "efta", "אפט\"א": "efta",
+    "usa": "usa", "us": "usa", "united states": "usa", "america": "usa",
+    "ארה\"ב": "usa", "ארצות הברית": "usa",
+    "uk": "uk", "gb": "uk", "united kingdom": "uk", "britain": "uk",
+    "england": "uk", "בריטניה": "uk", "הממלכה המאוחדת": "uk",
+    "turkey": "turkey", "tr": "turkey", "turkiye": "turkey", "טורקיה": "turkey",
+    "jordan": "jordan", "jo": "jordan", "ירדן": "jordan",
+    "canada": "canada", "ca": "canada", "קנדה": "canada",
+    "mexico": "mexico", "mx": "mexico", "מקסיקו": "mexico",
+    "mercosur": "mercosur", "brazil": "mercosur", "argentina": "mercosur",
+    "uruguay": "mercosur", "paraguay": "mercosur", "מרקוסור": "mercosur",
+    "korea": "korea", "kr": "korea", "south korea": "korea", "קוריאה": "korea",
+    "colombia": "colombia", "co": "colombia", "קולומביה": "colombia",
+    "panama": "panama", "pa": "panama", "פנמה": "panama",
+    "ukraine": "ukraine", "ua": "ukraine", "אוקראינה": "ukraine",
+    "uae": "uae", "ae": "uae", "united arab emirates": "uae", "אמירויות": "uae",
+    "guatemala": "guatemala", "gt": "guatemala", "גואטמלה": "guatemala",
+}
+
+# Word boundary keywords for legal_knowledge search — prevents "us" matching "status", "focus", etc.
+_LEGAL_EU_KEYWORDS = re.compile(r'\b(?:europe|eu)\b|אירופ|ce mark', re.IGNORECASE)
+_LEGAL_US_KEYWORDS = re.compile(r'\b(?:usa|united states)\b|america|\bfda\b|\bul\b|ארצות הברית|ארה', re.IGNORECASE)
+_LEGAL_AGENT_KEYWORDS = re.compile(r'\bagent\b|\bbroker\b|סוכנ|עמיל', re.IGNORECASE)
+
 
 class ToolExecutor:
     """Routes tool calls to existing module functions."""
@@ -37,8 +73,43 @@ class ToolExecutor:
         self._fio_cache = {}       # hs_code -> free_import_order result
         self._feo_cache = {}       # hs_code -> free_export_order result
         self._ministry_cache = {}  # hs_code -> route_to_ministries result
+        # Per-request collection caches — loaded lazily on first access, avoids repeated .stream() scans
+        self._directives_docs = None      # list of (doc_id, dict) for classification_directives (218 docs)
+        self._framework_order_docs = None  # list of (doc_id, dict) for framework_order (85 docs)
+        self._legal_knowledge_docs = None  # list of (doc_id, dict) for legal_knowledge (19 docs)
         # Stats
         self._stats = {}
+
+    # ------------------------------------------------------------------
+    # Collection cache loaders — read once per ToolExecutor instance
+    # ------------------------------------------------------------------
+
+    def _get_directives(self):
+        """Lazy-load all classification_directives docs. Cached for request lifetime."""
+        if self._directives_docs is None:
+            self._directives_docs = [
+                (doc.id, doc.to_dict())
+                for doc in self.db.collection("classification_directives").stream()
+            ]
+        return self._directives_docs
+
+    def _get_framework_order(self):
+        """Lazy-load all framework_order docs. Cached for request lifetime."""
+        if self._framework_order_docs is None:
+            self._framework_order_docs = [
+                (doc.id, doc.to_dict())
+                for doc in self.db.collection("framework_order").stream()
+            ]
+        return self._framework_order_docs
+
+    def _get_legal_knowledge(self):
+        """Lazy-load all legal_knowledge docs. Cached for request lifetime."""
+        if self._legal_knowledge_docs is None:
+            self._legal_knowledge_docs = [
+                (doc.id, doc.to_dict())
+                for doc in self.db.collection("legal_knowledge").stream()
+            ]
+        return self._legal_knowledge_docs
 
     # ------------------------------------------------------------------
     # Main dispatcher
@@ -335,44 +406,15 @@ class ToolExecutor:
         return result
 
     def _lookup_fw_fta_clause(self, origin_country):
-        """Look up FTA clause from framework_order collection by country."""
-        # Map common country names/codes to framework_order doc IDs
-        _COUNTRY_MAP = {
-            "eu": "eu", "european union": "eu", "האיחוד האירופי": "eu",
-            "germany": "eu", "france": "eu", "italy": "eu", "spain": "eu",
-            "netherlands": "eu", "belgium": "eu", "austria": "eu", "poland": "eu",
-            "czech republic": "eu", "czechia": "eu", "romania": "eu",
-            "portugal": "eu", "greece": "eu", "sweden": "eu", "denmark": "eu",
-            "finland": "eu", "ireland": "eu", "hungary": "eu", "slovakia": "eu",
-            "croatia": "eu", "bulgaria": "eu", "lithuania": "eu", "slovenia": "eu",
-            "latvia": "eu", "estonia": "eu", "cyprus": "eu", "luxembourg": "eu",
-            "malta": "eu",
-            "efta": "efta", "switzerland": "efta", "norway": "efta",
-            "iceland": "efta", "liechtenstein": "efta", "אפט\"א": "efta",
-            "usa": "usa", "us": "usa", "united states": "usa", "america": "usa",
-            "ארה\"ב": "usa", "ארצות הברית": "usa",
-            "uk": "uk", "gb": "uk", "united kingdom": "uk", "britain": "uk",
-            "england": "uk", "בריטניה": "uk", "הממלכה המאוחדת": "uk",
-            "turkey": "turkey", "tr": "turkey", "turkiye": "turkey", "טורקיה": "turkey",
-            "jordan": "jordan", "jo": "jordan", "ירדן": "jordan",
-            "canada": "canada", "ca": "canada", "קנדה": "canada",
-            "mexico": "mexico", "mx": "mexico", "מקסיקו": "mexico",
-            "mercosur": "mercosur", "brazil": "mercosur", "argentina": "mercosur",
-            "uruguay": "mercosur", "paraguay": "mercosur", "מרקוסור": "mercosur",
-            "korea": "korea", "kr": "korea", "south korea": "korea", "קוריאה": "korea",
-            "colombia": "colombia", "co": "colombia", "קולומביה": "colombia",
-            "panama": "panama", "pa": "panama", "פנמה": "panama",
-            "ukraine": "ukraine", "ua": "ukraine", "אוקראינה": "ukraine",
-            "uae": "uae", "ae": "uae", "united arab emirates": "uae", "אמירויות": "uae",
-            "guatemala": "guatemala", "gt": "guatemala", "גואטמלה": "guatemala",
-        }
-        code = _COUNTRY_MAP.get(origin_country.lower())
+        """Look up FTA clause from framework_order collection by country.
+        Uses module-level _FTA_COUNTRY_MAP and cached collection data."""
+        code = _FTA_COUNTRY_MAP.get(origin_country.lower())
         if not code:
             return None
-        try:
-            doc = self.db.collection("framework_order").document(f"fta_{code}").get()
-            if doc.exists:
-                data = doc.to_dict()
+        doc_id = f"fta_{code}"
+        # Search cached collection (avoids per-call Firestore read)
+        for did, data in self._get_framework_order():
+            if did == doc_id:
                 return {
                     "country_code": data.get("country_code", ""),
                     "country_en": data.get("country_en", ""),
@@ -383,8 +425,6 @@ class ToolExecutor:
                     "clause_text": data.get("clause_text", "")[:2000],
                     "source": "framework_order_c5",
                 }
-        except Exception:
-            pass
         return None
 
     def _verify_hs_code(self, inp):
@@ -593,38 +633,38 @@ class ToolExecutor:
     def _lookup_framework_order(self, inp):
         """Look up Framework Order (צו מסגרת) data: legal definitions, FTA clauses,
         classification rules, and addition rules.
-        C5: Reads from framework_order collection seeded from knowledge doc + XML."""
+        C5: Reads from cached framework_order collection (85 docs, loaded once per request)."""
         query = str(inp.get("query", "")).strip()
         if not query:
             return {"found": False, "error": "No query provided"}
 
         query_lower = query.lower()
+        all_docs = self._get_framework_order()
 
         try:
             # Case 1: "definitions" — return all legal definitions
             if query_lower in ("definitions", "הגדרות", "all_definitions"):
                 defs = []
-                for doc in self.db.collection("framework_order").where("type", "==", "definition").stream():
-                    data = doc.to_dict()
-                    defs.append({
-                        "term": data.get("term", ""),
-                        "definition": data.get("definition", "")[:500],
-                    })
+                for doc_id, data in all_docs:
+                    if data.get("type") == "definition":
+                        defs.append({
+                            "term": data.get("term", ""),
+                            "definition": data.get("definition", "")[:500],
+                        })
                 return {"found": bool(defs), "type": "definitions", "definitions": defs, "count": len(defs)}
 
             # Case 2: Specific definition term lookup
             if query_lower.startswith("def:") or query_lower.startswith("define:"):
                 term = query.split(":", 1)[1].strip()
-                # Search definitions for matching term
                 matches = []
-                for doc in self.db.collection("framework_order").where("type", "==", "definition").stream():
-                    data = doc.to_dict()
-                    doc_term = data.get("term", "")
-                    if term in doc_term or term.lower() in doc_term.lower():
-                        matches.append({
-                            "term": doc_term,
-                            "definition": data.get("definition", ""),
-                        })
+                for doc_id, data in all_docs:
+                    if data.get("type") == "definition":
+                        doc_term = data.get("term", "")
+                        if term in doc_term or term.lower() in doc_term.lower():
+                            matches.append({
+                                "term": doc_term,
+                                "definition": data.get("definition", ""),
+                            })
                 return {"found": bool(matches), "type": "definition_search", "term": term,
                         "results": matches, "count": len(matches)}
 
@@ -635,21 +675,19 @@ class ToolExecutor:
             ):
                 country = query_lower.replace("fta:", "").replace("fta ", "").strip()
                 if country == "fta":
-                    # Return all FTA clauses
                     clauses = []
-                    for doc in self.db.collection("framework_order").where("type", "==", "fta_clause").stream():
-                        data = doc.to_dict()
-                        clauses.append({
-                            "country_code": data.get("country_code", ""),
-                            "country_en": data.get("country_en", ""),
-                            "country_he": data.get("country_he", ""),
-                            "is_duty_free": data.get("is_duty_free", False),
-                            "has_reduction": data.get("has_reduction", False),
-                            "supplements": data.get("supplements", []),
-                        })
+                    for doc_id, data in all_docs:
+                        if data.get("type") == "fta_clause":
+                            clauses.append({
+                                "country_code": data.get("country_code", ""),
+                                "country_en": data.get("country_en", ""),
+                                "country_he": data.get("country_he", ""),
+                                "is_duty_free": data.get("is_duty_free", False),
+                                "has_reduction": data.get("has_reduction", False),
+                                "supplements": data.get("supplements", []),
+                            })
                     return {"found": bool(clauses), "type": "fta_overview", "clauses": clauses, "count": len(clauses)}
                 else:
-                    # Single country FTA
                     fw_fta = self._lookup_fw_fta_clause(country)
                     if fw_fta:
                         return {"found": True, "type": "fta_clause", **fw_fta}
@@ -659,14 +697,14 @@ class ToolExecutor:
             # Case 4: "classification_rules" or "rules"
             if query_lower in ("classification_rules", "rules", "סיווג"):
                 rules = []
-                for doc in self.db.collection("framework_order").where("type", "==", "classification_rule").stream():
-                    data = doc.to_dict()
-                    rules.append({
-                        "rule_type": data.get("rule_type", ""),
-                        "title": data.get("title", ""),
-                        "title_en": data.get("title_en", ""),
-                        "text": data.get("text", "")[:2000],
-                    })
+                for doc_id, data in all_docs:
+                    if data.get("type") == "classification_rule":
+                        rules.append({
+                            "rule_type": data.get("rule_type", ""),
+                            "title": data.get("title", ""),
+                            "title_en": data.get("title_en", ""),
+                            "text": data.get("text", "")[:2000],
+                        })
                 return {"found": bool(rules), "type": "classification_rules", "rules": rules, "count": len(rules)}
 
             # Case 5: Addition by ID (e.g., "addition_3", "3")
@@ -676,26 +714,25 @@ class ToolExecutor:
             elif query.isdigit():
                 add_match = query
             if add_match:
-                doc = self.db.collection("framework_order").document(f"addition_{add_match}").get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    return {
-                        "found": True,
-                        "type": "addition_rule",
-                        "addition_id": data.get("addition_id", ""),
-                        "title": data.get("title", ""),
-                        "start_date": data.get("start_date", ""),
-                        "end_date": data.get("end_date", ""),
-                        "rules_text": data.get("rules_text", "")[:3000],
-                        "versions_count": data.get("versions_count", 0),
-                    }
+                target_id = f"addition_{add_match}"
+                for doc_id, data in all_docs:
+                    if doc_id == target_id:
+                        return {
+                            "found": True,
+                            "type": "addition_rule",
+                            "addition_id": data.get("addition_id", ""),
+                            "title": data.get("title", ""),
+                            "start_date": data.get("start_date", ""),
+                            "end_date": data.get("end_date", ""),
+                            "rules_text": data.get("rules_text", "")[:3000],
+                            "versions_count": data.get("versions_count", 0),
+                        }
 
-            # Case 6: General text search across all framework_order docs
+            # Case 6: General text search across all cached docs
             matches = []
-            for doc in self.db.collection("framework_order").stream():
-                if doc.id.startswith("_"):
+            for doc_id, data in all_docs:
+                if doc_id.startswith("_"):
                     continue
-                data = doc.to_dict()
                 searchable = " ".join([
                     str(data.get("term", "")),
                     str(data.get("title", "")),
@@ -705,7 +742,7 @@ class ToolExecutor:
                 ]).lower()
                 if query_lower in searchable:
                     matches.append({
-                        "doc_id": doc.id,
+                        "doc_id": doc_id,
                         "type": data.get("type", ""),
                         "term": data.get("term", ""),
                         "title": data.get("title", ""),
@@ -724,7 +761,8 @@ class ToolExecutor:
     def _search_classification_directives(self, inp):
         """Search classification directives (הנחיות סיווג) from shaarolami.
         C6: 218 directives enriched with directive_id, title, content, dates.
-        Search by HS code, chapter, directive_id, or keyword."""
+        Search by HS code, chapter, directive_id, or keyword.
+        Uses cached collection (loaded once per request, not per tool call)."""
         query = str(inp.get("query", "")).strip()
         hs_code = str(inp.get("hs_code", "")).strip()
         chapter = str(inp.get("chapter", "")).strip()
@@ -732,15 +770,15 @@ class ToolExecutor:
         if not query and not hs_code and not chapter:
             return {"found": False, "error": "Provide query, hs_code, or chapter"}
 
+        all_docs = self._get_directives()
+
         try:
             results = []
 
             # Strategy 1: Search by HS code (exact or prefix match)
             if hs_code:
                 hs_clean = hs_code.replace(".", "").replace(" ", "").replace("/", "")
-                # Try primary_hs_code match
-                for doc in self.db.collection("classification_directives").stream():
-                    data = doc.to_dict()
+                for doc_id, data in all_docs:
                     phs = (data.get("primary_hs_code", "") or "").replace(".", "")
                     hs_mentioned = data.get("hs_codes_mentioned", [])
                     related = data.get("related_hs_codes", [])
@@ -756,38 +794,33 @@ class ToolExecutor:
                                 break
 
                     if match:
-                        results.append(self._format_directive(doc.id, data))
+                        results.append(self._format_directive(doc_id, data))
                         if len(results) >= 5:
                             break
 
             # Strategy 2: Search by chapter
             if not results and chapter:
                 ch = chapter.zfill(2)
-                for doc in self.db.collection("classification_directives").stream():
-                    data = doc.to_dict()
+                for doc_id, data in all_docs:
                     chapters_covered = [str(c).zfill(2) for c in data.get("chapters_covered", [])]
                     title = data.get("title", "")
-                    # Check chapters_covered list or title prefix
                     if ch in chapters_covered or title.startswith(f"{ch}."):
-                        results.append(self._format_directive(doc.id, data))
+                        results.append(self._format_directive(doc_id, data))
                         if len(results) >= 10:
                             break
 
             # Strategy 3: Search by directive_id
             if not results and query:
-                # Direct directive_id match (e.g., "025/97")
                 if re.match(r'\d{1,3}/\d{2,4}', query):
-                    for doc in self.db.collection("classification_directives").stream():
-                        data = doc.to_dict()
+                    for doc_id, data in all_docs:
                         if data.get("directive_id") == query:
-                            results.append(self._format_directive(doc.id, data))
+                            results.append(self._format_directive(doc_id, data))
                             break
 
             # Strategy 4: Keyword search in title + content
             if not results and query:
                 q_lower = query.lower()
-                for doc in self.db.collection("classification_directives").stream():
-                    data = doc.to_dict()
+                for doc_id, data in all_docs:
                     searchable = " ".join([
                         str(data.get("title", "")),
                         str(data.get("content", "")),
@@ -795,7 +828,7 @@ class ToolExecutor:
                         " ".join(data.get("key_terms", [])),
                     ]).lower()
                     if q_lower in searchable:
-                        results.append(self._format_directive(doc.id, data))
+                        results.append(self._format_directive(doc_id, data))
                         if len(results) >= 5:
                             break
 
@@ -825,69 +858,66 @@ class ToolExecutor:
 
     def _search_legal_knowledge(self, inp):
         """Search legal knowledge: Customs Ordinance chapters, customs agents law,
-        EU/US standards reforms. C8: 19 docs from parsed legal_documents."""
+        EU/US standards reforms. C8: 19 docs from cached legal_knowledge collection.
+        Uses word-boundary regex for English keywords to prevent false positives."""
         query = str(inp.get("query", "")).strip()
         if not query:
             return {"found": False, "error": "No query provided"}
 
-        query_lower = query.lower()
+        all_docs = self._get_legal_knowledge()
 
         try:
-            # Case 1: Ordinance chapter by number
+            # Case 1: Ordinance chapter by number — direct lookup from cache
             if query.isdigit() and 1 <= int(query) <= 15:
-                doc_id = f"ordinance_ch_{query.zfill(2)}"
-                doc = self.db.collection("legal_knowledge").document(doc_id).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    return {
-                        "found": True, "type": "ordinance_chapter",
-                        "chapter_number": data.get("chapter_number", 0),
-                        "title_he": data.get("title_he", ""),
-                        "title_en": data.get("title_en", ""),
-                        "text": data.get("text", "")[:3000],
-                        "sections_count": data.get("sections_count", 0),
-                    }
+                target_id = f"ordinance_ch_{query.zfill(2)}"
+                for doc_id, data in all_docs:
+                    if doc_id == target_id:
+                        return {
+                            "found": True, "type": "ordinance_chapter",
+                            "chapter_number": data.get("chapter_number", 0),
+                            "title_he": data.get("title_he", ""),
+                            "title_en": data.get("title_en", ""),
+                            "text": data.get("text", "")[:3000],
+                            "sections_count": data.get("sections_count", 0),
+                        }
 
-            # Case 2: Customs agents
-            if any(k in query_lower for k in ["agent", "סוכנ", "broker", "עמיל"]):
-                doc = self.db.collection("legal_knowledge").document("customs_agents_law").get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    return {
-                        "found": True, "type": "customs_agents_law",
-                        "law_name_he": data.get("law_name_he", ""),
-                        "law_name_en": data.get("law_name_en", ""),
-                        "key_topics": data.get("key_topics", []),
-                        "law_references": data.get("law_references", [])[:5],
-                        "chapter_11_text": data.get("chapter_11_text", "")[:3000],
-                    }
+            # Case 2: Customs agents — word-boundary regex prevents "reagent" matching "agent"
+            if _LEGAL_AGENT_KEYWORDS.search(query):
+                for doc_id, data in all_docs:
+                    if doc_id == "customs_agents_law":
+                        return {
+                            "found": True, "type": "customs_agents_law",
+                            "law_name_he": data.get("law_name_he", ""),
+                            "law_name_en": data.get("law_name_en", ""),
+                            "key_topics": data.get("key_topics", []),
+                            "law_references": data.get("law_references", [])[:5],
+                            "chapter_11_text": data.get("chapter_11_text", "")[:3000],
+                        }
 
-            # Case 3: EU reform
-            if any(k in query_lower for k in ["europe", "eu", "אירופ", "ce mark"]):
-                doc = self.db.collection("legal_knowledge").document("reform_eu_standards").get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    return {"found": True, "type": "reform", **{
-                        k: v for k, v in data.items()
-                        if k not in ("source", "seeded_at")
-                    }}
+            # Case 3: EU reform — word-boundary regex prevents "queue" matching "eu"
+            if _LEGAL_EU_KEYWORDS.search(query):
+                for doc_id, data in all_docs:
+                    if doc_id == "reform_eu_standards":
+                        return {"found": True, "type": "reform", **{
+                            k: v for k, v in data.items()
+                            if k not in ("source", "seeded_at")
+                        }}
 
-            # Case 4: US reform
-            if any(k in query_lower for k in ["usa", "us", "america", "ארצות הברית", "ארה", "ul", "fda"]):
-                doc = self.db.collection("legal_knowledge").document("reform_us_standards").get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    return {"found": True, "type": "reform", **{
-                        k: v for k, v in data.items()
-                        if k not in ("source", "seeded_at")
-                    }}
+            # Case 4: US reform — word-boundary regex prevents "status"/"focus" matching "us"
+            if _LEGAL_US_KEYWORDS.search(query):
+                for doc_id, data in all_docs:
+                    if doc_id == "reform_us_standards":
+                        return {"found": True, "type": "reform", **{
+                            k: v for k, v in data.items()
+                            if k not in ("source", "seeded_at")
+                        }}
 
-            # Case 5: General keyword search
+            # Case 5: General keyword search across cached docs
+            query_lower = query.lower()
             matches = []
-            for doc in self.db.collection("legal_knowledge").stream():
-                if doc.id.startswith("_"):
+            for doc_id, data in all_docs:
+                if doc_id.startswith("_"):
                     continue
-                data = doc.to_dict()
                 searchable = " ".join([
                     str(data.get("title_he", "")),
                     str(data.get("title_en", "")),
@@ -897,7 +927,7 @@ class ToolExecutor:
                 ]).lower()
                 if query_lower in searchable:
                     matches.append({
-                        "doc_id": doc.id,
+                        "doc_id": doc_id,
                         "type": data.get("type", ""),
                         "title": data.get("title_he", "") or data.get("reform_name_he", "") or data.get("law_name_he", ""),
                     })
