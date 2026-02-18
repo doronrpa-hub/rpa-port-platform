@@ -743,6 +743,31 @@ CLAUDE_TOOLS = [
 # Gemini / Google AI format — auto-converted from Claude definitions
 # ---------------------------------------------------------------------------
 
+def _convert_prop_to_gemini(prop_def):
+    """Recursively convert a Claude property definition to Gemini format.
+
+    Handles nested objects and arrays (e.g., run_elimination.candidates)
+    which have 'items' and 'properties' sub-schemas.
+    """
+    gemini_prop = {"type": prop_def["type"]}
+    if "description" in prop_def:
+        gemini_prop["description"] = prop_def["description"]
+    if "enum" in prop_def:
+        gemini_prop["enum"] = prop_def["enum"]
+    # Array type — must include 'items' (Gemini requires it)
+    if prop_def["type"] == "array" and "items" in prop_def:
+        gemini_prop["items"] = _convert_prop_to_gemini(prop_def["items"])
+    # Object type — include nested properties
+    if prop_def["type"] == "object" and "properties" in prop_def:
+        gemini_prop["properties"] = {
+            k: _convert_prop_to_gemini(v)
+            for k, v in prop_def["properties"].items()
+        }
+        if "required" in prop_def:
+            gemini_prop["required"] = prop_def["required"]
+    return gemini_prop
+
+
 def _claude_to_gemini(claude_tools):
     """Convert Claude tool format to Gemini function_declarations format."""
     declarations = []
@@ -757,10 +782,7 @@ def _claude_to_gemini(claude_tools):
             },
         }
         for prop_name, prop_def in tool["input_schema"]["properties"].items():
-            gemini_prop = {"type": prop_def["type"]}
-            if "description" in prop_def:
-                gemini_prop["description"] = prop_def["description"]
-            decl["parameters"]["properties"][prop_name] = gemini_prop
+            decl["parameters"]["properties"][prop_name] = _convert_prop_to_gemini(prop_def)
         declarations.append(decl)
     return declarations
 

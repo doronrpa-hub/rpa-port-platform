@@ -703,7 +703,18 @@ def _run_gemini_tool_loop(gemini_key, user_prompt, executor, claude_api_key=None
 
 
 def _call_gemini_with_tools(gemini_key, contents):
-    """Single Gemini API call with function declarations (tool calling)."""
+    """Single Gemini API call with function declarations (tool calling).
+
+    Session 48: Added 429 fast-fail — sets shared flag to skip Gemini for rest of run.
+    """
+    # Session 48: Skip if Gemini quota already exhausted this run
+    try:
+        from lib.classification_agents import _gemini_quota_exhausted
+        if _gemini_quota_exhausted:
+            print("  [TOOL ENGINE] Gemini quota exhausted — skipping, falling back to Claude")
+            return None
+    except ImportError:
+        pass
     try:
         resp = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent?key={gemini_key}",
@@ -733,7 +744,16 @@ def _call_gemini_with_tools(gemini_key, contents):
             except ImportError:
                 pass
             return data
-        print(f"  [TOOL ENGINE] Gemini API error: {resp.status_code} - {resp.text[:200]}")
+        # Session 48: Detect 429 — fast-fail for rest of run
+        if resp.status_code == 429:
+            try:
+                import lib.classification_agents as _ca
+                _ca._gemini_quota_exhausted = True
+            except Exception:
+                pass
+            print(f"  [TOOL ENGINE] Gemini 429 quota exhausted — skipping to Claude")
+        else:
+            print(f"  [TOOL ENGINE] Gemini API error: {resp.status_code} - {resp.text[:200]}")
         return None
     except Exception as e:
         print(f"  [TOOL ENGINE] Gemini API exception: {e}")
@@ -741,12 +761,18 @@ def _call_gemini_with_tools(gemini_key, contents):
 
 
 def _call_claude_with_tools(api_key, messages):
-    """Single Claude API call with tool definitions (fallback — more expensive)."""
+    """Single Claude API call with tool definitions (fallback — more expensive).
+
+    Session 48: Added None/empty key guard + strip() safety.
+    """
+    if not api_key:
+        print("  [TOOL ENGINE] Claude API key is None/empty — cannot call Claude")
+        return None
     try:
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
-                "x-api-key": api_key,
+                "x-api-key": api_key.strip(),
                 "content-type": "application/json",
                 "anthropic-version": "2023-06-01",
             },

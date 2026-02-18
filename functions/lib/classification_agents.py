@@ -150,6 +150,9 @@ CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after 
 ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine between pre_classify and Agent 2
 VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
 
+# Session 48: Gemini quota fast-fail — skip all Gemini calls after first 429
+_gemini_quota_exhausted = False
+
 # Session 40: Shared design constants from tracker email
 try:
     from lib.tracker_email import (
@@ -340,12 +343,16 @@ def clean_firestore_data(data):
 
 def call_claude(api_key, system_prompt, user_prompt, max_tokens=2000):
     """Call Claude API - Sonnet 4.5 (Session 15: upgraded from Sonnet 4)
-    Session 26: Added cost tracking"""
+    Session 26: Added cost tracking
+    Session 48: Added None/empty key guard"""
+    if not api_key:
+        print("    ❌ call_claude: api_key is None/empty — cannot call Claude API")
+        return None
     try:
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
-                "x-api-key": api_key,
+                "x-api-key": api_key.strip(),
                 "content-type": "application/json",
                 "anthropic-version": "2023-06-01"
             },
@@ -429,15 +436,20 @@ def call_chatgpt(openai_key, system_prompt, user_prompt, max_tokens=2000, model=
 
 def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="gemini-2.5-flash"):
     """Call Google Gemini API
-    
+
     Session 15: Added for cost optimization.
+    Session 48: Added 429 fast-fail — skip all Gemini after quota exhaustion.
     Models:
       - gemini-2.5-flash: Simple tasks (extraction, regulatory, FTA, risk) ~$0.15/$0.60 per MTok
       - gemini-2.5-pro: Medium tasks (synthesis) ~$1.25/$10 per MTok
-    
+
     Falls back to Claude if Gemini fails or key is missing.
     """
+    global _gemini_quota_exhausted
     if not gemini_key:
+        return None
+    # Session 48: Skip Gemini entirely after first 429 (quota exhausted)
+    if _gemini_quota_exhausted:
         return None
     try:
         response = requests.post(
@@ -481,7 +493,12 @@ def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="
                         text = text[:-3]
                     return text.strip()
         else:
-            print(f"Gemini API error ({model}): {response.status_code} - {response.text[:200]}")
+            # Session 48: Detect 429 quota exhaustion — fast-fail for rest of run
+            if response.status_code == 429:
+                _gemini_quota_exhausted = True
+                print(f"    ⚡ Gemini 429 quota exhausted — all subsequent calls will skip Gemini")
+            else:
+                print(f"Gemini API error ({model}): {response.status_code} - {response.text[:200]}")
             return None
     except Exception as e:
         print(f"Gemini call error ({model}): {e}")
@@ -622,9 +639,10 @@ def _try_parse_agent1(result, model_name):
     return None
 
 
-def run_document_agent(api_key, doc_text, gemini_key=None):
+def run_document_agent(api_key, doc_text, gemini_key=None, openai_key=None):
     """Agent 1: Extract invoice data - Updated Session 11 with shipping details
-    Session 15: Uses Gemini Flash (simple extraction task)"""
+    Session 15: Uses Gemini Flash (simple extraction task)
+    Session 48: Triple fallback chain — Gemini → Claude → ChatGPT"""
     system = """אתה סוכן חילוץ מידע ממסמכי סחר בינלאומי.
 המסמך יכול להיות: חשבונית מסחרית, חשבון פרופורמה, הצעת מחיר, רשימת מחירים, או כל מסמך המכיל פריטים לסיווג מכס.
 חלץ מהמסמך JSON עם כל השדות הבאים:
@@ -660,19 +678,28 @@ def run_document_agent(api_key, doc_text, gemini_key=None):
 - rpa_file_number: מספר תיק RPA אם מופיע
 
 JSON בלבד."""
+    # Fallback 1: Gemini Flash (cheapest) — via call_ai which auto-falls back to Claude
     result = call_ai(api_key, gemini_key, system, doc_text[:6000], max_tokens=4096, tier="fast")
-    parsed = _try_parse_agent1(result, "Gemini")
+    parsed = _try_parse_agent1(result, "call_ai(Gemini→Claude)")
     if parsed:
         return parsed
 
-    # Gemini failed — retry with Claude (more reliable JSON output)
-    print("    🔄 Agent 1: Gemini failed, retrying with Claude...")
+    # Fallback 2: Claude direct (in case call_ai's fallback also failed)
+    print("    🔄 Agent 1: call_ai failed, retrying Claude directly...")
     result = call_claude(api_key, system, doc_text[:6000], max_tokens=4096)
-    parsed = _try_parse_agent1(result, "Claude")
+    parsed = _try_parse_agent1(result, "Claude-direct")
     if parsed:
         return parsed
 
-    print("    ⚠️ Agent 1: BOTH models failed — returning doc_text[:500] as single item")
+    # Fallback 3: ChatGPT (Session 48 — third fallback, never leave pipeline with 0 models)
+    if openai_key:
+        print("    🔄 Agent 1: Claude failed, trying ChatGPT (gpt-4o-mini)...")
+        result = call_chatgpt(openai_key, system, doc_text[:6000], max_tokens=4096, model="gpt-4o-mini")
+        parsed = _try_parse_agent1(result, "ChatGPT")
+        if parsed:
+            return parsed
+
+    print("    ⚠️ Agent 1: ALL models failed — returning doc_text[:500] as single item")
     return {"items": [{"description": doc_text[:500]}]}
 
 
@@ -856,7 +883,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
     try:
         # Agent 1: Extract (Gemini Flash)
         print("    🔍 Agent 1: Extracting... [Gemini Flash]")
-        invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key)
+        invoice = run_document_agent(api_key, doc_text, gemini_key=gemini_key, openai_key=openai_key)
         if not isinstance(invoice, dict):
             print(f"    ⚠️ Agent 1 returned non-dict: {type(invoice)} — using fallback")
             invoice = {"items": [{"description": doc_text[:500]}]}
@@ -2953,12 +2980,18 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if not api_key:
             print("  ❌ No API key")
             return False
-        
+        api_key = api_key.strip()  # Session 48: Safety — strip whitespace from Secret Manager
+
+        # Session 48: Reset Gemini quota flag at start of each run
+        global _gemini_quota_exhausted
+        _gemini_quota_exhausted = False
+
         # Session 15: Get Gemini key for cost-optimized agents
         gemini_key = None
         try:
             gemini_key = get_secret_func('GEMINI_API_KEY')
             if gemini_key:
+                gemini_key = gemini_key.strip()  # Session 48: Safety strip
                 print("  🔑 Gemini key loaded (multi-model mode)")
             else:
                 print("  ℹ️ No Gemini key - all agents will use Claude")
@@ -3022,6 +3055,15 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 print(f"  ⚠️ Pre-classify bypass error: {bp_err}")
                 results = None
 
+        # Session 48: Fetch OpenAI key early — needed for Agent 1 triple fallback
+        openai_key = None
+        try:
+            openai_key = get_secret_func('OPENAI_API_KEY')
+            if openai_key:
+                openai_key = openai_key.strip()
+        except Exception:
+            pass
+
         # ── TOOL-CALLING ENGINE: Single AI call with tools ──
         if not results and TOOL_CALLING_AVAILABLE:
             try:
@@ -3032,13 +3074,6 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             except Exception as tc_err:
                 print(f"  ⚠️ Tool-calling error: {tc_err}, falling back to pipeline")
                 results = None
-
-        # Fetch OpenAI key for clarification fallback (Block A3)
-        openai_key = None
-        try:
-            openai_key = get_secret_func('OPENAI_API_KEY')
-        except Exception:
-            pass
 
         # ── FULL PIPELINE FALLBACK: 6-agent sequential classification ──
         if not results:
