@@ -704,10 +704,9 @@ def helper_graph_mark_read(access_token, user_email, message_id):
 def helper_graph_send(access_token, user_email, to_email, subject, body_html, reply_to_id=None, attachments_data=None, internet_message_id=None):
     """Send email via Graph API.
 
-    Args:
-        internet_message_id: The original email's internetMessageId (RFC 2822 Message-ID).
-            When provided, sets In-Reply-To and References headers so replies
-            thread correctly in Outlook/Gmail.
+    Note: internet_message_id is accepted for backward compatibility but
+    Graph API rejects standard In-Reply-To/References headers (must start with x-).
+    For proper threading, use helper_graph_reply() with the Graph message ID instead.
     """
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/sendMail"
@@ -716,12 +715,6 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html, re
             'body': {'contentType': 'HTML', 'content': body_html},
             'toRecipients': [{'emailAddress': {'address': to_email}}]
         }
-        # Thread replies using In-Reply-To and References headers
-        if internet_message_id:
-            message['internetMessageHeaders'] = [
-                {'name': 'In-Reply-To', 'value': internet_message_id},
-                {'name': 'References', 'value': internet_message_id},
-            ]
         if attachments_data:
             message['attachments'] = [
                 {
@@ -738,8 +731,13 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html, re
         return False
 
 
-def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None):
-    """Reply to an existing email via Graph API (threads correctly in Outlook)."""
+def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None, subject=None):
+    """Reply to an existing email via Graph API (threads correctly in Outlook).
+
+    Args:
+        subject: Optional override for reply subject line. If provided,
+                 replaces the default "Re: ..." subject inherited from the thread.
+    """
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}/reply"
         payload = {
@@ -747,6 +745,8 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
                 'body': {'contentType': 'HTML', 'content': body_html}
             }
         }
+        if subject:
+            payload['message']['subject'] = subject
         if to_email:
             payload['message']['toRecipients'] = [{'emailAddress': {'address': to_email}}]
         if cc_emails:
@@ -788,8 +788,9 @@ def validate_email_before_send(subject, body_html):
     # Check subject
     if not subject or not subject.strip():
         return False, "empty_subject"
-    cleaned_subj = clean_email_subject(subject)
-    if not cleaned_subj or len(cleaned_subj.strip()) < 3:
+    # Strip Re:/Fwd: directly (clean_email_subject returns original if all-prefix)
+    stripped_subj = _RE_FWD_PATTERN.sub('', subject).strip()
+    if not stripped_subj or len(stripped_subj) < 3:
         return False, "garbage_subject"
     # Check body
     if not body_html or not body_html.strip():

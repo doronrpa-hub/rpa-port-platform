@@ -2238,7 +2238,7 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
     """Build and send tracker status email for a deal. v3: data guards + clean threading."""
     try:
         from lib.tracker_email import build_tracker_status_email
-        from lib.rcb_helpers import helper_graph_send, clean_email_subject, validate_email_before_send
+        from lib.rcb_helpers import helper_graph_send, helper_graph_reply, clean_email_subject, validate_email_before_send
 
         # ── Guard 1: minimum data ──
         if not _deal_has_minimum_data(deal):
@@ -2291,26 +2291,34 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
             print(f"    ⚠️ Tracker: no follower for deal {deal_id}, skipping email")
             return False
 
-        # ── Stable deal threading ──
-        # Use a stable Message-ID per deal so all emails thread together
-        deal_thread_id = deal.get('deal_thread_id', '')
-        if not deal_thread_id:
-            deal_thread_id = f"<rcb-trk-{deal_id}@rpa-port.co.il>"
-            try:
-                db.collection("tracker_deals").document(deal_id).update({
-                    "deal_thread_id": deal_thread_id
-                })
-            except Exception:
-                pass  # Non-fatal: threading is best-effort
-
-        # ── Always use helper_graph_send with threading headers ──
-        # (NOT helper_graph_reply which inherits garbage subject lines)
+        # ── Threading: reply to original email with clean subject ──
+        # Graph API reply endpoint threads correctly; we override the subject
+        # to prevent Re:Re:Re: garbage. Falls back to plain send if no msg_id.
         sent = False
-        if access_token:
+        cc_list = deal.get('cc_list', [])
+
+        source_obs_ids = deal.get('source_emails', [])
+        original_msg_id = None
+        if source_obs_ids:
+            try:
+                latest_obs = db.collection("tracker_observations").document(source_obs_ids[-1]).get()
+                if latest_obs.exists:
+                    original_msg_id = latest_obs.to_dict().get('msg_id', '')
+            except Exception:
+                pass
+
+        if original_msg_id and access_token:
+            sent = helper_graph_reply(
+                access_token, rcb_email, original_msg_id,
+                body_html, to_email=follower, cc_emails=cc_list,
+                subject=subject  # Override subject — prevents Re:Re:Re: garbage
+            )
+
+        # Fallback: send as new email (no threading, but at least it sends)
+        if not sent and access_token:
             sent = helper_graph_send(
                 access_token, rcb_email, follower,
-                subject, body_html,
-                internet_message_id=deal_thread_id
+                subject, body_html
             )
 
         if sent:
