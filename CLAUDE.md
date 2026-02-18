@@ -1591,3 +1591,128 @@ Fixed the 3 remaining HIGH-severity issues from the full system audit, one commi
 
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions after all 3 commits
+
+## Session 39 Summary (2026-02-18) — External APIs Batch 2 (Tools #21-32)
+
+### Overview
+Added 12 new external API tools to the tool-calling engine, bringing the total from 20 to 32. All FREE APIs with domain-whitelisted HTTP, per-request + Firestore caching, key stripping, and text sanitization. Added cross-reference pipeline (EU TARIC + US HTS) and sanctions screening on every shipment.
+
+### 12 New Tools
+
+| # | Tool | API Source | Cost | Cache TTL | Mode |
+|---|------|-----------|------|-----------|------|
+| 21 | `bank_of_israel_rates` | BOI SDMX + PublicApi | FREE | 6 hours | Real-time |
+| 22 | `search_pubchem` | NIH PubChem REST | FREE | 90 days | Real-time |
+| 23 | `lookup_eu_taric` | EC TARIC consultation | FREE | 30 days | Real-time |
+| 24 | `lookup_usitc` | USITC tariff-schedule | FREE | 30 days | Real-time |
+| 25 | `israel_cbs_trade` | CBS Israel API | FREE | 30 days | Overnight |
+| 26 | `lookup_gs1_barcode` | Open Food Facts barcode | FREE | 60 days | Real-time |
+| 27 | `search_wco_notes` | wcoomd.org pages | FREE | 180 days | Real-time |
+| 28 | `lookup_unctad_gsp` | UNCTAD API | FREE | 90 days | Real-time |
+| 29 | `search_open_beauty` | Open Beauty Facts | FREE | 30 days | Real-time |
+| 30 | `crossref_technical` | CrossRef API | FREE | 90 days | Overnight |
+| 31 | `check_opensanctions` | OpenSanctions search | FREE (10k/mo) | 24 hours | Real-time |
+| 32 | `get_israel_vat_rates` | gov.il API | FREE | 7 days | Real-time |
+
+### Cross-Reference Pipeline (Step 7d2 in tool_calling_engine.py)
+After classification + verification, automatically runs for each validated HS code:
+1. `lookup_eu_taric(hs6)` — EU TARIC cross-reference
+2. `lookup_usitc(hs6)` — US HTS cross-reference
+3. Confidence adjustment:
+   - Both EU + US agree: +0.12
+   - One agrees: +0.06
+   - Neither agrees: -0.05, flags `CROSS_REF_CONFLICT`
+
+### Sanctions Screening
+- `_screen_deal_parties()` added to `main.py` — called after every CC tracker update
+- Extracts shipper, consignee, notify_party from deal document
+- Calls `check_opensanctions()` for each party name (score >= 0.7 threshold)
+- On hit: logs to `security_log` collection, flags deal with `sanctions_hit: true`, sends alert email to doron@rpa-port.co.il
+- Never blocks shipments — flag only, human decides
+- `sanctions_screened` flag prevents re-screening same deal
+
+### Pre-enrichment Triggers Added (Step 4b in tool_calling_engine.py)
+| Trigger | Keywords | Tool Called |
+|---------|----------|------------|
+| Chemical | 30 bilingual terms (acid, oxide, chloride, polymer, resin, compound, etc.) | `search_pubchem` |
+| Cosmetics | 30 bilingual terms (cream, lotion, shampoo, perfume, cosmetic, etc.) | `search_open_beauty` |
+| BOI Rate | Non-ILS invoice currency | `bank_of_israel_rates` |
+
+### Domain Allowlist Updated
+25 total allowed domains (was 7). Added: boi.org.il, edge.boi.org.il, pubchem.ncbi.nlm.nih.gov, ec.europa.eu, dataweb.usitc.gov, api.cbs.gov.il, cbs.gov.il, world.openbeautyfacts.org, openbeautyfacts.org, gepir.gs1.org, wcoomd.org, www.wcoomd.org, unctadstat.unctad.org, api.crossref.org, api.opensanctions.org, gov.il, www.gov.il, taxes.gov.il
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | +18 domains in allowlist, +12 handler methods, +12 dispatcher entries (~687 lines added) |
+| `functions/lib/tool_definitions.py` | Header 20→32 tools, +12 CLAUDE_TOOLS entries, system prompt steps 21-32 (~243 lines added) |
+| `functions/lib/tool_calling_engine.py` | +3 trigger sets (_CHEMICAL_TRIGGERS, _COSMETICS_TRIGGERS, BOI rate), +cross-ref pipeline (Step 7d2), `cross_reference` in output (~110 lines added) |
+| `functions/lib/librarian_index.py` | +12 COLLECTION_FIELDS cache entries (~84 lines added) |
+| `functions/tests/test_tool_calling.py` | Tool counts 20→32, +12 expected tool names |
+| `functions/main.py` | +`_screen_deal_parties()` function (~90 lines), sanctions screening call in CC path |
+
+### New Firestore Collections (12 caches)
+| Collection | Purpose | TTL |
+|-----------|---------|-----|
+| `boi_rates` | Bank of Israel official exchange rates | 6 hours |
+| `pubchem_cache` | NIH PubChem chemical compound data | 90 days |
+| `eu_taric_cache` | EU TARIC tariff cross-reference | 30 days |
+| `usitc_cache` | US HTS cross-reference | 30 days |
+| `cbs_trade_cache` | Israeli CBS trade statistics | 30 days |
+| `barcode_cache` | GS1 barcode product lookups | 60 days |
+| `wco_notes_cache` | WCO explanatory notes | 180 days |
+| `unctad_country_cache` | UNCTAD country GSP/development status | 90 days |
+| `beauty_products_cache` | Open Beauty Facts cosmetics data | 30 days |
+| `crossref_cache` | CrossRef academic papers | 90 days |
+| `sanctions_cache` | OpenSanctions screening results | 24 hours |
+| `israel_tax_cache` | Israel VAT/purchase tax rates | 7 days |
+
+### Tool-Calling Engine: 32 Active Tools
+| # | Tool | Source | Wired |
+|---|------|--------|-------|
+| 1 | check_memory | classification_memory | Session A |
+| 2 | search_tariff | tariff, keyword_index, product_index, supplier_index | Session A |
+| 3 | check_regulatory | regulatory baseline + free_import_order (C3) + free_export_order (C4) | C3+C4 |
+| 4 | lookup_fta | FTA rules + framework_order FTA clauses (C5) | C5 |
+| 5 | verify_hs_code | tariff collection | Session A |
+| 6 | extract_invoice | Gemini Flash | Session A |
+| 7 | assess_risk | Rule-based (dual-use chapters, high-risk origins) | Session A |
+| 8 | get_chapter_notes | chapter_notes (C2) | C2 |
+| 9 | lookup_tariff_structure | tariff_structure (C2) | C2 |
+| 10 | lookup_framework_order | framework_order (C5) | C5 |
+| 11 | search_classification_directives | classification_directives (C6) | C6 |
+| 12 | search_legal_knowledge | legal_knowledge (C8) | C8 |
+| 13 | run_elimination | elimination_engine (D1-D8) | D9 |
+| 14 | search_wikipedia | Wikipedia REST API | Session 37b |
+| 15 | search_wikidata | Wikidata API | Session 38b |
+| 16 | lookup_country | restcountries.com | Session 38b |
+| 17 | convert_currency | open.er-api.com (fallback for non-customs use) | Session 38b |
+| 18 | search_comtrade | UN Comtrade API (overnight only) | Session 38b |
+| 19 | lookup_food_product | Open Food Facts API | Session 38b |
+| 20 | check_fda_product | FDA API (drugs + 510k) | Session 38b |
+| 21 | bank_of_israel_rates | BOI SDMX + PublicApi (replaces #17 for customs valuation) | Session 39 |
+| 22 | search_pubchem | NIH PubChem (chapters 28/29/38 chemicals) | Session 39 |
+| 23 | lookup_eu_taric | EU TARIC cross-reference validation | Session 39 |
+| 24 | lookup_usitc | US HTS cross-reference validation | Session 39 |
+| 25 | israel_cbs_trade | CBS Israel import statistics (overnight only) | Session 39 |
+| 26 | lookup_gs1_barcode | Open Food Facts barcode lookup | Session 39 |
+| 27 | search_wco_notes | WCO explanatory notes (gold standard) | Session 39 |
+| 28 | lookup_unctad_gsp | UNCTAD GSP/preferential duty eligibility | Session 39 |
+| 29 | search_open_beauty | Open Beauty Facts cosmetics (chapter 33) | Session 39 |
+| 30 | crossref_technical | CrossRef academic papers (overnight only) | Session 39 |
+| 31 | check_opensanctions | OpenSanctions sanctions screening (compliance) | Session 39 |
+| 32 | get_israel_vat_rates | Israel purchase tax + VAT rates | Session 39 |
+
+### COLLECTION_FIELDS Total: 67 collections registered
+(was 55, now 67 after adding 12 cache collections)
+
+### Git Commit
+- `744154b` — Tools #21-32: 12 external API tools + cross-reference pipeline + sanctions screening
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+- 1 function updated (`rcb_overnight_brain`), 29 skipped (no changes detected)
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
