@@ -10,7 +10,9 @@ D2: Chapter elimination using full chapter notes (preamble scope, definitions,
     conditional exclusions, cross-chapter redirects).
 D3: Heading elimination — GIR 1 full semantics (specificity scoring, product
     attribute matching, relative elimination, subheading notes).
-D4-D9: GIR 3 rules, AI hooks, logging, and pipeline wiring.
+D4: GIR Rule 3 tiebreak (3א most specific, 3ב essential character, 3ג last numerical).
+D5: "אחרים" (Others) gate + "באופן עיקרי" (principally) composition test.
+D6-D9: AI hooks, devil's advocate, logging, and pipeline wiring.
 
 Public API:
     eliminate(db, product_info, candidates) -> EliminationResult
@@ -1002,7 +1004,7 @@ def _get_heading_text(cache, candidate):
     """Build combined heading description text for a candidate."""
     heading = candidate.get("heading", "")
     parts = [candidate.get("description", ""), candidate.get("description_en", "")]
-    if heading:
+    if heading and cache is not None:
         heading_docs = cache.get_heading_docs(heading)
         for hd in heading_docs:
             parts.append(hd.get("description_he", ""))
@@ -1218,18 +1220,561 @@ def _apply_subheading_notes(cache, product_info, candidates, steps):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LEVEL 4: STUBS — D4-D6 fill these in
+# LEVEL 4a: D4 — GIR Rule 3 tiebreak (3א/3ב/3ג)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _apply_rule_3(candidates, steps):
-    """GIR 3a/3b/3c tiebreak. Stub — D4 implements."""
+# ── D4 constants ──
+
+# Essential character indicators — materials/components that typically define
+# what a product "is" rather than secondary features
+_ESSENTIAL_CHARACTER_TERMS = {
+    # Metals
+    "steel", "iron", "aluminum", "aluminium", "copper", "brass", "bronze",
+    "zinc", "tin", "lead", "nickel", "titanium", "stainless",
+    "פלדה", "ברזל", "אלומיניום", "נחושת", "פליז", "ארד",
+    "אבץ", "בדיל", "עופרת", "ניקל", "טיטניום", "אל-חלד",
+    # Plastics / rubber
+    "plastic", "rubber", "silicone", "polyethylene", "polypropylene",
+    "pvc", "nylon", "polyester", "acrylic", "epoxy",
+    "פלסטיק", "גומי", "סיליקון", "פוליאתילן", "פוליפרופילן",
+    "ניילון", "פוליאסטר", "אקריל", "אפוקסי",
+    # Textiles
+    "cotton", "wool", "silk", "linen", "polyester", "nylon",
+    "כותנה", "צמר", "משי", "פשתן",
+    # Wood / paper
+    "wood", "wooden", "plywood", "mdf", "paper", "cardboard",
+    "עץ", "דיקט", "נייר", "קרטון",
+    # Glass / ceramic
+    "glass", "ceramic", "porcelain", "crystal",
+    "זכוכית", "קרמיקה", "חרסינה", "קריסטל",
+    # Leather
+    "leather", "suede", "עור", "זמש",
+}
+
+# Percentage/proportion patterns for "principally" test
+_PERCENTAGE_RE = re.compile(r'(\d{1,3})\s*%')
+
+# "Principally" / "mainly" / "באופן עיקרי" patterns
+_PRINCIPALLY_RE = re.compile(
+    r'(?:באופן\s+עיקרי|בעיקר|ברובו|ברובם|ברובה|'
+    r'principally|mainly|predominantly|chiefly|essentially|'
+    r'for\s+the\s+greater\s+part|consisting\s+(?:mainly|primarily)\s+of)',
+    re.IGNORECASE
+)
+
+# "Others" / catch-all heading patterns (extends _VAGUE_HEADING_RE for D5)
+_OTHERS_RE = re.compile(
+    r'^[\s\-–—]*(?:אחר[ים|ות]?|other[s]?)[\s\-–—:;,.]*$|'
+    r'(?:^|\s)(?:אחר[ים|ות]?|other[s]?)(?:\s|$)|'
+    r'(?:שלא\s+(?:פורט|נכלל|צוין))|'
+    r'(?:not\s+(?:elsewhere|otherwise)\s+(?:specified|included|provided))|'
+    r'(?:n\.?e\.?s\.?(?:oi)?)',
+    re.IGNORECASE
+)
+
+
+def _gir_3a_most_specific(cache, product_info, candidates):
+    """D4 GIR 3א: The heading providing the most specific description wins.
+
+    When two or more headings each refer to only part of the items in a
+    mixed/composite product, those headings are equally specific. The one
+    that describes the product most completely is preferred.
+
+    Returns: list of (candidate, specificity_score) tuples, sorted best-first.
+    """
+    product_text = " ".join([
+        product_info.get("description", ""),
+        product_info.get("description_he", ""),
+        product_info.get("material", ""),
+        product_info.get("form", ""),
+        product_info.get("use", ""),
+    ])
+    product_kw = set(_extract_keywords(product_text))
+
+    scored = []
+    for c in candidates:
+        if not c["alive"]:
+            continue
+
+        heading_text = _get_heading_text(cache, c)
+        heading_kw = set(_extract_keywords(heading_text))
+
+        # GIR 3a scoring components:
+        # 1. Keyword overlap breadth — how many product keywords are covered
+        overlap = product_kw & heading_kw
+        breadth = len(overlap) / max(len(product_kw), 1)
+
+        # 2. Specificity — is this a specific or vague heading? (reuse D3)
+        specificity = _score_heading_specificity(heading_text)
+
+        # 3. Attribute match (material + form + use from D3)
+        attr = _match_product_attributes(product_info, heading_text)
+
+        # Combined 3a score
+        score_3a = (breadth * 0.4) + (specificity * 0.3) + (attr * 0.3)
+        scored.append((c, score_3a))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+
+def _gir_3b_essential_character(product_info, candidates):
+    """D4 GIR 3ב: Essential character test for composite/mixed goods.
+
+    For products made of different materials or components, the heading
+    that covers the material giving the product its essential character
+    should be preferred.
+
+    Uses material field from product_info. If no material info available,
+    returns None (can't apply this rule).
+
+    Returns: list of (candidate, essential_score) tuples, or None if N/A.
+    """
+    material = product_info.get("material", "").lower()
+    if not material:
+        return None  # Can't apply without material info
+
+    material_words = set(_WORD_SPLIT_RE.split(material))
+    material_words = {w for w in material_words if len(w) > 2 and w not in _STOP_WORDS}
+    if not material_words:
+        return None
+
+    # Identify the primary (essential) material
+    # If multiple materials listed, the first one is typically primary
+    essential_materials = []
+    for mw in material_words:
+        if mw in _ESSENTIAL_CHARACTER_TERMS:
+            essential_materials.append(mw)
+
+    if not essential_materials:
+        # No recognized material terms — can't determine essential character
+        return None
+
+    # The first recognized material term is treated as the essential one
+    primary_material = essential_materials[0]
+
+    scored = []
+    for c in candidates:
+        if not c["alive"]:
+            continue
+
+        heading_text = _get_heading_text(None, c).lower()
+        heading_words = set(_WORD_SPLIT_RE.split(heading_text))
+
+        # Score: does the heading mention the essential material?
+        if primary_material in heading_words:
+            score = 1.0
+        elif material_words & heading_words:
+            # Heading mentions a secondary material
+            score = 0.5
+        else:
+            score = 0.0
+
+        scored.append((c, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+
+def _gir_3c_last_numerical(candidates):
+    """D4 GIR 3ג: When 3a and 3b fail, classify under the heading which
+    occurs last in numerical order among those equally meriting consideration.
+
+    This is a pure fallback — only applies when other rules can't decide.
+    Returns candidates sorted by HS code descending (last numerical first).
+    """
+    alive = [c for c in candidates if c["alive"]]
+    if not alive:
+        return []
+    alive.sort(key=lambda c: c.get("hs_code", ""), reverse=True)
+    return alive
+
+
+def _apply_rule_3(cache, product_info, candidates, steps):
+    """D4: GIR Rule 3 tiebreak — applies when multiple headings survive.
+
+    Sequence:
+    1. GIR 3א (most specific): prefer the heading that describes the
+       product most specifically.
+    2. GIR 3ב (essential character): for composite goods, prefer the heading
+       covering the material giving the product its essential character.
+    3. GIR 3ג (last numerical): fallback — prefer the heading that occurs
+       last in numerical order.
+
+    Conservative: only eliminates when there's a clear winner with
+    significantly higher score than others.
+    """
+    alive = [c for c in candidates if c["alive"]]
+    if len(alive) <= 1:
+        return candidates
+
+    # ── GIR 3א: Most specific description ──
+    scored_3a = _gir_3a_most_specific(cache, product_info, candidates)
+    if len(scored_3a) >= 2:
+        best_score = scored_3a[0][1]
+        second_score = scored_3a[1][1]
+
+        # Only eliminate if clear gap: best is >= 2x the second-best
+        # AND best is meaningful (>= 0.3)
+        if best_score >= 0.3 and second_score > 0 and best_score >= second_score * 2.0:
+            before_count = sum(1 for c in candidates if c["alive"])
+            eliminated = []
+            kept = []
+            threshold = best_score * 0.4  # Eliminate below 40% of best
+
+            for c, score in scored_3a:
+                if score < threshold and c["alive"]:
+                    c["alive"] = False
+                    c["elimination_reason"] = (
+                        f"GIR 3a: specificity score={score:.2f} < "
+                        f"threshold={threshold:.2f} (best={best_score:.2f})"
+                    )
+                    c["eliminated_at_level"] = "gir_3a"
+                    eliminated.append(c["hs_code"])
+                elif c["alive"]:
+                    kept.append(c["hs_code"])
+
+            # Safety: ensure at least 1 survivor
+            if eliminated and not kept:
+                # Undo — restore the best candidate
+                best_c = scored_3a[0][0]
+                best_c["alive"] = True
+                best_c["elimination_reason"] = ""
+                best_c["eliminated_at_level"] = ""
+                eliminated.remove(best_c["hs_code"])
+                kept.append(best_c["hs_code"])
+
+            after_count = sum(1 for c in candidates if c["alive"])
+
+            if eliminated:
+                steps.append(_make_step(
+                    level="heading",
+                    action="eliminate",
+                    rule_type="gir_3a",
+                    rule_ref="GIR 3a — most specific description",
+                    rule_text="",
+                    candidates_before=before_count,
+                    candidates_after=after_count,
+                    eliminated_codes=eliminated,
+                    kept_codes=kept,
+                    reasoning=(
+                        f"GIR 3a: best specificity={best_score:.2f}, "
+                        f"eliminated {len(eliminated)} below threshold={threshold:.2f}"
+                    ),
+                ))
+
+    # Check if tiebreak resolved
+    alive = [c for c in candidates if c["alive"]]
+    if len(alive) <= 1:
+        return candidates
+
+    # ── GIR 3ב: Essential character ──
+    scored_3b = _gir_3b_essential_character(product_info, candidates)
+    if scored_3b and len(scored_3b) >= 2:
+        best_score = scored_3b[0][1]
+        second_score = scored_3b[1][1]
+
+        # Only apply if there's a clear essential character winner
+        # (score 1.0 = heading names the primary material, 0.5 = secondary)
+        if best_score >= 1.0 and second_score < 1.0:
+            before_count = sum(1 for c in candidates if c["alive"])
+            eliminated = []
+            kept = []
+
+            for c, score in scored_3b:
+                if score == 0.0 and c["alive"]:
+                    c["alive"] = False
+                    c["elimination_reason"] = (
+                        f"GIR 3b: heading doesn't reference essential material "
+                        f"(best={best_score:.1f})"
+                    )
+                    c["eliminated_at_level"] = "gir_3b"
+                    eliminated.append(c["hs_code"])
+                elif c["alive"]:
+                    kept.append(c["hs_code"])
+
+            # Safety: ensure at least 1 survivor
+            if eliminated and not kept:
+                best_c = scored_3b[0][0]
+                best_c["alive"] = True
+                best_c["elimination_reason"] = ""
+                best_c["eliminated_at_level"] = ""
+                eliminated.remove(best_c["hs_code"])
+                kept.append(best_c["hs_code"])
+
+            after_count = sum(1 for c in candidates if c["alive"])
+
+            if eliminated:
+                steps.append(_make_step(
+                    level="heading",
+                    action="eliminate",
+                    rule_type="gir_3b",
+                    rule_ref="GIR 3b — essential character",
+                    rule_text="",
+                    candidates_before=before_count,
+                    candidates_after=after_count,
+                    eliminated_codes=eliminated,
+                    kept_codes=kept,
+                    reasoning=(
+                        f"GIR 3b: essential material match — "
+                        f"eliminated {len(eliminated)} headings not referencing "
+                        f"primary material"
+                    ),
+                ))
+
+    # Check if tiebreak resolved
+    alive = [c for c in candidates if c["alive"]]
+    if len(alive) <= 1:
+        return candidates
+
+    # ── GIR 3ג: Last in numerical order ──
+    # This is a pure fallback. We DON'T eliminate here — we just boost
+    # the last-numerical candidate slightly so it wins in case of a true tie.
+    # Actual elimination would be too aggressive for a "fallback" rule.
+    sorted_alive = _gir_3c_last_numerical(candidates)
+    if len(sorted_alive) >= 2:
+        # Boost the last-numerical candidate by 1 point (very minor)
+        last_numerical = sorted_alive[0]
+        last_numerical["confidence"] = min(
+            100, last_numerical.get("confidence", 0) + 1
+        )
+        steps.append(_make_step(
+            level="heading",
+            action="boost",
+            rule_type="gir_3c",
+            rule_ref="GIR 3c — last in numerical order",
+            rule_text="",
+            candidates_before=sum(1 for c in candidates if c["alive"]),
+            candidates_after=sum(1 for c in candidates if c["alive"]),
+            eliminated_codes=[],
+            kept_codes=[last_numerical["hs_code"]],
+            reasoning=(
+                f"GIR 3c fallback: boosted {last_numerical['hs_code']} "
+                f"(last numerical among {len(sorted_alive)} tied candidates)"
+            ),
+        ))
+
     return candidates
 
 
-def _check_others_gate(candidates, steps):
-    """Check for 'Others' (אחרים) catch-all headings. Stub — D5 implements."""
+# ═══════════════════════════════════════════════════════════════════════════════
+# LEVEL 4b: D5 — "אחרים" (Others) gate + "באופן עיקרי" (principally) test
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _is_others_heading(text):
+    """D5: Detect if a heading/subheading is a catch-all "Others" entry.
+
+    Returns True if the heading text is primarily a catch-all like:
+    - "אחרים" / "אחרות" / "אחר" (Others)
+    - "Other" / "Others"
+    - "שלא פורט" / "שלא נכלל" (not elsewhere specified)
+    - "n.e.s." / "not elsewhere specified"
+    """
+    if not text:
+        return False
+    text_stripped = str(text).strip()
+    # Short text that is just "Others" or "אחרים"
+    if len(text_stripped) < 30 and _OTHERS_RE.search(text_stripped):
+        return True
+    return False
+
+
+def _is_others_candidate(candidate):
+    """D5: Check if a candidate is in an "Others" catch-all category.
+
+    Checks the candidate's own description and description_en fields.
+    """
+    desc = candidate.get("description", "")
+    desc_en = candidate.get("description_en", "")
+    return _is_others_heading(desc) or _is_others_heading(desc_en)
+
+
+def _has_principally_qualifier(text):
+    """D5: Check if heading text contains a 'principally' / 'באופן עיקרי' qualifier.
+
+    These headings require that the product is PRIMARILY made of or used for
+    the stated purpose/material — not just partially.
+    """
+    return bool(_PRINCIPALLY_RE.search(str(text)))
+
+
+def _passes_principally_test(product_info, heading_text):
+    """D5: Test whether a product passes the 'principally' requirement.
+
+    If a heading says 'articles principally of iron or steel', the product
+    must be primarily (>50%) made of that material.
+
+    Returns: (passes, confidence) tuple.
+    - passes=True if product likely passes the principally test
+    - passes=None if we can't determine (insufficient info)
+    - confidence is how sure we are (0.0-1.0)
+    """
+    material = product_info.get("material", "").lower()
+    if not material:
+        return None, 0.0  # Can't determine without material info
+
+    heading_lower = str(heading_text).lower()
+    heading_kw = set(_extract_keywords(heading_lower))
+    material_kw = set(_extract_keywords(material))
+
+    if not heading_kw or not material_kw:
+        return None, 0.0
+
+    # Check if heading mentions materials that match the product's material
+    material_overlap = heading_kw & material_kw
+    if not material_overlap:
+        # Heading requires a material the product doesn't have
+        return False, 0.6
+
+    # Check for percentage in product description (e.g., "80% steel, 20% plastic")
+    desc = product_info.get("description", "") + " " + product_info.get("description_he", "")
+    pct_matches = _PERCENTAGE_RE.findall(desc)
+    if pct_matches:
+        # If we have percentages, the highest one is the primary material
+        percentages = [int(p) for p in pct_matches]
+        if max(percentages) > 50:
+            # Primary material is >50%, principally test likely passes
+            return True, 0.8
+        elif max(percentages) <= 50:
+            # No single material is >50%
+            return False, 0.7
+
+    # Without percentages, if material field matches heading, assume it passes
+    # (material field typically lists the primary material)
+    if material_overlap:
+        return True, 0.5
+
+    return None, 0.0
+
+
+def _check_others_gate(cache, product_info, candidates, steps):
+    """D5: "Others" gate + "principally" test.
+
+    Two mechanisms:
+    1. Others gate: If both specific and catch-all "Others" headings survive,
+       demote/eliminate the "Others" candidates. Specific headings always
+       take priority over catch-alls.
+
+    2. Principally test: If a heading has a "principally/באופן עיקרי" qualifier,
+       verify the product meets the majority composition requirement.
+       If it doesn't, eliminate that candidate.
+    """
+    alive = [c for c in candidates if c["alive"]]
+    if len(alive) <= 1:
+        return candidates
+
+    # ── Part 1: Others gate ──
+    others_candidates = []
+    specific_candidates = []
+    for c in alive:
+        if _is_others_candidate(c):
+            others_candidates.append(c)
+        else:
+            specific_candidates.append(c)
+
+    # If we have both specific and others candidates, demote/eliminate others
+    if others_candidates and specific_candidates:
+        before_count = sum(1 for c in candidates if c["alive"])
+        eliminated = []
+        kept = []
+
+        for c in others_candidates:
+            c["alive"] = False
+            c["elimination_reason"] = (
+                f"D5 Others gate: catch-all heading deprioritized — "
+                f"{len(specific_candidates)} specific heading(s) available"
+            )
+            c["eliminated_at_level"] = "others_gate"
+            eliminated.append(c["hs_code"])
+
+        for c in specific_candidates:
+            kept.append(c["hs_code"])
+
+        after_count = sum(1 for c in candidates if c["alive"])
+
+        if eliminated:
+            steps.append(_make_step(
+                level="heading",
+                action="eliminate",
+                rule_type="others_gate",
+                rule_ref="D5 Others gate",
+                rule_text="",
+                candidates_before=before_count,
+                candidates_after=after_count,
+                eliminated_codes=eliminated,
+                kept_codes=kept,
+                reasoning=(
+                    f"Eliminated {len(eliminated)} catch-all 'Others' headings; "
+                    f"{len(kept)} specific headings remain"
+                ),
+            ))
+
+    # ── Part 2: Principally test ──
+    alive = [c for c in candidates if c["alive"]]
+    if len(alive) <= 1:
+        return candidates
+
+    before_count = sum(1 for c in candidates if c["alive"])
+    eliminated = []
+    kept = []
+
+    for c in alive:
+        heading_text = _get_heading_text(cache, c)
+        if not _has_principally_qualifier(heading_text):
+            kept.append(c["hs_code"])
+            continue
+
+        # This heading has a "principally" qualifier — test if product passes
+        passes, confidence = _passes_principally_test(product_info, heading_text)
+
+        if passes is False and confidence >= 0.6:
+            c["alive"] = False
+            c["elimination_reason"] = (
+                f"D5 principally test: product does not meet 'principally' "
+                f"requirement for heading {c.get('heading', '')} "
+                f"(confidence={confidence:.1f})"
+            )
+            c["eliminated_at_level"] = "principally"
+            eliminated.append(c["hs_code"])
+        else:
+            kept.append(c["hs_code"])
+
+    # Safety: ensure at least 1 survivor
+    if eliminated and not kept:
+        # Restore the first eliminated (least bad option)
+        first = next(c for c in candidates
+                     if c["hs_code"] == eliminated[0])
+        first["alive"] = True
+        first["elimination_reason"] = ""
+        first["eliminated_at_level"] = ""
+        eliminated.pop(0)
+        kept.append(first["hs_code"])
+
+    after_count = sum(1 for c in candidates if c["alive"])
+
+    if eliminated:
+        steps.append(_make_step(
+            level="heading",
+            action="eliminate",
+            rule_type="principally",
+            rule_ref="D5 principally/באופן עיקרי test",
+            rule_text="",
+            candidates_before=before_count,
+            candidates_after=after_count,
+            eliminated_codes=eliminated,
+            kept_codes=kept,
+            reasoning=(
+                f"Eliminated {len(eliminated)} candidates failing 'principally' "
+                f"composition test"
+            ),
+        ))
+
     return candidates
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LEVEL 4c: STUB — D6 fills this in
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _ai_consultation_hook(db, product_info, candidates, steps):
     """AI consultation at decision points. Stub — D6 implements."""
@@ -1342,9 +1887,17 @@ def eliminate(db, product_info, candidates):
         cache, product_info, candidates, steps
     )
 
-    # Level 4: STUBS (D4-D5)
-    candidates = _apply_rule_3(candidates, steps)
-    candidates = _check_others_gate(candidates, steps)
+    # Level 4a: D4 — GIR RULE 3 TIEBREAK (3א/3ב/3ג)
+    candidates = _apply_rule_3(cache, product_info, candidates, steps)
+    alive_count = sum(1 for c in candidates if c["alive"])
+    logger.info(f"After GIR 3 tiebreak: {alive_count}/{input_count} alive")
+
+    # Level 4b: D5 — OTHERS GATE + PRINCIPALLY TEST
+    candidates = _check_others_gate(cache, product_info, candidates, steps)
+    alive_count = sum(1 for c in candidates if c["alive"])
+    logger.info(f"After others gate + principally: {alive_count}/{input_count} alive")
+
+    # Level 4c: STUB (D6)
     candidates = _ai_consultation_hook(db, product_info, candidates, steps)
 
     # Level 5: BUILD RESULT
