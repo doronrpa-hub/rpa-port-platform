@@ -1760,6 +1760,86 @@ After classification + verification, automatically runs for each validated HS co
 ### Test Results
 - **583 passed**, 2 skipped — zero regressions
 
+## Session 40 Summary (2026-02-18) — Block H: Classification Email Redesign + HS Format Fix
+
+### Overview
+Redesigned the classification result email (`build_classification_email()` in `classification_agents.py`) to match the professional branded design of `tracker_email.py` (Session 37). Replaced the old monolithic 466-line function with 14 table-based section builders + orchestrator (834 lines). Also fixed a long-standing bug in the Israeli HS code format function.
+
+### Email Architecture Change
+
+| Before | After |
+|--------|-------|
+| `build_classification_email()` — 466-line monolithic function | 14 section builders + 12-line orchestrator |
+| `<div>`-based layout with CSS gradients/border-radius | Table-based Outlook-safe layout |
+| No logo, generic styling | RPA-PORT branded header + footer matching tracker_email.py |
+| No cross-reference section | EU TARIC + US HTS cross-reference table |
+| No customs value section | BOI exchange rate + ILS customs value calculation |
+| Mixed color scheme | Shared constants from tracker_email.py (_RPA_BLUE, _COLOR_OK, etc.) |
+
+### 14 Section Builders (all new)
+
+| Function | Purpose |
+|----------|---------|
+| `_cls_html_open()` / `_cls_html_close()` | Local fallback Outlook-safe wrappers |
+| `_cls_header(tracking_code)` | Branded header with RPA-PORT logo + tracking code badge |
+| `_cls_shipment_info(invoice_data)` | 2-column key-value: direction, freight, seller/buyer, BL/AWB |
+| `_cls_invoice_validation(invoice_validation)` | Score bar with missing fields badges |
+| `_cls_synthesis(synthesis)` | Blue left-bordered summary text block |
+| `_cls_section_title(title, color)` | Reusable section header with gradient underline |
+| `_cls_result_table(card_items, using_enriched)` | Per-item cards: HS code (18px monospace), duty/PT/VAT grid, confidence bar |
+| `_cls_regulatory(ministry_routing, regulatory)` | Ministry routing per HS code with API badges |
+| `_cls_cross_reference(results, card_items)` | **NEW** EU TARIC / US HTS table with confidence adjustment |
+| `_cls_customs_value(invoice_data, results)` | **NEW** Invoice currency, total, BOI rate, customs value in ₪ |
+| `_cls_justification_details(card_items, using_enriched)` | Per-item justification chain, devil's advocate, gaps, verification flags |
+| `_cls_fta_benefits(intelligence, fta)` | FTA trade agreements with preferential rate badges |
+| `_cls_risk(risk)` | Risk level and items (shown for גבוה/בינוני only) |
+| `_cls_smart_questions(smart_q, classifications)` | Delegates to format_questions_html |
+| `_cls_original_email(original_email_body)` | Blockquote with right border |
+| `_cls_footer()` | Logo, RCB branding, Israel time timestamp, Hebrew disclaimer |
+
+### Israeli HS Code Format Fix
+
+**Bug:** `get_israeli_hs_format()` in `librarian.py` formatted as `XX.XX.XXXX/XX` (2.2.4/2) but the correct Israeli format documented everywhere in the codebase is `XX.XX.XXXXXX/X` (2.2.6/check-digit).
+
+**Fix:** Changed split from `{code[:2]}.{code[2:4]}.{code[4:8]}/{code[8:10]}` to `{code[:2]}.{code[2:4]}.{code[4:10]}/{check}`. Added `_hs_check_digit()` implementing Luhn algorithm (verified against known Israeli customs check digits from data.gov.il).
+
+| Input | Before (wrong) | After (correct) |
+|-------|----------------|-----------------|
+| `7304190000` | `73.04.1900/00` | `73.04.190000/9` |
+| `8703808000` | `87.03.8080/00` | `87.03.808000/5` |
+| `4011100000` | `40.11.1000/00` | `40.11.100000/2` |
+| `0101210000/2` | `01.01.2100/02` | `01.01.210000/2` (preserved) |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `functions/lib/classification_agents.py` | +834/-466 lines: tracker_email imports with fallback, `_enrich_results_for_email()` cross-ref fields, 14 section builders replacing monolithic email builder, Agent 2 prompt HS format example fix |
+| `functions/lib/tool_calling_engine.py` | +1 line: `pre_enrichment` in output dict (BOI rate for email) |
+| `functions/lib/librarian.py` | +22/-7 lines: `_hs_check_digit()` Luhn algorithm, `get_israeli_hs_format()` rewritten for XX.XX.XXXXXX/X |
+| `functions/lib/language_tools.py` | Fixed example `87.08.998000/0` → `87.08.998000/4` (correct Luhn check digit) |
+
+### Git Commits
+- `f3faac9` — Session 40 Block H: Classification email redesign + Israeli HS format fix
+- `a32585e` — Session 40a: Image analysis for attachments with dual AI vision + pattern cache
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+- 30/30 successful update operations
+
+### Test Results
+- **583 passed**, 2 skipped — zero regressions
+
+### Block Status After Session 40
+- **Block A**: ✓ (A1-A4)
+- **Block B**: ✓ (B1-B2)
+- **Block C**: ✓ (C1-C6, C8) — C7 blocked
+- **Block D**: ✓ FULLY COMPLETE (D1-D9)
+- **Block E**: ✓ COMPLETE (Phase 4+5+Flagging)
+- **Block F**: Not started
+- **Block G**: Not started
+- **Block H**: ✓ COMPLETE (Classification email redesign)
+
 ## Session 40c Summary (2026-02-18) — Self-learning from Image Analysis Results
 
 ### Overview
