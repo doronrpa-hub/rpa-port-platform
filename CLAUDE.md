@@ -799,3 +799,50 @@ Built the complete elimination engine in one session — all 8 sub-blocks (D1-D8
 - **Block D**: ✓ FULLY COMPLETE (D1-D9) — engine built + wired into pipeline + 13th tool
 - **Block E-H**: Not started
 - **188 corrupt tariff codes**: Flagged + excluded from search (not fixable from available sources)
+
+## Session 34 Summary (2026-02-18) — Gap 2: Auto-trigger Classification from Tracker
+
+### Problem
+83% of CC emails are shipping correspondence (BL, arrival notice, packing list). Classification only triggered from Block A1 (keyword match for "invoice" in the *current* email's text). When a deal accumulated invoice + shipping docs across *separate* emails, classification never fired. This was the #1 pipeline gap.
+
+### What Was Done
+
+**Gap 2: Auto-trigger classification when deal has invoice + shipping doc**
+
+When a tracker deal accumulates both an invoice and at least one shipping document (BL, packing list, arrival notice, delivery order) across separate CC emails, classification now auto-triggers using aggregated text from all deal observations.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `functions/lib/tracker.py` | `doc_text_preview` on observations, `_is_deal_classification_ready()`, classification readiness check in `_update_deal_from_observation`, `classification_ready` flag propagation, `internet_message_id` on observations/deals |
+| `functions/main.py` | Capture `tracker_result` in CC handler, `_aggregate_deal_text()` helper, Gap 2 auto-trigger block after Block A1 |
+| `functions/lib/tracker_email.py` | RTL Hebrew support, improved subject lines with direction labels, status badges, responsive font sizes |
+
+### Flow After Changes
+```
+CC email → main.py CC handler:
+  1. Pupil (silent learning)
+  2. tracker_process_email():
+     → updates deal, adds new doc to documents_received
+     → checks _is_deal_classification_ready()
+     → returns classification_ready=True if invoice+shipping doc + no prior classification
+  3. Schedule email detection
+  4. Block A1: if "invoice" keyword in current email → classify (unchanged)
+  5. NEW Gap 2: if Block A1 didn't fire AND classification_ready:
+     → aggregate text from all deal observations (doc_text_preview)
+     → call process_and_send_report() with aggregated text
+     → link classification to deal via rcb_classification_id
+```
+
+### Guards Against Double-Triggering
+1. `rcb_classification_id` — already-classified deals skipped
+2. `classification_auto_triggered_at` — set BEFORE classification starts (race guard)
+3. `_cc_classified` flag — Block A1 and auto-trigger mutually exclusive per email
+4. Existing `_link_classification_to_tracker()` bridge sets `rcb_classification_id` on success
+
+### Git Commit
+- `bcef70a` — Gap 2: Auto-trigger classification when tracker deal accumulates invoice + shipping docs
+
+### Test Results
+- **457 passed**, 2 skipped — no regressions
