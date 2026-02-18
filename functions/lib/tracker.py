@@ -1865,6 +1865,14 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
                 except Exception as oe:
                     print(f"    Ocean tracker error for deal {deal_id}: {oe}")
 
+            # ── Auto-completion: mark deal completed when all containers finished ──
+            try:
+                completed_now = _check_deal_completion(db, firestore_module, deal_id, deal)
+                if completed_now:
+                    deal_changed = True
+            except Exception as ac_err:
+                print(f"    ⚠️ Auto-completion check error (non-fatal): {ac_err}")
+
             if deal_changed:
                 updated_deals += 1
                 # Send status update email
@@ -1883,6 +1891,44 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
         print(f"❌ Tracker poll error: {e}")
         traceback.print_exc()
         return {"status": "error", "error": str(e)}
+
+
+def _check_deal_completion(db, firestore_module, deal_id, deal):
+    """Check if all containers in a deal have reached the terminal step.
+    Import: cargo_exit. Export: ship_sailing.
+    Returns True if deal was just completed, False otherwise."""
+    direction = deal.get('direction', 'import')
+    terminal_step = 'cargo_exit' if direction != 'export' else 'ship_sailing'
+    containers = deal.get('containers', [])
+
+    if not containers:
+        return False
+
+    # Check all container statuses
+    all_done = True
+    for cn in containers:
+        doc = db.collection("tracker_container_status").document(f"{deal_id}_{cn}").get()
+        if not doc.exists:
+            all_done = False
+            break
+        if doc.to_dict().get('current_step') != terminal_step:
+            all_done = False
+            break
+
+    if all_done and deal.get('status') != 'completed':
+        db.collection("tracker_deals").document(deal_id).update({
+            'status': 'completed',
+            'completed_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+        })
+        _log_timeline(db, firestore_module, deal_id, {
+            "event_type": "deal_completed",
+            "reason": f"all {len(containers)} containers reached {terminal_step}",
+        })
+        print(f"    ✅ Deal {deal_id} auto-completed: all {len(containers)} containers at {terminal_step}")
+        return True
+
+    return False
 
 
 def _update_container_status(db, firestore_module, deal_id, container_id, cargo, direction):

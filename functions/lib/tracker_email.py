@@ -496,17 +496,17 @@ def _build_html(deal, container_statuses, steps_summary,
   </tr>
   <tr style="background:#eaf2f8;">
     <td style="padding:5px 8px;font-weight:bold;color:#2471a3;">POL {ocean_times['pol_code']}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_etd'])}"">{ocean_times['pol_etd'] or '&#8212;'}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_atd'])}"">{ocean_times['pol_atd'] or '&#8212;'}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_eta'])}"">{ocean_times['pol_eta'] or '&#8212;'}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_ata'])}"">{ocean_times['pol_ata'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_etd'])}">{ocean_times['pol_etd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_atd'])}">{ocean_times['pol_atd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_eta'])}">{ocean_times['pol_eta'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_ata'])}">{ocean_times['pol_ata'] or '&#8212;'}</td>
   </tr>
   <tr style="background:#ffffff;">
     <td style="padding:5px 8px;font-weight:bold;color:#2471a3;">POD {ocean_times['pod_code']}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_etd'])}"">{ocean_times['pod_etd'] or '&#8212;'}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_atd'])}"">{ocean_times['pod_atd'] or '&#8212;'}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_eta'])}"">{ocean_times['pod_eta'] or '&#8212;'}</td>
-    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_ata'])}"">{ocean_times['pod_ata'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_etd'])}">{ocean_times['pod_etd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_atd'])}">{ocean_times['pod_atd'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_eta'])}">{ocean_times['pod_eta'] or '&#8212;'}</td>
+    <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_ata'])}">{ocean_times['pod_ata'] or '&#8212;'}</td>
   </tr>
   </table>
 </td></tr>"""
