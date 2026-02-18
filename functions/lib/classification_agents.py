@@ -1843,7 +1843,7 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
             if summary:
                 html += f'<div style="font-size:13px;color:#555;margin-bottom:12px">{summary[:150]}</div>'
             for m in routing.get("ministries", []):
-                official_badge = '<span style="color:#166534;font-size:10px;background:#dcfce7;padding:1px 6px;border-radius:8px;margin-right:4px">API</span>' if m.get("official") else ''
+                official_badge = '<span style="color:#166534;font-size:10px;background:#dcfce7;padding:1px 6px;border-radius:8px;margin-left:4px">API</span>' if m.get("official") else ''
                 html += f'<div style="background:#f8faff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:8px">'
                 html += f'<div style="font-weight:700;color:#1e40af;font-size:13px">{official_badge}{m.get("name_he", m.get("name", ""))}</div>'
                 docs = m.get("documents_he", [])
@@ -2496,11 +2496,29 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if not doc_text or len(doc_text) < 50:
             print("  ⚠️ No text — sending extraction failure notification")
             _fail_html = (
-                '<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px">'
-                '<h3 style="color:#d63384">⚠️ לא הצלחנו לקרוא את הקבצים</h3>'
-                '<p>קיבלנו את המייל אך לא הצלחנו לקרוא את הקבצים המצורפים.</p>'
-                '<p>נא לשלוח שוב או לציין תיאור המוצר בגוף המייל.</p>'
+                '<div style="font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;direction:rtl;background:#f0f2f5;padding:0">'
+                '<div style="background:linear-gradient(135deg,#0f2439 0%,#1a3a5c 50%,#245a8a 100%);color:#fff;padding:24px 30px 20px;border-radius:12px 12px 0 0">'
+                '<h1 style="margin:0;font-size:20px;font-weight:700">דו״ח סיווג מכס</h1>'
+                '<p style="margin:4px 0 0 0;font-size:13px;opacity:0.8">RCB — AI Customs Broker</p>'
                 '</div>'
+                '<div style="background:#ffffff;padding:28px 30px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'
+                '<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:20px">'
+                '<h3 style="color:#991b1b;margin:0;font-size:16px">⚠️ לא הצלחנו לקרוא את הקבצים המצורפים</h3>'
+                '<p style="color:#555;margin:10px 0;font-size:14px">קיבלנו את המייל שלך אך לא הצלחנו לחלץ טקסט מהקבצים. סיבות אפשריות:</p>'
+                '<ul style="color:#555;margin:6px 0;padding-right:20px;font-size:13px;line-height:1.8">'
+                '<li>קובץ סרוק (תמונה בלבד, ללא טקסט)</li>'
+                '<li>PDF מוגן בסיסמה</li>'
+                '<li>פורמט לא נתמך (למשל: .zip, .rar)</li>'
+                '</ul>'
+                '<p style="color:#333;font-weight:600;margin:14px 0 6px;font-size:14px">מה לעשות:</p>'
+                '<ul style="color:#555;margin:4px 0;padding-right:20px;font-size:13px;line-height:1.8">'
+                '<li>שלחו PDF מחולל ממחשב (לא סריקה)</li>'
+                '<li>או כתבו את תיאור המוצרים בגוף המייל</li>'
+                '</ul>'
+                '</div></div>'
+                '<div style="background:#f8faff;padding:16px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'
+                '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. | RCB — rcb@rpa-port.co.il</p>'
+                '</div></div>'
             )
             try:
                 helper_graph_send(access_token, rcb_email, to_email, subject,
@@ -2552,10 +2570,24 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if not results.get('success'):
             print(f"  ❌ Classification failed — sending pipeline error notification")
             _err_html = (
-                '<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px">'
-                '<h3 style="color:#d63384">⚠️ שגיאה בתהליך הסיווג</h3>'
-                '<p>קיבלנו את המייל ואנחנו עובדים על כך. אם הסיווג דחוף, נא לשלוח שוב.</p>'
+                '<div style="font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;direction:rtl;background:#f0f2f5;padding:0">'
+                '<div style="background:linear-gradient(135deg,#0f2439 0%,#1a3a5c 50%,#245a8a 100%);color:#fff;padding:24px 30px 20px;border-radius:12px 12px 0 0">'
+                '<h1 style="margin:0;font-size:20px;font-weight:700">דו״ח סיווג מכס</h1>'
+                '<p style="margin:4px 0 0 0;font-size:13px;opacity:0.8">RCB — AI Customs Broker</p>'
                 '</div>'
+                '<div style="background:#ffffff;padding:28px 30px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'
+                '<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:20px">'
+                '<h3 style="color:#991b1b;margin:0;font-size:16px">⚠️ הסיווג לא הושלם</h3>'
+                '<p style="color:#555;margin:10px 0;font-size:14px">קיבלנו את המייל וקראנו את הקבצים בהצלחה, אך נתקלנו בשגיאה טכנית במהלך הסיווג.</p>'
+                '<p style="color:#333;font-weight:600;margin:14px 0 6px;font-size:14px">מה לעשות:</p>'
+                '<ul style="color:#555;margin:4px 0;padding-right:20px;font-size:13px;line-height:1.8">'
+                '<li><strong>שלחו את המייל שוב</strong> — המערכת תנסה שנית</li>'
+                '<li>אם הבעיה חוזרת, פנו לצוות ב- rcb@rpa-port.co.il</li>'
+                '</ul>'
+                '</div></div>'
+                '<div style="background:#f8faff;padding:16px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'
+                '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. | RCB — rcb@rpa-port.co.il</p>'
+                '</div></div>'
             )
             try:
                 helper_graph_send(access_token, rcb_email, to_email, subject,

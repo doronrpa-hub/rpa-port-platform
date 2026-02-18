@@ -916,3 +916,83 @@ Ran the elimination engine against production Firestore with 3 test products. Fo
 ### Test Results
 - **457 passed**, 2 skipped — no regressions
 - **3/3 live elimination tests pass** — correct chapters survive in all scenarios
+
+## Session 35 Summary (2026-02-18) — Email Body Intelligence: Intent Classifier + Smart Router
+
+### Problem
+RCB processes email attachments and extracts logistics data but ignores the actual email body text. If someone writes "what's the status of BL MEDURS12345?" or "what HS code for rubber gloves?", it's ignored. The existing `knowledge_query.py` only handles direct @rpa-port.co.il team questions (using expensive Claude), and CC emails never get replies.
+
+### What Was Built
+Cost-aware intent classifier that detects 6 intent types in email bodies, routes to appropriate handlers, and replies — using regex/Firestore first (FREE), AI only when truly needed.
+
+### Intent Detection Pipeline (cheapest first)
+| Priority | Intent | Detection | Cost |
+|----------|--------|-----------|------|
+| 1 | ADMIN_INSTRUCTION | Regex ("from now on", "מעכשיו", "change", "שנה") — ADMIN only | FREE |
+| 2 | NON_WORK | Regex blacklist (weather, jokes, sports, recipes) | FREE |
+| 3 | INSTRUCTION | Regex ("classify", "סווג את", "add container", "stop follow") | FREE |
+| 4 | CUSTOMS_QUESTION | Regex (HS code, tariff rate, duty, "מה הסיווג") | FREE |
+| 5 | STATUS_REQUEST | Regex (status keywords + BL/container entity extraction) | FREE |
+| 6 | KNOWLEDGE_QUERY | Question patterns + domain keywords (customs/trade context) | FREE |
+| 7 | AMBIGUOUS | Gemini Flash one-shot classification | ~$0.001 |
+| 8 | NONE | Default — let existing pipeline handle | FREE |
+
+### 6 Intent Handlers
+| Handler | What It Does | Cost |
+|---------|-------------|------|
+| `_handle_admin_instruction` | Save directive to `system_instructions` collection, confirm reply | FREE |
+| `_handle_non_work` | Canned Hebrew reply: "RCB is for customs questions" | FREE |
+| `_handle_status_request` | Look up deal via tracker.py `_find_deal_by_field`/`_find_deal_by_container`, build status summary | FREE |
+| `_handle_instruction` | Route to classify/tracker/stop — returns action metadata for main.py | FREE |
+| `_handle_customs_question` | ToolExecutor Firestore tools (search_tariff, check_regulatory) + AI compose | FREE → ~$0.005 |
+| `_handle_knowledge_query` | Firestore tools + AI compose; falls back to existing knowledge_query.py (Claude) | FREE → ~$0.01 |
+
+### Reply Composition — Cost Ladder
+1. ChatGPT gpt-4o-mini (~$0.005) — best Hebrew prose
+2. Gemini Flash (~$0.001) — fallback
+3. Template-based (FREE) — last resort, no AI
+
+### Hard Rules Enforced
+- **ONLY @rpa-port.co.il** gets replies — external senders NEVER replied to
+- **Privilege check first**: ADMIN (doron@) > TEAM (*@rpa-port.co.il) > NONE (external)
+- **`_send_reply_safe()`** re-checks domain before every send
+- **Rate limit**: Max 1 reply per sender per hour (checked in `questions_log`)
+- **Body < 15 chars** → skip (auto-generated/notifications)
+- **Cache**: 24h TTL on `questions_log` by question hash — cache hits are FREE
+
+### Files Created/Modified
+
+| Action | File | Changes |
+|--------|------|---------|
+| **CREATE** | `functions/lib/email_intent.py` | ~600 lines: intent classifier, 6 handlers, cache, rate limit, reply composition, sender privileges |
+| **CREATE** | `functions/tests/test_email_intent.py` | 73 unit tests: privilege, regex patterns (6 intents × bilingual), entity extraction, enforcement, cache, rate limit |
+| **MODIFY** | `functions/main.py` | Import block with `EMAIL_INTENT_AVAILABLE` guard; CC path integration (after Schedule, before Block A1); direct path integration (after Brain Commander, before Knowledge Query) |
+| **MODIFY** | `functions/lib/librarian_index.py` | Added `questions_log` and `system_instructions` to COLLECTION_FIELDS |
+
+### New Firestore Collections
+| Collection | Purpose |
+|-----------|---------|
+| `questions_log` | Q+A cache with hit tracking, dedup by question hash, 24h TTL |
+| `system_instructions` | Admin directives that persist across emails (scope, is_active) |
+
+### Integration in main.py
+**CC Email Path** (after Schedule, before Block A1):
+- Email Intent runs first, handles questions/status requests
+- Does NOT skip tracker/pupil/classification — it's additive (answers AND continues learning)
+- If intent action is 'classify' → sets `_cc_classified = True`
+
+**Direct Email Path** (after Brain Commander, before Knowledge Query):
+- Email Intent runs before existing `detect_knowledge_query()`
+- If handled (replied/cache_hit) → marks read, logs to rcb_processed, continues to next email
+- If INSTRUCTION with action='classify' → falls through to classification pipeline
+- Fallback: existing knowledge_query + classification pipeline still run
+
+### Git Commit
+- `ea38f8d` — Email Body Intelligence: intent classifier + smart router for email bodies
+
+### Deployment
+- All 30 Cloud Functions deployed to Firebase (2026-02-18)
+- `rcb_check_email` now runs intent detection on both CC and direct email paths
+
+### Test Results
+- **530 passed**, 2 skipped — 73 new tests added, zero regressions

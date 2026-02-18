@@ -20,6 +20,15 @@ except ImportError:
 _IL_STANDARD = timedelta(hours=2)
 _IL_SUMMER = timedelta(hours=3)
 
+# ── Branding / color constants ──
+_RPA_BLUE = "#1e3a5f"
+_RPA_ACCENT = "#2471a3"
+_COLOR_OK = "#27ae60"
+_COLOR_WARN = "#f39c12"
+_COLOR_ERR = "#e74c3c"
+_COLOR_PENDING = "#999999"
+_LOGO_URL = "https://rpa-port.com/wp-content/uploads/2016/09/logo.png"
+
 
 def _to_israel_time(dt_obj):
     """Convert a datetime to Israel time."""
@@ -323,108 +332,195 @@ def _format_date(date_str):
         return str(date_str)[:16]
 
 
-def _build_html(deal, container_statuses, steps_summary,
-                update_type, completed, total, direction):
-    bol = deal.get('bol_number', 'Unknown')
-    vessel = deal.get('vessel_name', '')
-    shipping_line = deal.get('shipping_line', '')
-    port = deal.get('port_name', '') or deal.get('port', '')
-    eta = deal.get('eta', '')
-    etd = deal.get('etd', '')
-    manifest = deal.get('manifest_number', '')
-    shipper = deal.get('shipper', '')
-    consignee = deal.get('consignee', '')
-    customs_dec = deal.get('customs_declaration', '')
+# ── Presentation helpers ──
 
+def _confidence_color(confidence_str):
+    """Return color hex for classification confidence level."""
+    if confidence_str in ("high", "גבוהה"):
+        return _COLOR_OK
+    if confidence_str in ("medium", "בינונית"):
+        return _COLOR_WARN
+    return _COLOR_ERR
+
+
+def _change_label(update_type):
+    """Return human-readable label for the update_type parameter."""
+    labels = {
+        "new_deal": "New deal detected",
+        "status_update": "Status updated",
+        "follow_started": "Follow started",
+        "follow_stopped": "Follow stopped",
+        "classification_linked": "Classification linked",
+        "containers_updated": "Containers updated",
+        "ocean_update": "Ocean tracking updated",
+        "eta_changed": "ETA changed",
+    }
+    return labels.get(update_type, "Status updated")
+
+
+def _html_open():
+    """Opening HTML/body/table wrapper (Outlook-safe, RTL)."""
+    return ('<!DOCTYPE html>\n'
+            '<html dir="rtl" lang="he">\n'
+            '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>\n'
+            '<body dir="rtl" style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">\n'
+            '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;">\n'
+            '<tr><td align="center">\n'
+            '<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;'
+            'background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">\n')
+
+
+def _html_close():
+    """Closing tags matching _html_open."""
+    return '</table>\n</td></tr></table>\n</body></html>'
+
+
+# ── Section builders (each returns one or more <tr>…</tr> blocks) ──
+
+def _section_header(deal, completed, total, direction):
+    """Section 1: branded header with logo, direction badge, status badge."""
     dir_label = "Import" if direction != 'export' else "Export"
-    date_label = f"ETA: {eta}" if eta else (f"ETD: {etd}" if etd else "")
     is_completed = completed == total and total > 0
-    header_bg = "#1e8449" if is_completed else "#1a5276"
     status_badge = "Completed" if is_completed else "Active"
-    badge_bg = "#27ae60" if is_completed else "#3498db"
+    badge_bg = _COLOR_OK if is_completed else "#3498db"
+    dir_badge_bg = _RPA_ACCENT if direction != 'export' else "#8e44ad"
 
-    html = f"""<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body dir="rtl" style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;">
-<tr><td align="center">
-<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-
+    return f"""
 <!-- HEADER -->
-<tr><td style="background:{header_bg};padding:20px 30px;">
+<tr><td style="background:{_RPA_BLUE};padding:0;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="color:#ffffff;font-size:22px;font-weight:bold;">&#9875; RCB Shipment Tracker</td>
-    <td align="left" style="color:#aed6f1;font-size:14px;">
-      <span style="display:inline-block;background:{badge_bg};color:#fff;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:bold;">{status_badge}</span>
-      &nbsp; {dir_label} | {date_label}
+    <td style="padding:20px 30px;" valign="middle">
+      <img src="{_LOGO_URL}" alt="RPA-PORT" width="48" height="48"
+           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;padding-left:12px;">
+        <span style="color:#ffffff;font-size:18px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
+        <span style="color:#aed6f1;font-size:13px;display:block;">RCB Shipment Tracker</span>
+      </span>
+    </td>
+    <td align="left" style="padding:20px 30px;" valign="middle">
+      <span style="display:inline-block;background:{dir_badge_bg};color:#fff;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-left:6px;">{dir_label}</span>
+      <span style="display:inline-block;background:{badge_bg};color:#fff;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;">{status_badge}</span>
     </td>
   </tr>
   </table>
 </td></tr>
+"""
 
-<!-- DEAL INFO -->
-<tr><td style="padding:20px 30px;border-bottom:1px solid #eee;">
-  <table width="100%" cellpadding="4" cellspacing="0" style="font-size:14px;color:#333;">
+
+def _section_change_banner(update_type):
+    """Section 2: light-blue bar showing what triggered this email."""
+    label = _change_label(update_type)
+    return f"""
+<!-- CHANGE BANNER -->
+<tr><td style="background:#eaf2f8;padding:10px 30px;border-bottom:1px solid #d4e6f1;">
+  <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td width="50%"><b style="color:#1a5276;">Bill of Lading:</b> {bol}</td>
-    <td width="50%"><b style="color:#1a5276;">Vessel:</b> {vessel}</td>
+    <td style="font-size:13px;color:{_RPA_ACCENT};font-weight:bold;">&#9432;&nbsp; {label}</td>
   </tr>
-  <tr>
-    <td><b style="color:#1a5276;">Shipping Line:</b> {shipping_line}</td>
-    <td><b style="color:#1a5276;">Port:</b> {port}</td>
-  </tr>
-  <tr>
-    <td><b style="color:#1a5276;">Manifest:</b> {manifest}</td>
-    <td><b style="color:#1a5276;">Containers:</b> {total}</td>
-  </tr>"""
-
-    if shipper:
-        html += f"""
-  <tr>
-    <td><b style="color:#1a5276;">Shipper:</b> {shipper[:40]}</td>
-    <td><b style="color:#1a5276;">Consignee:</b> {consignee[:40]}</td>
-  </tr>"""
-
-    if customs_dec:
-        html += f"""
-  <tr>
-    <td colspan="2"><b style="color:#1a5276;">Declaration:</b> {customs_dec}</td>
-  </tr>"""
-
-    # Classification HS codes (from tracker↔classification bridge)
-    hs_codes = deal.get('classification_hs_codes', [])
-    rcb_code = deal.get('rcb_tracking_code', '')
-    if hs_codes:
-        hs_label = rcb_code if rcb_code else "Classification"
-        hs_items_html = ""
-        for hc in hs_codes[:5]:
-            hs_num = hc.get('hs_code', '')
-            hs_desc = hc.get('description', '')[:50]
-            hs_conf = hc.get('confidence', '')
-            conf_color = "#27ae60" if hs_conf in ("high", "גבוהה") else "#f39c12" if hs_conf in ("medium", "בינונית") else "#e74c3c"
-            hs_items_html += (
-                f'<span style="display:inline-block;background:#eaf2f8;border:1px solid #d4e6f1;'
-                f'border-radius:4px;padding:2px 8px;margin:2px;font-size:12px;">'
-                f'<b>{hs_num}</b> {hs_desc}'
-                f' <span style="color:{conf_color};font-size:10px;">&#9679;</span>'
-                f'</span>'
-            )
-        html += f"""
-  <tr>
-    <td colspan="2"><b style="color:#1a5276;">{hs_label}:</b><br>{hs_items_html}</td>
-  </tr>"""
-
-    html += """
   </table>
 </td></tr>
+"""
 
-<!-- SUMMARY BAR -->"""
 
-    # Overall progress
+def _section_parties(deal):
+    """Section 3: Consignee / Shipper / Customs Broker (3-column)."""
+    shipper = deal.get('shipper', '')
+    consignee = deal.get('consignee', '')
+    if not shipper and not consignee:
+        return ""
+    broker = "07294 - R.P.A. PORT LTD"
+    return f"""
+<!-- PARTIES -->
+<tr><td style="padding:20px 30px 10px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+  <tr>
+    <td style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};padding-bottom:8px;" colspan="3">Parties</td>
+  </tr>
+  <tr>
+    <td width="33%" style="background:#f8f9fa;border:1px solid #eee;padding:10px 12px;vertical-align:top;">
+      <span style="font-size:10px;color:#999;text-transform:uppercase;display:block;margin-bottom:4px;">Consignee</span>
+      <span style="font-size:13px;color:#333;font-weight:bold;">{consignee[:40] if consignee else '&#8212;'}</span>
+    </td>
+    <td width="34%" style="background:#f8f9fa;border:1px solid #eee;border-right:0;border-left:0;padding:10px 12px;vertical-align:top;">
+      <span style="font-size:10px;color:#999;text-transform:uppercase;display:block;margin-bottom:4px;">Shipper</span>
+      <span style="font-size:13px;color:#333;font-weight:bold;">{shipper[:40] if shipper else '&#8212;'}</span>
+    </td>
+    <td width="33%" style="background:#f8f9fa;border:1px solid #eee;padding:10px 12px;vertical-align:top;">
+      <span style="font-size:10px;color:#999;text-transform:uppercase;display:block;margin-bottom:4px;">Customs Broker</span>
+      <span style="font-size:13px;color:#333;font-weight:bold;">{broker}</span>
+    </td>
+  </tr>
+  </table>
+</td></tr>
+"""
+
+
+def _section_shipment(deal):
+    """Section 4: 2-column key-value grid with all deal metadata."""
+    bol = deal.get('bol_number', 'Unknown')
+    vessel = deal.get('vessel_name', '')
+    voyage = deal.get('voyage_number', '')
+    shipping_line = deal.get('shipping_line', '')
+    port = deal.get('port_name', '') or deal.get('port', '')
+    manifest = deal.get('manifest_number', '')
+    containers = deal.get('containers', [])
+    total = len(containers)
+    container_type = deal.get('container_type', '')
+    eta = deal.get('eta', '')
+    etd = deal.get('etd', '')
+    customs_dec = deal.get('customs_declaration', '')
+
+    eta_fmt = _format_date(eta) if eta else ''
+    etd_fmt = _format_date(etd) if etd else ''
+
+    def _row(label, value):
+        v = value if value else '&#8212;'
+        return (f'  <tr>'
+                f'<td style="padding:6px 12px;color:{_RPA_BLUE};font-weight:bold;font-size:13px;'
+                f'width:40%;border-bottom:1px solid #f0f0f0;">{label}</td>'
+                f'<td style="padding:6px 12px;color:#333;font-size:13px;'
+                f'border-bottom:1px solid #f0f0f0;">{v}</td>'
+                f'</tr>\n')
+
+    html = f"""
+<!-- SHIPMENT DETAILS -->
+<tr><td style="padding:10px 30px 20px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};margin-bottom:8px;">
+  <tr><td>Shipment Details</td></tr>
+  </table>
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #e0e0e0;border-radius:4px;overflow:hidden;">
+"""
+    html += _row("Bill of Lading", bol)
+    html += _row("Vessel", vessel)
+    if voyage:
+        html += _row("Voyage", voyage)
+    html += _row("Shipping Line", shipping_line)
+    html += _row("Port", port)
+    html += _row("Manifest", manifest)
+    cnt_val = f"{total}" + (f" ({container_type})" if container_type else "")
+    html += _row("Containers", cnt_val)
+    if eta_fmt:
+        html += _row("ETA", eta_fmt)
+    if etd_fmt:
+        html += _row("ETD", etd_fmt)
+    if customs_dec:
+        html += _row("Customs Declaration", customs_dec)
+
+    html += """  </table>
+</td></tr>"""
+    return html
+
+
+def _section_progress(steps_summary, completed, total, direction,
+                      container_statuses, deal):
+    """Section 5: progress bar + step grid + ocean tracking + TaskYam table."""
     steps = _get_steps(direction)
     total_steps = len(steps)
+
+    # ── Overall progress calculation (same logic as before) ──
     if steps_summary:
         all_completed_idx = -1
         for i, s in enumerate(steps_summary):
@@ -434,75 +530,71 @@ def _build_html(deal, container_statuses, steps_summary,
     else:
         progress_pct = 5
 
-    status_color = "#27ae60" if completed == total and total > 0 else "#f39c12" if completed > 0 else "#3498db"
+    status_color = _COLOR_OK if completed == total and total > 0 else _COLOR_WARN if completed > 0 else "#3498db"
     status_text = f"{completed}/{total} Completed" if direction != 'export' else f"{completed}/{total} Sailed"
 
-    html += f"""
+    html = f"""
+<!-- PROGRESS -->
 <tr><td style="padding:15px 30px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:16px;font-weight:bold;color:#333;">Overall Progress</td>
-    <td align="right" style="font-size:14px;color:{status_color};font-weight:bold;">{status_text}</td>
+    <td style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};">Overall Progress</td>
+    <td align="left" style="font-size:13px;color:{status_color};font-weight:bold;">{status_text}</td>
   </tr>
   <tr><td colspan="2" style="padding-top:8px;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ecf0f1;border-radius:10px;overflow:hidden;">
-    <tr><td style="width:{progress_pct}%;background:{status_color};height:12px;border-radius:10px;">&nbsp;</td>
-        <td style="height:12px;">&nbsp;</td></tr>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#ecf0f1;border-radius:10px;overflow:hidden;">
+    <tr><td style="width:{progress_pct}%;background:{status_color};height:14px;border-radius:10px;">&nbsp;</td>
+        <td style="height:14px;">&nbsp;</td></tr>
     </table>
   </td></tr>
   </table>
-</td></tr>"""
+</td></tr>
+"""
 
-    # Step progress bar
+    # ── Step progress grid (same color logic) ──
+    step_width = int(100 / total_steps)
     html += """
 <tr><td style="padding:5px 30px 15px;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;">
-  <tr>"""
-
-    step_width = int(100 / total_steps)
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;">
+  <tr>
+"""
     for s in steps_summary:
-        html += f'    <td width="{step_width}%" align="center" style="color:#666;padding:3px 1px;font-size:11px;">{s["label"]}</td>\n'
+        html += f'    <td width="{step_width}%" align="center" style="color:#555;padding:4px 1px;font-size:11px;">{s["label"]}</td>\n'
     html += "  </tr>\n  <tr>\n"
 
     for s in steps_summary:
         if s['completed'] == s['total'] and s['total'] > 0:
-            bg = "#27ae60"
+            bg = _COLOR_OK
             txt_color = "#fff"
         elif s['completed'] > 0:
             bg = "#3498db"
             txt_color = "#fff"
         else:
             bg = "#ecf0f1"
-            txt_color = "#999"
-
+            txt_color = _COLOR_PENDING
         cell_text = f"{s['completed']}/{s['total']}" if s['total'] > 1 else ("&#10003;" if s['completed'] > 0 else "&#8212;")
-        html += f'    <td align="center" style="background:{bg};color:{txt_color};padding:6px 2px;font-weight:bold;font-size:11px;border:1px solid #fff;">{cell_text}</td>\n'
+        html += f'    <td align="center" style="background:{bg};color:{txt_color};padding:7px 2px;font-weight:bold;font-size:12px;border:1px solid #fff;border-radius:3px;">{cell_text}</td>\n'
 
     html += "  </tr>\n  <tr>\n"
-
     for s in steps_summary:
-        html += f'    <td align="center" style="color:#888;padding:2px 1px;font-size:11px;">{s["latest_date"]}</td>\n'
-
+        html += f'    <td align="center" style="color:#888;padding:2px 1px;font-size:10px;">{s["latest_date"]}</td>\n'
     html += "  </tr>\n  </table>\n</td></tr>"
 
-    # ════════════════════════════════════════════════════
-    #  GLOBAL TRACKING — Shipment-level ocean visibility
-    # ════════════════════════════════════════════════════
-    # Shows BL-level summary: BL number, container count,
-    # POL (ETA/ATA/ETD/ATD), POD (ETA/ATA/ETD/ATD)
-    # Then consolidated ocean events timeline below.
+    # ── Global ocean tracking (same _extract_ocean_times logic) ──
     has_ocean = any(cs.get('ocean_events') for cs in container_statuses)
     if has_ocean:
-        # ── Extract POL/POD timing from ocean events + deal ──
         ocean_times = _extract_ocean_times(deal, container_statuses)
         num_sources = len(ocean_times['sources'])
+        bol = deal.get('bol_number', 'Unknown')
+        vessel = deal.get('vessel_name', '')
 
         html += f"""
 <tr><td style="padding:15px 30px 5px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:15px;font-weight:bold;color:#2471a3;">&#127758; Global Tracking</td>
-    <td align="right" style="font-size:10px;color:#999;">{num_sources} source{"s" if num_sources != 1 else ""} checked</td>
+    <td style="font-size:14px;font-weight:bold;color:{_RPA_ACCENT};">&#127758; Global Tracking</td>
+    <td align="left" style="font-size:10px;color:#999;">{num_sources} source{"s" if num_sources != 1 else ""} checked</td>
   </tr>
   </table>
 </td></tr>
@@ -511,9 +603,9 @@ def _build_html(deal, container_statuses, steps_summary,
 <tr><td style="padding:8px 30px 4px;">
   <table width="100%" cellpadding="4" cellspacing="0" style="font-size:13px;color:#333;border:1px solid #d4e6f1;border-radius:4px;background:#eaf2f8;">
   <tr>
-    <td width="50%"><b style="color:#2471a3;">B/L:</b> {bol}</td>
-    <td width="25%"><b style="color:#2471a3;">Containers:</b> {total}</td>
-    <td width="25%"><b style="color:#2471a3;">Vessel:</b> {vessel[:20]}</td>
+    <td width="50%"><b style="color:{_RPA_ACCENT};">B/L:</b> {bol}</td>
+    <td width="25%"><b style="color:{_RPA_ACCENT};">Containers:</b> {total}</td>
+    <td width="25%"><b style="color:{_RPA_ACCENT};">Vessel:</b> {vessel[:20]}</td>
   </tr>
   </table>
 </td></tr>
@@ -521,7 +613,7 @@ def _build_html(deal, container_statuses, steps_summary,
 <!-- POL / POD TIMING TABLE -->
 <tr><td style="padding:4px 30px 10px;">
   <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
-  <tr style="background:#2471a3;color:#fff;">
+  <tr style="background:{_RPA_ACCENT};color:#fff;">
     <td style="padding:6px 8px;font-weight:bold;width:20%;">Port</td>
     <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ETD</td>
     <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ATD</td>
@@ -529,14 +621,14 @@ def _build_html(deal, container_statuses, steps_summary,
     <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ATA</td>
   </tr>
   <tr style="background:#eaf2f8;">
-    <td style="padding:5px 8px;font-weight:bold;color:#2471a3;">POL {ocean_times['pol_code']}</td>
+    <td style="padding:5px 8px;font-weight:bold;color:{_RPA_ACCENT};">POL {ocean_times['pol_code']}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_etd'])}">{ocean_times['pol_etd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_atd'])}">{ocean_times['pol_atd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_eta'])}">{ocean_times['pol_eta'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_ata'])}">{ocean_times['pol_ata'] or '&#8212;'}</td>
   </tr>
   <tr style="background:#ffffff;">
-    <td style="padding:5px 8px;font-weight:bold;color:#2471a3;">POD {ocean_times['pod_code']}</td>
+    <td style="padding:5px 8px;font-weight:bold;color:{_RPA_ACCENT};">POD {ocean_times['pod_code']}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_etd'])}">{ocean_times['pod_etd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_atd'])}">{ocean_times['pod_atd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_eta'])}">{ocean_times['pod_eta'] or '&#8212;'}</td>
@@ -545,30 +637,30 @@ def _build_html(deal, container_statuses, steps_summary,
   </table>
 </td></tr>"""
 
-        # ── Ocean Events Timeline (consolidated) ──
+        # ── Ocean events timeline (same confirmation color logic) ──
         merged_events = ocean_times.get('merged_events', [])
         if merged_events:
-            html += """
+            html += f"""
 <tr><td style="padding:4px 30px 15px;">
   <table width="100%" cellpadding="3" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
-  <tr style="background:#5499c7;color:#fff;">
-    <td style="padding:4px 8px;font-weight:bold;">Event</td>
-    <td style="padding:4px 6px;font-weight:bold;">Date</td>
-    <td style="padding:4px 6px;font-weight:bold;">Location</td>
-    <td style="padding:4px 4px;font-weight:bold;text-align:center;">Confirmed</td>
+  <tr style="background:{_RPA_ACCENT};color:#fff;">
+    <td style="padding:5px 8px;font-weight:bold;">Event</td>
+    <td style="padding:5px 6px;font-weight:bold;">Date</td>
+    <td style="padding:5px 6px;font-weight:bold;">Location</td>
+    <td style="padding:5px 4px;font-weight:bold;text-align:center;">Confirmed</td>
   </tr>"""
 
             for i, evt in enumerate(merged_events):
                 bg = "#f4f8fb" if i % 2 == 0 else "#ffffff"
                 confirmed = evt['confirmed']
                 if confirmed >= 2:
-                    conf_color = "#27ae60"
+                    conf_color = _COLOR_OK
                     conf_icon = "&#10003;&#10003;"
                 elif confirmed == 1:
                     conf_color = "#3498db"
                     conf_icon = "&#10003;"
                 else:
-                    conf_color = "#999"
+                    conf_color = _COLOR_PENDING
                     conf_icon = "?"
 
                 html += f"""  <tr style="background:{bg};">
@@ -580,25 +672,22 @@ def _build_html(deal, container_statuses, steps_summary,
 
             html += "  </table>\n</td></tr>"
 
-    # ════════════════════════════════════════════════════
-    #  TASKYAM LOCAL TRACKING — Israeli port operations
-    # ════════════════════════════════════════════════════
-    # Per-container detail table from TaskYam API
+    # ── TaskYam Local Tracking (same per-container table) ──
     if len(container_statuses) > 0:
         process_key = 'import_process' if direction != 'export' else 'export_process'
 
-        html += """
+        html += f"""
 <tr><td style="padding:15px 30px 5px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:15px;font-weight:bold;color:#1a5276;">&#9875; TaskYam Local Tracking</td>
-    <td align="right" style="font-size:10px;color:#999;">Source: TaskYam (Israel Ports)</td>
+    <td style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};">&#9875; TaskYam Local Tracking</td>
+    <td align="left" style="font-size:10px;color:#999;">Source: TaskYam (Israel Ports)</td>
   </tr>
   </table>
 </td></tr>
 <tr><td style="padding:5px 30px 10px;">
   <table width="100%" cellpadding="4" cellspacing="0" style="font-size:11px;border-collapse:collapse;">
-  <tr style="background:#1a5276;color:#fff;">
+  <tr style="background:{_RPA_BLUE};color:#fff;">
     <td style="padding:6px 8px;font-weight:bold;">Container</td>"""
 
         for s in steps_summary:
@@ -618,29 +707,139 @@ def _build_html(deal, container_statuses, steps_summary,
                 date_val = proc.get(date_field, '')
                 if date_val:
                     formatted = _format_date(str(date_val))
-                    html += f'    <td align="center" style="background:#d4efdf;color:#27ae60;padding:3px 1px;font-size:11px;">&#10003; {formatted}</td>\n'
+                    html += f'    <td align="center" style="background:#d4efdf;color:{_COLOR_OK};padding:3px 1px;font-size:11px;">&#10003; {formatted}</td>\n'
                 else:
-                    html += f'    <td align="center" style="color:#ccc;padding:3px 1px;font-size:11px;">&#8212;</td>\n'
+                    html += '    <td align="center" style="color:#ccc;padding:3px 1px;font-size:11px;">&#8212;</td>\n'
 
             html += "  </tr>\n"
 
         html += "  </table>\n</td></tr>"
 
-    # Footer (Hebrew RTL)
-    html += f"""
-<tr><td style="padding:15px 30px;border-top:1px solid #eee;background:#f8f9fa;">
+    return html
+
+
+def _section_goods(deal, container_statuses):
+    """Section 6: container details + HS code classification pills."""
+    hs_codes = deal.get('classification_hs_codes', [])
+
+    has_container_details = any(
+        cs.get('container_type') or cs.get('weight')
+        for cs in container_statuses
+    )
+
+    if not hs_codes and not has_container_details:
+        return ""
+
+    html = f"""
+<!-- GOODS -->
+<tr><td style="padding:15px 30px 10px;">
+  <table width="100%" cellpadding="0" cellspacing="0"
+         style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};margin-bottom:8px;">
+  <tr><td>Goods &amp; Classification</td></tr>
+  </table>"""
+
+    # Container type / weight table
+    if has_container_details:
+        html += f"""
+  <table width="100%" cellpadding="4" cellspacing="0"
+         style="font-size:12px;border-collapse:collapse;border:1px solid #e0e0e0;margin-bottom:10px;">
+  <tr style="background:{_RPA_BLUE};color:#fff;">
+    <td style="padding:6px 10px;font-weight:bold;">Container</td>
+    <td style="padding:6px 10px;font-weight:bold;">Type</td>
+    <td style="padding:6px 10px;font-weight:bold;">Weight</td>
+  </tr>"""
+        for i, cs in enumerate(container_statuses):
+            bg = "#f8f9fa" if i % 2 == 0 else "#ffffff"
+            cn = cs.get('container_id', '?')
+            ctype = cs.get('container_type', '') or '&#8212;'
+            weight = cs.get('weight', '') or '&#8212;'
+            html += (f'  <tr style="background:{bg};">'
+                     f'<td style="padding:5px 10px;font-size:12px;font-weight:bold;">{cn}</td>'
+                     f'<td style="padding:5px 10px;font-size:12px;">{ctype}</td>'
+                     f'<td style="padding:5px 10px;font-size:12px;">{weight}</td>'
+                     f'</tr>\n')
+        html += "  </table>"
+
+    # HS code classification pills (same logic as original lines 396-417)
+    if hs_codes:
+        rcb_code = deal.get('rcb_tracking_code', '')
+        hs_label = rcb_code if rcb_code else "Classification"
+        html += f"""
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;">
+  <tr><td style="font-size:12px;font-weight:bold;color:{_RPA_BLUE};padding-bottom:6px;">{hs_label}</td></tr>
+  <tr><td>"""
+        for hc in hs_codes[:5]:
+            hs_num = hc.get('hs_code', '')
+            hs_desc = hc.get('description', '')[:50]
+            hs_conf = hc.get('confidence', '')
+            conf_color = _confidence_color(hs_conf)
+            html += (
+                f'<span style="display:inline-block;background:#eaf2f8;border:1px solid #d4e6f1;'
+                f'border-radius:4px;padding:3px 10px;margin:2px;font-size:12px;">'
+                f'<b>{hs_num}</b> {hs_desc}'
+                f' <span style="color:{conf_color};font-size:11px;">&#9679;</span>'
+                f'</span>'
+            )
+        html += """</td></tr>
+  </table>"""
+    else:
+        html += f"""
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;">
+  <tr><td style="font-size:12px;color:{_COLOR_PENDING};font-style:italic;padding:6px 0;">Classification pending</td></tr>
+  </table>"""
+
+    html += "\n</td></tr>\n"
+    return html
+
+
+def _section_footer():
+    """Section 7: branded footer with logo, timestamp, Hebrew stop instruction."""
+    now = _to_israel_time(datetime.now(timezone.utc))
+    timestamp = f"{now.day:02d}/{now.month:02d}/{now.year} {now.hour:02d}:{now.minute:02d} IL"
+
+    return f"""
+<!-- FOOTER -->
+<tr><td style="padding:20px 30px;border-top:2px solid #e0e0e0;background:#f8f9fa;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:11px;color:#888;direction:rtl;text-align:right;">
-      RCB Tracker | RPA-PORT | &#1506;&#1491;&#1499;&#1493;&#1503; &#1488;&#1493;&#1496;&#1493;&#1502;&#1496;&#1497; &#1499;&#1500; 30 &#1491;&#1511;&#1493;&#1514;<br>
+    <td style="padding-bottom:10px;">
+      <img src="{_LOGO_URL}" alt="RPA-PORT" width="32" height="32"
+           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;padding-left:8px;">
+        <span style="font-size:12px;font-weight:bold;color:{_RPA_BLUE};">RCB &#8212; AI Customs Broker</span><br>
+        <span style="font-size:11px;color:#888;">R.P.A. PORT LTD</span>
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:10px;color:#999;padding-top:6px;border-top:1px solid #eee;">
+      {timestamp}
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:11px;color:#888;direction:rtl;text-align:right;padding-top:8px;">
+      &#1506;&#1491;&#1499;&#1493;&#1503; &#1488;&#1493;&#1496;&#1493;&#1502;&#1496;&#1497; &#1499;&#1500; 30 &#1491;&#1511;&#1493;&#1514;<br>
       &#1492;&#1513;&#1489; &quot;stop following&quot; &#1500;&#1492;&#1508;&#1505;&#1511;&#1514; &#1506;&#1491;&#1499;&#1493;&#1504;&#1497;&#1501;
     </td>
   </tr>
   </table>
 </td></tr>
+"""
 
-</table>
-</td></tr></table>
-</body></html>"""
 
+# ── Orchestrator ──
+
+def _build_html(deal, container_statuses, steps_summary,
+                update_type, completed, total, direction):
+    """Build the full tracker email HTML by composing section builders."""
+    html = _html_open()
+    html += _section_header(deal, completed, total, direction)
+    html += _section_change_banner(update_type)
+    html += _section_parties(deal)
+    html += _section_shipment(deal)
+    html += _section_progress(steps_summary, completed, total, direction,
+                              container_statuses, deal)
+    html += _section_goods(deal, container_statuses)
+    html += _section_footer()
+    html += _html_close()
     return html

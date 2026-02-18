@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>RCB Content Audit — Justification Engine Samples</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; direction: rtl; }
+h1 { color: #0f2439; border-bottom: 3px solid #245a8a; padding-bottom: 10px; }
+h2 { color: #1a3a5c; margin-top: 40px; }
+.sample-box { background: white; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.current { border-right: 4px solid #dc3545; }
+.improved { border-right: 4px solid #22c55e; }
+.issue { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 10px 15px; margin: 10px 0; }
+.critical-issue { background: #ffebee; border: 1px solid #ef5350; border-radius: 4px; padding: 10px 15px; margin: 10px 0; }
+.issue-label { font-weight: bold; color: #856404; }
+.critical-label { font-weight: bold; color: #c62828; }
+.ok-label { font-weight: bold; color: #155724; }
+.verdict { background: #e8f5e9; padding: 8px 12px; border-radius: 4px; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+td, th { padding: 8px; border: 1px solid #ddd; text-align: right; }
+th { background: #f8faff; }
+.chain-step { background: #f8faff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; margin: 8px 0; }
+.chain-step-num { display: inline-block; background: #245a8a; color: white; border-radius: 50%; width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 12px; margin-left: 8px; }
+.has-source { border-right: 3px solid #22c55e; }
+.no-source { border-right: 3px solid #ef4444; }
+.separator { border-top: 2px dashed #ccc; margin: 30px 0; }
+code { background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 13px; direction: ltr; display: inline-block; }
+</style>
+</head>
+<body>
+
+<h1>ביקורת תוכן: מנוע ההנמקה (Justification Engine)</h1>
+<p><strong>קובץ:</strong> <code>functions/lib/justification_engine.py</code> | <strong>תאריך:</strong> 2026-02-18</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>1. שרשרת הנמקה — דוגמה עם נתונים מלאים</h2>
+<p><strong>תרחיש:</strong> מייבש שיער Philips BHD300 — סיווג 8516.31</p>
+
+<div class="sample-box">
+<h3>שרשרת נוכחית (כפי שנשמרת ב-Firestore)</h3>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">1</span>
+<strong>Chapter 85 — מכשירי חשמל</strong><br>
+<span style="color:#666;font-size:13px">source_type: heading_to_chapter | source_ref: chapter 85</span><br>
+<span style="color:#555">reasoning: <em>"Product classified to chapter 85 based on chapter preamble"</em></span><br>
+<span style="color:#888;font-size:12px">source_text: "This chapter covers, inter alia, electro-thermic appliances..."[:500]</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">2</span>
+<strong>Heading 85.16</strong><br>
+<span style="color:#666;font-size:13px">source_type: tariff | source_ref: item 85.16</span><br>
+<span style="color:#555">reasoning: <em>"Heading matches product description"</em></span><br>
+<span style="color:#888;font-size:12px">source_text: "מכשירים חשמליים לחימום מים; מכשירים חשמליים לחימום"</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">3</span>
+<strong>Subheading 8516.31</strong><br>
+<span style="color:#666;font-size:13px">source_type: tariff | source_ref: sub-item 8516.31</span><br>
+<span style="color:#555">reasoning: <em>"Subheading selected based on product specifics"</em></span><br>
+<span style="color:#888;font-size:12px">source_text: "מייבשי שיער"</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">4</span>
+<strong>Applied 2 relevant notes</strong><br>
+<span style="color:#666;font-size:13px">source_type: chapter_notes</span><br>
+<span style="color:#555">reasoning: <em>"Found 2 notes referencing heading 8516"</em></span>
+</div>
+
+<div class="chain-step no-source">
+<span class="chain-step-num">5</span>
+<strong>No classification directive for 8516.31 or chapter 85</strong><br>
+<span style="color:#666;font-size:13px">source_type: classification_directive</span><br>
+<span style="color:#ef4444">gap: missing_directive (priority: medium)</span>
+</div>
+
+<div class="chain-step no-source">
+<span class="chain-step-num">6</span>
+<strong>No pre-ruling found for 8516.31</strong><br>
+<span style="color:#666;font-size:13px">source_type: pre_ruling</span><br>
+<span style="color:#ef4444">gap: missing_preruling (priority: low)</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">9</span>
+<strong>UK Tariff verification: exact_match</strong><br>
+<span style="color:#666;font-size:13px">source_type: uk_tariff_verification | source_ref: UK (8516310000)</span>
+</div>
+
+<p style="margin-top:15px"><strong>coverage: 5/7 (71%) | legal_strength: moderate | confidence_boost: +5</strong></p>
+</div>
+
+<div class="critical-issue">
+<span class="critical-label">&#x1F6A8; בעיה קריטית — שפה:</span> כל ה-reasoning באנגלית! עמיל המכס הישראלי מקבל:<br>
+<code>"Product classified to chapter 85 based on chapter preamble"</code><br>
+<code>"Heading matches product description"</code><br>
+<code>"Subheading selected based on product specifics"</code><br><br>
+אלו אינן הנמקות — אלו תיאורים גנריים שלא מסבירים <em>למה</em> המוצר שייך לפרק זה.
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה — תוכן:</span> ה-reasoning זהה לכל מוצר. "Heading matches product description" לא אומר <em>מה</em> בתיאור הכותרת תואם. הנמקה אמיתית צריכה לומר: "המוצר הוא מכשיר חשמלי-תרמי לחימום — תואם את תיאור פרט 85.16: מכשירים חשמליים לחימום."
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה — מבנה:</span> שלבים 7 ו-8 (supporting evidence + foreign tariff) חסרים מהפלט — ייתכן שלא היו תוצאות, אבל אין שום אינדיקציה שהם נבדקו.
+</div>
+
+<div class="sample-box improved">
+<h3>שיפור מוצע — הנמקה בעברית עם תוכן ספציפי</h3>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">1</span>
+<strong>פרק 85 — מכשירים חשמליים ואלקטרוניים</strong><br>
+<span style="color:#555"><em>המוצר (מייבש שיער חשמלי) הוא מכשיר אלקטרו-תרמי — שייך לפרק 85 על פי הקדמת הפרק.</em></span><br>
+<span style="color:#888;font-size:12px">מקור: הקדמת פרק 85, כללי פרשנות 1</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">2</span>
+<strong>פרט 85.16 — מכשירים חשמליים לחימום</strong><br>
+<span style="color:#555"><em>פרט 85.16 מכסה "מכשירים אלקטרו-תרמיים לטיפוח שיער" — תואם ישירות את תיאור המוצר.</em></span><br>
+<span style="color:#888;font-size:12px">מקור: תעריף המכס, פרט 85.16</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">3</span>
+<strong>פרט משנה 8516.31 — מייבשי שיער</strong><br>
+<span style="color:#555"><em>תת-פרט ספציפי למייבשי שיער. תואם את המוצר במדויק.</em></span><br>
+<span style="color:#888;font-size:12px">מקור: תעריף המכס, פרט משנה 8516.31 | מכס: 12% | מס קניה: לא חל</span>
+</div>
+</div>
+
+<div class="verdict">שיפור מרכזי: הנמקה בעברית, ספציפית למוצר, מצטטת מקור ולא רק "matches description".</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>2. שרשרת הנמקה — דוגמה עם פערים (Gaps)</h2>
+<p><strong>תרחיש:</strong> חומרי ניקוי תעשייתיים — סיווג 3402.90 (פרק לא מכוסה ב-XML)</p>
+
+<div class="sample-box current">
+<h3>מצב נוכחי — הרבה פערים</h3>
+
+<div class="chain-step no-source">
+<span class="chain-step-num">1</span>
+<strong>Chapter 34</strong><br>
+<span style="color:#ef4444">source_text: "Chapter not found in system"</span><br>
+<span style="color:#ef4444">gap: missing_chapter_notes (priority: critical)</span>
+</div>
+
+<div class="chain-step has-source">
+<span class="chain-step-num">2</span>
+<strong>Heading 34.02</strong><br>
+<span style="color:#555">reasoning: "Heading matches product description"</span><br>
+<span style="color:#888;font-size:12px">source_text: "חומרי פעיל-שטח אורגניים; תכשירי שטיפה"</span>
+</div>
+
+<div class="chain-step no-source">
+<span class="chain-step-num">4</span>
+<span style="color:#ef4444">"No notes found for chapter 34"</span><br>
+<span style="color:#ef4444">gap: missing_notes (priority: medium)</span>
+</div>
+
+<div class="chain-step no-source">
+<span class="chain-step-num">5</span>
+<span style="color:#ef4444">"No classification directive for 3402.90 or chapter 34"</span>
+</div>
+
+<p style="margin-top:15px;color:#ef4444"><strong>coverage: 2/7 (29%) | legal_strength: weak | confidence_boost: -10</strong></p>
+</div>
+
+<div class="critical-issue">
+<span class="critical-label">&#x1F6A8; בעיה קריטית:</span> כשה-coverage נמוך (29%), המשתמש לא רואה הודעה על כך. הנמקה חלשה נשלחת ללא אזהרה. ה-<code>confidence_boost: -10</code> מורד פנימית אבל לא מוצג כאזהרה.
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה:</span> הטקסט <code>"Chapter not found in system"</code> ו-<code>"No notes found for chapter 34"</code> — באנגלית ומיועד לצרכנים (עמילי מכס). אם זה נשמר רק ל-Firestore ולא מוצג — אז פחות חמור, אבל עדיין כדאי שיהיה בעברית.
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>3. אתגר סיווג (Devil's Advocate) — פלט דוגמה</h2>
+<p><strong>תרחיש:</strong> כפפות גומי רפואיות — סיווג ראשי 4015.19, חלופות: פרק 39, פרק 61, פרק 90</p>
+
+<div class="sample-box current">
+<h3>מצב נוכחי — תוצאת challenge_classification()</h3>
+
+<table>
+<tr><th>פרק חלופי</th><th>מקור</th><th>למה כן (reason_for)</th><th>למה לא (reason_against)</th></tr>
+<tr>
+<td>39 (פלסטיק)</td>
+<td>tariff_search</td>
+<td style="font-size:13px">"Tariff search found: כפפות מפלסטיק"[:200]</td>
+<td style="font-size:13px">"Checked chapter 39 preamble — no exclusion found, but primary chapter is more specific"</td>
+</tr>
+<tr>
+<td>61 (סרוגים)</td>
+<td>exclusion_reference</td>
+<td style="font-size:13px">"Chapter 40 exclusion mentions chapter 61: ..."[:200]</td>
+<td style="font-size:13px">"Chapter 61 excludes: articles of vulcanized rubber"[:200]</td>
+</tr>
+<tr>
+<td>90 (מכשירים רפואיים)</td>
+<td>tariff_search</td>
+<td style="font-size:13px">"Tariff search found: מכשירים רפואיים כירורגיים"[:200]</td>
+<td style="font-size:13px">""</td>
+</tr>
+</table>
+
+<p><strong>challenge_passed: False</strong> (1 unresolved — chapter 90 has no reason_against)</p>
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה — שפה:</span> כל ה-reason_for ו-reason_against באנגלית. עמיל מכס ישראלי לא יקרא <code>"Checked chapter 39 preamble — no exclusion found, but primary chapter is more specific"</code>.
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה — תוכן:</span> <code>"but primary chapter is more specific"</code> — זה לא טיעון משפטי. הנמקה אמיתית: "כפפות מגומי מגופר שייכות לפרק 40 על פי כלל 1 — תיאור פרט 40.15 ספציפי יותר מפרט 39.26 הכללי."
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה — חוסר שלמות:</span> פרק 90 נשאר ללא reason_against (ריק). זה מועבר ל-AI (method 4) אך אם ה-AI לא זמין — האתגר נכשל ללא הסבר.
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>סיכום ממצאים — מנוע ההנמקה</h2>
+
+<table>
+<tr><th>קטגוריה</th><th>ציון</th><th>הערות</th></tr>
+<tr><td>מקצועיות משפטית</td><td style="color:#f59e0b;font-weight:bold">6/10</td><td>מבנה שרשרת נכון (9 שלבים), אבל ה-reasoning גנרי ולא ספציפי למוצר</td></tr>
+<tr><td>שפה</td><td style="color:#ef4444;font-weight:bold">4/10</td><td>כל ה-reasoning, decisions, gaps באנגלית. עמיל מכס ישראלי צריך עברית</td></tr>
+<tr><td>ציטוט מקורות</td><td style="color:#f59e0b;font-weight:bold">7/10</td><td>מקורות מצוטטים (פרק, פרט, הנחיה) אבל ללא מספר חוק או סעיף</td></tr>
+<tr><td>מידע חסר</td><td style="color:#ef4444;font-weight:bold">5/10</td><td>כש-coverage נמוך אין אזהרה למשתמש. gaps נשמרים רק ב-Firestore</td></tr>
+<tr><td>אתגר סיווג</td><td style="color:#f59e0b;font-weight:bold">6/10</td><td>מבנה טוב (4 שיטות), אבל טקסט באנגלית ו-reason_against לעיתים ריק</td></tr>
+</table>
+
+<p><strong>ציון כולל: 5.6/10</strong> — המבנה מצוין, אבל התוכן הטקסטואלי נשאר "מפתח" ולא "עמיל מכס". הבעיה המרכזית: אנגלית במקום עברית, וגנריות במקום ספציפיות.</p>
+
+<h3>שיפורים מומלצים (לפי עדיפות)</h3>
+<ol>
+<li><strong>תרגם reasoning לעברית</strong> — גם אם הקוד באנגלית, ה-output צריך להיות עברי. במיוחד: decision, reasoning, gap descriptions.</li>
+<li><strong>הפוך reasoning לספציפי</strong> — במקום "Heading matches product description" → "פרט 85.16 מכסה מכשירים אלקטרו-תרמיים — תואם את {product_name}".</li>
+<li><strong>הוסף אזהרת coverage</strong> — אם coverage &lt; 50%, הוסף באנר צהוב בדו"ח: "הנמקה חלקית — חסרים מקורות משפטיים לפרק זה".</li>
+<li><strong>השלם reason_against ריקים</strong> — fallback טקסט: "לא נמצאה הוראת סיווג ספציפית השוללת פרק {X} — נדרשת בדיקה נוספת".</li>
+</ol>
+
+</body>
+</html>

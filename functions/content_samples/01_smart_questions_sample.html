@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>RCB Content Audit — Smart Questions Samples</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; direction: rtl; }
+h1 { color: #0f2439; border-bottom: 3px solid #245a8a; padding-bottom: 10px; }
+h2 { color: #1a3a5c; margin-top: 40px; }
+.sample-box { background: white; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.current { border-right: 4px solid #dc3545; }
+.improved { border-right: 4px solid #22c55e; }
+.issue { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 10px 15px; margin: 10px 0; }
+.issue-label { font-weight: bold; color: #856404; }
+.ok-label { font-weight: bold; color: #155724; }
+.verdict { background: #e8f5e9; padding: 8px 12px; border-radius: 4px; font-weight: bold; }
+.bad { background: #ffebee; padding: 8px 12px; border-radius: 4px; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+td, th { padding: 8px; border: 1px solid #ddd; text-align: right; }
+th { background: #f8faff; }
+.separator { border-top: 2px dashed #ccc; margin: 30px 0; }
+</style>
+</head>
+<body>
+
+<h1>ביקורת תוכן: שאלות חכמות (Smart Questions)</h1>
+<p><strong>קובץ:</strong> <code>functions/lib/smart_questions.py</code> | <strong>תאריך:</strong> 2026-02-18</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>1. שאלת הבחנה בין פרקים — מכונות vs אלקטרוניקה (84↔85)</h2>
+
+<p><strong>תרחיש:</strong> משלוח שנראה כמו "motor control unit" — יכול להיות פרק 84 (מכשיר מכני) או 85 (אלקטרוני)</p>
+
+<div class="sample-box current">
+<h3>מצב נוכחי</h3>
+<div dir="rtl" style="font-family:Arial,sans-serif;background:#fff8e1;border:2px solid #f9a825;border-radius:8px;padding:20px;margin:15px 0">
+<h3 style="color:#e65100;margin:0 0 10px">&#x2753; נדרש הבהרה לסיווג מדויק</h3>
+<p style="color:#555;margin:0 0 15px">לגבי: <strong>Motor Control Unit for Industrial Pump</strong></p>
+
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #1e3a5f">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: האם המוצר מכני (מנוע, משאבה, מכונה) או אלקטרוני (מעגל, רכיב, מסך)?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">פרק 84 = מכונות ומכשירים מכניים. פרק 85 = מכשירים חשמליים ואלקטרוניים.</p>
+<table style="width:100%;margin-top:8px;border-collapse:collapse">
+<tr style="background:#fff">
+<td style="padding:6px;font-weight:bold;width:30px">1.</td>
+<td style="padding:6px">8413.70 — משאבות מכניות למוצרים נוזליים, אחרות
+<br><span style="color:#2e7d32;font-size:12px">מכס: 6%</span>
+<br><span style="color:#c62828;font-size:12px">&#x2192; דרישות: תקן ישראלי. סיכון: גבוה</span>
+</td></tr>
+<tr style="background:#f5f5f5">
+<td style="padding:6px;font-weight:bold;width:30px">2.</td>
+<td style="padding:6px">8537.10 — לוחות בקרה חשמליים, עד 1,000V
+<br><span style="color:#2e7d32;font-size:12px">מכס: 10%</span>
+<br><span style="color:#c62828;font-size:12px">&#x2192; דרישות: אישור משרד התקשורת</span>
+</td></tr>
+</table>
+</div>
+<p style="margin:15px 0 0;color:#1e3a5f;font-weight:bold">אנא השב/י כדי שנוכל להשלים את הסיווג המדויק.</p>
+</div>
+</div>
+
+<div class="issue">
+<span class="ok-label">&#x2705; תקין:</span> השאלה ברורה, מקצועית, עם דוגמאות רלוונטיות בסוגריים. עמיל מכס מבין מיד מה נדרש.
+</div>
+
+<div class="verdict">ציון: 9/10 — שאלה מצוינת. הדוגמאות בסוגריים מסייעות.</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>2. שאלת הבחנה — טקסטיל סרוג vs ארוג (61↔62)</h2>
+
+<div class="sample-box current">
+<h3>מצב נוכחי</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #1e3a5f">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: האם הבגד סרוג (knitted) או ארוג (woven)?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">פרק 61 = סרוגים. פרק 62 = ארוגים. הפרש מכס משמעותי.</p>
+</div>
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה:</span> המילים <code>(knitted)</code> ו-<code>(woven)</code> באנגלית בתוך שאלה עברית. עמיל מכס ישראלי מבין "סרוג" ו"ארוג" — התרגום האנגלי מיותר ומשבש את הזרימה.
+</div>
+
+<div class="sample-box improved">
+<h3>שיפור מוצע</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #22c55e">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: האם הבגד סרוג או ארוג?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">פרק 61 = סרוגים (tricot, jersey). פרק 62 = ארוגים (canvas, poplin). הפרש מכס משמעותי.</p>
+</div>
+</div>
+
+<div class="verdict">שיפור: הסר אנגלית מהשאלה עצמה. אם רוצים דוגמאות — שם של בדים ספציפיים בהקשר (hint), לא תרגום.</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>3. שאלת מכשיר רפואי (85↔90) — קיצור לא מוסבר</h2>
+
+<div class="sample-box current">
+<h3>מצב נוכחי</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #1e3a5f">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: האם המכשיר רפואי (אושר AMAR) או ציוד אלקטרוני כללי?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">מכשיר רפואי = פרק 90 (דרוש אישור אגף מכשור רפואי). אלקטרוניקה = פרק 85.</p>
+</div>
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה:</span> הקיצור "AMAR" מופיע ללא הסבר בשאלה. בשורת ההקשר כתוב "אגף מכשור רפואי" — אבל השאלה עצמה לא מחברת ביניהם. עמיל מכס חדש עלול לא לדעת מה AMAR.
+</div>
+
+<div class="sample-box improved">
+<h3>שיפור מוצע</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #22c55e">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: האם המכשיר מסווג כמכשיר רפואי (דורש אישור אמ"ר) או כציוד אלקטרוני כללי?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">מכשיר רפואי = פרק 90 (דרוש אישור אגף מכשור רפואי — אמ"ר). אלקטרוניקה = פרק 85 (אישור משרד התקשורת).</p>
+</div>
+</div>
+
+<div class="verdict">שיפור: כתוב "אמ"ר" (קיצור עברי מוכר) במקום "AMAR". הוסף הסבר בהקשר.</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>4. שאלת מסמכים חסרים</h2>
+
+<div class="sample-box current">
+<h3>מצב נוכחי (חסרות חשבונית ורשימת אריזה)</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #1e3a5f">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 3: מסמכים חסרים: חשבונית מסחרית, רשימת אריזה. האם ניתן לצרף?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">מסמכים אלה נדרשים לשחרור המטען מהמכס.</p>
+</div>
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה קלה:</span> "מסמכים חסרים:" — תחביר עברי מעט חסר. יותר טבעי: "המסמכים הבאים חסרים:" או "חסרים המסמכים:" (הפעל לפני השם).
+</div>
+
+<div class="sample-box improved">
+<h3>שיפור מוצע</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #22c55e">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 3: חסרים המסמכים הבאים: חשבונית מסחרית, רשימת אריזה. האם ניתן לצרפם?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">מסמכים אלה נדרשים לשחרור המטען בהתאם לתקנות המכס.</p>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>5. שאלת הפרש מכס משמעותי</h2>
+
+<div class="sample-box current">
+<h3>מצב נוכחי (הפרש 6% vs 12%)</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #1e3a5f">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 2: הפרש המכס משמעותי: 6% לעומת 12%. מהו החומר העיקרי של המוצר?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">חומר הגלם העיקרי קובע את הסיווג במקרה זה.</p>
+</div>
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה:</span> השאלה קופצת מעובדה (הפרש מכס) לשאלה (חומר) ללא חיבור. המבנה "הפרש... : X לעומת Y." (נקודותיים ואז נקודה) לא טבעי. גם: עדיף "ל-12%" במקום "לעומת 12%".
+</div>
+
+<div class="sample-box improved">
+<h3>שיפור מוצע</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #22c55e">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 2: מהו החומר העיקרי של המוצר?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">הפרש המכס משמעותי — בין 6% ל-12% בהתאם לחומר הגלם. חומר הגלם העיקרי קובע את הסיווג.</p>
+</div>
+</div>
+
+<div class="verdict">שיפור: העברת העובדה (הפרש מכס) להקשר, והשארת שאלה נקייה.</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>6. שאלת רגולציה מפצלת</h2>
+
+<div class="sample-box current">
+<h3>מצב נוכחי (שתי רשויות שונות)</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #1e3a5f">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: הסיווג משפיע על הרשות המאשרת:</p>
+<p style="margin:5px 0;color:#666;font-size:13px">
+8516.31: נדרש אישור מכון התקנים<br>
+9018.90: נדרש אישור משרד הבריאות<br>
+בחירת הסיווג הנכון קריטית — אישור מהרשות הלא נכונה לא ישחרר את המטען.
+</p>
+</div>
+</div>
+
+<div class="issue">
+<span class="issue-label">&#x26A0; בעיה:</span> "אישור מהרשות הלא נכונה" — ניסוח מגושם. "הלא נכונה" בעברית נשמע לא טבעי. גם: "הסיווג משפיע על הרשות המאשרת:" — זו הצהרה, לא שאלה. חסר סימן שאלה.
+</div>
+
+<div class="sample-box improved">
+<h3>שיפור מוצע</h3>
+<div style="margin:15px 0;padding:10px;background:#fff;border-radius:6px;border-right:4px solid #22c55e">
+<p style="margin:0 0 5px;font-weight:bold;color:#1e3a5f">שאלה 1: מהי הרשות המאשרת הרלוונטית למוצר?</p>
+<p style="margin:5px 0;color:#666;font-size:13px">
+8516.31 (מכשיר חימום): נדרש אישור מכון התקנים הישראלי<br>
+9018.90 (מכשיר רפואי): נדרש אישור משרד הבריאות<br>
+<strong>שימו לב:</strong> פנייה לרשות שאינה מתאימה לסיווג תעכב את שחרור המטען.
+</p>
+</div>
+</div>
+
+<div class="verdict">שיפור: שאלה אמיתית (עם סימן שאלה), הזהרה מנוסחת בצורה ברורה יותר.</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="separator"></div>
+<h2>סיכום ממצאים — שאלות חכמות</h2>
+
+<table>
+<tr><th>קטגוריה</th><th>ציון</th><th>הערות</th></tr>
+<tr><td>מקצועיות</td><td style="color:green;font-weight:bold">9/10</td><td>שאלות ברמה של עמיל מכס מנוסה</td></tr>
+<tr><td>עברית תקינה</td><td style="color:#f59e0b;font-weight:bold">7/10</td><td>6 בעיות קטנות: אנגלית מיותרת, קיצורים לא מוסברים, ניסוח מגושם</td></tr>
+<tr><td>בהירות</td><td style="color:green;font-weight:bold">8/10</td><td>רוב השאלות ברורות. שאלת רגולציה היא הצהרה ולא שאלה</td></tr>
+<tr><td>עיצוב HTML</td><td style="color:green;font-weight:bold">9/10</td><td>RTL תקין, צבעים מבדילים, שיעורי מכס ירוק, השלכות אדום</td></tr>
+<tr><td>שימושיות</td><td style="color:green;font-weight:bold">9/10</td><td>עמיל מכס יכול לענות מיד — אפשרויות ברורות עם השלכות</td></tr>
+</table>
+
+<p><strong>ציון כולל: 8.4/10</strong> — תוכן מקצועי מאוד. שיפורים קוסמטיים בעברית בלבד.</p>
+
+</body>
+</html>

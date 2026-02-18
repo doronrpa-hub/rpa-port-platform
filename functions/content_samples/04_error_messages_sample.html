@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Content Audit #4 — Error Messages & Warning Banners</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+.audit-wrapper { max-width: 780px; margin: 0 auto; }
+.audit-header { background: #1a1a2e; color: #fff; padding: 30px; border-radius: 12px 12px 0 0; }
+.audit-header h1 { margin: 0; font-size: 24px; }
+.audit-header p { margin: 8px 0 0; opacity: 0.7; font-size: 14px; }
+.audit-body { background: #fff; padding: 30px; border: 1px solid #ddd; }
+.score-box { display: inline-block; background: #fef3c7; color: #92400e; font-size: 28px; font-weight: 700; padding: 10px 24px; border-radius: 10px; margin: 10px 0; }
+.section-title { font-size: 18px; font-weight: 700; color: #0f2439; border-bottom: 3px solid #1a3a5c; padding-bottom: 8px; margin: 30px 0 15px; }
+.note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin: 10px 0; font-size: 13px; color: #92400e; }
+.note strong { color: #78350f; }
+.good { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
+.good strong { color: #14532d; }
+.bad { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.bad strong { color: #7f1d1d; }
+.sample-box { border: 2px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin: 15px 0; }
+.sample-box-header { background: #f0f2f5; padding: 8px 16px; font-size: 12px; color: #666; border-bottom: 1px solid #e5e7eb; }
+.divider { border: 0; border-top: 2px dashed #e5e7eb; margin: 30px 0; }
+.summary-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+.summary-table th { background: #f8faff; padding: 10px; text-align: right; font-size: 13px; border: 1px solid #e5e7eb; }
+.summary-table td { padding: 10px; font-size: 13px; border: 1px solid #e5e7eb; }
+.recommendation { background: #f8faff; border-right: 4px solid #1a3a5c; padding: 12px 16px; margin: 10px 0; font-size: 13px; }
+.vs-box { display: flex; gap: 15px; margin: 15px 0; }
+.vs-current, .vs-improved { flex: 1; border-radius: 8px; overflow: hidden; }
+.vs-current { border: 2px solid #fca5a5; }
+.vs-improved { border: 2px solid #bbf7d0; }
+.vs-label { padding: 6px 12px; font-size: 11px; font-weight: 700; }
+.vs-current .vs-label { background: #fee2e2; color: #991b1b; }
+.vs-improved .vs-label { background: #dcfce7; color: #166534; }
+.vs-content { padding: 12px; }
+</style>
+</head>
+<body>
+<div class="audit-wrapper">
+
+<!-- Audit Header -->
+<div class="audit-header">
+    <h1>Content Audit #4 — Error Messages & Warning Banners</h1>
+    <p>Source: classification_agents.py (3 error templates + 2 warning banners) | Total: 5 user-facing messages</p>
+    <p>Auditor: RCB Content Quality Review | Date: 2026-02-18</p>
+</div>
+
+<div class="audit-body">
+
+<!-- Overall Score -->
+<div style="text-align:center; margin: 20px 0">
+    <div class="score-box">6.2 / 10</div>
+    <p style="color:#666; font-size:14px; margin:8px 0">Error messages are functional but too brief. User doesn't know WHAT failed,<br>WHY it failed, or WHAT to do next. No tracking reference, no branding.</p>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="section-title">Error Template #1: Extraction Failed</div>
+<p style="font-size:13px;color:#555">Source: <code>classification_agents.py:2498-2503</code> — Sent when doc_text &lt; 50 chars (no readable text from attachments)</p>
+
+<div class="sample-box">
+    <div class="sample-box-header">CURRENT OUTPUT — What the user sees</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div dir="rtl" style="font-family:Arial,sans-serif;padding:20px">
+            <h3 style="color:#d63384">&#x26A0;&#xFE0F; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501;</h3>
+            <p>&#1511;&#1497;&#1489;&#1500;&#1504;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1488;&#1498; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501; &#1492;&#1502;&#1510;&#1493;&#1512;&#1508;&#1497;&#1501;.</p>
+            <p>&#1504;&#1488; &#1500;&#1513;&#1500;&#1493;&#1495; &#1513;&#1493;&#1489; &#1488;&#1493; &#1500;&#1510;&#1497;&#1497;&#1503; &#1514;&#1497;&#1488;&#1493;&#1512; &#1492;&#1502;&#1493;&#1510;&#1512; &#1489;&#1490;&#1493;&#1507; &#1492;&#1502;&#1497;&#1497;&#1500;.</p>
+        </div>
+    </div>
+</div>
+
+<div class="note bad"><strong>Issues:</strong><br>
+1. <strong>No branding.</strong> Arrives as a bare HTML fragment — no header, no logo, no tracking code, no footer. Recipient can't tell this is from RCB.<br>
+2. <strong>No explanation of WHY.</strong> "&#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488;" — but was it a scanned image? Password-protected PDF? Corrupt file? The user doesn't know what to fix.<br>
+3. <strong>Vague recovery action.</strong> "&#1513;&#1500;&#1495;&#1493; &#1513;&#1493;&#1489;" isn't helpful — they'll just resend the same unreadable file.<br>
+4. <strong>Color #d63384 is pink/magenta</strong> — not a standard error color. Inconsistent with the rest of the system which uses #991b1b (dark red) for errors.
+</div>
+
+<div class="vs-box">
+    <div class="vs-current">
+        <div class="vs-label">CURRENT (3 lines)</div>
+        <div class="vs-content" style="direction:rtl;font-size:12px">
+            <strong style="color:#d63384">&#x26A0;&#xFE0F; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501;</strong><br>
+            &#1511;&#1497;&#1489;&#1500;&#1504;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1488;&#1498; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501;.<br>
+            &#1504;&#1488; &#1500;&#1513;&#1500;&#1493;&#1495; &#1513;&#1493;&#1489; &#1488;&#1493; &#1500;&#1510;&#1497;&#1497;&#1503; &#1514;&#1497;&#1488;&#1493;&#1512; &#1492;&#1502;&#1493;&#1510;&#1512; &#1489;&#1490;&#1493;&#1507; &#1492;&#1502;&#1497;&#1497;&#1500;.
+        </div>
+    </div>
+    <div class="vs-improved">
+        <div class="vs-label">PROPOSED IMPROVEMENT</div>
+        <div class="vs-content" style="direction:rtl;font-size:12px">
+            <div style="background:linear-gradient(135deg,#0f2439,#1a3a5c);color:#fff;padding:16px;border-radius:8px 8px 0 0;font-size:14px;font-weight:700">
+                RCB — &#1491;&#1493;&#1524;&#1495; &#1505;&#1497;&#1493;&#1493;&#1490;
+            </div>
+            <div style="padding:16px;border:1px solid #fca5a5;border-radius:0 0 8px 8px;background:#fef2f2">
+                <strong style="color:#991b1b;font-size:14px">&#x26A0;&#xFE0F; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501; &#1492;&#1502;&#1510;&#1493;&#1512;&#1508;&#1497;&#1501;</strong>
+                <p style="font-size:12px;color:#555;margin:8px 0">&#1511;&#1497;&#1489;&#1500;&#1504;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1513;&#1500;&#1498; &#1488;&#1498; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1495;&#1500;&#1509; &#1496;&#1511;&#1505;&#1496; &#1502;&#1492;&#1511;&#1489;&#1510;&#1497;&#1501;. &#1505;&#1497;&#1489;&#1493;&#1514; &#1488;&#1508;&#1513;&#1512;&#1497;&#1493;&#1514;:</p>
+                <ul style="font-size:12px;color:#555;margin:4px 0;padding-right:20px">
+                    <li>&#1511;&#1493;&#1489;&#1509; &#1505;&#1512;&#1493;&#1511; (&#1514;&#1502;&#1493;&#1504;&#1492; &#1489;&#1500;&#1489;&#1491;, &#1500;&#1500;&#1488; &#1496;&#1511;&#1505;&#1496;)</li>
+                    <li>PDF &#1502;&#1493;&#1490;&#1503; &#1489;&#1505;&#1497;&#1505;&#1502;&#1492;</li>
+                    <li>&#1508;&#1493;&#1512;&#1502;&#1496; &#1500;&#1488; &#1504;&#1514;&#1502;&#1498; (&#1500;&#1502;&#1513;&#1500;: .zip, .rar)</li>
+                </ul>
+                <p style="font-size:12px;color:#333;font-weight:600;margin:10px 0 0">&#1502;&#1492; &#1500;&#1506;&#1513;&#1493;&#1514;:</p>
+                <ul style="font-size:12px;color:#555;margin:4px 0;padding-right:20px">
+                    <li>&#1513;&#1500;&#1495;&#1493; PDF &#1502;&#1495;&#1493;&#1500;&#1500; &#1502;&#1502;&#1495;&#1513;&#1489; (&#1500;&#1488; &#1505;&#1512;&#1497;&#1511;&#1492;)</li>
+                    <li>&#1488;&#1493; &#1499;&#1514;&#1489;&#1493; &#1488;&#1514; &#1514;&#1497;&#1488;&#1493;&#1512; &#1492;&#1502;&#1493;&#1510;&#1512;&#1497;&#1501; &#1489;&#1490;&#1493;&#1507; &#1492;&#1502;&#1497;&#1497;&#1500;</li>
+                </ul>
+            </div>
+            <div style="padding:8px 16px;background:#f8faff;font-size:10px;color:#aaa;border-radius:0 0 8px 8px">
+                RCB — AI Customs Broker | rcb@rpa-port.co.il
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="section-title">Error Template #2: Pipeline Error</div>
+<p style="font-size:13px;color:#555">Source: <code>classification_agents.py:2554-2558</code> — Sent when classification pipeline fails (AI error, timeout, etc.)</p>
+
+<div class="sample-box">
+    <div class="sample-box-header">CURRENT OUTPUT — What the user sees</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div dir="rtl" style="font-family:Arial,sans-serif;padding:20px">
+            <h3 style="color:#d63384">&#x26A0;&#xFE0F; &#1513;&#1490;&#1497;&#1488;&#1492; &#1489;&#1514;&#1492;&#1500;&#1497;&#1498; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490;</h3>
+            <p>&#1511;&#1497;&#1489;&#1500;&#1504;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1493;&#1488;&#1504;&#1495;&#1504;&#1493; &#1506;&#1493;&#1489;&#1491;&#1497;&#1501; &#1506;&#1500; &#1499;&#1498;. &#1488;&#1501; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490; &#1491;&#1495;&#1493;&#1507;, &#1504;&#1488; &#1500;&#1513;&#1500;&#1493;&#1495; &#1513;&#1493;&#1489;.</p>
+        </div>
+    </div>
+</div>
+
+<div class="note bad"><strong>Issues:</strong><br>
+1. <strong>Same no-branding problem</strong> as Template #1 — bare HTML, no RCB header/footer.<br>
+2. <strong>"&#1488;&#1504;&#1495;&#1504;&#1493; &#1506;&#1493;&#1489;&#1491;&#1497;&#1501; &#1506;&#1500; &#1499;&#1498;" is misleading.</strong> Nobody is working on it. The pipeline failed and moved on. The user will wait for a response that will never come.<br>
+3. <strong>No retry indication.</strong> Will RCB auto-retry? Does the user need to resend? Unclear.<br>
+4. <strong>Same pink color issue</strong> (#d63384 instead of system red).</div>
+
+<div class="vs-box">
+    <div class="vs-current">
+        <div class="vs-label">CURRENT (2 lines)</div>
+        <div class="vs-content" style="direction:rtl;font-size:12px">
+            <strong style="color:#d63384">&#x26A0;&#xFE0F; &#1513;&#1490;&#1497;&#1488;&#1492; &#1489;&#1514;&#1492;&#1500;&#1497;&#1498; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490;</strong><br>
+            &#1511;&#1497;&#1489;&#1500;&#1504;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1493;&#1488;&#1504;&#1495;&#1504;&#1493; &#1506;&#1493;&#1489;&#1491;&#1497;&#1501; &#1506;&#1500; &#1499;&#1498;. &#1488;&#1501; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490; &#1491;&#1495;&#1493;&#1507;, &#1504;&#1488; &#1500;&#1513;&#1500;&#1493;&#1495; &#1513;&#1493;&#1489;.
+        </div>
+    </div>
+    <div class="vs-improved">
+        <div class="vs-label">PROPOSED IMPROVEMENT</div>
+        <div class="vs-content" style="direction:rtl;font-size:12px">
+            <div style="background:linear-gradient(135deg,#0f2439,#1a3a5c);color:#fff;padding:16px;border-radius:8px 8px 0 0;font-size:14px;font-weight:700">
+                RCB — &#1491;&#1493;&#1524;&#1495; &#1505;&#1497;&#1493;&#1493;&#1490;
+            </div>
+            <div style="padding:16px;border:1px solid #fca5a5;border-radius:0 0 8px 8px;background:#fef2f2">
+                <strong style="color:#991b1b;font-size:14px">&#x26A0;&#xFE0F; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490; &#1500;&#1488; &#1492;&#1493;&#1513;&#1500;&#1501;</strong>
+                <p style="font-size:12px;color:#555;margin:8px 0">&#1511;&#1497;&#1489;&#1500;&#1504;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1493;&#1511;&#1512;&#1488;&#1504;&#1493; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501; &#1489;&#1492;&#1510;&#1500;&#1495;&#1492;, &#1488;&#1498; &#1504;&#1514;&#1511;&#1500;&#1504;&#1493; &#1489;&#1513;&#1490;&#1497;&#1488;&#1492; &#1496;&#1499;&#1504;&#1497;&#1514; &#1489;&#1502;&#1492;&#1500;&#1498; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490;.</p>
+                <p style="font-size:12px;color:#333;font-weight:600;margin:10px 0 4px">&#1502;&#1492; &#1500;&#1506;&#1513;&#1493;&#1514;:</p>
+                <ul style="font-size:12px;color:#555;margin:4px 0;padding-right:20px">
+                    <li><strong>&#1513;&#1500;&#1495;&#1493; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1513;&#1493;&#1489;</strong> &#x2014; &#1492;&#1502;&#1506;&#1512;&#1499;&#1514; &#1514;&#1504;&#1505;&#1492; &#1513;&#1504;&#1497;&#1514;</li>
+                    <li>&#1488;&#1501; &#1492;&#1489;&#1506;&#1497;&#1492; &#1495;&#1493;&#1494;&#1512;&#1514;, &#1508;&#1504;&#1493; &#1500;&#1510;&#1493;&#1493;&#1514; &#1489;- rcb@rpa-port.co.il</li>
+                </ul>
+            </div>
+            <div style="padding:8px 16px;background:#f8faff;font-size:10px;color:#aaa;border-radius:0 0 8px 8px">
+                RCB — AI Customs Broker | rcb@rpa-port.co.il
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="section-title">Warning Banner #1: All Items Unclassified</div>
+<p style="font-size:13px;color:#555">Source: <code>classification_agents.py:1511-1527</code> — Banner injected at top of email when ALL items fail classification</p>
+
+<div class="sample-box">
+    <div class="sample-box-header">CURRENT OUTPUT — Unclassified Banner (with item list)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="background:#f8d7da;border:2px solid #dc3545;border-radius:5px;padding:20px;margin-bottom:20px">
+            <h3 style="color:#721c24;margin:0">&#x26A0;&#xFE0F; &#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1505;&#1493;&#1493;&#1490; &#1488;&#1514; &#1492;&#1508;&#1512;&#1497;&#1496;&#1497;&#1501;</h3>
+            <p style="color:#721c24;margin:10px 0 0 0">&#1492;&#1502;&#1506;&#1512;&#1499;&#1514; &#1500;&#1488; &#1492;&#1510;&#1500;&#1497;&#1495;&#1492; &#1500;&#1511;&#1489;&#1493;&#1506; &#1511;&#1493;&#1491;&#1497; HS &#1506;&#1489;&#1493;&#1512; &#1492;&#1508;&#1512;&#1497;&#1496;&#1497;&#1501; &#1513;&#1500;&#1492;&#1500;&#1503;.
+            &#1497;&#1513; &#1500;&#1505;&#1508;&#1511; &#1514;&#1497;&#1488;&#1493;&#1512; &#1502;&#1508;&#1493;&#1512;&#1496; &#1497;&#1493;&#1514;&#1512; &#1513;&#1500; &#1492;&#1502;&#1493;&#1510;&#1512;&#1497;&#1501;, &#1499;&#1493;&#1500;&#1500;: &#1495;&#1493;&#1502;&#1512; &#1490;&#1500;&#1501;, &#1513;&#1497;&#1502;&#1493;&#1513; &#1502;&#1497;&#1493;&#1506;&#1491;, &#1492;&#1512;&#1499;&#1489;.</p>
+            <ul>
+                <li>Electrothermic hair-drying apparatus 1600W</li>
+                <li>Electric shaving machine with trimmer</li>
+                <li>Replacement blade cartridges (5-pack)</li>
+            </ul>
+            <p style="color:#721c24;margin:10px 0 0 0"><strong>&#1488;&#1504;&#1488; &#1492;&#1513;&#1497;&#1489;&#1493; &#1506;&#1501; &#1502;&#1497;&#1491;&#1506; &#1504;&#1493;&#1505;&#1507; &#1493;&#1504;&#1495;&#1494;&#1493;&#1512; &#1506;&#1501; &#1505;&#1497;&#1493;&#1493;&#1490;.</strong></p>
+        </div>
+    </div>
+</div>
+
+<div class="note good"><strong>Good structure.</strong> Hebrew text is correct and clear. Asks for the right information (raw material, intended use, composition). Shows the actual item descriptions so the user knows which items failed.</div>
+<div class="note"><strong>Minor Hebrew issue:</strong> "&#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1505;&#1493;&#1493;&#1490;" — should be "&#1500;&#1505;&#1493;&#1493;&#1490;" (with double vav) or preferably the more natural "&#1500;&#1505;&#1493;&#1493;&#1490;" (&#1505;&#1497;&#1493;&#1493;&#1490;, from root &#1505;.&#1493;.&#1490;). Actually this is correct Hebrew — "&#1500;&#1505;&#1493;&#1493;&#1490;" is the proper verb form. No change needed.</div>
+<div class="note"><strong>Note:</strong> Item list items come from invoice extraction and are typically English (invoice descriptions). This is acceptable since invoice text IS in English. Not an issue.</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="section-title">Warning Banner #2: Low Confidence</div>
+<p style="font-size:13px;color:#555">Source: <code>classification_agents.py:1530-1536</code> — Banner when average confidence is low but items ARE classified</p>
+
+<div class="sample-box">
+    <div class="sample-box-header">CURRENT OUTPUT — Low Confidence Banner (58%, 3 of 4 classified)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="background:#fff3cd;border:2px solid #ffc107;border-radius:5px;padding:15px;margin-bottom:20px">
+            <h3 style="color:#856404;margin:0">&#x26A0;&#xFE0F; &#1512;&#1502;&#1514; &#1493;&#1491;&#1488;&#1493;&#1514; &#1504;&#1502;&#1493;&#1499;&#1492; (58%)</h3>
+            <p style="color:#856404;margin:10px 0 0 0">&#1505;&#1493;&#1493;&#1490;&#1493; 3 &#1502;&#1514;&#1493;&#1498; 4 &#1508;&#1512;&#1497;&#1496;&#1497;&#1501;, &#1488;&#1498; &#1512;&#1502;&#1514; &#1492;&#1493;&#1493;&#1491;&#1488;&#1493;&#1514; &#1492;&#1502;&#1502;&#1493;&#1510;&#1506;&#1514; &#1504;&#1502;&#1493;&#1499;&#1492;.
+            &#1502;&#1493;&#1502;&#1500;&#1509; &#1500;&#1489;&#1491;&#1493;&#1511; &#1488;&#1514; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490;&#1497;&#1501; &#1500;&#1508;&#1504;&#1497; &#1513;&#1497;&#1502;&#1493;&#1513;. &#1497;&#1497;&#1514;&#1499;&#1503; &#1513;&#1504;&#1491;&#1512;&#1513; &#1502;&#1497;&#1491;&#1506; &#1504;&#1493;&#1505;&#1507; &#1506;&#1500; &#1492;&#1502;&#1493;&#1510;&#1512;&#1497;&#1501;.</p>
+        </div>
+    </div>
+</div>
+
+<div class="note good"><strong>Good Hebrew text.</strong> Natural phrasing, shows actual numbers (3/4 items, 58%), recommends verification, suggests additional info might help. Yellow warning color is appropriate — this is a caution, not an error.</div>
+<div class="note"><strong>Observation:</strong> "&#1505;&#1493;&#1493;&#1490;&#1493;" uses the passive past form which is correct. "&#1512;&#1502;&#1514; &#1492;&#1493;&#1493;&#1491;&#1488;&#1493;&#1514; &#1492;&#1502;&#1502;&#1493;&#1510;&#1506;&#1514; &#1504;&#1502;&#1493;&#1499;&#1492;" is clear and professional. No changes needed for this banner.</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="section-title">Warning Banner #3: Clarification Needed</div>
+<p style="font-size:13px;color:#555">Source: <code>classification_agents.py:1470-1508</code> — Banner when multiple HS codes are possible, user must choose</p>
+
+<div class="sample-box">
+    <div class="sample-box-header">CURRENT OUTPUT — Clarification Banner (candidates table + questions)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div dir="rtl" style="background:#fff3cd;border:2px solid #ffc107;border-radius:5px;padding:20px;margin-bottom:20px;font-family:Arial,sans-serif">
+            <h3 style="color:#856404;margin:0">&#x26A0;&#xFE0F; &#1491;&#1512;&#1493;&#1513;&#1492; &#1492;&#1489;&#1492;&#1512;&#1492; &#1500;&#1505;&#1497;&#1493;&#1493;&#1490; &#1502;&#1491;&#1493;&#1497;&#1511;</h3>
+            <p style="color:#856404;margin:10px 0">&#1492;&#1502;&#1506;&#1512;&#1499;&#1514; &#1502;&#1510;&#1488;&#1492; &#1502;&#1505;&#1508;&#1512; &#1488;&#1508;&#1513;&#1512;&#1493;&#1497;&#1493;&#1514; &#1505;&#1497;&#1493;&#1493;&#1490;. &#1504;&#1488; &#1500;&#1489;&#1495;&#1493;&#1512; &#1488;&#1493; &#1500;&#1505;&#1508;&#1511; &#1502;&#1497;&#1491;&#1506; &#1504;&#1493;&#1505;&#1507;:</p>
+            <table dir="rtl" style="width:100%;border-collapse:collapse;margin:10px 0;background:#fff">
+                <tr style="background:#f8f9fa">
+                    <th style="padding:8px;border:1px solid #dee2e6;width:30px">#</th>
+                    <th style="padding:8px;border:1px solid #dee2e6">&#1508;&#1512;&#1496; &#1502;&#1499;&#1505;</th>
+                    <th style="padding:8px;border:1px solid #dee2e6">&#1514;&#1497;&#1488;&#1493;&#1512; &#1502;&#1514;&#1506;&#1512;&#1497;&#1507;</th>
+                    <th style="padding:8px;border:1px solid #dee2e6">&#1504;&#1497;&#1502;&#1493;&#1511;</th>
+                </tr>
+                <tr>
+                    <td style="padding:8px;border:1px solid #dee2e6">&#1488;</td>
+                    <td style="padding:8px;border:1px solid #dee2e6;font-family:monospace">8516.31.0000</td>
+                    <td style="padding:8px;border:1px solid #dee2e6">&#1502;&#1497;&#1497;&#1489;&#1513;&#1497; &#1513;&#1497;&#1506;&#1512;</td>
+                    <td style="padding:8px;border:1px solid #dee2e6">Hair dryer — personal electro-thermic appliance</td>
+                </tr>
+                <tr>
+                    <td style="padding:8px;border:1px solid #dee2e6">&#1489;</td>
+                    <td style="padding:8px;border:1px solid #dee2e6;font-family:monospace">8516.33.0000</td>
+                    <td style="padding:8px;border:1px solid #dee2e6">&#1502;&#1499;&#1513;&#1497;&#1512;&#1497; &#1505;&#1497;&#1491;&#1493;&#1512; &#1513;&#1497;&#1506;&#1512;</td>
+                    <td style="padding:8px;border:1px solid #dee2e6">Hand-drying apparatus — if designed for commercial/salon use</td>
+                </tr>
+            </table>
+            <div style="background:#fff;border:1px solid #ffc107;border-radius:3px;padding:15px;margin-top:10px">
+                <p style="margin:0 0 5px 0"><strong>&#1500;&#1510;&#1493;&#1512;&#1498; &#1505;&#1497;&#1493;&#1493;&#1490; &#1502;&#1491;&#1493;&#1497;&#1511;, &#1504;&#1488; &#1492;&#1489;&#1492;&#1497;&#1512;&#1493;:</strong></p>
+                <ul style="margin:5px 0;padding-right:20px">
+                    <li style="margin:5px 0"><strong>&#1502;&#1497;&#1497;&#1489;&#1513; &#1513;&#1497;&#1506;&#1512; &#1495;&#1513;&#1502;&#1500;&#1497; Philips BHD300:</strong> Is this for personal/household use or professional/salon use?</li>
+                </ul>
+                <p style="margin:10px 0 0 0;color:#856404">&#1504;&#1488; &#1500;&#1492;&#1513;&#1497;&#1489; &#1500;&#1502;&#1497;&#1497;&#1500; &#1494;&#1492; &#1506;&#1501; &#1492;&#1514;&#1513;&#1493;&#1489;&#1493;&#1514;.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="note good"><strong>Good structure.</strong> Hebrew table headers are correct ("&#1508;&#1512;&#1496; &#1502;&#1499;&#1505;", "&#1514;&#1497;&#1488;&#1493;&#1512; &#1502;&#1514;&#1506;&#1512;&#1497;&#1507;", "&#1504;&#1497;&#1502;&#1493;&#1511;"). Hebrew letter numbering (&#1488;, &#1489;, &#1490;) is professional. Action prompt "&#1504;&#1488; &#1500;&#1492;&#1513;&#1497;&#1489; &#1500;&#1502;&#1497;&#1497;&#1500; &#1494;&#1492;" is clear.</div>
+<div class="note bad"><strong>ISSUE: "&#1504;&#1497;&#1502;&#1493;&#1511;" column contains ENGLISH text.</strong> The reasoning comes from AI agents and is always in English ("Hair dryer — personal electro-thermic appliance"). This column appears in a Hebrew RTL table. Mixed direction is confusing.</div>
+<div class="note"><strong>ISSUE: Distinguishing question is in ENGLISH.</strong> "Is this for personal/household use or professional/salon use?" — the user sees Hebrew headers and labels, then suddenly an English question. Should be Hebrew: "&#1492;&#1488;&#1501; &#1492;&#1502;&#1493;&#1510;&#1512; &#1500;&#1513;&#1497;&#1502;&#1493;&#1513; &#1489;&#1497;&#1514;&#1497; &#1488;&#1493; &#1502;&#1511;&#1510;&#1493;&#1506;&#1497;?"</div>
+
+<!-- ════════════════════════════════════════════ -->
+<hr class="divider">
+
+<div class="section-title">Issue Summary</div>
+
+<table class="summary-table">
+    <tr>
+        <th style="width:40px">#</th>
+        <th>Issue</th>
+        <th style="width:80px">Severity</th>
+        <th style="width:120px">Template</th>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td><strong>Error templates have no branding</strong> — no RCB header, no logo, no footer, no tracking code. Just a bare HTML fragment. Inconsistent with the polished classification report.</td>
+        <td style="color:#991b1b;font-weight:700">HIGH</td>
+        <td>#1 + #2</td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td><strong>Pipeline error claims "we're working on it"</strong> — misleading. Nobody is working on it. The pipeline failed and moved on. User will wait indefinitely for a response that won't come.</td>
+        <td style="color:#991b1b;font-weight:700">HIGH</td>
+        <td>#2</td>
+    </tr>
+    <tr>
+        <td>3</td>
+        <td><strong>Error color is pink (#d63384)</strong> instead of system red (#991b1b or #dc3545). Inconsistent with warning banners which correctly use red/yellow.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>#1 + #2</td>
+    </tr>
+    <tr>
+        <td>4</td>
+        <td><strong>Extraction failure gives no diagnostic help</strong> — "&#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488;" but no hint about WHY (scanned image? password? format?). User can't fix it.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>#1</td>
+    </tr>
+    <tr>
+        <td>5</td>
+        <td><strong>Clarification "&#1504;&#1497;&#1502;&#1493;&#1511;" column in English</strong> — reasoning text from AI agents is always English, mixed with Hebrew table. Confusing bidirectional text.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>Banner #3</td>
+    </tr>
+    <tr>
+        <td>6</td>
+        <td><strong>Clarification question in English</strong> — "Is this for personal/household use?" appears in an otherwise Hebrew UI.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>Banner #3</td>
+    </tr>
+</table>
+
+<!-- ════════════════════════════════════════════ -->
+<hr class="divider">
+
+<div class="section-title">Prioritized Recommendations (Templates Only)</div>
+
+<div class="recommendation">
+    <strong>1. [HIGH] Wrap error templates in RCB branding</strong><br>
+    Both <code>_fail_html</code> (line 2498) and <code>_err_html</code> (line 2554) should use a minimal version of the report template: header bar (gradient with "RCB — &#1491;&#1493;&#1524;&#1495; &#1505;&#1497;&#1493;&#1493;&#1490;"), error content in the middle, and footer with logo + disclaimer. This is a TEMPLATE change only — wrap the existing text in the same design system as the classification report.
+</div>
+
+<div class="recommendation">
+    <strong>2. [HIGH] Fix pipeline error wording</strong><br>
+    Change line 2557 from "&#1488;&#1504;&#1495;&#1504;&#1493; &#1506;&#1493;&#1489;&#1491;&#1497;&#1501; &#1506;&#1500; &#1499;&#1498;" to honest, actionable text: "&#1504;&#1514;&#1511;&#1500;&#1504;&#1493; &#1489;&#1513;&#1490;&#1497;&#1488;&#1492; &#1496;&#1499;&#1504;&#1497;&#1514;. &#1504;&#1488; &#1500;&#1513;&#1500;&#1493;&#1495; &#1513;&#1493;&#1489; &#1488;&#1514; &#1492;&#1502;&#1497;&#1497;&#1500; &#1493;&#1492;&#1502;&#1506;&#1512;&#1499;&#1514; &#1514;&#1504;&#1505;&#1492; &#1513;&#1504;&#1497;&#1514;." — this is a TEXT change only, no logic change.
+</div>
+
+<div class="recommendation">
+    <strong>3. [MEDIUM] Standardize error color</strong><br>
+    Change <code>#d63384</code> (pink/magenta) to <code>#991b1b</code> (dark red) in both error templates. This matches the system design language used in warning banners, risk sections, and gap alerts. CSS-only change on lines 2500 and 2556.
+</div>
+
+<div class="recommendation">
+    <strong>4. [MEDIUM] Add diagnostic hints to extraction failure</strong><br>
+    After "&#1500;&#1488; &#1492;&#1510;&#1500;&#1495;&#1504;&#1493; &#1500;&#1511;&#1512;&#1493;&#1488; &#1488;&#1514; &#1492;&#1511;&#1489;&#1510;&#1497;&#1501;", add a bullet list of common causes and solutions (see proposed improvement above). This is CONTENT only — additional HTML lines in the template string, no logic change.
+</div>
+
+<div class="recommendation">
+    <strong>5. [MEDIUM] Add Hebrew reasoning to clarification banner</strong><br>
+    The <code>reasoning</code> field in the clarification candidates comes from AI agents and is always English. If translating the reasoning is too complex (it changes with every classification), at minimum translate the <code>distinguishing_info</code> question text. This would require Agent 2 to output Hebrew reasoning or a post-processing translation step — may be deferred.
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<hr class="divider">
+
+<div class="section-title">Score Breakdown</div>
+<table class="summary-table">
+    <tr><th>Component</th><th style="width:80px">Score</th><th>Notes</th></tr>
+    <tr><td>Extraction Failed (#1)</td><td style="font-weight:700">4/10</td><td>No branding, vague, no diagnostics</td></tr>
+    <tr><td>Pipeline Error (#2)</td><td style="font-weight:700">3/10</td><td>Misleading "working on it", no branding</td></tr>
+    <tr><td>Unclassified Banner</td><td style="font-weight:700">8/10</td><td>Good Hebrew, asks for right info, shows items</td></tr>
+    <tr><td>Low Confidence Banner</td><td style="font-weight:700">9/10</td><td>Professional, shows numbers, appropriate tone</td></tr>
+    <tr><td>Clarification Banner</td><td style="font-weight:700">7/10</td><td>Great structure, but English reasoning/questions</td></tr>
+    <tr><td colspan="3" style="text-align:left"><strong>Weighted Average: 6.2/10</strong> — The two error templates (sent when things go wrong = high user anxiety) are the weakest outputs in the system. The warning banners (sent within a classification report = branded context) are much better.</td></tr>
+</table>
+
+</div><!-- audit-body -->
+</div><!-- audit-wrapper -->
+</body>
+</html>

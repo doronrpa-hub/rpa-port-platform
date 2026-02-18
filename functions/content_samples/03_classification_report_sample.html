@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Content Audit #3 — Classification Report Email</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+.audit-wrapper { max-width: 780px; margin: 0 auto; }
+.audit-header { background: #1a1a2e; color: #fff; padding: 30px; border-radius: 12px 12px 0 0; }
+.audit-header h1 { margin: 0; font-size: 24px; }
+.audit-header p { margin: 8px 0 0; opacity: 0.7; font-size: 14px; }
+.audit-body { background: #fff; padding: 30px; border: 1px solid #ddd; }
+.score-box { display: inline-block; background: #dcfce7; color: #166534; font-size: 28px; font-weight: 700; padding: 10px 24px; border-radius: 10px; margin: 10px 0; }
+.section-title { font-size: 18px; font-weight: 700; color: #0f2439; border-bottom: 3px solid #1a3a5c; padding-bottom: 8px; margin: 30px 0 15px; }
+.note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin: 10px 0; font-size: 13px; color: #92400e; }
+.note strong { color: #78350f; }
+.good { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
+.good strong { color: #14532d; }
+.bad { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.bad strong { color: #7f1d1d; }
+.sample-label { background: #eff6ff; color: #1e40af; font-size: 11px; padding: 3px 10px; border-radius: 12px; display: inline-block; margin-bottom: 8px; }
+.sample-box { border: 2px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin: 15px 0; }
+.sample-box-header { background: #f0f2f5; padding: 8px 16px; font-size: 12px; color: #666; border-bottom: 1px solid #e5e7eb; }
+.divider { border: 0; border-top: 2px dashed #e5e7eb; margin: 30px 0; }
+.summary-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+.summary-table th { background: #f8faff; padding: 10px; text-align: right; font-size: 13px; border: 1px solid #e5e7eb; }
+.summary-table td { padding: 10px; font-size: 13px; border: 1px solid #e5e7eb; }
+.recommendation { background: #f8faff; border-right: 4px solid #1a3a5c; padding: 12px 16px; margin: 10px 0; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="audit-wrapper">
+
+<!-- Audit Header -->
+<div class="audit-header">
+    <h1>Content Audit #3 — Classification Report Email</h1>
+    <p>Source: classification_agents.py:build_classification_email() + report_builder.py | 11 sections</p>
+    <p>Auditor: RCB Content Quality Review | Date: 2026-02-18</p>
+</div>
+
+<div class="audit-body">
+
+<!-- Overall Score -->
+<div style="text-align:center; margin: 20px 0">
+    <div class="score-box">8.7 / 10</div>
+    <p style="color:#666; font-size:14px; margin:8px 0">Best-designed output in the system. Professional, RTL-correct, visually polished.<br>Minor content issues in justification chain text and mixed Hebrew/English in report.</p>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="section-title">Section-by-Section Audit</div>
+
+<!-- ── SECTION 1: Header ── -->
+<h3 style="color:#1a3a5c">1. Header (lines 1556-1572)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Email Header</div>
+    <div style="background:linear-gradient(135deg,#0f2439 0%,#1a3a5c 50%,#245a8a 100%);color:#fff;padding:32px 30px 28px;direction:rtl">
+        <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle">
+                <h1 style="margin:0;font-size:22px;font-weight:700;letter-spacing:0.3px">&#1491;&#1493;&#1524;&#1495; &#1505;&#1497;&#1493;&#1493;&#1490; &#1502;&#1499;&#1505;</h1>
+                <p style="margin:6px 0 0 0;font-size:14px;opacity:0.85;font-weight:400">&#1504;&#1493;&#1510;&#1512; &#1488;&#1493;&#1496;&#1493;&#1502;&#1496;&#1497;&#1514; &#1506;&#1524;&#1497; &#1502;&#1506;&#1512;&#1499;&#1514; RCB</p>
+            </td>
+            <td style="text-align:left;vertical-align:middle">
+                <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:8px 14px;display:inline-block">
+                    <span style="font-size:10px;opacity:0.7;display:block;text-align:center;font-family:'Courier New',monospace">TRACKING</span>
+                    <span style="font-size:13px;font-family:'Courier New',monospace;font-weight:600;letter-spacing:1px">RCB-7K3M9X</span>
+                </div>
+            </td>
+        </tr></table>
+    </div>
+</div>
+<div class="note good"><strong>Excellent.</strong> Professional gradient, RTL-correct, tracking code visually separated. "TRACKING" label in English is fine (industry standard). Hebrew label text clear and concise.</div>
+
+<!-- ── SECTION 2: Shipment Info ── -->
+<h3 style="color:#1a3a5c">2. Shipment Info Card (lines 1577-1604)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Shipment Info (realistic import)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="background:#f8faff;border:1px solid #d4e3f5;border-radius:10px;padding:18px 20px;margin-bottom:22px">
+            <div style="font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">&#1508;&#1512;&#1496;&#1497; &#1502;&#1513;&#1500;&#1493;&#1495;</div>
+            <table style="width:100%;font-size:14px;color:#333" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td style="padding:5px 0;width:50%"><span style="color:#888;font-size:12px">&#1499;&#1497;&#1493;&#1493;&#1503;</span><br><strong>&#1497;&#1489;&#1493;&#1488; &#1500;&#1497;&#1513;&#1512;&#1488;&#1500;</strong></td>
+                    <td style="padding:5px 0;width:50%"><span style="color:#888;font-size:12px">&#1492;&#1493;&#1489;&#1500;&#1492;</span><br><strong>&#1497;&#1501; &#x1F6A2;</strong></td>
+                </tr>
+                <tr>
+                    <td style="padding:5px 0"><span style="color:#888;font-size:12px">&#1502;&#1493;&#1499;&#1512;</span><br><strong>Philips Electronics B.V.</strong></td>
+                    <td style="padding:5px 0"><span style="color:#888;font-size:12px">&#1511;&#1493;&#1504;&#1492;</span><br><strong>&#1488;&#1500;&#1511;&#1496;&#1512;&#1493; &#1505;&#1495;&#1512; &#1489;&#1506;&#1524;&#1502;</strong></td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding:5px 0"><span style="color:#888;font-size:12px">&#1502;&#1505;&#x05F3; &#1502;&#1513;&#1500;&#1493;&#1495;</span><br><strong style="font-family:'Courier New',monospace">B/L: MEDURS24876</strong></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Clean and professional.</strong> Hebrew field labels correct. Emoji for freight type (ship/plane) is a nice touch. Direction/freight labels are natural Hebrew.</div>
+<div class="note"><strong>Minor issue:</strong> "&#1508;&#1512;&#1496;&#1497; &#1502;&#1513;&#1500;&#1493;&#1495;" header has <code>text-transform:uppercase</code> which has no effect on Hebrew but could cause issues if seller name is in Hebrew. Not a bug, just unnecessary CSS.</div>
+
+<!-- ── SECTION 3: Invoice Validation ── -->
+<h3 style="color:#1a3a5c">3. Invoice Validation Bar (lines 1607-1637)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Partial Invoice (score 72/100)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="background:#fef3c7;border-radius:10px;padding:18px 20px;margin-bottom:22px;border:1px solid #f59e0b33">
+            <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+                <td style="vertical-align:middle">
+                    <span style="font-size:16px;font-weight:700;color:#92400e">&#x26A0;&#xFE0F; &#1495;&#1513;&#1489;&#1493;&#1503; &#1495;&#1500;&#1511;&#1497;</span>
+                </td>
+                <td style="text-align:left;vertical-align:middle;width:160px">
+                    <div style="font-size:11px;color:#92400e;margin-bottom:4px;text-align:left">&#1510;&#1497;&#1493;&#1503;: 72/100</div>
+                    <div style="background:#fff;border-radius:20px;height:8px;overflow:hidden">
+                        <div style="background:#f59e0b;height:100%;width:72%;border-radius:20px"></div>
+                    </div>
+                </td>
+            </tr></table>
+            <p style="color:#92400e;margin:10px 0 0 0;font-size:13px">&#1495;&#1505;&#1512;&#1497;&#1501; 3 &#1513;&#1491;&#1493;&#1514; &#1489;&#1492;&#1514;&#1488;&#1502;&#1492; &#1500;&#1514;&#1511;&#1504;&#1493;&#1514; (&#1502;&#1505;' 2) &#1514;&#1513;&#1500;"&#1490;-1972:</p>
+            <div style="margin-top:8px">
+                <span style="display:inline-block;background:#fff;border:1px solid #f59e0b66;border-radius:20px;padding:3px 12px;margin:3px;font-size:12px;color:#92400e">&#1488;&#1512;&#1509; &#1502;&#1511;&#1493;&#1512;</span>
+                <span style="display:inline-block;background:#fff;border:1px solid #f59e0b66;border-radius:20px;padding:3px 12px;margin:3px;font-size:12px;color:#92400e">&#1514;&#1504;&#1488;&#1497; &#1488;&#1505;&#1508;&#1511;&#1492;</span>
+                <span style="display:inline-block;background:#fff;border:1px solid #f59e0b66;border-radius:20px;padding:3px 12px;margin:3px;font-size:12px;color:#92400e">&#1502;&#1513;&#1511;&#1500; &#1489;&#1512;&#1493;&#1496;&#1493;</span>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Excellent UX.</strong> Visual progress bar, Hebrew regulation reference ("&#1514;&#1511;&#1504;&#1493;&#1514; (&#1502;&#1505;' 2) &#1514;&#1513;&#1500;"&#1490;-1972"), missing fields as pills. Customs broker immediately sees what's needed.</div>
+
+<!-- ── SECTION 4: Synthesis ── -->
+<h3 style="color:#1a3a5c">4. Synthesis Section (line 1650)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Agent 6 Synthesis Output (Gemini 2.5 Pro)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="background:#f8faff;padding:18px 20px;border-radius:10px;border-right:4px solid #1a3a5c;margin-bottom:28px;font-size:14px;line-height:1.7;color:#333">
+            &#1492;&#1502;&#1513;&#1500;&#1493;&#1495; &#1499;&#1493;&#1500;&#1500; &#1502;&#1493;&#1510;&#1512;&#1497; &#1495;&#1513;&#1502;&#1500; &#1502;&#1497;&#1510;&#1512;&#1503; Philips &#1492;&#1493;&#1500;&#1504;&#1491;, &#1499;&#1493;&#1500;&#1500; &#1502;&#1497;&#1497;&#1489;&#1513;&#1497; &#1513;&#1497;&#1506;&#1512; &#1495;&#1513;&#1502;&#1500;&#1497;&#1497;&#1501; &#1493;&#1502;&#1499;&#1493;&#1504;&#1493;&#1514; &#1490;&#1497;&#1500;&#1493;&#1495;.
+            &#1492;&#1505;&#1497;&#1493;&#1493;&#1490; &#1492;&#1506;&#1497;&#1511;&#1512;&#1497; &#1492;&#1493;&#1488; &#1514;&#1495;&#1514; &#1508;&#1512;&#1511; 85 &#x2014; &#1502;&#1499;&#1493;&#1504;&#1493;&#1514; &#1493;&#1502;&#1499;&#1513;&#1497;&#1512;&#1497;&#1501; &#1495;&#1513;&#1502;&#1500;&#1497;&#1497;&#1501;.
+            &#1513;&#1497;&#1506;&#1493;&#1512; &#1492;&#1502;&#1499;&#1505; &#1504;&#1506; &#1489;&#1497;&#1503; 12%-14%. &#1504;&#1491;&#1512;&#1513; &#1488;&#1497;&#1513;&#1493;&#1512; &#1502;&#1499;&#1493;&#1503; &#1492;&#1514;&#1511;&#1504;&#1497;&#1501; &#1500;&#1508;&#1497; &#1510;&#1493; &#1497;&#1489;&#1493;&#1488; &#1495;&#1493;&#1508;&#1513;&#1497;.
+            &#1492;&#1502;&#1493;&#1510;&#1512;&#1497;&#1501; &#1502;&#1492;&#1493;&#1500;&#1504;&#1491; &#1494;&#1499;&#1488;&#1497;&#1501; &#1500;&#1492;&#1496;&#1489;&#1514; FTA &#1500;&#1508;&#1497; &#1492;&#1505;&#1499;&#1501; &#1497;&#1513;&#1512;&#1488;&#1500;-&#1488;&#1497;&#1495;&#1493;&#1491; &#1488;&#1497;&#1512;&#1493;&#1508;&#1497;.
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Good quality Hebrew.</strong> Gemini 2.5 Pro produces natural Hebrew prose. Chapter references are correct. Mentions FTA eligibility. Concise yet informative.</div>
+<div class="note"><strong>Observation:</strong> The synthesis section has no section header (unlike "&#1505;&#1497;&#1493;&#1493;&#1490;&#1497;&#1501;", "&#1512;&#1490;&#1493;&#1500;&#1510;&#1497;&#1492;", etc.). It renders as a standalone blue-bordered box. This is actually fine visually — it serves as a "summary" between the header and the detailed sections. No change needed.</div>
+
+<!-- ── SECTION 5: Classification Cards ── -->
+<h3 style="color:#1a3a5c">5. Classification Cards (lines 1652-1827)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Classification Card (Hair Dryer, high confidence)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="margin-bottom:14px">
+            <span style="font-size:17px;font-weight:700;color:#0f2439">&#1505;&#1497;&#1493;&#1493;&#1490;&#1497;&#1501;</span>
+            <div style="height:3px;width:50px;background:linear-gradient(90deg,#1a3a5c,#245a8a);border-radius:2px;margin-top:6px"></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+            <div style="background:#f8faff;padding:14px 18px;border-bottom:1px solid #e5e7eb">
+                <table style="width:100%" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle">
+                    <span style="background:#1a3a5c;color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px;margin-left:8px">&#1513;&#1493;&#1512;&#1492; 1</span>
+                    <span style="font-size:15px;font-weight:700;color:#0f2439">&#1502;&#1497;&#1497;&#1489;&#1513; &#1513;&#1497;&#1506;&#1512; &#1495;&#1513;&#1502;&#1500;&#1497; Philips BHD300</span>
+                </td>
+                <td style="text-align:left;vertical-align:middle"><span style="font-size:13px;color:#555;font-family:'Courier New',monospace">500 &#x00d7; $12.50</span></td>
+                </tr></table>
+                <div style="font-size:12px;color:#888;margin-top:6px">&#1495;&#1513;&#1489;&#1493;&#1504;&#1497;&#1514;: HAIR DRYER BHD300/00 220V 1600W</div>
+                <div style="font-size:12px;color:#888;margin-top:3px">&#1502;&#1511;&#1493;&#1512;: &#1492;&#1493;&#1500;&#1504;&#1491;</div>
+                <div style="font-size:12px;color:#555;margin-top:3px"><span style="color:#888">&#1502;&#1493;&#1499;&#1512;:</span> Philips Electronics B.V. &nbsp;|&nbsp; <span style="color:#888">&#1511;&#1493;&#1504;&#1492;:</span> &#1488;&#1500;&#1511;&#1496;&#1512;&#1493; &#1505;&#1495;&#1512; &#1489;&#1506;"&#1502;</div>
+            </div>
+            <div style="padding:16px 18px">
+                <div style="margin-bottom:14px">
+                    <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px">&#1511;&#1493;&#1491; HS</span><br>
+                    <span style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;color:#1a3a5c;letter-spacing:0.5px">8516.31.0000</span>
+                    <span style="color:#166534;font-size:11px;background:#dcfce7;padding:2px 8px;border-radius:10px;margin-right:6px">&#x2705; &#1488;&#1493;&#1502;&#1514; &#1512;&#1513;&#1502;&#1497;&#1514;</span>
+                    <div style="font-size:12px;color:#555;margin-top:4px;line-height:1.4;font-style:italic">&#1502;&#1497;&#1497;&#1489;&#1513;&#1497; &#1513;&#1497;&#1506;&#1512;</div>
+                </div>
+                <table style="width:100%;border-collapse:collapse" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="padding:8px 0;width:33%;border-top:1px solid #f0f0f0">
+                            <span style="font-size:11px;color:#888">&#1502;&#1499;&#1505;</span><br>
+                            <strong style="font-size:15px;color:#0f2439">12%</strong>
+                        </td>
+                        <td style="padding:8px 0;width:33%;border-top:1px solid #f0f0f0">
+                            <span style="font-size:11px;color:#888">&#1502;&#1505; &#1511;&#1504;&#1497;&#1497;&#1492;</span><br>
+                            <span style="font-size:14px;color:#aaa">&#1500;&#1488; &#1495;&#1500;</span>
+                        </td>
+                        <td style="padding:8px 0;width:33%;border-top:1px solid #f0f0f0">
+                            <span style="font-size:11px;color:#888">&#1502;&#1506;&#x05F3;&#1502;</span><br>
+                            <strong style="font-size:15px;color:#0f2439">18%</strong>
+                        </td>
+                    </tr>
+                </table>
+                <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+                    <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+                        <td style="font-size:11px;color:#888;vertical-align:middle">&#1493;&#1491;&#1488;&#1493;&#1514;</td>
+                        <td style="width:60%;vertical-align:middle;padding:0 10px">
+                            <div style="background:#f0f0f0;border-radius:20px;height:8px;overflow:hidden">
+                                <div style="background:#22c55e;height:100%;width:100%;border-radius:20px"></div>
+                            </div>
+                        </td>
+                        <td style="font-size:12px;font-weight:700;color:#22c55e;vertical-align:middle;text-align:left">&#1490;&#1489;&#1493;&#1492;&#1492;</td>
+                    </tr></table>
+                </div>
+
+                <!-- Justification Chain -->
+                <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+                    <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+                        <td style="vertical-align:middle"><span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px">&#1513;&#1512;&#1513;&#1512;&#1514; &#1504;&#1497;&#1502;&#1493;&#1511; &#1502;&#1513;&#1508;&#1496;&#1497;</span></td>
+                        <td style="text-align:left;vertical-align:middle">
+                            <div style="display:inline-block;background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:4px 12px;margin-top:8px">
+                                <span style="font-size:12px;color:#166534;letter-spacing:2px">&#9679;&#9679;&#9679;</span>
+                                <span style="font-size:12px;font-weight:700;color:#166534">&#1495;&#1494;&#1511; (100%)</span>
+                            </div>
+                        </td>
+                    </tr></table>
+
+                    <!-- Step 1: Chapter -->
+                    <div style="display:table;width:100%;margin-top:8px">
+                        <div style="display:table-cell;width:24px;vertical-align:top;padding-top:4px">
+                            <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;margin:0 auto"></div>
+                            <div style="width:2px;height:100%;background:#e5e7eb;margin:2px auto 0"></div>
+                        </div>
+                        <div style="display:table-cell;vertical-align:top;padding:0 0 6px 8px">
+                            <span style="font-size:10px;color:#888;text-transform:uppercase">&#1508;&#1512;&#1511;</span><br>
+                            <span style="font-size:12px;color:#333;font-weight:600">Chapter 85 — Electrical machinery and equipment</span>
+                            <div style="font-size:11px;color:#666;margin-top:2px;font-style:italic">Section XVI, Chapter 85 covers electro-thermic appliances for personal use</div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Heading -->
+                    <div style="display:table;width:100%;margin-top:8px">
+                        <div style="display:table-cell;width:24px;vertical-align:top;padding-top:4px">
+                            <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;margin:0 auto"></div>
+                            <div style="width:2px;height:100%;background:#e5e7eb;margin:2px auto 0"></div>
+                        </div>
+                        <div style="display:table-cell;vertical-align:top;padding:0 0 6px 8px">
+                            <span style="font-size:10px;color:#888;text-transform:uppercase">&#1508;&#1512;&#1497;&#1496;</span><br>
+                            <span style="font-size:12px;color:#333;font-weight:600">8516 — Electric instantaneous or storage water heaters and hair-drying apparatus</span>
+                            <div style="font-size:11px;color:#666;margin-top:2px;font-style:italic">GIR 1: heading text explicitly mentions &quot;hair-drying apparatus&quot;</div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Subheading -->
+                    <div style="display:table;width:100%;margin-top:8px">
+                        <div style="display:table-cell;width:24px;vertical-align:top;padding-top:4px">
+                            <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;margin:0 auto"></div>
+                            <div style="width:2px;height:100%;background:#e5e7eb;margin:2px auto 0"></div>
+                        </div>
+                        <div style="display:table-cell;vertical-align:top;padding:0 0 6px 8px">
+                            <span style="font-size:10px;color:#888;text-transform:uppercase">&#1514;&#1514;-&#1508;&#1512;&#1497;&#1496;</span><br>
+                            <span style="font-size:12px;color:#333;font-weight:600">8516.31 — Hair dryers</span>
+                            <div style="font-size:11px;color:#666;margin-top:2px;font-style:italic">Subheading 8516.31 specifically designates hair dryers</div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Chapter Notes -->
+                    <div style="display:table;width:100%;margin-top:8px">
+                        <div style="display:table-cell;width:24px;vertical-align:top;padding-top:4px">
+                            <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;margin:0 auto"></div>
+                            <div style="width:2px;height:100%;background:#e5e7eb;margin:2px auto 0"></div>
+                        </div>
+                        <div style="display:table-cell;vertical-align:top;padding:0 0 6px 8px">
+                            <span style="font-size:10px;color:#888;text-transform:uppercase">&#1492;&#1506;&#1512;&#1493;&#1514; &#1500;&#1508;&#1512;&#1511;</span><br>
+                            <span style="font-size:12px;color:#333;font-weight:600">Note 3 to Section XVI: composite machines classified by principal function</span>
+                            <div style="font-size:11px;color:#666;margin-top:2px;font-style:italic">Hair dryer is single-function — Note 3 confirms classification at 8516.31</div>
+                        </div>
+                    </div>
+
+                    <!-- Step 5: Directives -->
+                    <div style="display:table;width:100%;margin-top:8px">
+                        <div style="display:table-cell;width:24px;vertical-align:top;padding-top:4px">
+                            <div style="width:10px;height:10px;border-radius:50%;background:#ef4444;margin:0 auto"></div>
+                        </div>
+                        <div style="display:table-cell;vertical-align:top;padding:0 0 6px 8px">
+                            <span style="font-size:10px;color:#888;text-transform:uppercase">&#1492;&#1504;&#1495;&#1497;&#1493;&#1514; &#1505;&#1497;&#1493;&#1493;&#1490;</span><br>
+                            <span style="font-size:12px;color:#333;font-weight:600">No specific directive found for 8516.31</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Devil's Advocate -->
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
+                    <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px">&#1489;&#1491;&#1497;&#1511;&#1514; &#1495;&#1500;&#1493;&#1508;&#1493;&#1514; (Devil's Advocate)</span>
+                    <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:6px;padding:6px 12px;margin-top:6px;font-size:12px;color:#166534">
+                        <span style="font-weight:700">&#10003; &#1492;&#1505;&#1497;&#1493;&#1493;&#1490; &#1506;&#1502;&#1491; &#1489;&#1489;&#1491;&#1497;&#1511;&#1492;</span> &mdash; 3 &#1508;&#1512;&#1511;&#1497;&#1501; &#1504;&#1489;&#1491;&#1511;&#1493;
+                    </div>
+                    <div style="font-size:11px;color:#666;margin-top:4px;padding:3px 0;border-bottom:1px dotted #eee"><span style="font-weight:700">CH 84</span> &#10007; Mechanical appliances — but 8516 is electro-thermic, not mechanical</div>
+                    <div style="font-size:11px;color:#666;margin-top:4px;padding:3px 0;border-bottom:1px dotted #eee"><span style="font-weight:700">CH 96</span> &#10007; Miscellaneous articles — too broad, 8516 is more specific per GIR 3a</div>
+                </div>
+
+                <!-- Cross-check badge -->
+                <div style="margin-top:6px">
+                    <span style="display:inline-block;background:#dcfce7;color:#166534;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;margin-right:6px">T1 — AI Unanimous</span>
+                </div>
+
+                <!-- Per-item Ministry -->
+                <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+                    <span style="font-size:11px;color:#888">&#1488;&#1497;&#1513;&#1493;&#1512;&#1497; &#1502;&#1513;&#1512;&#1491;&#1497;&#1501; &#1504;&#1491;&#1512;&#1513;&#1497;&#1501;</span><br>
+                    <span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;margin:3px;font-size:12px;color:#1e40af">&#1502;&#1499;&#1493;&#1503; &#1492;&#1514;&#1511;&#1504;&#1497;&#1501;</span>
+                    <div style="font-size:11px;color:#666;margin:2px 0 4px 14px">&#1514;&#1511;&#1503; &#1497;&#1513;&#1512;&#1488;&#1500;&#1497;, &#1488;&#1497;&#1513;&#1493;&#1512; &#1492;&#1514;&#1488;&#1502;&#1492;</div>
+                </div>
+
+                <!-- Per-item FTA -->
+                <div style="margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px">
+                    <strong style="color:#166534">FTA:</strong> &#1492;&#1505;&#1499;&#1501; &#1497;&#1513;&#1512;&#1488;&#1500;-EU
+                    <span style="color:#166534;font-weight:700">&#1502;&#1499;&#1505; &#1502;&#1493;&#1508;&#1495;&#1514; 0%</span>
+                    <span style="color:#555">| &#1514;&#1506;&#1493;&#1491;&#1492;: EUR.1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="note good"><strong>Superb card design.</strong> Line number badge, HS code in monospace, confidence bar, tax grid, justification chain, devil's advocate, cross-check badge, ministry approvals, FTA — all in one compact, readable card.</div>
+
+<div class="note bad"><strong>ISSUE: Justification chain text is ALL ENGLISH.</strong> The step labels ("&#1508;&#1512;&#1511;", "&#1508;&#1512;&#1497;&#1496;", "&#1514;&#1514;-&#1508;&#1512;&#1497;&#1496;") are Hebrew but the <code>decision</code> and <code>source_text</code> fields come from <code>justification_engine.py</code> which generates ALL text in English. An Israeli customs broker reading "Chapter 85 covers electro-thermic appliances for personal use" in a Hebrew RTL email is jarring. This is the single biggest content quality issue in the report.</div>
+
+<div class="note bad"><strong>ISSUE: Devil's Advocate section title mixes Hebrew + English.</strong> "&#1489;&#1491;&#1497;&#1511;&#1514; &#1495;&#1500;&#1493;&#1508;&#1493;&#1514; (Devil's Advocate)" — the English term in parentheses is unnecessary and breaks the professional Hebrew tone. Israeli customs brokers know what "&#1489;&#1491;&#1497;&#1511;&#1514; &#1495;&#1500;&#1493;&#1508;&#1493;&#1514;" means.</div>
+
+<div class="note"><strong>Minor:</strong> Cross-check badge labels are entirely English: "T1 — AI Unanimous", "T2 — Majority", "T3 — AI Conflict", "T4 — Divergence". These should be bilingual or Hebrew. Suggested: "T1 — &#1492;&#1505;&#1499;&#1502;&#1492; &#1502;&#1500;&#1488;&#1492;", "T2 — &#1512;&#1493;&#1489;", "T3 — &#1495;&#1497;&#1500;&#1493;&#1511;&#1497; &#1491;&#1506;&#1493;&#1514;", "T4 — &#1505;&#1496;&#1497;&#1497;&#1492;"</div>
+
+<!-- ── SECTION 6: Regulatory ── -->
+<h3 style="color:#1a3a5c">6. Regulatory & Ministry Section (lines 1830-1878)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Ministry Routing (Firestore data)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="margin:28px 0 14px">
+            <span style="font-size:17px;font-weight:700;color:#0f2439">&#1512;&#1490;&#1493;&#1500;&#1510;&#1497;&#1492; &#1493;&#1488;&#1497;&#1513;&#1493;&#1512;&#1497;&#1501;</span>
+            <div style="height:3px;width:50px;background:linear-gradient(90deg,#1a3a5c,#245a8a);border-radius:2px;margin-top:6px"></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:10px">
+            <div style="font-family:'Courier New',monospace;font-weight:700;color:#1a3a5c;margin-bottom:10px">8516.31.0000</div>
+            <div style="font-size:13px;color:#555;margin-bottom:12px">&#1502;&#1493;&#1510;&#1512; &#1495;&#1513;&#1502;&#1500;&#1497; &#1489;&#1497;&#1514;&#1497; &#x2014; &#1504;&#1491;&#1512;&#1513; &#1488;&#1497;&#1513;&#1493;&#1512; &#1502;&#1499;&#1493;&#1503; &#1492;&#1514;&#1511;&#1504;&#1497;&#1501;</div>
+            <div style="background:#f8faff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:8px">
+                <div style="font-weight:700;color:#1e40af;font-size:13px"><span style="color:#166534;font-size:10px;background:#dcfce7;padding:1px 6px;border-radius:8px;margin-left:4px">API</span>&#1502;&#1499;&#1493;&#1503; &#1492;&#1514;&#1511;&#1504;&#1497;&#1501; &#1492;&#1497;&#1513;&#1512;&#1488;&#1500;&#1497;</div>
+                <div style="margin-top:6px">
+                    <span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;margin:2px;font-size:11px;color:#1e40af">&#1514;&#1511;&#1503; &#1497;&#1513;&#1512;&#1488;&#1500;&#1497;</span>
+                    <span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;margin:2px;font-size:11px;color:#1e40af">&#1488;&#1497;&#1513;&#1493;&#1512; &#1492;&#1514;&#1488;&#1502;&#1492;</span>
+                </div>
+                <div style="font-size:11px;color:#888;margin-top:4px">&#1492;&#1490;&#1513;&#1492; &#1491;&#1512;&#1498; &#1488;&#1514;&#1512; &#1502;&#1499;&#1493;&#1503; &#1492;&#1514;&#1511;&#1504;&#1497;&#1501;</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Excellent.</strong> "API" badge distinguishes Firestore-sourced data from AI guesses. Ministry name in Hebrew, document pills are concise. HS code in monospace. Professional layout.</div>
+<div class="note"><strong>Minor:</strong> The "API" badge appears on the LEFT of the ministry name (in RTL), which could be confusing. Should appear on the RIGHT (before the ministry name in RTL flow). This is a CSS issue: <code>margin-left</code> should be <code>margin-right</code>.</div>
+
+<!-- ── SECTION 7: FTA ── -->
+<h3 style="color:#1a3a5c">7. FTA Benefits Section (lines 1879-1937)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — FTA Benefit (EU agreement)</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="margin:28px 0 14px">
+            <span style="font-size:17px;font-weight:700;color:#166534">&#1492;&#1496;&#1489;&#1493;&#1514; &#1505;&#1495;&#1512; (FTA)</span>
+            <div style="height:3px;width:50px;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:2px;margin-top:6px"></div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 18px;margin-bottom:10px">
+            <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+                <td style="vertical-align:middle"><strong style="color:#166534;font-size:14px">&#1492;&#1493;&#1500;&#1504;&#1491;</strong>
+                    <span style="color:#555;font-size:13px"> &#x2014; &#1492;&#1505;&#1499;&#1501; &#1513;&#1497;&#1514;&#1493;&#1507; &#1508;&#1506;&#1493;&#1500;&#1492; &#1497;&#1513;&#1512;&#1488;&#1500;-&#1488;&#1497;&#1495;&#1493;&#1491; &#1488;&#1497;&#1512;&#1493;&#1508;&#1497;</span></td>
+                <td style="text-align:left;vertical-align:middle"><span style="background:#22c55e;color:#fff;font-weight:700;padding:4px 14px;border-radius:20px;font-size:13px">&#1502;&#1499;&#1505; 0%</span></td>
+            </tr></table>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #bbf7d0">
+                <div style="font-size:12px;color:#555;margin-bottom:3px">&#1492;&#1493;&#1499;&#1495;&#1514; &#1502;&#1511;&#1493;&#1512;: <strong>EUR.1</strong></div>
+                <div style="font-size:12px;color:#555;margin-bottom:3px">&#1495;&#1500;&#1493;&#1508;&#1492;: &#1492;&#1510;&#1492;&#1512;&#1514; &#1505;&#1508;&#1511; &#1506;&#1500; &#1492;&#1495;&#1513;&#1489;&#1493;&#1504;&#1497;&#1514;</div>
+                <div style="font-size:12px;color:#555;margin-bottom:3px">&#1510;&#1489;&#1497;&#1512;&#1492;: &#1510;&#1489;&#1497;&#1512;&#1492; &#1488;&#1497;&#1512;&#1493;-&#1497;&#1501; &#1514;&#1497;&#1499;&#1493;&#1504;&#1497;&#1514;</div>
+                <div style="font-size:12px;color:#555;margin-bottom:3px">&#1489;&#1505;&#1497;&#1505; &#1502;&#1513;&#1508;&#1496;&#1497;: &#1510;&#1493; &#1514;&#1506;&#1512;&#1497;&#1507; &#1492;&#1502;&#1499;&#1505;</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Actionable information.</strong> Country, agreement name, preferential rate pill, origin proof document, alternative, cumulation rule, legal basis — everything a broker needs to claim FTA. Green color scheme correctly signals "savings".</div>
+
+<!-- ── SECTION 8: Risk ── -->
+<h3 style="color:#1a3a5c">8. Risk Section (lines 1939-1951)</h3>
+<div class="note good"><strong>Good but rarely triggered.</strong> Only shows for "&#1490;&#1489;&#1493;&#1492;" (high) or "&#1489;&#1497;&#1504;&#1493;&#1504;&#1497;" (medium) risk. Red/orange color scheme is appropriate. Hebrew labels correct. Items list with issue descriptions is clear.</div>
+
+<!-- ── SECTION 9: Smart Questions ── -->
+<h3 style="color:#1a3a5c">9. Smart Questions Section (lines 1953-1964)</h3>
+<div class="note"><strong>Reviewed in 01_smart_questions_sample.html.</strong> Score: 8.4/10. Rendered by <code>format_questions_html()</code> from <code>smart_questions.py</code>. Renders as a standalone collapsible section. Good structure, minor Hebrew issues noted in that audit.</div>
+
+<!-- ── SECTION 10: Original Email Quote ── -->
+<h3 style="color:#1a3a5c">10. Original Email Quoting (lines 1966-1975)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Original Email Quote</div>
+    <div style="direction:rtl;padding:15px;background:#fff">
+        <div style="margin-top:28px;padding-top:20px;border-top:2px solid #e0e0e0">
+            <div style="font-size:12px;color:#888;margin-bottom:8px">&#1492;&#1493;&#1491;&#1506;&#1492; &#1502;&#1511;&#1493;&#1512;&#1497;&#1514;:</div>
+            <blockquote style="margin:0;padding:12px 16px;border-right:3px solid #ccc;background:#f9f9f9;border-radius:4px;font-size:13px;color:#555;white-space:pre-wrap;direction:rtl">Dear RCB,
+
+Please classify the attached invoice for Philips hair dryers and shavers.
+Shipment coming from Netherlands via MSC, B/L MEDURS24876.
+
+Thanks,
+David @ Electro Trade Ltd.</blockquote>
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Clean quoting.</strong> Hebrew label "&#1492;&#1493;&#1491;&#1506;&#1492; &#1502;&#1511;&#1493;&#1512;&#1497;&#1514;", right-border blockquote, 2000-char truncation limit prevents huge emails from bloating the report.</div>
+
+<!-- ── SECTION 11: Footer ── -->
+<h3 style="color:#1a3a5c">11. Footer (lines 1977-1994)</h3>
+<div class="sample-box">
+    <div class="sample-box-header">LIVE SAMPLE — Footer</div>
+    <div style="direction:rtl">
+        <div style="background:#f8faff;padding:24px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">
+            <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
+                <td style="vertical-align:middle;width:60px">
+                    <img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
+                </td>
+                <td style="vertical-align:middle;border-right:3px solid #1a3a5c;padding-right:16px">
+                    <strong style="color:#0f2439;font-size:14px">RCB &#x2014; AI Customs Broker</strong><br>
+                    <span style="color:#666;font-size:12px">R.P.A. PORT LTD</span>
+                    <span style="color:#ccc;margin:0 6px">|</span>
+                    <span style="color:#1a3a5c;font-size:12px">rcb@rpa-port.co.il</span>
+                </td>
+            </tr></table>
+            <p style="font-size:10px;color:#aaa;margin:16px 0 0 0;line-height:1.5;border-top:1px solid #e8e8e8;padding-top:12px">&#x26A0;&#xFE0F; &#1492;&#1502;&#1500;&#1510;&#1492; &#1512;&#1488;&#1513;&#1493;&#1504;&#1497;&#1514; &#1489;&#1500;&#1489;&#1491;. &#1497;&#1513; &#1500;&#1488;&#1502;&#1514; &#1506;&#1501; &#1506;&#1502;&#1497;&#1500; &#1502;&#1499;&#1505; &#1502;&#1493;&#1505;&#1502;&#1498;. &#1491;&#1493;&#x05F3;&#1495; &#1494;&#1492; &#1492;&#1493;&#1508;&#1511; &#1489;&#1488;&#1493;&#1508;&#1503; &#1488;&#1493;&#1496;&#1493;&#1502;&#1496;&#1497; &#1493;&#1488;&#1497;&#1504;&#1493; &#1502;&#1492;&#1493;&#1493;&#1492; &#1497;&#1497;&#1506;&#1493;&#1509; &#1512;&#1513;&#1502;&#1497;.</p>
+        </div>
+    </div>
+</div>
+<div class="note good"><strong>Professional footer.</strong> Company branding, email address, legal disclaimer in Hebrew. The disclaimer text is appropriately cautious ("&#1492;&#1502;&#1500;&#1510;&#1492; &#1512;&#1488;&#1513;&#1493;&#1504;&#1497;&#1514; &#1489;&#1500;&#1489;&#1491;") — important for legal protection.</div>
+
+<!-- ════════════════════════════════════════════ -->
+<hr class="divider">
+
+<div class="section-title">Issue Summary</div>
+
+<table class="summary-table">
+    <tr>
+        <th style="width:40px">#</th>
+        <th>Issue</th>
+        <th style="width:80px">Severity</th>
+        <th style="width:80px">Section</th>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td><strong>Justification chain text entirely in English</strong> — "decision" and "source_text" from justification_engine.py are all English. Hebrew step labels wrap English content. Israeli customs brokers expect Hebrew.</td>
+        <td style="color:#991b1b;font-weight:700">HIGH</td>
+        <td>5 (Cards)</td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td><strong>Devil's Advocate title has English in parentheses</strong> — "&#1489;&#1491;&#1497;&#1511;&#1514; &#1495;&#1500;&#1493;&#1508;&#1493;&#1514; (Devil's Advocate)" mixes languages. The Hebrew alone is sufficient.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>5 (Cards)</td>
+    </tr>
+    <tr>
+        <td>3</td>
+        <td><strong>Cross-check tier labels entirely in English</strong> — "T1 — AI Unanimous" etc. Should have Hebrew equivalents.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>5 (Cards)</td>
+    </tr>
+    <tr>
+        <td>4</td>
+        <td><strong>API badge positioned wrong in RTL</strong> — <code>margin-left:4px</code> on API badge pushes it to wrong side in RTL. Should be <code>margin-right:4px</code>.</td>
+        <td style="color:#555;font-weight:700">LOW</td>
+        <td>6 (Regulatory)</td>
+    </tr>
+    <tr>
+        <td>5</td>
+        <td><strong>Daily digest section headers in English</strong> — report_builder.py uses "Classification Intelligence", "Action: confirm correct chapter", "chapter dispute" — all English text in a Hebrew RTL digest.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>Daily Digest</td>
+    </tr>
+    <tr>
+        <td>6</td>
+        <td><strong>Daily digest "How to respond:" instruction in English</strong> — Line 694: "Reply to this email with answers to pupil questions. Format: Q1: your answer" — should be Hebrew.</td>
+        <td style="color:#92400e;font-weight:700">MEDIUM</td>
+        <td>Daily Digest</td>
+    </tr>
+</table>
+
+<!-- ════════════════════════════════════════════ -->
+<hr class="divider">
+
+<div class="section-title">Prioritized Recommendations (Content/Template Only)</div>
+
+<div class="recommendation">
+    <strong>1. [HIGH] Translate justification chain step labels</strong><br>
+    In <code>report_builder.py</code>, the <code>_STEP_LABELS_HE</code> dict already maps step numbers to Hebrew labels. The <code>decision</code> text comes from <code>justification_engine.py</code> and is always English. Two options:<br>
+    <strong>Option A (quick):</strong> Add a translation map for common justification phrases in <code>report_builder.py</code>.<br>
+    <strong>Option B (better):</strong> Have <code>justification_engine.py</code> generate parallel <code>decision_he</code> fields — the Hebrew text already exists in the tariff data.
+</div>
+
+<div class="recommendation">
+    <strong>2. [MEDIUM] Remove English from Devil's Advocate title</strong><br>
+    In <code>report_builder.py:171</code>, change the section title from <code>'&#1489;&#1491;&#1497;&#1511;&#1514; &#1495;&#1500;&#1493;&#1508;&#1493;&#1514; (Devil\'s Advocate)'</code> to just <code>'&#1489;&#1491;&#1497;&#1511;&#1514; &#1495;&#1500;&#1493;&#1508;&#1493;&#1514;'</code>. Simple string change.
+</div>
+
+<div class="recommendation">
+    <strong>3. [MEDIUM] Add Hebrew cross-check tier labels</strong><br>
+    In <code>report_builder.py:251-254</code>, add Hebrew labels: <code>"T1 &#x2014; &#1492;&#1505;&#1499;&#1502;&#1492;"</code>, <code>"T2 &#x2014; &#1512;&#1493;&#1489;"</code>, <code>"T3 &#x2014; &#1495;&#1497;&#1500;&#1493;&#1511;&#1497; &#1491;&#1506;&#1493;&#1514;"</code>, <code>"T4 &#x2014; &#1505;&#1496;&#1497;&#1497;&#1492;"</code>.
+</div>
+
+<div class="recommendation">
+    <strong>4. [MEDIUM] Translate daily digest English strings</strong><br>
+    In <code>report_builder.py</code> daily digest sections:<br>
+    &bull; Line 615: "Classification Intelligence" &#x2192; "&#1502;&#1493;&#1491;&#1497;&#1506;&#1497;&#1503; &#1505;&#1497;&#1493;&#1493;&#1490;"<br>
+    &bull; Line 693-695: "How to respond:" &#x2192; "&#1488;&#1497;&#1498; &#1500;&#1492;&#1513;&#1497;&#1489;:" / "&#1492;&#1513;&#1489; &#1500;&#1502;&#1497;&#1497;&#1500; &#1494;&#1492; &#1506;&#1501; &#1514;&#1513;&#1493;&#1489;&#1493;&#1514;. &#1508;&#1493;&#1512;&#1502;&#1496;: Q1: &#1514;&#1513;&#1493;&#1489;&#1492;"<br>
+    &bull; Lines 803-806: "chapter dispute" / "knowledge gap" badges &#x2192; "&#1502;&#1495;&#1500;&#1493;&#1511;&#1514; &#1508;&#1512;&#1511;&#1497;&#1501;" / "&#1508;&#1506;&#1512; &#1497;&#1491;&#1506;"<br>
+    &bull; Line 842: "Action:" &#x2192; "&#1504;&#1491;&#1512;&#1513;:"
+</div>
+
+<div class="recommendation">
+    <strong>5. [LOW] Fix API badge RTL position</strong><br>
+    In <code>classification_agents.py:1846</code>, change <code>margin-left:4px</code> to <code>margin-right:4px</code> on the API badge span so it appears before the ministry name in RTL flow.
+</div>
+
+</div><!-- audit-body -->
+</div><!-- audit-wrapper -->
+</body>
+</html>
