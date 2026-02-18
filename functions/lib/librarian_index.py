@@ -525,6 +525,13 @@ COLLECTION_FIELDS = {
         "hs_fields": ["old_hs_code", "new_hs_code"],
         "doc_type": "alert",
     },
+    # Session 45: Email quality gate log
+    "email_quality_log": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["recipient", "deal_id", "alert_type", "reason"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension

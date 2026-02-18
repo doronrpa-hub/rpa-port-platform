@@ -5,7 +5,8 @@ import requests
 import base64
 import io
 import re
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta, timezone
 
 # ============================================================
 # PDF TEXT EXTRACTION (with OCR fallback)
@@ -701,13 +702,28 @@ def helper_graph_mark_read(access_token, user_email, message_id):
     except Exception as e:
         print(f"Graph mark-read error: {e}")
 
-def helper_graph_send(access_token, user_email, to_email, subject, body_html, reply_to_id=None, attachments_data=None, internet_message_id=None):
+def helper_graph_send(access_token, user_email, to_email, subject, body_html,
+                      reply_to_id=None, attachments_data=None, internet_message_id=None,
+                      deal_id=None, alert_type=None, db=None):
     """Send email via Graph API.
 
     Note: internet_message_id is accepted for backward compatibility but
     Graph API rejects standard In-Reply-To/References headers (must start with x-).
     For proper threading, use helper_graph_reply() with the Graph message ID instead.
+
+    Optional gate params (deal_id, alert_type, db) enable Firestore dedup checks.
     """
+    # ── Email quality gate (fail-open) ──
+    try:
+        approved, reason = email_quality_gate(
+            to_email, subject, body_html,
+            deal_id=deal_id, alert_type=alert_type, db=db)
+        if not approved:
+            print(f"\U0001f4e7 Email BLOCKED by quality gate: {reason} | to={to_email} subj={(subject or '')[:60]}")
+            return False
+    except Exception:
+        pass  # fail open — gate error never blocks sending
+
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/sendMail"
         message = {
@@ -806,6 +822,193 @@ def validate_email_before_send(subject, body_html):
     if len(meaningful) < 10:
         return False, "body_only_dashes"
     return True, "ok"
+
+
+# ============================================================
+# EMAIL QUALITY GATE (Session 45)
+# ============================================================
+
+_GENERIC_SUBJECTS = frozenset({
+    "test", "hello", "hi", "שלום", "בדיקה", "no subject",
+    "notification", "update", "fyi", "info",
+})
+
+_PLACEHOLDER_RE = re.compile(
+    r'^[\s\-\u2014\u2013]*$'
+    r'|^טרם הגיע$'
+    r'|^—$'
+    r'|^N/?A$',
+    re.IGNORECASE,
+)
+
+_TD_RE = re.compile(r'<td[^>]*>(.*?)</td>', re.DOTALL | re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+
+def _log_email_quality(db, approved, reason, recipient, subject,
+                       deal_id, alert_type, content_hash):
+    """Log gate decision to Firestore. Fire-and-forget, never raises."""
+    if not db:
+        return
+    try:
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        record = {
+            "approved": approved,
+            "reason": reason,
+            "recipient": recipient or "",
+            "subject": (subject or "")[:200],
+            "deal_id": deal_id or "",
+            "alert_type": alert_type or "",
+            "content_hash": content_hash or "",
+            "timestamp": now_iso,
+        }
+        db.collection("email_quality_log").add(record)
+
+        # Update dedup tracking docs on approval only
+        if approved:
+            if deal_id and alert_type:
+                dedup_key = f"dedup_{deal_id}_{alert_type}"
+                db.collection("email_quality_log").document(dedup_key).set({
+                    "timestamp": now_iso,
+                    "recipient": recipient or "",
+                    "type": "dedup_tracker",
+                })
+            if deal_id and recipient:
+                subj_key = f"subj_{deal_id}_{hashlib.md5((recipient or '').lower().encode()).hexdigest()[:8]}"
+                db.collection("email_quality_log").document(subj_key).set({
+                    "subject": subject or "",
+                    "timestamp": now_iso,
+                    "type": "subject_tracker",
+                })
+            is_digest = (
+                "digest" in (alert_type or "").lower()
+                or "\u05d3\u05d5\u05d7 \u05d1\u05d5\u05e7\u05e8" in (subject or "")
+                or "digest" in (subject or "").lower()
+            )
+            if is_digest and recipient:
+                digest_key = f"digest_{hashlib.md5((recipient or '').lower().encode()).hexdigest()[:8]}"
+                db.collection("email_quality_log").document(digest_key).set({
+                    "content_hash": content_hash or "",
+                    "timestamp": now_iso,
+                    "type": "digest_tracker",
+                })
+    except Exception as e:
+        print(f"\u26a0\ufe0f _log_email_quality error (non-fatal): {e}")
+
+
+def email_quality_gate(recipient, subject, html_body,
+                       deal_id=None, alert_type=None, db=None):
+    """Central email quality gate. Every outgoing email passes through here.
+
+    Returns (approved: bool, reason: str).
+    Fail-open: any internal error returns (True, "gate_error_failopen").
+    """
+    try:
+        # ── Rule 5: never send to self ──
+        if recipient and recipient.lower().strip() == "rcb@rpa-port.co.il":
+            _log_email_quality(db, False, "self_send", recipient, subject,
+                               deal_id, alert_type, None)
+            return False, "self_send"
+
+        # ── Rule 1: body empty or under 200 characters ──
+        if not html_body or len(html_body) < 200:
+            _log_email_quality(db, False, "body_under_200", recipient, subject,
+                               deal_id, alert_type, None)
+            return False, "body_under_200"
+
+        # ── Rule 2a: subject empty or generic ──
+        if not subject or not subject.strip():
+            _log_email_quality(db, False, "empty_subject", recipient, subject,
+                               deal_id, alert_type, None)
+            return False, "empty_subject"
+        stripped_subj = _RE_FWD_PATTERN.sub('', subject).strip()
+        if not stripped_subj or len(stripped_subj) < 3:
+            _log_email_quality(db, False, "generic_subject", recipient, subject,
+                               deal_id, alert_type, None)
+            return False, "generic_subject"
+        if stripped_subj.lower() in _GENERIC_SUBJECTS:
+            _log_email_quality(db, False, "generic_subject", recipient, subject,
+                               deal_id, alert_type, None)
+            return False, "generic_subject"
+
+        # ── Rule 3: all data cells are placeholder ──
+        td_cells = _TD_RE.findall(html_body)
+        if len(td_cells) > 3:
+            real_data = 0
+            for cell_html in td_cells:
+                cell_text = _HTML_TAG_RE.sub('', cell_html).strip()
+                if cell_text and not _PLACEHOLDER_RE.match(cell_text):
+                    real_data += 1
+            if real_data == 0:
+                _log_email_quality(db, False, "all_placeholder_data", recipient,
+                                   subject, deal_id, alert_type, None)
+                return False, "all_placeholder_data"
+
+        # ── Content hash for dedup ──
+        content_hash = hashlib.md5(
+            html_body.encode('utf-8', errors='replace')
+        ).hexdigest()
+
+        # ── Firestore-dependent rules (skip if no db) ──
+        if db:
+            try:
+                # Rule 4: same deal_id + alert_type within 4 hours
+                if deal_id and alert_type:
+                    dedup_key = f"dedup_{deal_id}_{alert_type}"
+                    dedup_doc = db.collection("email_quality_log").document(dedup_key).get()
+                    if dedup_doc.exists:
+                        last_ts_str = dedup_doc.to_dict().get("timestamp", "")
+                        if last_ts_str:
+                            last_ts = datetime.fromisoformat(last_ts_str)
+                            if not last_ts.tzinfo:
+                                last_ts = last_ts.replace(tzinfo=timezone.utc)
+                            age = datetime.now(timezone.utc) - last_ts
+                            if age.total_seconds() < 4 * 3600:
+                                _log_email_quality(db, False, "dedup_4h", recipient,
+                                                   subject, deal_id, alert_type,
+                                                   content_hash)
+                                return False, "dedup_4h"
+
+                # Rule 2b: subject unchanged from last send to same deal+recipient
+                if deal_id and recipient:
+                    subj_key = f"subj_{deal_id}_{hashlib.md5((recipient or '').lower().encode()).hexdigest()[:8]}"
+                    subj_doc = db.collection("email_quality_log").document(subj_key).get()
+                    if subj_doc.exists:
+                        if subj_doc.to_dict().get("subject") == subject:
+                            _log_email_quality(db, False, "unchanged_subject",
+                                               recipient, subject, deal_id,
+                                               alert_type, content_hash)
+                            return False, "unchanged_subject"
+
+                # Rule 6: digest content identical to last digest
+                is_digest = (
+                    "digest" in (alert_type or "").lower()
+                    or "\u05d3\u05d5\u05d7 \u05d1\u05d5\u05e7\u05e8" in (subject or "")
+                    or "digest" in (subject or "").lower()
+                )
+                if is_digest and recipient:
+                    digest_key = f"digest_{hashlib.md5((recipient or '').lower().encode()).hexdigest()[:8]}"
+                    digest_doc = db.collection("email_quality_log").document(digest_key).get()
+                    if digest_doc.exists:
+                        if digest_doc.to_dict().get("content_hash") == content_hash:
+                            _log_email_quality(db, False, "duplicate_digest",
+                                               recipient, subject, deal_id,
+                                               alert_type, content_hash)
+                            return False, "duplicate_digest"
+            except Exception as e:
+                # Firestore errors → fail open, skip remaining Firestore rules
+                print(f"\u26a0\ufe0f email_quality_gate Firestore error (skipping): {e}")
+
+        # ── Approved ──
+        _log_email_quality(db, True, "approved", recipient, subject,
+                           deal_id, alert_type, content_hash)
+        return True, "approved"
+
+    except Exception as e:
+        # Fail open — never block legitimate email
+        print(f"\u26a0\ufe0f email_quality_gate error (fail-open): {e}")
+        return True, "gate_error_failopen"
 
 
 # ============================================================
