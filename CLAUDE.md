@@ -846,3 +846,73 @@ CC email → main.py CC handler:
 
 ### Test Results
 - **457 passed**, 2 skipped — no regressions
+
+## Session 34b Summary (2026-02-18) — Elimination Engine Live Testing + 3 Bug Fixes
+
+### What Was Done
+
+Ran the elimination engine against production Firestore with 3 test products. Found and fixed 3 bugs. All 3 tests pass after fixes.
+
+### Bugs Found & Fixed in `elimination_engine.py`
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| `chapter_names` crash (TypeError) | `tariff_structure` stores chapter names as `{name_he, name_en}` dicts; code called `.values()` expecting strings | Unwrap dicts, extract both `name_he` and `name_en` fields |
+| Section scope too aggressive (false eliminations) | `_extract_keywords` capped at 15 words — section text spanning 12 chapters got truncated. Also Hebrew prefixes (`מפלדה` vs `פלדה`) prevented matching | Added `limit` parameter (100 for sections, 30 for products); added Hebrew prefix stripping (מ,ב,ל,ה,ו,כ,ש); included material/form/use in product keywords |
+| No last-survivor safety (0 survivors possible) | Section scope could eliminate ALL candidates if all sections had zero overlap | Added guard: skip section elimination when no alive candidates would remain outside that section |
+
+### Live Test Results (3 products, production Firestore)
+
+**Test 1: Steel storage boxes → ch.73 (7326.9000) — PASS, 1 survivor**
+```
+5 candidates → Section scope kills ch.94 (furniture, Section XX) and ch.44 (wood, Section IX)
+            → GIR 1 kills ch.83 8310 (sign-plates, score 0.10 vs best 0.38)
+            → GIR 3b kills 7310 (sealed containers — doesn't match open/foldable)
+            → Survivor: 7326.9000 "Other articles of iron or steel" ✓
+```
+
+**Test 2: Rubber gloves (medical) → ch.40 (4015.1900) — PASS, 1 survivor**
+```
+5 candidates → Section scope kills ch.61 + ch.62 (textiles, Section XI — rubber ≠ textiles)
+            → GIR 1 kills ch.39 3926 (plastic apparel, score 0.17 vs best 0.79)
+            → GIR 3b kills ch.90 9018 (medical instruments — essential material is rubber, not instruments)
+            → Survivor: 4015.1900 "Gloves of vulcanized rubber" ✓
+```
+
+**Test 3: Li-ion battery (EV) → ch.85 (8507.6000) — PASS, 3 survivors (needs_ai=True)**
+```
+5 candidates → GIR 1 kills 8541 (semiconductors, score 0.17) and 8708 (vehicle parts, score 0.17)
+            → GIR 3c boosts 8703 (last numerical) but can't eliminate — 3 tied
+            → Survivors: 8507.6000 (Li-ion accumulators, conf=70) ✓
+                         8703.8000 (electric vehicles, conf=41)
+                         8501.3200 (electric motors, conf=30)
+            → needs_ai=True — D6 AI consultation would resolve in production
+```
+
+### Elimination Engine Levels Exercised
+
+| Level | Exercised | Eliminations Made |
+|-------|-----------|-------------------|
+| Level 0: Enrich (section resolution) | All 3 tests | — (enrichment only) |
+| Level 1: Section scope | Tests 1, 2 | ch.94, ch.44, ch.61, ch.62 eliminated |
+| Level 2a-2d: Chapter notes | All 3 tests | No eliminations (notes didn't trigger) |
+| Level 3: GIR 1 heading match | All 3 tests | ch.83 8310, ch.39 3926, ch.85 8541, ch.87 8708 |
+| Level 3b: Subheading notes | All 3 tests | No eliminations |
+| Level 4a: GIR 3 tiebreak | Tests 1, 2, 3 | 7310, 9018 eliminated via GIR 3b |
+| Level 4b: Others gate | All 3 tests | No eliminations |
+| Level 4c: AI consultation (D6) | Skipped | No API keys (deterministic-only run) |
+| Level 6: Devil's advocate (D7) | Skipped | No API keys |
+| Level 7: Elimination logging (D8) | All 3 tests | 3 docs written to `elimination_log` |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/elimination_engine.py` | 3 bug fixes: chapter_names dict handling, keyword extraction limit+Hebrew prefixes, last-survivor safety guard |
+| `functions/test_elimination_live.py` | NEW: 3-scenario live test script against production Firestore |
+
+### Git Commit
+- `b438e39` — Fix 3 elimination engine bugs found by live Firestore testing
+
+### Test Results
+- **457 passed**, 2 skipped — no regressions
+- **3/3 live elimination tests pass** — correct chapters survive in all scenarios
