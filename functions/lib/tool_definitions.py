@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 12 tools available to the AI during classification.
+Defines the 13 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -283,6 +283,61 @@ CLAUDE_TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "run_elimination",
+        "description": (
+            "Run the elimination engine on candidate HS codes. "
+            "Walks the Israeli customs tariff tree deterministically: "
+            "section scope, chapter exclusions/inclusions, GIR rules 1+3, "
+            "others-gate, and AI consultation. Returns surviving candidates "
+            "with elimination reasoning. Use AFTER search_tariff returns "
+            "multiple candidates to narrow them down."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_description": {
+                    "type": "string",
+                    "description": "Product description (English or Hebrew)",
+                },
+                "product_material": {
+                    "type": "string",
+                    "description": "Primary material(s) of the product",
+                },
+                "product_form": {
+                    "type": "string",
+                    "description": "Physical form/shape of the product",
+                },
+                "product_use": {
+                    "type": "string",
+                    "description": "Intended use/function of the product",
+                },
+                "origin_country": {
+                    "type": "string",
+                    "description": "Country of origin",
+                },
+                "candidates": {
+                    "type": "array",
+                    "description": "List of candidate HS codes to evaluate",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "hs_code": {
+                                "type": "string",
+                                "description": "HS code (e.g., '7326.9000')",
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "description": "Confidence score 0-100",
+                            },
+                        },
+                        "required": ["hs_code"],
+                    },
+                },
+            },
+            "required": ["product_description", "candidates"],
+        },
+    },
 ]
 
 
@@ -327,14 +382,15 @@ WORKFLOW:
 2. If memory miss, call search_tariff to find candidate HS codes from the knowledge base.
 3. Call lookup_tariff_structure to identify the relevant section and narrow down chapters.
 4. Call get_chapter_notes to check inclusion/exclusion rules for the relevant chapter.
-5. Use your customs expertise to select the best HS code from candidates.
-6. Call verify_hs_code to validate your chosen code against the official tariff DB.
-7. Call check_regulatory to find ministry requirements and permits.
-8. Call lookup_fta to check FTA eligibility if origin country is known.
-9. Call lookup_framework_order to check legal definitions or classification rules from the Framework Order if needed.
-10. Call search_classification_directives to check if an official classification directive exists for the product or HS code.
-11. Call search_legal_knowledge to check relevant legal provisions, standards reforms (EU/US), or customs agents law if needed.
-12. Call assess_risk for risk assessment.
+5. If search_tariff returned multiple candidates, call run_elimination to narrow them down using GIR rules and chapter notes. This walks the tariff tree deterministically and eliminates wrong candidates.
+6. Use your customs expertise to select the best HS code from survivors.
+7. Call verify_hs_code to validate your chosen code against the official tariff DB.
+8. Call check_regulatory to find ministry requirements and permits.
+9. Call lookup_fta to check FTA eligibility if origin country is known.
+10. Call lookup_framework_order to check legal definitions or classification rules from the Framework Order if needed.
+11. Call search_classification_directives to check if an official classification directive exists for the product or HS code.
+12. Call search_legal_knowledge to check relevant legal provisions, standards reforms (EU/US), or customs agents law if needed.
+13. Call assess_risk for risk assessment.
 
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.

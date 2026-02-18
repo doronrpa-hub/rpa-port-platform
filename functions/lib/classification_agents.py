@@ -123,6 +123,14 @@ except ImportError as e:
     print(f"Cross-checker not available: {e}")
     CROSS_CHECK_AVAILABLE = False
 
+# Elimination engine: deterministic tariff tree walker (Session 33, Block D)
+try:
+    from lib.elimination_engine import eliminate, candidates_from_pre_classify, make_product_info
+    ELIMINATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Elimination engine not available: {e}")
+    ELIMINATION_AVAILABLE = False
+
 # =============================================================================
 # FEATURE FLAGS (Session 26/27: cost optimization + cross-check)
 # =============================================================================
@@ -131,6 +139,7 @@ PRE_CLASSIFY_BYPASS_ENABLED = True    # Skip AI pipeline when pre_classify confi
 PRE_CLASSIFY_BYPASS_THRESHOLD = 90    # Minimum confidence to bypass
 COST_TRACKING_ENABLED = True          # Print per-call cost estimates
 CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after classification
+ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine between pre_classify and Agent 2
 
 # =============================================================================
 # SESSION 27: Per-Run Cost Accumulator
@@ -492,6 +501,42 @@ def call_ai(api_key, gemini_key, system_prompt, user_prompt, max_tokens=2000, ti
             result = call_claude(api_key, system_prompt, user_prompt, max_tokens)
     
     return result
+
+def _build_elimination_context(elimination_results):
+    """Build context string from elimination results for Agent 2.
+
+    Summarizes survivors, eliminated codes, and key elimination steps so that
+    Agent 2 can focus on the narrowed candidate set.
+    """
+    lines = ["\n\n=== ELIMINATION ENGINE RESULTS ==="]
+    for desc_key, elim in elimination_results.items():
+        survivors = elim.get("survivors", [])
+        eliminated = elim.get("eliminated", [])
+        steps = elim.get("steps", [])
+        lines.append(f"\nProduct: {desc_key}")
+        if survivors:
+            surv_codes = [s["hs_code"] for s in survivors]
+            lines.append(f"  Surviving candidates: {', '.join(surv_codes)}")
+            for s in survivors:
+                conf = s.get("confidence", 0)
+                desc = s.get("description", "")[:80]
+                lines.append(f"    {s['hs_code']} (confidence {conf}): {desc}")
+        if eliminated:
+            elim_codes = [e["hs_code"] for e in eliminated]
+            lines.append(f"  Eliminated: {', '.join(elim_codes)}")
+        # Include key elimination steps (up to 5 most impactful)
+        impactful = [st for st in steps if st.get("eliminated_codes")]
+        for st in impactful[:5]:
+            codes = ", ".join(st.get("eliminated_codes", []))
+            lines.append(f"  Step [{st.get('level', '')}]: {st.get('reasoning', '')[:120]} → eliminated {codes}")
+        challenges = elim.get("challenges", [])
+        if challenges:
+            lines.append(f"  Devil's advocate challenges: {len(challenges)}")
+            for ch in challenges[:2]:
+                lines.append(f"    {ch.get('candidate', '')}: {ch.get('counter_argument', '')[:100]}")
+    lines.append("=== END ELIMINATION ===\n")
+    return "\n".join(lines)
+
 
 def query_tariff(db, search_terms):
     """Query tariff collection for Israeli HS codes"""
@@ -903,6 +948,39 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
         # Merge intelligence context with librarian context
         combined_context = intelligence_context + knowledge_context
 
+        # ── ELIMINATION ENGINE: Walk tariff tree, narrow candidates before Agent 2 ──
+        elimination_results = {}
+        if ELIMINATION_ENABLED and ELIMINATION_AVAILABLE and intelligence_results:
+            try:
+                print("    🎯 Elimination Engine: Walking tariff tree...")
+                for desc_key, pc_result in intelligence_results.items():
+                    candidates = candidates_from_pre_classify(pc_result)
+                    if len(candidates) < 2:
+                        continue  # Need >=2 candidates to eliminate
+                    # Find the matching item for product info
+                    item_match = next(
+                        (i for i in items if isinstance(i, dict)
+                         and i.get("description", "")[:50] == desc_key),
+                        items[0] if items else {},
+                    )
+                    if not isinstance(item_match, dict):
+                        item_match = {}
+                    product_info = make_product_info(item_match)
+                    elim_result = eliminate(
+                        db, product_info, candidates,
+                        api_key=api_key, gemini_key=gemini_key,
+                    )
+                    elimination_results[desc_key] = elim_result
+                    surv = elim_result.get("survivor_count", 0)
+                    total = elim_result.get("input_count", 0)
+                    print(f"       {desc_key}: {total} → {surv} survivors")
+
+                # Enrich Agent 2 context with elimination findings
+                if elimination_results:
+                    combined_context += _build_elimination_context(elimination_results)
+            except Exception as elim_err:
+                print(f"    ⚠️ Elimination engine error: {elim_err}")
+
         # Agent 2: Classify (Claude Sonnet 4.5 — core task, best quality)
         items_payload = json.dumps(items, ensure_ascii=False)
         print(f"    🏷️ Agent 2: Classifying {len(items)} items ({len(items_payload)} chars payload)... [Claude Sonnet 4.5]")
@@ -1146,6 +1224,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
             "ambiguity": ambiguity_info,  # Phase E: Ambiguity analysis
             "tracker": tracker_info,  # Shipment phase tracker
             "audit": audit,  # Quality gate results
+            "elimination": elimination_results,  # Session 33 D9: Tariff tree elimination
         }
         return result
     except Exception as e:

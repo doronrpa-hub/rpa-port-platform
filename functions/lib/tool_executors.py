@@ -134,6 +134,7 @@ class ToolExecutor:
             "search_pre_rulings": self._stub_not_available,
             "search_classification_directives": self._search_classification_directives,
             "search_legal_knowledge": self._search_legal_knowledge,
+            "run_elimination": self._run_elimination,
             "search_foreign_tariff": self._stub_not_available,
             "search_court_precedents": self._stub_not_available,
             "search_wco_decisions": self._stub_not_available,
@@ -943,6 +944,93 @@ class ToolExecutor:
             return {"found": False, "query": query, "message": "No matching legal knowledge found"}
         except Exception as e:
             return {"found": False, "error": str(e)}
+
+    def _run_elimination(self, inp):
+        """Run the elimination engine on candidate HS codes.
+
+        Wraps elimination_engine.eliminate() — walks the tariff tree
+        deterministically and returns surviving candidates.
+        """
+        try:
+            from lib.elimination_engine import eliminate, make_product_info
+        except ImportError:
+            return {"available": False, "message": "Elimination engine not available"}
+
+        raw_candidates = inp.get("candidates", [])
+        if not raw_candidates or len(raw_candidates) < 2:
+            return {"error": "Need at least 2 candidates to run elimination"}
+
+        # Build product info from input fields
+        product_info = make_product_info({
+            "description": inp.get("product_description", ""),
+            "material": inp.get("product_material", ""),
+            "form": inp.get("product_form", ""),
+            "use": inp.get("product_use", ""),
+            "origin_country": inp.get("origin_country", ""),
+        })
+
+        # Build HSCandidate-compatible dicts from raw input
+        candidates = []
+        for c in raw_candidates:
+            hs = str(c.get("hs_code", "")).replace(".", "").replace("/", "").replace(" ", "").strip()
+            if not hs or len(hs) < 4:
+                continue
+            chapter = hs[:2].zfill(2)
+            candidates.append({
+                "hs_code": hs,
+                "section": "",
+                "chapter": chapter,
+                "heading": hs[:4] if len(hs) >= 4 else "",
+                "subheading": hs[:6] if len(hs) >= 6 else "",
+                "confidence": c.get("confidence", 0),
+                "source": "tool_calling",
+                "description": c.get("description", ""),
+                "description_en": c.get("description_en", ""),
+                "duty_rate": c.get("duty_rate", ""),
+                "alive": True,
+                "elimination_reason": "",
+                "eliminated_at_level": "",
+            })
+
+        if len(candidates) < 2:
+            return {"error": "Need at least 2 valid candidates after cleanup"}
+
+        result = eliminate(
+            self.db, product_info, candidates,
+            api_key=self.api_key, gemini_key=self.gemini_key,
+        )
+
+        # Return a concise summary suitable for the AI tool loop
+        survivors = result.get("survivors", [])
+        return {
+            "input_count": result.get("input_count", 0),
+            "survivor_count": result.get("survivor_count", 0),
+            "survivors": [
+                {
+                    "hs_code": s["hs_code"],
+                    "confidence": s.get("confidence", 0),
+                    "description": s.get("description", "")[:120],
+                }
+                for s in survivors
+            ],
+            "eliminated": [
+                {
+                    "hs_code": e["hs_code"],
+                    "reason": e.get("elimination_reason", "")[:120],
+                }
+                for e in result.get("eliminated", [])
+            ],
+            "steps_summary": [
+                {
+                    "level": st.get("level", ""),
+                    "eliminated_codes": st.get("eliminated_codes", []),
+                    "reasoning": st.get("reasoning", "")[:120],
+                }
+                for st in result.get("steps", [])
+                if st.get("eliminated_codes")
+            ][:8],
+            "needs_questions": result.get("needs_questions", False),
+        }
 
     def _stub_not_available(self, inp):
         """Stub for tools whose data sources are not yet loaded."""
