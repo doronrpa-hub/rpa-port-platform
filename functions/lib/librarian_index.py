@@ -320,6 +320,20 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "legal",
     },
+    # Email Intent: questions_log — Q+A pairs, cache, hit tracking
+    "questions_log": {
+        "title_fields": ["question_text"],
+        "keyword_fields": ["intent", "from_email", "detection_method", "compose_model"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # Email Intent: system_instructions — Admin directives that persist across emails
+    "system_instructions": {
+        "title_fields": ["instruction"],
+        "keyword_fields": ["scope", "created_by"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension

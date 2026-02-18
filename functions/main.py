@@ -56,6 +56,13 @@ except ImportError as e:
     print(f"Port schedule module not available: {e}")
     SCHEDULE_AVAILABLE = False
 
+try:
+    from lib.email_intent import process_email_intent
+    EMAIL_INTENT_AVAILABLE = True
+except ImportError as e:
+    print(f"Email Intent not available: {e}")
+    EMAIL_INTENT_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -1198,13 +1205,27 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                 except Exception as se:
                     print(f"    ⚠️ Schedule CC error (non-fatal): {se}")
 
+            # ── Email Intent: detect questions/status requests in CC emails ──
+            _cc_classified = False
+            if EMAIL_INTENT_AVAILABLE:
+                try:
+                    intent_result = process_email_intent(
+                        msg, get_db(), firestore, access_token, rcb_email, get_secret
+                    )
+                    if intent_result.get('status') in ('replied', 'cache_hit'):
+                        print(f"  🧠 Email intent handled: {intent_result.get('intent')}")
+                        # Don't skip the rest — let tracker/pupil/classification still process
+                    if intent_result.get('action') == 'classify':
+                        _cc_classified = True  # Will trigger classification below
+                except Exception as ei_err:
+                    print(f"    ⚠️ Email intent error (non-fatal): {ei_err}")
+
             # ── Block A1: CC emails with invoice content → also classify ──
             _cc_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
             _cc_combined = f"{subject} {_cc_body}".lower()
             _cc_invoice_kw = ['invoice', 'חשבונית', 'proforma', 'commercial invoice',
                               'חשבון מסחרי', 'פרופורמה']
-            _cc_classified = False
-            if any(kw in _cc_combined for kw in _cc_invoice_kw):
+            if not _cc_classified and any(kw in _cc_combined for kw in _cc_invoice_kw):
                 print(f"  📋 CC with invoice signal — triggering classification alongside learning")
                 try:
                     cc_raw_attachments = helper_graph_attachments(access_token, rcb_email, msg_id)
@@ -1313,6 +1334,26 @@ def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
                     continue
             except Exception as bc_err:
                 print(f"    ⚠️ Brain Commander error (continuing normally): {bc_err}")
+
+        # ── Email Intent: smart routing for direct emails ──
+        if EMAIL_INTENT_AVAILABLE:
+            try:
+                intent_result = process_email_intent(
+                    msg, get_db(), firestore, access_token, rcb_email, get_secret
+                )
+                if intent_result.get('status') in ('replied', 'cache_hit'):
+                    print(f"  🧠 Email intent handled: {intent_result.get('intent')}")
+                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                    get_db().collection("rcb_processed").document(safe_id).set({
+                        "processed_at": firestore.SERVER_TIMESTAMP,
+                        "subject": subject,
+                        "from": from_email,
+                        "type": f"intent_{intent_result.get('intent', 'unknown')}",
+                    })
+                    continue
+                # INSTRUCTION intent with action='classify' → fall through to classification
+            except Exception as ei_err:
+                print(f"  ⚠️ Email intent error (non-fatal): {ei_err}")
 
         # ── Session 13 v4.1.0: Knowledge Query Detection ──
         # If team member asks a question (no commercial docs), answer it
