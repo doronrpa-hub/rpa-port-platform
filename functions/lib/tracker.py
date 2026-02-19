@@ -1465,15 +1465,22 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
                 print(f"    🚢 TaskYam cross-check skip (non-fatal): {ty_err}")
 
     # Check if deal is now ready for auto-triggered classification
+    # Re-read deal from Firestore to get latest state (prevents TOCTOU double-trigger)
     classification_ready = False
     try:
         merged_deal = {**deal, **updates}
         classification_ready = _is_deal_classification_ready(merged_deal)
         if classification_ready:
-            updates['classification_auto_triggered_at'] = datetime.now(timezone.utc).isoformat()
-            deal_ref.update({'classification_auto_triggered_at': updates['classification_auto_triggered_at']})
-    except Exception:
-        pass
+            fresh = deal_ref.get()
+            fresh_data = fresh.to_dict() if fresh.exists else {}
+            if fresh_data.get('classification_auto_triggered_at') or fresh_data.get('rcb_classification_id'):
+                classification_ready = False
+                print(f"    ⏭️ Tracker: classification already triggered for {deal_id}, skipping")
+            else:
+                updates['classification_auto_triggered_at'] = datetime.now(timezone.utc).isoformat()
+                deal_ref.update({'classification_auto_triggered_at': updates['classification_auto_triggered_at']})
+    except Exception as e:
+        print(f"    ⚠️ Tracker: classification readiness check error: {e}")
 
     return {"deal_id": deal_id, "classification_ready": classification_ready}
 

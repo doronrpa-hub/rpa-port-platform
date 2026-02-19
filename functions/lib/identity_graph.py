@@ -877,7 +877,8 @@ def _add_email_subject(db, deal_id, normalized_subject):
             })
             return True
         return False
-    except Exception:
+    except Exception as e:
+        print(f"    ⚠️ IdentityGraph: _add_email_subject error: {e}")
         return False
 
 
