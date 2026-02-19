@@ -737,6 +737,15 @@ def send_reply(access_token: str, rcb_email: str, msg: dict,
         print("    ❌ Cannot determine reply-to address")
         return False
 
+    # Gate: only reply if rcb@ was a direct TO recipient, not just CC'd
+    try:
+        from lib.rcb_helpers import is_direct_recipient
+        if not is_direct_recipient(msg, rcb_email):
+            print(f"  📭 KQ reply suppressed — rcb@ was CC'd, not TO recipient")
+            return False
+    except ImportError:
+        pass  # fail-open if import fails
+
     msg_id = msg.get("id")
 
     # Build attachment data in same format helper_graph_send expects:

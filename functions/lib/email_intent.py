@@ -569,10 +569,20 @@ def _wrap_html_rtl(text, subject=""):
 # ═══════════════════════════════════════════
 
 def _send_reply_safe(body_html, msg, access_token, rcb_email):
-    """Send reply ONLY to @rpa-port.co.il addresses. Strip external recipients."""
+    """Send reply ONLY to @rpa-port.co.il addresses. Strip external recipients.
+    Also blocks replies when rcb@ is only CC'd (not a direct TO recipient)."""
     from_email = _get_sender_address(msg)
     if not from_email.lower().endswith(f"@{TEAM_DOMAIN}"):
         return False  # NEVER reply to external
+
+    # Gate: only reply if rcb@ was a direct TO recipient, not just CC'd
+    try:
+        from lib.rcb_helpers import is_direct_recipient
+    except ImportError:
+        from rcb_helpers import is_direct_recipient
+    if not is_direct_recipient(msg, rcb_email):
+        print(f"  📭 Reply suppressed — rcb@ was CC'd, not TO recipient (from={from_email})")
+        return False
 
     msg_id = msg.get('id', '')
     try:

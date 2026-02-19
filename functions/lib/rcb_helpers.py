@@ -787,6 +787,23 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
 _RE_FWD_PATTERN = re.compile(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+')
 
 
+def is_direct_recipient(msg, rcb_email):
+    """Check if rcb_email is in the message's toRecipients (not just CC).
+
+    Returns True if rcb@ is a direct TO recipient — replies are allowed.
+    Returns False if rcb@ is only CC'd — replies must be suppressed.
+    Returns True if toRecipients is missing/empty (fail-open for safety).
+    """
+    to_recipients = msg.get('toRecipients', [])
+    if not to_recipients:
+        return True  # fail-open: if Graph API didn't return toRecipients, allow
+    return any(
+        rcb_email.lower() in r.get('emailAddress', {}).get('address', '').lower()
+        for r in to_recipients
+    )
+
+
+
 def clean_email_subject(subject):
     """Strip accumulated Re:/RE:/Fwd:/FW: prefix chains from a subject line."""
     if not subject:
