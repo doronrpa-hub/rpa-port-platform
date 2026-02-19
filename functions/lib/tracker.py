@@ -25,6 +25,12 @@ import hashlib
 import traceback
 from datetime import datetime, timezone, timedelta
 
+# ── Handler mapping: internal email sender → handler name ──
+_HANDLER_MAP = {
+    'lubna': 'Lubna', 'galina': 'Galina', 'rina': 'Rina',
+    'doron': 'Doron',
+}
+
 # ── Container validation (ISO 6346) ──
 def _iso6346_check_digit(prefix_digits):
     """Validate ISO 6346 container check digit"""
@@ -560,7 +566,8 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
                     _update_type = "new_deal" if deal_result.get("action") == "created" else "status_update"
                     _send_tracker_email(
                         db, _deal_id, _deal_doc.to_dict(), access_token, rcb_email,
-                        _update_type, observation=observation, extractions=extractions)
+                        _update_type, observation=observation, extractions=extractions,
+                        get_secret_func=get_secret_func)
             except Exception as email_err:
                 print(f"    Warning: Tracker email error: {email_err}")
 
@@ -1220,9 +1227,18 @@ def _create_deal(db, firestore_module, observation):
         "cc_list": observation.get('cc_list', []),
         "follow_mode": "auto",
         "deal_thread_id": "",  # Populated on first email send for stable threading
+        "handler": "",  # Populated from internal email sender
         "created_at": now,
         "updated_at": now,
     }
+
+    # ── Extract handler from internal sender ──
+    _from = observation.get('from_email', '')
+    if _from.endswith('@rpa-port.co.il'):
+        _sender_local = _from.split('@')[0].lower()
+        _handler = _HANDLER_MAP.get(_sender_local, '')
+        if _handler:
+            deal_data['handler'] = _handler
 
     # Lifecycle tracking — what doc types have been received, what's expected next
     initial_doc_type = _guess_doc_type_from_attachments(observation.get('attachment_names', []))
@@ -1316,6 +1332,15 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
 
     deal = deal_doc.to_dict()
     updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
+
+    # ── Extract handler from internal sender (update if not set) ──
+    if not deal.get('handler'):
+        _from = observation.get('from_email', '')
+        if _from.endswith('@rpa-port.co.il'):
+            _sender_local = _from.split('@')[0].lower()
+            _handler = _HANDLER_MAP.get(_sender_local, '')
+            if _handler:
+                updates['handler'] = _handler
 
     # Add new containers (merge, don't replace)
     # Batch-read existing container status docs (single query instead of N reads)
@@ -1642,7 +1667,8 @@ def _handle_command(command, msg, db, firestore_module, access_token, rcb_email,
             # Send current status email
             if access_token and rcb_email:
                 try:
-                    _send_tracker_email(db, deal.id, deal.to_dict(), access_token, rcb_email, "follow_started")
+                    _send_tracker_email(db, deal.id, deal.to_dict(), access_token, rcb_email, "follow_started",
+                                        get_secret_func=get_secret_func)
                 except Exception as se:
                     print(f"    Warning: Follow status email error: {se}")
             return {"status": "command_follow", "deal_id": deal.id}
@@ -1949,7 +1975,8 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
                 # Send status update email
                 if access_token and rcb_email:
                     try:
-                        _send_tracker_email(db, deal_id, deal, access_token, rcb_email, "status_update")
+                        _send_tracker_email(db, deal_id, deal, access_token, rcb_email, "status_update",
+                                            get_secret_func=get_secret_func)
                     except Exception as se:
                         print(f"    Warning: Tracker email send error: {se}")
 
@@ -2266,11 +2293,19 @@ def _deal_has_minimum_data(deal):
 
 
 def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type="status_update",
-                        observation=None, extractions=None):
+                        observation=None, extractions=None, get_secret_func=None):
     """Build and send tracker status email for a deal. v3: data guards + clean threading."""
     try:
         from lib.tracker_email import build_tracker_status_email
         from lib.rcb_helpers import helper_graph_send, helper_graph_reply, clean_email_subject, validate_email_before_send
+
+        # ── Fetch Gemini key for AI subject generation ──
+        gemini_key = None
+        if get_secret_func:
+            try:
+                gemini_key = get_secret_func("GEMINI_API_KEY")
+            except Exception:
+                pass
 
         # ── Guard 1: minimum data ──
         if not _deal_has_minimum_data(deal):
@@ -2295,10 +2330,11 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         for d in db.collection("tracker_container_status").where("deal_id", "==", deal_id).stream():
             container_statuses.append(d.to_dict())
 
-        # Build email (with observation context)
+        # Build email (with observation context + AI subject)
         email_data = build_tracker_status_email(
             deal, container_statuses, update_type,
-            observation=observation, extractions=extractions)
+            observation=observation, extractions=extractions,
+            gemini_key=gemini_key, db=db)
         subject = clean_email_subject(email_data['subject'])
         body_html = email_data['body_html']
 

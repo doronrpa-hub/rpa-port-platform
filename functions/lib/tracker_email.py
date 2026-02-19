@@ -45,7 +45,8 @@ def _to_israel_time(dt_obj):
 
 
 def build_tracker_status_email(deal, container_statuses, update_type="status_update",
-                               observation=None, extractions=None):
+                               observation=None, extractions=None,
+                               gemini_key=None, db=None):
     """
     Build consolidated HTML status email for a deal.
 
@@ -55,15 +56,12 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
         update_type: "status_update", "new_deal", "follow_started", "follow_stopped"
         observation: dict (optional) observation context from tracker brain
         extractions: dict (optional) extracted data from source email
+        gemini_key: Gemini API key for AI subject generation (optional)
+        db: Firestore client for subject enrichment (optional)
     Returns:
         dict with {subject, body_html}
     """
-    bol = deal.get('bol_number', 'Unknown')
-    vessel = deal.get('vessel_name', '')
-    shipping_line = deal.get('shipping_line', '')
     direction = deal.get('direction', 'import')
-    eta = deal.get('eta', '')
-    etd = deal.get('etd', '')
     containers = deal.get('containers', [])
     total = len(containers)
 
@@ -75,16 +73,7 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
     # Summarize steps
     steps_summary = _summarize_steps(container_statuses, direction)
 
-    # Build subject — clean format: RCB | identifier | status | vessel
-    # Primary identifier: BOL, then AWB, then deal_id prefix
-    deal_id_str = deal.get('deal_id', '')
-    identifier = (
-        (bol if bol and bol != 'Unknown' else '')
-        or deal.get('awb_number', '')
-        or deal_id_str[:8]
-        or 'NO-REF'
-    )
-
+    # Status label (used in subject and HTML body)
     if update_type == "new_deal":
         status_label = "Tracking Started"
     elif completed == total and total > 0:
@@ -93,9 +82,14 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
         status_word = "Released" if direction != 'export' else "Sailed"
         status_label = f"{completed}/{total} {status_word}"
 
-    # Include vessel if known
-    vessel_part = f" | {vessel[:20]}" if vessel else ""
-    subject = f"RCB | {identifier} | {status_label}{vessel_part}"
+    # Build subject via AI or fallback
+    from lib.rcb_helpers import generate_smart_subject
+    subject = generate_smart_subject(
+        gemini_key=gemini_key, db=db, deal=deal,
+        container_statuses=container_statuses, status=status_label,
+        update_type=update_type, deal_id=deal.get('deal_id', ''),
+        email_type="tracker"
+    )
 
     # Build HTML
     body = _build_html(deal, container_statuses, steps_summary,
