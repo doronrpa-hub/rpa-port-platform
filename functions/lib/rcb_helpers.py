@@ -702,6 +702,11 @@ def helper_graph_mark_read(access_token, user_email, message_id):
     except Exception as e:
         print(f"Graph mark-read error: {e}")
 
+def _is_internal_recipient(email: str) -> bool:
+    """Only @rpa-port.co.il recipients are allowed."""
+    return (email or "").strip().lower().endswith("@rpa-port.co.il")
+
+
 def helper_graph_send(access_token, user_email, to_email, subject, body_html,
                       reply_to_id=None, attachments_data=None, internet_message_id=None,
                       deal_id=None, alert_type=None, db=None):
@@ -713,6 +718,11 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html,
 
     Optional gate params (deal_id, alert_type, db) enable Firestore dedup checks.
     """
+    # ── HARD BLOCK: Never send to external recipients ──
+    if not _is_internal_recipient(to_email):
+        print(f"\U0001f6ab BLOCKED outbound to external: {to_email} | subj={(subject or '')[:60]}")
+        return False
+
     # ── Email quality gate (fail-open) ──
     try:
         approved, reason = email_quality_gate(
@@ -754,6 +764,11 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
         subject: Optional override for reply subject line. If provided,
                  replaces the default "Re: ..." subject inherited from the thread.
     """
+    # ── HARD BLOCK: Never reply to external recipients ──
+    if to_email and not _is_internal_recipient(to_email):
+        print(f"\U0001f6ab BLOCKED reply to external: {to_email}")
+        return False
+
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}/reply"
         payload = {

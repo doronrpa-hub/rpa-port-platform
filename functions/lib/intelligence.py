@@ -50,6 +50,21 @@ def pre_classify(db, item_description, origin_country="", seller_name=""):
     desc_lower = item_description.lower()
     keywords = _extract_keywords(item_description)
 
+    # ── Step 0: learned_corrections (corrections override all) ──
+    corr_results = _search_corrections(db, item_description, desc_lower)
+    for r in corr_results:
+        candidates.append({
+            "hs_code": r["hs_code"],
+            "confidence": 95,
+            "source": "correction",
+            "description": r.get("description", ""),
+            "duty_rate": "",
+            "reasoning": f"Correction override: {r.get('source', 'manual')}",
+            "is_correction": True,
+        })
+    if corr_results:
+        print(f"  🧠 INTELLIGENCE: corrections → {len(corr_results)} overrides")
+
     # ── Step 1: keyword_index (fast pre-built inverted index) ──
     ki_results = _search_keyword_index(db, keywords)
     for r in ki_results:
@@ -1502,6 +1517,44 @@ def _search_classification_rules(db, desc_lower):
 
     results.sort(key=lambda r: r["confidence"], reverse=True)
     return results[:5]
+
+
+def _search_corrections(db, item_description, desc_lower):
+    """Search learned_corrections for matching product.
+
+    Returns corrections with resolved HS codes — these override all other sources.
+    """
+    results = []
+    try:
+        docs = list(
+            db.collection("learned_corrections")
+            .where("product", "==", item_description)
+            .limit(3).stream()
+        )
+        if not docs:
+            docs = list(
+                db.collection("learned_corrections")
+                .where("product", "==", desc_lower)
+                .limit(3).stream()
+            )
+        for doc in docs:
+            data = doc.to_dict()
+            if not data:
+                continue
+            if data.get("status") == "needs_review":
+                continue
+            hs_code = (data.get("tiebreaker_hs")
+                       or data.get("corrected_code")
+                       or data.get("validated_hs"))
+            if hs_code:
+                results.append({
+                    "hs_code": hs_code,
+                    "source": data.get("source", "correction"),
+                    "description": data.get("product", ""),
+                })
+    except Exception as e:
+        print(f"  🧠 INTELLIGENCE: corrections check error: {e}")
+    return results
 
 
 def _search_keyword_index(db, keywords):

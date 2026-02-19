@@ -332,6 +332,43 @@ class SelfLearningEngine:
         keywords = self._extract_keywords(product_description)
         product_lower = product_description.lower()
 
+        # Level -1: Corrections — highest priority (manual/cross-validated overrides)
+        try:
+            corr_docs = list(
+                self.db.collection("learned_corrections")
+                .where("product", "==", product_description)
+                .limit(3).stream()
+            )
+            if not corr_docs:
+                corr_docs = list(
+                    self.db.collection("learned_corrections")
+                    .where("product", "==", product_lower)
+                    .limit(3).stream()
+                )
+            for doc in corr_docs:
+                data = doc.to_dict()
+                if not data:
+                    continue
+                # Skip unresolved disputes
+                if data.get("status") == "needs_review":
+                    continue
+                hs_code = (data.get("tiebreaker_hs")
+                           or data.get("corrected_code")
+                           or data.get("validated_hs"))
+                if hs_code:
+                    print(f"    🧠 SelfLearning: CORRECTION match for "
+                          f"'{product_description[:40]}'")
+                    return {
+                        "hs_code": hs_code,
+                        "source": "learned_corrections",
+                        "confidence": 0.95,
+                        "product": product_description,
+                        "correction": True,
+                        "method": "manual",
+                    }, "exact"
+        except Exception as e:
+            print(f"    🧠 SelfLearning: correction check error: {e}")
+
         # Level 0: Exact product match in learned_classifications
         try:
             docs = (self.db.collection("learned_classifications")

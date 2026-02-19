@@ -900,7 +900,8 @@ def _rcb_check_email_inner(event) -> None:
                     print(f"    ⚠️ Schedule CC error (non-fatal): {se}")
 
             # ── Email Intent: detect questions/status requests in CC emails ──
-            _cc_classified = False
+            # Session 51: CC path = learn only, never classify, never send.
+            # RCB in CC means we observe silently. Classification only from direct (To:) path.
             if EMAIL_INTENT_AVAILABLE:
                 try:
                     intent_result = process_email_intent(
@@ -908,84 +909,14 @@ def _rcb_check_email_inner(event) -> None:
                     )
                     if intent_result.get('status') in ('replied', 'cache_hit'):
                         print(f"  🧠 Email intent handled: {intent_result.get('intent')}")
-                        # Don't skip the rest — let tracker/pupil/classification still process
-                    if intent_result.get('action') == 'classify':
-                        _cc_classified = True  # Will trigger classification below
                 except Exception as ei_err:
                     print(f"    ⚠️ Email intent error (non-fatal): {ei_err}")
-
-            # ── Block A1: CC emails with invoice content → also classify ──
-            _cc_body = msg.get('body', {}).get('content', '') or msg.get('bodyPreview', '')
-            _cc_combined = f"{subject} {_cc_body}".lower()
-            _cc_invoice_kw = ['invoice', 'חשבונית', 'proforma', 'commercial invoice',
-                              'חשבון מסחרי', 'פרופורמה']
-            if not _cc_classified and any(kw in _cc_combined for kw in _cc_invoice_kw):
-                print(f"  📋 CC with invoice signal — triggering classification alongside learning")
-                try:
-                    cc_raw_attachments = helper_graph_attachments(access_token, rcb_email, msg_id)
-                    if cc_raw_attachments:
-                        cc_rcb_id = generate_rcb_id(get_db(), firestore, RCBType.CLASSIFICATION)
-                        print(f"  🏷️ [{cc_rcb_id}] CC classification starting")
-                        # Extract clean body text (same as direct path lines 1267-1272)
-                        cc_email_body = _cc_body
-                        if msg.get('body', {}).get('contentType', '') == 'html' and cc_email_body:
-                            import re as _re
-                            cc_email_body = _re.sub(r'<[^>]+>', ' ', cc_email_body)
-                            cc_email_body = _re.sub(r'\s+', ' ', cc_email_body).strip()
-                        _cc_result = process_and_send_report(
-                            access_token, rcb_email, from_email, subject,
-                            from_name, cc_raw_attachments, msg_id, get_secret,
-                            get_db(), firestore, helper_graph_send, extract_text_from_attachments,
-                            email_body=cc_email_body,
-                            internet_message_id=internet_msg_id,
-                        )
-                        _cc_classified = _cc_result is True
-                        if _cc_classified:
-                            print(f"  ✅ [{cc_rcb_id}] CC classification complete")
-                        else:
-                            print(f"  ⚠️ [{cc_rcb_id}] CC classification returned False")
-                    else:
-                        print(f"  ℹ️ CC invoice signal but no attachments — skipping classification")
-                except Exception as cc_cls_err:
-                    print(f"  ⚠️ CC classification error (non-fatal): {cc_cls_err}")
-
-            # ── Gap 2: Auto-trigger classification from tracker deal ──
-            if (not _cc_classified
-                    and TRACKER_AVAILABLE
-                    and isinstance(tracker_result, dict)
-                    and tracker_result.get('deal_result', {}).get('classification_ready')):
-                try:
-                    _deal_id = tracker_result['deal_result']['deal_id']
-                    _agg_text = _aggregate_deal_text(get_db(), _deal_id)
-                    if _agg_text and len(_agg_text) > 100:
-                        _deal_doc = get_db().collection("tracker_deals").document(_deal_id).get()
-                        _deal_data = _deal_doc.to_dict() if _deal_doc.exists else {}
-                        _to = _deal_data.get('follower_email', from_email) or from_email
-                        print(f"  🔄 Auto-trigger: deal {_deal_id} classification-ready, {len(_agg_text)} chars")
-                        cc_rcb_id = generate_rcb_id(get_db(), firestore, RCBType.CLASSIFICATION)
-                        _cc_result = process_and_send_report(
-                            access_token, rcb_email, _to, subject,
-                            from_name, [], msg_id, get_secret,
-                            get_db(), firestore, helper_graph_send, extract_text_from_attachments,
-                            email_body=_agg_text,
-                            internet_message_id=internet_msg_id,
-                        )
-                        _cc_classified = _cc_result is True
-                        if _cc_classified:
-                            print(f"  ✅ Auto-trigger classification complete for deal {_deal_id}")
-                            if not _deal_data.get('rcb_classification_id'):
-                                get_db().collection("tracker_deals").document(_deal_id).update({
-                                    "rcb_classification_id": cc_rcb_id,
-                                    "updated_at": firestore.SERVER_TIMESTAMP,
-                                })
-                except Exception as at_err:
-                    print(f"  ⚠️ Auto-trigger error (non-fatal): {at_err}")
 
             get_db().collection("rcb_processed").document(safe_id_cc).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,
                 "subject": subject,
                 "from": from_email,
-                "type": "cc_observation_classified" if _cc_classified else "cc_observation",
+                "type": "cc_observation",
             })
             continue
 
@@ -1983,7 +1914,8 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
     try:
         from lib.pupil import (
             pupil_learn, pupil_verify_scan, pupil_challenge,
-            pupil_send_reviews, pupil_find_corrections, pupil_audit
+            pupil_send_reviews, pupil_find_corrections, pupil_audit,
+            pupil_escalate_to_claude, pupil_research_contacts,
         )
 
         secrets = get_rcb_secrets_internal(get_secret)
@@ -1996,6 +1928,13 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
             print("  ✅ Pupil verify scan done")
         except Exception as e:
             print(f"  ⚠️ Pupil verify error: {e}")
+
+        # Phase B2: Research contacts with unknown roles
+        try:
+            contacts = pupil_research_contacts(get_db(), get_secret)
+            print(f"  ✅ Pupil contacts researched: {contacts}")
+        except Exception as e:
+            print(f"  ⚠️ Pupil contact research error: {e}")
 
         # Phase B: Learn from gaps (uses Gemini/Claude when needed)
         try:
@@ -2010,6 +1949,13 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
             print("  ✅ Pupil corrections scan done")
         except Exception as e:
             print(f"  ⚠️ Pupil corrections error: {e}")
+
+        # Phase C2: Escalate complex tasks to Claude (tier 2)
+        try:
+            escalated = pupil_escalate_to_claude(get_db(), get_secret)
+            print(f"  ✅ Pupil escalated to Claude: {escalated}")
+        except Exception as e:
+            print(f"  ⚠️ Pupil escalation error: {e}")
 
         # Phase C: Send review cases to doron@
         try:

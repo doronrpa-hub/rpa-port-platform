@@ -47,6 +47,18 @@ def _make_empty_stream():
     return iter([])
 
 
+def _collection_router(collections_map):
+    """Create a mock_db.collection side_effect that routes by collection name."""
+    def _route(name):
+        if name in collections_map:
+            return collections_map[name]
+        # Default: empty collection mock
+        coll = Mock()
+        coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+        return coll
+    return _route
+
+
 # ═══════════════════════════════════════════
 #  EXTRACT KEYWORDS (unit)
 # ═══════════════════════════════════════════
@@ -99,7 +111,16 @@ class TestMemoryLevel0Exact:
             "confidence": 0.95,
             "keywords": ["rubber", "gloves"],
         }
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = iter([_make_doc(stored)])
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = iter([_make_doc(stored)])
+
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
 
         result, level = engine.check_classification_memory("Rubber Gloves")
         assert level == "exact"
@@ -132,16 +153,21 @@ class TestMemoryLevel0Exact:
 class TestMemoryLevel05Normalized:
 
     def _setup_level0_miss_level05_hit(self, mock_db, stored_doc):
-        """Configure mock so Level 0 misses but Level 0.5 hits."""
-        call_count = [0]
+        """Configure mock so corrections miss, Level 0 misses, Level 0.5 hits."""
+        # Corrections collection: always empty
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
 
-        def _mock_where(*args, **kwargs):
-            call_count[0] += 1
+        # Classifications collection: Level 0 miss, Level 0.5 hit
+        cls_call_count = [0]
+
+        def _cls_where(*args, **kwargs):
+            cls_call_count[0] += 1
             mock_query = Mock()
-            if call_count[0] == 1:
+            if cls_call_count[0] == 1:
                 # Level 0: exact match — miss
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
-            elif call_count[0] == 2:
+            elif cls_call_count[0] == 2:
                 # Level 0.5: keyword array_contains — hit
                 mock_query.limit.return_value.stream.return_value = iter([stored_doc])
             else:
@@ -149,7 +175,13 @@ class TestMemoryLevel05Normalized:
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
             return mock_query
 
-        mock_db.collection.return_value.where = _mock_where
+        cls_coll = Mock()
+        cls_coll.where = _cls_where
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
 
     def test_extra_words_match(self, engine, mock_db):
         """Product with extra words (brand name) matches stored version."""
@@ -193,23 +225,31 @@ class TestMemoryLevel05Normalized:
             "confidence": 0.9,
             "keywords": ["steel", "storage", "containers", "large", "industrial"],
         }
-        # Level 0 miss
-        call_count = [0]
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
 
-        def _mock_where(*args, **kwargs):
-            call_count[0] += 1
+        cls_call_count = [0]
+
+        def _cls_where(*args, **kwargs):
+            cls_call_count[0] += 1
             mock_query = Mock()
-            if call_count[0] == 1:
+            if cls_call_count[0] == 1:
                 # Level 0: exact — miss
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
-            elif call_count[0] == 2:
+            elif cls_call_count[0] == 2:
                 # Level 0.5: keyword hit but low overlap
                 mock_query.limit.return_value.stream.return_value = iter([_make_doc(stored)])
             else:
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
             return mock_query
 
-        mock_db.collection.return_value.where = _mock_where
+        cls_coll = Mock()
+        cls_coll.where = _cls_where
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
 
         # Only 1 out of 5 keywords overlap ("steel") — 20% < 60% threshold
         result, level = engine.check_classification_memory("Steel wire rope")
@@ -235,20 +275,29 @@ class TestMemoryLevel05Normalized:
             "keywords": ["rubber", "gloves", "medical", "disposable"],
         }, doc_id="b")
 
-        call_count = [0]
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
 
-        def _mock_where(*args, **kwargs):
-            call_count[0] += 1
+        cls_call_count = [0]
+
+        def _cls_where(*args, **kwargs):
+            cls_call_count[0] += 1
             mock_query = Mock()
-            if call_count[0] == 1:
+            if cls_call_count[0] == 1:
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
-            elif call_count[0] == 2:
+            elif cls_call_count[0] == 2:
                 mock_query.limit.return_value.stream.return_value = iter([doc_a, doc_b])
             else:
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
             return mock_query
 
-        mock_db.collection.return_value.where = _mock_where
+        cls_coll = Mock()
+        cls_coll.where = _cls_where
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
 
         result, level = engine.check_classification_memory("medical rubber gloves")
         assert result is not None
@@ -445,10 +494,19 @@ class TestRoundTrip:
 
         # Capture what was stored
         stored_data = doc_ref.set.call_args[0][0]
-
-        # Now: check memory with same description
         stored_doc = _make_doc(stored_data)
-        mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = iter([stored_doc])
+
+        # Now: check memory — corrections miss, Level 0 hits
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = iter([stored_doc])
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
 
         result, level = engine.check_classification_memory("Rubber Gloves Medical")
         assert result is not None
@@ -471,26 +529,233 @@ class TestRoundTrip:
         stored_data = doc_ref.set.call_args[0][0]
         stored_doc = _make_doc(stored_data)
 
-        # Check memory: Level 0 misses, Level 0.5 hits
-        call_count = [0]
+        # Check memory: corrections miss, Level 0 misses, Level 0.5 hits
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
 
-        def _mock_where(*args, **kwargs):
-            call_count[0] += 1
+        cls_call_count = [0]
+
+        def _cls_where(*args, **kwargs):
+            cls_call_count[0] += 1
             mock_query = Mock()
-            if call_count[0] == 1:
+            if cls_call_count[0] == 1:
                 # Level 0: exact — miss (different text)
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
-            elif call_count[0] == 2:
+            elif cls_call_count[0] == 2:
                 # Level 0.5: keyword — hit
                 mock_query.limit.return_value.stream.return_value = iter([stored_doc])
             else:
                 mock_query.limit.return_value.stream.return_value = _make_empty_stream()
             return mock_query
 
-        mock_db.collection.return_value.where = _mock_where
+        cls_coll = Mock()
+        cls_coll.where = _cls_where
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
 
         # Recall with extra word "BELSHINA"
         result, level = engine.check_classification_memory("BELSHINA BEL-128 175/70R13 82H")
         assert result is not None
         assert level == "exact"
         assert result.get("hs_code", "").replace(".", "").startswith("4011")
+
+
+# ═══════════════════════════════════════════
+#  CORRECTION RECALL — Level -1
+# ═══════════════════════════════════════════
+
+class TestCorrectionRecall:
+    """Level -1: corrections from learned_corrections take highest priority."""
+
+    def test_resolved_correction_returned(self, engine, mock_db):
+        """A resolved cross-validation correction is returned."""
+        corr_doc = _make_doc({
+            "product": "Rubber Gloves",
+            "original_hs": "3926.20",
+            "validated_hs": "4015.19",
+            "tiebreaker_hs": "4015.19",
+            "status": "resolved",
+        })
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = iter([corr_doc])
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("Rubber Gloves")
+        assert result is not None
+        assert level == "exact"
+        assert result["hs_code"] == "4015.19"
+        assert result["source"] == "learned_corrections"
+        assert result["correction"] is True
+
+    def test_cc_email_correction_returned(self, engine, mock_db):
+        """A CC email correction (no status field) is returned."""
+        corr_doc = _make_doc({
+            "product": "steel tubes seamless",
+            "original_code": "7306.30",
+            "corrected_code": "7304.19",
+            "source": "cc_email_correction",
+        })
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = iter([corr_doc])
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("steel tubes seamless")
+        assert result is not None
+        assert result["hs_code"] == "7304.19"
+        assert result["correction"] is True
+
+    def test_needs_review_skipped(self, engine, mock_db):
+        """Unresolved (needs_review) corrections are NOT returned."""
+        corr_doc = _make_doc({
+            "product": "Rubber Gloves",
+            "original_hs": "3926.20",
+            "validated_hs": "4015.19",
+            "status": "needs_review",
+        })
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = iter([corr_doc])
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("Rubber Gloves")
+        # Should fall through to Level 0+ (all return empty)
+        assert result is None
+        assert level == "none"
+
+    def test_correction_beats_learned_classification(self, engine, mock_db):
+        """Correction takes priority over regular learned_classification."""
+        corr_doc = _make_doc({
+            "product": "Rubber Gloves",
+            "corrected_code": "4015.19",
+            "source": "cc_email_correction",
+        })
+        cls_doc = _make_doc({
+            "product_lower": "rubber gloves",
+            "hs_code": "3926.20",
+            "confidence": 0.85,
+            "keywords": ["rubber", "gloves"],
+        })
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = iter([corr_doc])
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = iter([cls_doc])
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("Rubber Gloves")
+        # Correction wins — should NOT return the learned_classification code
+        assert result["hs_code"] == "4015.19"
+        assert result["source"] == "learned_corrections"
+
+    def test_no_correction_falls_through(self, engine, mock_db):
+        """When no corrections exist, falls through to Level 0 normally."""
+        cls_doc = _make_doc({
+            "product_lower": "rubber gloves",
+            "hs_code": "4015.19",
+            "confidence": 0.9,
+            "keywords": ["rubber", "gloves"],
+        })
+        corr_coll = Mock()
+        corr_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = iter([cls_doc])
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("Rubber Gloves")
+        assert result is not None
+        assert level == "exact"
+        assert result["hs_code"] == "4015.19"
+        # This came from learned_classifications, not corrections
+        assert result.get("source") != "learned_corrections"
+
+    def test_correction_error_falls_through(self, engine, mock_db):
+        """If correction query fails, falls through gracefully."""
+        corr_coll = Mock()
+        corr_coll.where.side_effect = Exception("Firestore unavailable")
+
+        cls_doc = _make_doc({
+            "product_lower": "rubber gloves",
+            "hs_code": "4015.19",
+            "confidence": 0.9,
+            "keywords": ["rubber", "gloves"],
+        })
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = iter([cls_doc])
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("Rubber Gloves")
+        # Should still work via Level 0
+        assert result is not None
+        assert result["hs_code"] == "4015.19"
+
+    def test_lowercase_fallback_match(self, engine, mock_db):
+        """If exact product doesn't match, tries lowercase."""
+        call_count = [0]
+
+        corr_coll = Mock()
+        def _corr_where(*args, **kwargs):
+            nonlocal call_count
+            call_count[0] += 1
+            mock_q = Mock()
+            if call_count[0] == 1:
+                # First try (original case) — miss
+                mock_q.limit.return_value.stream.return_value = _make_empty_stream()
+            else:
+                # Second try (lowercase) — hit
+                corr_doc = _make_doc({
+                    "product": "rubber gloves",
+                    "corrected_code": "4015.19",
+                    "source": "cc_email_correction",
+                })
+                mock_q.limit.return_value.stream.return_value = iter([corr_doc])
+            return mock_q
+        corr_coll.where = _corr_where
+
+        cls_coll = Mock()
+        cls_coll.where.return_value.limit.return_value.stream.return_value = _make_empty_stream()
+
+        mock_db.collection.side_effect = _collection_router({
+            "learned_corrections": corr_coll,
+            "learned_classifications": cls_coll,
+        })
+
+        result, level = engine.check_classification_memory("Rubber Gloves")
+        assert result is not None
+        assert result["hs_code"] == "4015.19"
+        assert result["correction"] is True
