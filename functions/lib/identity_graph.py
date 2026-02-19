@@ -645,7 +645,7 @@ def extract_identifiers_from_email(subject, body, attachments_text=""):
 #  CORE FUNCTION 5: link_email_to_deal
 # ═══════════════════════════════════════════
 
-def link_email_to_deal(db, email_data):
+def link_email_to_deal(db, email_data, known_deal_id=None):
     """Extract identifiers from email → search graph → link to deal.
 
     Args:
@@ -656,6 +656,8 @@ def link_email_to_deal(db, email_data):
             - attachments_text: str (optional)
             - thread_id: str (optional, email conversation ID)
             - from_email: str (optional)
+        known_deal_id: str (optional) — if caller already knows the deal_id
+            (e.g. from tracker matching), skip graph search and use this.
 
     Returns:
         dict — {
@@ -685,10 +687,11 @@ def link_email_to_deal(db, email_data):
     result["identifiers"] = identifiers
 
     # Step 2: Search graph for a match (priority order)
-    deal_id = None
-    matched_by = ""
+    # Use known_deal_id if provided (caller already matched via tracker)
+    deal_id = known_deal_id or None
+    matched_by = "known_deal_id" if known_deal_id else ""
 
-    # Priority 0: Thread ID
+    # Priority 0: Thread ID (skip search if already known)
     if thread_id:
         found = find_deal_by_identifier(db, thread_id)
         if found:

@@ -519,6 +519,22 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
         # ── STEP 6: Match or create deal ──
         deal_result = _match_or_create_deal(db, firestore_module, observation)
 
+        # ── STEP 6b: Link email identifiers to deal via identity graph ──
+        if deal_result.get("deal_id"):
+            try:
+                from lib.identity_graph import link_email_to_deal
+                ig_result = link_email_to_deal(db, {
+                    "subject": subject,
+                    "body": clean_body,
+                    "attachments_text": attachment_text,
+                    "thread_id": conversation_id,
+                }, known_deal_id=deal_result["deal_id"])
+                ig_added = ig_result.get("new_identifiers_added", 0)
+                if ig_added:
+                    print(f"    🔗 IdentityGraph: linked {ig_added} identifiers from email to deal {deal_result['deal_id']}")
+            except Exception as ig_err:
+                print(f"    ⚠️ IdentityGraph link skip (non-fatal): {ig_err}")
+
         # ── STEP 7: Teach brain from this extraction ──
         try:
             if not brain_level or brain_level == "none":
@@ -1261,6 +1277,15 @@ def _create_deal(db, firestore_module, observation):
 
     print(f"    📦 Tracker: created deal {deal_id}: BOL={deal_data['bol_number']}, "
           f"{len(ext.get('containers', []))} containers, {deal_data['shipping_line']}")
+
+    # Register all deal identifiers in the identity graph
+    try:
+        from lib.identity_graph import register_deal_from_tracker
+        ig_count = register_deal_from_tracker(db, deal_id, deal_data)
+        if ig_count:
+            print(f"    🔗 IdentityGraph: registered {ig_count} identifiers for deal {deal_id}")
+    except Exception as ig_err:
+        print(f"    ⚠️ IdentityGraph registration skip (non-fatal): {ig_err}")
 
     # Inline TaskYam quick-check for new deals with containers (non-blocking)
     if ext.get('containers') and observation.get('get_secret_func'):
