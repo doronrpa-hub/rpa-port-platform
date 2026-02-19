@@ -915,18 +915,9 @@ def _rcb_check_email_inner(event) -> None:
                 except Exception as se:
                     print(f"    ⚠️ Schedule CC error (non-fatal): {se}")
 
-            # ── Email Intent: detect questions/status requests in CC emails ──
-            # Session 51: CC path = learn only, never classify, never send.
-            # RCB in CC means we observe silently. Classification only from direct (To:) path.
-            if EMAIL_INTENT_AVAILABLE:
-                try:
-                    intent_result = process_email_intent(
-                        msg, get_db(), firestore, access_token, rcb_email, get_secret
-                    )
-                    if intent_result.get('status') in ('replied', 'cache_hit'):
-                        print(f"  🧠 Email intent handled: {intent_result.get('intent')}")
-                except Exception as ei_err:
-                    print(f"    ⚠️ Email intent error (non-fatal): {ei_err}")
+            # Session 51+52B: CC path = observe only, never classify, never send, never reply.
+            # process_email_intent removed — it created orphaned questions_log docs and
+            # could send clarification emails when RCB is only in CC (should be silent).
 
             get_db().collection("rcb_processed").document(safe_id_cc).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,
@@ -1092,6 +1083,30 @@ def _rcb_check_email_inner(event) -> None:
                         "type": "shipping_tracker",
                     })
                     continue
+
+        # ── External sender rate limiting (before expensive classification) ──
+        if not from_email.lower().endswith('@rpa-port.co.il'):
+            try:
+                _cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+                _recent = list(
+                    get_db().collection("rcb_processed")
+                    .where("from", "==", from_email.lower())
+                    .where("processed_at", ">=", _cutoff)
+                    .limit(5)
+                    .stream()
+                )
+                if len(_recent) >= 5:
+                    print(f"  🚫 Rate limited external sender {from_email}: {len(_recent)} classifications in last hour")
+                    get_db().collection("security_log").add({
+                        "type": "EXTERNAL_RATE_LIMITED",
+                        "from_email": from_email,
+                        "count": len(_recent),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                    continue
+            except Exception as rl_err:
+                print(f"    ⚠️ Rate limit check error (proceeding): {rl_err}")
 
         # Consolidated: ONE email with ack + classification + clarification
         try:
