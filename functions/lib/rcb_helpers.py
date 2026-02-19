@@ -765,9 +765,23 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
                  replaces the default "Re: ..." subject inherited from the thread.
     """
     # ── HARD BLOCK: Never reply to external recipients ──
-    if to_email and not _is_internal_recipient(to_email):
+    if not to_email:
+        print(f"\U0001f6ab BLOCKED reply: to_email is None (cannot verify recipient)")
+        return False
+    if not _is_internal_recipient(to_email):
         print(f"\U0001f6ab BLOCKED reply to external: {to_email}")
         return False
+    if cc_emails:
+        cc_emails = [e for e in cc_emails if _is_internal_recipient(e)]
+
+    # ── Email quality gate (fail-open) ──
+    try:
+        approved, reason = email_quality_gate(to_email, subject or "", body_html)
+        if not approved:
+            print(f"\U0001f4e7 Reply BLOCKED by quality gate: {reason} | to={to_email}")
+            return False
+    except Exception:
+        pass  # fail open — gate error never blocks sending
 
     try:
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages/{message_id}/reply"

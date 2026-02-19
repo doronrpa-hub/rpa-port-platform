@@ -509,8 +509,8 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
             if secrets:
                 access_token = helper_get_graph_token(secrets)
                 if access_token:
-                    helper_graph_send(access_token, secrets['RCB_EMAIL'], 
-                        secrets.get('RCB_FALLBACK_EMAIL', 'airpaort@gmail.com'),
+                    helper_graph_send(access_token, secrets['RCB_EMAIL'],
+                        secrets.get('RCB_FALLBACK_EMAIL', 'doron@rpa-port.co.il'),
                         f"[RCB Backup] Session {session_id}",
                         f"<pre>{backup_content}</pre>")
             return https_fn.Response(json.dumps({"ok": True, "session_id": session_id, "message": "Backup saved to Firestore and emailed"}), content_type="application/json")

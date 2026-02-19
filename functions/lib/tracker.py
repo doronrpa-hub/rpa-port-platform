@@ -2616,7 +2616,8 @@ def check_gate_cutoff_alerts(db, firestore_module, get_secret_func, access_token
             try:
                 sent = helper_graph_send(
                     access_token, rcb_email, follower,
-                    subject, body_html
+                    subject, body_html,
+                    deal_id=deal_id, alert_type=f"cutoff_{alert_level}", db=db
                 )
             except Exception as e:
                 print(f"    ❌ Gate cutoff email error for {deal_id}: {e}")
