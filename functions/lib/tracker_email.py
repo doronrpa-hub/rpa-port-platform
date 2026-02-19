@@ -21,13 +21,13 @@ _IL_STANDARD = timedelta(hours=2)
 _IL_SUMMER = timedelta(hours=3)
 
 # ── Branding / color constants ──
-_RPA_BLUE = "#1e3a5f"
-_RPA_ACCENT = "#2471a3"
-_COLOR_OK = "#27ae60"
-_COLOR_WARN = "#f39c12"
-_COLOR_ERR = "#e74c3c"
-_COLOR_PENDING = "#999999"
-_LOGO_URL = "https://rpa-port.com/wp-content/uploads/2016/09/logo.png"
+RPA_BLUE = "#1e3a5f"
+RPA_ACCENT = "#2471a3"
+COLOR_OK = "#27ae60"
+COLOR_WARN = "#f39c12"
+COLOR_ERR = "#e74c3c"
+COLOR_PENDING = "#999999"
+LOGO_URL = "https://rpa-port.com/wp-content/uploads/2016/09/logo.png"
 
 
 def _to_israel_time(dt_obj):
@@ -343,10 +343,10 @@ def _format_date(date_str):
 def _confidence_color(confidence_str):
     """Return color hex for classification confidence level."""
     if confidence_str in ("high", "גבוהה"):
-        return _COLOR_OK
+        return COLOR_OK
     if confidence_str in ("medium", "בינונית"):
-        return _COLOR_WARN
-    return _COLOR_ERR
+        return COLOR_WARN
+    return COLOR_ERR
 
 
 def _change_label(update_type):
@@ -388,16 +388,16 @@ def _section_header(deal, completed, total, direction):
     dir_label = "Import" if direction != 'export' else "Export"
     is_completed = completed == total and total > 0
     status_badge = "Completed" if is_completed else "Active"
-    badge_bg = _COLOR_OK if is_completed else "#3498db"
-    dir_badge_bg = _RPA_ACCENT if direction != 'export' else "#8e44ad"
+    badge_bg = COLOR_OK if is_completed else "#3498db"
+    dir_badge_bg = RPA_ACCENT if direction != 'export' else "#8e44ad"
 
     return f"""
 <!-- HEADER -->
-<tr><td style="background:{_RPA_BLUE};padding:0;">
+<tr><td style="background:{RPA_BLUE};padding:0;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding:20px 30px;" valign="middle">
-      <img src="{_LOGO_URL}" alt="RPA-PORT" width="48" height="48"
+      <img src="{LOGO_URL}" alt="RPA-PORT" width="48" height="48"
            style="display:inline-block;vertical-align:middle;border:0;">
       <span style="display:inline-block;vertical-align:middle;padding-left:12px;">
         <span style="color:#ffffff;font-size:18px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
@@ -422,7 +422,7 @@ def _section_change_banner(update_type):
 <tr><td style="background:#eaf2f8;padding:10px 30px;border-bottom:1px solid #d4e6f1;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:13px;color:{_RPA_ACCENT};font-weight:bold;">&#9432;&nbsp; {label}</td>
+    <td style="font-size:13px;color:{RPA_ACCENT};font-weight:bold;">&#9432;&nbsp; {label}</td>
   </tr>
   </table>
 </td></tr>
@@ -441,7 +441,7 @@ def _section_parties(deal):
 <tr><td style="padding:20px 30px 10px;">
   <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
   <tr>
-    <td style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};padding-bottom:8px;" colspan="3">Parties</td>
+    <td style="font-size:14px;font-weight:bold;color:{RPA_BLUE};padding-bottom:8px;" colspan="3">Parties</td>
   </tr>
   <tr>
     <td width="33%" style="background:#f8f9fa;border:1px solid #eee;padding:10px 12px;vertical-align:top;">
@@ -483,7 +483,7 @@ def _section_shipment(deal):
     def _row(label, value):
         v = value if value else '&#8212;'
         return (f'  <tr>'
-                f'<td style="padding:6px 12px;color:{_RPA_BLUE};font-weight:bold;font-size:13px;'
+                f'<td style="padding:6px 12px;color:{RPA_BLUE};font-weight:bold;font-size:13px;'
                 f'width:40%;border-bottom:1px solid #f0f0f0;">{label}</td>'
                 f'<td style="padding:6px 12px;color:#333;font-size:13px;'
                 f'border-bottom:1px solid #f0f0f0;">{v}</td>'
@@ -493,7 +493,7 @@ def _section_shipment(deal):
 <!-- SHIPMENT DETAILS -->
 <tr><td style="padding:10px 30px 20px;">
   <table width="100%" cellpadding="0" cellspacing="0"
-         style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};margin-bottom:8px;">
+         style="font-size:14px;font-weight:bold;color:{RPA_BLUE};margin-bottom:8px;">
   <tr><td>Shipment Details</td></tr>
   </table>
   <table width="100%" cellpadding="0" cellspacing="0"
@@ -536,7 +536,7 @@ def _section_progress(steps_summary, completed, total, direction,
     else:
         progress_pct = 5
 
-    status_color = _COLOR_OK if completed == total and total > 0 else _COLOR_WARN if completed > 0 else "#3498db"
+    status_color = COLOR_OK if completed == total and total > 0 else COLOR_WARN if completed > 0 else "#3498db"
     status_text = f"{completed}/{total} Completed" if direction != 'export' else f"{completed}/{total} Sailed"
 
     html = f"""
@@ -544,7 +544,7 @@ def _section_progress(steps_summary, completed, total, direction,
 <tr><td style="padding:15px 30px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};">Overall Progress</td>
+    <td style="font-size:14px;font-weight:bold;color:{RPA_BLUE};">Overall Progress</td>
     <td align="left" style="font-size:13px;color:{status_color};font-weight:bold;">{status_text}</td>
   </tr>
   <tr><td colspan="2" style="padding-top:8px;">
@@ -571,14 +571,14 @@ def _section_progress(steps_summary, completed, total, direction,
 
     for s in steps_summary:
         if s['completed'] == s['total'] and s['total'] > 0:
-            bg = _COLOR_OK
+            bg = COLOR_OK
             txt_color = "#fff"
         elif s['completed'] > 0:
             bg = "#3498db"
             txt_color = "#fff"
         else:
             bg = "#ecf0f1"
-            txt_color = _COLOR_PENDING
+            txt_color = COLOR_PENDING
         cell_text = f"{s['completed']}/{s['total']}" if s['total'] > 1 else ("&#10003;" if s['completed'] > 0 else "&#8212;")
         html += f'    <td align="center" style="background:{bg};color:{txt_color};padding:7px 2px;font-weight:bold;font-size:12px;border:1px solid #fff;border-radius:3px;">{cell_text}</td>\n'
 
@@ -599,7 +599,7 @@ def _section_progress(steps_summary, completed, total, direction,
 <tr><td style="padding:15px 30px 5px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:14px;font-weight:bold;color:{_RPA_ACCENT};">&#127758; Global Tracking</td>
+    <td style="font-size:14px;font-weight:bold;color:{RPA_ACCENT};">&#127758; Global Tracking</td>
     <td align="left" style="font-size:10px;color:#999;">{num_sources} source{"s" if num_sources != 1 else ""} checked</td>
   </tr>
   </table>
@@ -609,9 +609,9 @@ def _section_progress(steps_summary, completed, total, direction,
 <tr><td style="padding:8px 30px 4px;">
   <table width="100%" cellpadding="4" cellspacing="0" style="font-size:13px;color:#333;border:1px solid #d4e6f1;border-radius:4px;background:#eaf2f8;">
   <tr>
-    <td width="50%"><b style="color:{_RPA_ACCENT};">B/L:</b> {bol}</td>
-    <td width="25%"><b style="color:{_RPA_ACCENT};">Containers:</b> {total}</td>
-    <td width="25%"><b style="color:{_RPA_ACCENT};">Vessel:</b> {vessel[:20]}</td>
+    <td width="50%"><b style="color:{RPA_ACCENT};">B/L:</b> {bol}</td>
+    <td width="25%"><b style="color:{RPA_ACCENT};">Containers:</b> {total}</td>
+    <td width="25%"><b style="color:{RPA_ACCENT};">Vessel:</b> {vessel[:20]}</td>
   </tr>
   </table>
 </td></tr>
@@ -619,7 +619,7 @@ def _section_progress(steps_summary, completed, total, direction,
 <!-- POL / POD TIMING TABLE -->
 <tr><td style="padding:4px 30px 10px;">
   <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
-  <tr style="background:{_RPA_ACCENT};color:#fff;">
+  <tr style="background:{RPA_ACCENT};color:#fff;">
     <td style="padding:6px 8px;font-weight:bold;width:20%;">Port</td>
     <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ETD</td>
     <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ATD</td>
@@ -627,14 +627,14 @@ def _section_progress(steps_summary, completed, total, direction,
     <td style="padding:6px 6px;font-weight:bold;text-align:center;width:20%;">ATA</td>
   </tr>
   <tr style="background:#eaf2f8;">
-    <td style="padding:5px 8px;font-weight:bold;color:{_RPA_ACCENT};">POL {ocean_times['pol_code']}</td>
+    <td style="padding:5px 8px;font-weight:bold;color:{RPA_ACCENT};">POL {ocean_times['pol_code']}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_etd'])}">{ocean_times['pol_etd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_atd'])}">{ocean_times['pol_atd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_eta'])}">{ocean_times['pol_eta'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pol_ata'])}">{ocean_times['pol_ata'] or '&#8212;'}</td>
   </tr>
   <tr style="background:#ffffff;">
-    <td style="padding:5px 8px;font-weight:bold;color:{_RPA_ACCENT};">POD {ocean_times['pod_code']}</td>
+    <td style="padding:5px 8px;font-weight:bold;color:{RPA_ACCENT};">POD {ocean_times['pod_code']}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_etd'])}">{ocean_times['pod_etd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_atd'])}">{ocean_times['pod_atd'] or '&#8212;'}</td>
     <td style="padding:5px 6px;text-align:center;{_time_style(ocean_times['pod_eta'])}">{ocean_times['pod_eta'] or '&#8212;'}</td>
@@ -649,7 +649,7 @@ def _section_progress(steps_summary, completed, total, direction,
             html += f"""
 <tr><td style="padding:4px 30px 15px;">
   <table width="100%" cellpadding="3" cellspacing="0" style="font-size:11px;border-collapse:collapse;border:1px solid #d4e6f1;">
-  <tr style="background:{_RPA_ACCENT};color:#fff;">
+  <tr style="background:{RPA_ACCENT};color:#fff;">
     <td style="padding:5px 8px;font-weight:bold;">Event</td>
     <td style="padding:5px 6px;font-weight:bold;">Date</td>
     <td style="padding:5px 6px;font-weight:bold;">Location</td>
@@ -660,13 +660,13 @@ def _section_progress(steps_summary, completed, total, direction,
                 bg = "#f4f8fb" if i % 2 == 0 else "#ffffff"
                 confirmed = evt['confirmed']
                 if confirmed >= 2:
-                    conf_color = _COLOR_OK
+                    conf_color = COLOR_OK
                     conf_icon = "&#10003;&#10003;"
                 elif confirmed == 1:
                     conf_color = "#3498db"
                     conf_icon = "&#10003;"
                 else:
-                    conf_color = _COLOR_PENDING
+                    conf_color = COLOR_PENDING
                     conf_icon = "?"
 
                 html += f"""  <tr style="background:{bg};">
@@ -686,14 +686,14 @@ def _section_progress(steps_summary, completed, total, direction,
 <tr><td style="padding:15px 30px 5px;">
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};">&#9875; TaskYam Local Tracking</td>
+    <td style="font-size:14px;font-weight:bold;color:{RPA_BLUE};">&#9875; TaskYam Local Tracking</td>
     <td align="left" style="font-size:10px;color:#999;">Source: TaskYam (Israel Ports)</td>
   </tr>
   </table>
 </td></tr>
 <tr><td style="padding:5px 30px 10px;">
   <table width="100%" cellpadding="4" cellspacing="0" style="font-size:11px;border-collapse:collapse;">
-  <tr style="background:{_RPA_BLUE};color:#fff;">
+  <tr style="background:{RPA_BLUE};color:#fff;">
     <td style="padding:6px 8px;font-weight:bold;">Container</td>"""
 
         for s in steps_summary:
@@ -713,7 +713,7 @@ def _section_progress(steps_summary, completed, total, direction,
                 date_val = proc.get(date_field, '')
                 if date_val:
                     formatted = _format_date(str(date_val))
-                    html += f'    <td align="center" style="background:#d4efdf;color:{_COLOR_OK};padding:3px 1px;font-size:11px;">&#10003; {formatted}</td>\n'
+                    html += f'    <td align="center" style="background:#d4efdf;color:{COLOR_OK};padding:3px 1px;font-size:11px;">&#10003; {formatted}</td>\n'
                 else:
                     html += '    <td align="center" style="color:#ccc;padding:3px 1px;font-size:11px;">&#8212;</td>\n'
 
@@ -740,7 +740,7 @@ def _section_goods(deal, container_statuses):
 <!-- GOODS -->
 <tr><td style="padding:15px 30px 10px;">
   <table width="100%" cellpadding="0" cellspacing="0"
-         style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};margin-bottom:8px;">
+         style="font-size:14px;font-weight:bold;color:{RPA_BLUE};margin-bottom:8px;">
   <tr><td>Goods &amp; Classification</td></tr>
   </table>"""
 
@@ -749,7 +749,7 @@ def _section_goods(deal, container_statuses):
         html += f"""
   <table width="100%" cellpadding="4" cellspacing="0"
          style="font-size:12px;border-collapse:collapse;border:1px solid #e0e0e0;margin-bottom:10px;">
-  <tr style="background:{_RPA_BLUE};color:#fff;">
+  <tr style="background:{RPA_BLUE};color:#fff;">
     <td style="padding:6px 10px;font-weight:bold;">Container</td>
     <td style="padding:6px 10px;font-weight:bold;">Type</td>
     <td style="padding:6px 10px;font-weight:bold;">Weight</td>
@@ -772,7 +772,7 @@ def _section_goods(deal, container_statuses):
         hs_label = rcb_code if rcb_code else "Classification"
         html += f"""
   <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;">
-  <tr><td style="font-size:12px;font-weight:bold;color:{_RPA_BLUE};padding-bottom:6px;">{hs_label}</td></tr>
+  <tr><td style="font-size:12px;font-weight:bold;color:{RPA_BLUE};padding-bottom:6px;">{hs_label}</td></tr>
   <tr><td>"""
         for hc in hs_codes[:5]:
             hs_num = hc.get('hs_code', '')
@@ -791,7 +791,7 @@ def _section_goods(deal, container_statuses):
     else:
         html += f"""
   <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;">
-  <tr><td style="font-size:12px;color:{_COLOR_PENDING};font-style:italic;padding:6px 0;">Classification pending</td></tr>
+  <tr><td style="font-size:12px;color:{COLOR_PENDING};font-style:italic;padding:6px 0;">Classification pending</td></tr>
   </table>"""
 
     html += "\n</td></tr>\n"
@@ -809,10 +809,10 @@ def _section_footer():
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding-bottom:10px;">
-      <img src="{_LOGO_URL}" alt="RPA-PORT" width="32" height="32"
+      <img src="{LOGO_URL}" alt="RPA-PORT" width="32" height="32"
            style="display:inline-block;vertical-align:middle;border:0;">
       <span style="display:inline-block;vertical-align:middle;padding-left:8px;">
-        <span style="font-size:12px;font-weight:bold;color:{_RPA_BLUE};">RCB &#8212; AI Customs Broker</span><br>
+        <span style="font-size:12px;font-weight:bold;color:{RPA_BLUE};">RCB &#8212; AI Customs Broker</span><br>
         <span style="font-size:11px;color:#888;">R.P.A. PORT LTD</span>
       </span>
     </td>
