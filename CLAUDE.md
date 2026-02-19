@@ -2663,3 +2663,66 @@ Dispatcher cleaned: 37 entries → 33 (removed 4 dead stubs).
 
 ### Test Results
 - **61 passed** in test_tool_calling.py — zero failures
+
+## Session 51 Summary (2026-02-19) — Embedded Customs Law Expertise
+
+### What Was Done
+
+Transformed RCB from a lookup tool into an embedded-expertise system. The AI now reads the law before it reads the invoice.
+
+**1. Created `functions/lib/chapter_expertise.py` (NEW — ~300 lines)**
+Seed expertise for all 22 tariff sections (I–XXII):
+- Chapter ranges, English/Hebrew section names
+- Per-section classification notes and common traps
+- Helper functions: `get_section_for_chapter()`, `get_section_data()`
+
+**2. Created `functions/lib/customs_law.py` (NEW — ~450 lines)**
+The broker's brain as pure Python constants — no DB, no network, no Firestore calls:
+
+| Block | Contents |
+|-------|----------|
+| CLASSIFICATION_METHODOLOGY | Phases 0-9 as Python dict — case type, three pillars (physical→essence→function), legal hierarchy (א/ב/ג/pre-ruling), elimination process, bilingual verification, post-classification (9 sources), regulatory (9 invoice fields + FTA + FIO), multi-AI cross-check, source attribution, final output (≤5 candidates) |
+| TARIFF_SECTIONS | Sections I-XXII with chapter ranges |
+| VALID_SUPPLEMENTS | Only supplements that ACTUALLY EXIST: 2,3,4,5,6,7,8,9,10,14,15,16,17. Supplements 11,12,13 DO NOT EXIST. |
+| GIR_RULES | Rules 1, 2a, 2b, 3a, 3b, 3c, 4, 5a, 5b, 6 — with Hebrew names, legal text, application examples |
+| KNOWN_FAILURES | 5 documented failures: Kiwi→Caviar, Ouzo refusal, Tires→Raw rubber, No tariff rates, No FIO check |
+| SEED_EXPERTISE | Imported from chapter_expertise.py (not duplicated) |
+
+Key function: `format_legal_context_for_prompt(chapters, phase)` — returns embeddable prompt text with methodology, GIR rules, known failures, section expertise, and critical reminders.
+
+**3. Wired into BOTH classification paths**
+
+| Path | File | Change |
+|------|------|--------|
+| Tool-calling engine (primary) | `tool_definitions.py` | `CLASSIFICATION_SYSTEM_PROMPT` prepended with `format_legal_context_for_prompt()` output |
+| Agent 2 pipeline (fallback) | `classification_agents.py` | `run_classification_agent()` system prompt prepended with legal context |
+
+Both paths now have the law injected at the TOP — before any product description, before any search results.
+
+**4. Created `functions/tests/test_customs_law.py` (NEW — 67 tests)**
+
+| Test Class | Tests | Coverage |
+|-----------|-------|----------|
+| TestClassificationMethodology | 17 | All 10 phases, three pillars order, legal hierarchy, framework order, Rule 3, הראישה first, אחרים gate, bilingual, 9 sources, 9 invoice fields, FTA, multi-AI, source attribution, ≤5 candidates |
+| TestTariffStructure | 4 | 22 sections, chapters 1-99 covered, valid supplements, nonexistent supplements |
+| TestGIRRules | 8 | All 10 rules exist, required fields, Rule 3א specificity, 3ב essential character, 3ג last numerical, Rule 6 sub-heading |
+| TestKnownFailures | 5 | ≥5 failures, required fields, kiwi-caviar, ouzo, tires |
+| TestSeedExpertise | 9 | 22 sections, required fields, chapter lookups, section data |
+| TestGetChapterSection | 7 | Chapters 1/15/71/84/93/98/out-of-range |
+| TestGetApplicableSupplements | 3 | Sorted, no nonexistent, includes supplement 2 |
+| TestFormatLegalContextForPrompt | 14 | String output, headers, GIR rules, known failures, reminders, supplement warning, chapter expertise, traps, single phase, dedup, length bounds |
+
+### Files Modified/Created
+| File | Change |
+|------|--------|
+| `functions/lib/chapter_expertise.py` | NEW — section/chapter seed expertise |
+| `functions/lib/customs_law.py` | NEW — broker's brain (methodology + GIR + tariff structure + failures) |
+| `functions/tests/test_customs_law.py` | NEW — 67 tests |
+| `functions/lib/tool_definitions.py` | Prepend legal context to CLASSIFICATION_SYSTEM_PROMPT |
+| `functions/lib/classification_agents.py` | Import customs_law + prepend legal context to Agent 2 prompt |
+
+### Git Commits
+- `d4a9ec1` — Session 51: Embed customs law expertise into classification pipeline
+
+### Test Results
+- **1106 passed, 1 skipped** (baseline was 1032 + 67 new + 7 from other session)
