@@ -62,6 +62,54 @@
       "fields": [
         {"fieldPath": "hs_10", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "tracker_deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "bol_number", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "tracker_deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "awb_number", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "tracker_deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "booking_number", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "tracker_deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "source_email_thread_id", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "tracker_deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "containers", "arrayConfig": "CONTAINS"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "questions_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "from_email", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "ASCENDING"}
+      ]
     }
   ]
 }

@@ -1419,16 +1419,31 @@ def rcb_retry_failed(event: scheduler_fn.ScheduledEvent) -> None:
     from datetime import datetime, timedelta, timezone
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     
+    import hashlib as _hl
+    _MAX_RETRIES = 3
     retried = 0
+    skipped_max = 0
     try:
+        # Load retry counts (single doc tracks all subjects by hash)
+        retry_doc_ref = get_db().collection("rcb_processed").document("_retry_counts")
+        retry_counts = {}
+        try:
+            rd = retry_doc_ref.get()
+            if rd.exists:
+                retry_counts = rd.to_dict() or {}
+        except Exception:
+            pass
+
         # Find processed emails without classification
         processed_docs = get_db().collection("rcb_processed").stream()
         processed_subjects = {}
         for doc in processed_docs:
+            if doc.id == "_retry_counts":
+                continue
             data = doc.to_dict()
             if data.get("processed_at") and data.get("processed_at") > cutoff:
                 processed_subjects[data.get("subject", "")] = doc.id
-        
+
         # Find classifications
         classified_subjects = set()
         class_docs = get_db().collection("rcb_classifications").stream()
@@ -1436,21 +1451,32 @@ def rcb_retry_failed(event: scheduler_fn.ScheduledEvent) -> None:
             data = doc.to_dict()
             if data.get("timestamp") and data.get("timestamp") > cutoff:
                 classified_subjects.add(data.get("subject", ""))
-        
+
         # Find failed (processed but not classified)
         failed = set(processed_subjects.keys()) - classified_subjects
-        
+        updates = {}
+
         for subject in failed:
             doc_id = processed_subjects[subject]
-            # Delete from processed so it will be retried
+            subj_hash = _hl.md5(subject.encode("utf-8", errors="replace")).hexdigest()[:12]
+            count = retry_counts.get(subj_hash, 0)
+            if count >= _MAX_RETRIES:
+                skipped_max += 1
+                print(f"  ⏭️ Max retries ({_MAX_RETRIES}) reached: {subject[:40]}")
+                continue
+            updates[subj_hash] = count + 1
             get_db().collection("rcb_processed").document(doc_id).delete()
             retried += 1
-            print(f"  🔄 Queued for retry: {subject[:40]}")
-        
+            print(f"  🔄 Retry {count + 1}/{_MAX_RETRIES}: {subject[:40]}")
+
+        # Persist updated retry counts
+        if updates:
+            retry_doc_ref.set(updates, merge=True)
+
     except Exception as e:
         print(f"❌ Retry check error: {e}")
-    
-    print(f"✅ Retry check complete: {retried} emails queued for retry")
+
+    print(f"✅ Retry check complete: {retried} queued, {skipped_max} hit max retries")
 
 
 # ============================================================

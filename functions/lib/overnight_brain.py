@@ -1733,10 +1733,12 @@ def stream_12_regression_guard(db, tracker):
              "confidence_improved": 0, "errors": 0}
     now = datetime.now(timezone.utc).isoformat()
 
-    # Read today's classifications
+    # Read today's classifications (date-filtered to avoid reading stale docs)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         today_cls = list(
             db.collection("rcb_classifications")
+            .where("timestamp", ">=", today_start)
             .limit(100)
             .stream()
         )
