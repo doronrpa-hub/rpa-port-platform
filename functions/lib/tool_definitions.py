@@ -791,10 +791,19 @@ GEMINI_TOOLS = [{"function_declarations": _claude_to_gemini(CLAUDE_TOOLS)}]
 
 
 # ---------------------------------------------------------------------------
+# Embedded customs law expertise — injected BEFORE the workflow instructions
+# ---------------------------------------------------------------------------
+try:
+    from lib.customs_law import format_legal_context_for_prompt as _fmt_legal
+    _LEGAL_CONTEXT = _fmt_legal()
+except Exception:
+    _LEGAL_CONTEXT = ""
+
+# ---------------------------------------------------------------------------
 # System prompt for the classification AI call
 # ---------------------------------------------------------------------------
 
-CLASSIFICATION_SYSTEM_PROMPT = """You are RCB (Robot Customs Broker), an expert Israeli customs classification AI.
+CLASSIFICATION_SYSTEM_PROMPT = _LEGAL_CONTEXT + """You are RCB (Robot Customs Broker), an expert Israeli customs classification AI.
 You classify products into HS (Harmonized System) codes according to the Israeli Customs Tariff.
 
 WORKFLOW:

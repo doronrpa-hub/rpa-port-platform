@@ -139,6 +139,14 @@ except ImportError as e:
     print(f"Verification engine not available: {e}")
     VERIFICATION_ENGINE_AVAILABLE = False
 
+# Session 51: Embedded customs law expertise — broker's brain before any search
+try:
+    from lib.customs_law import format_legal_context_for_prompt
+    CUSTOMS_LAW_AVAILABLE = True
+except ImportError as e:
+    print(f"Customs law module not available: {e}")
+    CUSTOMS_LAW_AVAILABLE = False
+
 # =============================================================================
 # FEATURE FLAGS (Session 26/27: cost optimization + cross-check)
 # =============================================================================
@@ -705,8 +713,16 @@ JSON בלבד."""
 
 def run_classification_agent(api_key, items, tariff_data, rules, knowledge_context="", gemini_key=None):
     """Agent 2: Classify items using Israeli HS codes
-    Session 15: STAYS on Claude Sonnet 4.5 (highest quality for core task)"""
-    system = f"""אתה סוכן סיווג מכס ישראלי מומחה.
+    Session 15: STAYS on Claude Sonnet 4.5 (highest quality for core task)
+    Session 51: Legal context from customs_law.py injected BEFORE knowledge context"""
+    # Session 51: Inject embedded customs law expertise at the TOP
+    _legal_ctx = ""
+    if CUSTOMS_LAW_AVAILABLE:
+        try:
+            _legal_ctx = format_legal_context_for_prompt()
+        except Exception:
+            pass
+    system = f"""{_legal_ctx}אתה סוכן סיווג מכס ישראלי מומחה.
 
 {knowledge_context}
 
