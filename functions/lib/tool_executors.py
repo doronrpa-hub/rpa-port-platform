@@ -294,7 +294,13 @@ class ToolExecutor:
             origin_country=inp.get("origin_country", ""),
             seller_name=inp.get("seller_name", ""),
         )
-        return result or {"candidates": [], "regulatory": [], "fta": None, "context_text": ""}
+        if not result or not result.get("candidates"):
+            return {
+                "candidates": [], "regulatory": [], "fta": None, "context_text": "",
+                "found": False,
+                "suggestion": "No tariff matches found. Try broader search terms, use get_chapter_notes for chapter-level search, or search_wco_notes for WCO explanatory notes.",
+            }
+        return result
 
     def _check_regulatory(self, inp):
         """Wraps intelligence.route_to_ministries() + query_free_import_order().
@@ -521,6 +527,8 @@ class ToolExecutor:
             fw_fta = self._lookup_fw_fta_clause(origin)
             if fw_fta:
                 result["framework_order_clause"] = fw_fta
+        if not result.get("eligible"):
+            result["suggestion"] = "No FTA found. Try lookup_framework_order with the country name for legal clause details, or lookup_unctad_gsp to check GSP preferential status."
         return result
 
     def _lookup_fw_fta_clause(self, origin_country):
@@ -652,7 +660,11 @@ class ToolExecutor:
                     "headings": old_data.get("headings", [])[:20],
                     "hs_codes_count": len(old_data.get("hsCodes", [])),
                 }
-            return {"found": False, "chapter": chapter, "message": f"Chapter {chapter} not found"}
+            return {
+                "found": False, "chapter": chapter,
+                "message": f"Chapter {chapter} not found",
+                "suggestion": "Try lookup_tariff_structure to find the correct section/chapter, or search_wco_notes for WCO explanatory notes on this chapter.",
+            }
         except Exception as e:
             return {"found": False, "error": str(e)}
 
@@ -959,7 +971,8 @@ class ToolExecutor:
             if results:
                 return {"found": True, "count": len(results), "directives": results}
             return {"found": False, "query": query or hs_code or chapter,
-                    "message": "No matching classification directive found"}
+                    "message": "No matching classification directive found",
+                    "suggestion": "Try searching by chapter number instead of HS code, or use search_legal_knowledge for broader legal context."}
 
         except Exception as e:
             return {"found": False, "error": str(e)}

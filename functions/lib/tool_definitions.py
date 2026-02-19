@@ -832,6 +832,18 @@ WORKFLOW:
 32. Call get_israel_vat_rates to complete the total import cost picture (duty + purchase tax + VAT).
 33. Call fetch_seller_website when seller is identified — check their product catalogue to confirm/enrich classification. Especially useful when item descriptions are vague or incomplete. FREE and cached.
 
+TOOL PRIORITY STRATEGY — use this decision tree for common cases:
+A) New product, no HS code known:
+   check_memory → search_tariff → get_chapter_notes → run_elimination (if multiple candidates) → verify_hs_code → check_regulatory → lookup_fta
+B) Chapter ambiguous (product could fit 2+ chapters):
+   lookup_tariff_structure → get_chapter_notes (for each candidate chapter) → search_wco_notes → run_elimination → search_classification_directives
+C) Chemical/material product:
+   search_pubchem → search_wikipedia → get_chapter_notes (ch.28/29/38) → verify_hs_code
+D) Food product:
+   lookup_food_product → get_chapter_notes (ch.1-24) → verify_hs_code
+E) After classification determined:
+   verify_hs_code → check_regulatory → lookup_fta → bank_of_israel_rates → lookup_eu_taric → lookup_usitc
+
 RULES:
 - Israeli HS codes use 10-digit format: XX.XX.XXXXXX/X (e.g., 87.03.808000/5). Use this format for import tariff.
 - For export, use the export tariff codes — regulatory requirements differ for import vs export.
@@ -839,6 +851,7 @@ RULES:
 - If candidates conflict, prefer higher-confidence matches.
 - If no candidates found, use your training knowledge but verify the code.
 - Always provide Hebrew descriptions alongside English.
+- If a tool returns no results, try broader search terms or alternative tools (see suggestions in tool responses).
 
 OUTPUT FORMAT (in your final text response, as JSON):
 {
