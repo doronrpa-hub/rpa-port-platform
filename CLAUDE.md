@@ -2597,3 +2597,69 @@ BALKI re-test (RCB-20260218-182-CLS) after Session 47 deploy exposed 4 cascading
 
 ### Test Results
 - **968 passed**, 5 failed (pre-existing BS4), 2 skipped — zero regressions throughout
+
+## Session 50d Summary (2026-02-19) — Tool Calling Engine: Audit, Wire, Maximize
+
+### Overview
+Full audit and enhancement of the tool-calling engine (tool_definitions.py, tool_executors.py, tool_calling_engine.py, test_tool_calling.py). Fixed 4 audit issues, enhanced engine with tool priority guidance and empty-result hints, wrote 34 new tests (27→61), evaluated 4 new tool candidates.
+
+### Round 1 — Fix Audit Issues (4 fixes)
+
+| # | Issue | File | Fix |
+|---|-------|------|-----|
+| R1a | 4 dead dispatcher stubs (L10) | `tool_executors.py` | Removed search_pre_rulings, search_foreign_tariff, search_court_precedents, search_wco_decisions + _stub_not_available method |
+| R1b | Comtrade TTL mismatch (L11) | `tool_executors.py:1539` | Changed TTL from 30 days to 7 days to match CLAUDE.md spec |
+| R1c | Stale docstring (L13) | `tool_calling_engine.py:542-544` | Updated "Max 8 rounds / 120s" → "Max 15 rounds / 180s" |
+| R1d | User-Agent reveals identity (L12) | `tool_executors.py:2352` | Changed from "Mozilla/5.0 (RCB Customs Classifier)" to generic Chrome UA |
+
+### Round 2 — Enhance the Engine (3 improvements)
+
+| # | Enhancement | File | Change |
+|---|------------|------|--------|
+| E1 | Tool priority guidance | `tool_definitions.py` | Added TOOL PRIORITY STRATEGY section to system prompt with 5 decision tree patterns |
+| E2 | Empty-result hints | `tool_executors.py` | Added "suggestion" field to 4 key tools: search_tariff, get_chapter_notes, lookup_fta, search_classification_directives |
+| E3 | Elimination engine check | (read-only) | Verified integration is correct — ProductInfo, candidates, eliminate() all properly wired |
+
+### Round 3 — Tests + Tool Candidates
+
+**34 new tests across 10 classes (27→61 total):**
+| Class | Tests | What |
+|-------|-------|------|
+| TestToolSchemaDeep | 6 | No dupes, descriptions, required-in-properties, types |
+| TestGeminiFormatDeep | 3 | Names match Claude, array items (run_elimination), parameters |
+| TestSystemPrompt | 6 | Priority strategy, tools mentioned, output format, HS format |
+| TestDispatcherClean | 2 | No stub refs, no dead tool names |
+| TestDomainAllowlist | 2 | Exists, critical domains present |
+| TestSanitization | 4 | Normal, empty, injection, truncation |
+| TestBuildUserPromptEnrichment | 3 | Enrichment included/empty/none |
+| TestEngineConstants | 5 | Max rounds, time budget, models |
+| TestFTACountryMap | 3 | EU mapping, Hebrew, value types |
+
+**Tool candidates evaluated:**
+| # | Candidate | Decision | Reason |
+|---|-----------|----------|--------|
+| T1 | check_image_pattern | SKIP | Internal cache, not AI-callable |
+| T2 | query_free_import_order | ALREADY COVERED | Accessible via check_regulatory (tool #3) |
+| T3 | check_port_schedule | SKIP | Logistics, not classification |
+| T4 | query_route_eta | SKIP | Logistics, not classification |
+
+**Audit C2 (OpenSanctions):** Verified already fixed — code loops over ("Company", "Person") at line 2215.
+
+### Tool-Calling Engine: 33 Active Tools (unchanged count)
+Dispatcher cleaned: 37 entries → 33 (removed 4 dead stubs).
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | -4 dead stubs, -_stub_not_available, TTL fix, UA fix, +4 suggestion hints |
+| `functions/lib/tool_definitions.py` | +TOOL PRIORITY STRATEGY section, +empty result guidance rule |
+| `functions/lib/tool_calling_engine.py` | Docstring fix (8→15 rounds, 120→180s) |
+| `functions/tests/test_tool_calling.py` | +34 tests (27→61), 10 new test classes |
+
+### Git Commits
+- `f944ab0` — Session 50d R1: Fix 4 audit issues in tool engine
+- `07abd7d` — Session 50d R2: Enhance tool engine — priority guidance + empty-result hints
+- `1cfda99` — Session 50d R3: Comprehensive tests — 27→61 tests, tool candidates evaluated
+
+### Test Results
+- **61 passed** in test_tool_calling.py — zero failures
