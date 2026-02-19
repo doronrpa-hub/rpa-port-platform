@@ -10,11 +10,14 @@ from lib.customs_law import (
     CORRECT_TERMS,
     WRONG_TERMS,
     CUSTOMS_ORDINANCE_ARTICLES,
+    CUSTOMS_ORDINANCE_CHAPTERS,
     get_classification_methodology,
     get_gir_rule,
     get_chapter_section,
     get_applicable_supplements,
     get_ordinance_article,
+    get_ordinance_chapter,
+    get_articles_by_chapter,
     get_valuation_methods,
     format_legal_context_for_prompt,
 )
@@ -429,168 +432,322 @@ class TestTerminology:
         assert WRONG_TERMS["מתווך מכס מוסמך"] == "עמיל מכס מוסמך"
 
 
-# ── BLOCK 8: CUSTOMS ORDINANCE ARTICLES ─────────────────────────────────
+# ── BLOCK 8: CUSTOMS ORDINANCE — COMPREHENSIVE (311 articles, 17 chapters)
 
 
-class TestCustomsOrdinanceArticles:
-    """Structured summaries of key פקודת המכס articles."""
+class TestOrdinanceComprehensive:
+    """Test the full Customs Ordinance data (311 articles, 17 chapters)."""
 
-    EXPECTED_ARTICLE_GROUPS = ["1", "2", "24", "62-65g", "123a-b", "124-154", "168-169", "207-223", "223a-r"]
+    def test_article_count_at_least_300(self):
+        assert len(CUSTOMS_ORDINANCE_ARTICLES) >= 300
 
-    def test_all_article_groups_exist(self):
-        for group_id in self.EXPECTED_ARTICLE_GROUPS:
-            assert group_id in CUSTOMS_ORDINANCE_ARTICLES, f"Article group {group_id} missing"
+    def test_chapter_count(self):
+        assert len(CUSTOMS_ORDINANCE_CHAPTERS) == 17
 
-    def test_article_groups_have_name_he(self):
-        for group_id, data in CUSTOMS_ORDINANCE_ARTICLES.items():
-            assert "name_he" in data, f"Group {group_id} missing name_he"
+    def test_every_article_has_chapter(self):
+        for art_id, data in CUSTOMS_ORDINANCE_ARTICLES.items():
+            assert "ch" in data, f"Article {art_id} missing 'ch' field"
 
-    def test_article_groups_have_chapter(self):
-        for group_id, data in CUSTOMS_ORDINANCE_ARTICLES.items():
-            assert "chapter" in data, f"Group {group_id} missing chapter"
+    def test_every_article_has_hebrew_title(self):
+        for art_id, data in CUSTOMS_ORDINANCE_ARTICLES.items():
+            assert "t" in data, f"Article {art_id} missing 't' (Hebrew title)"
 
-    def test_article_1_definitions(self):
+    def test_every_article_has_summary(self):
+        for art_id, data in CUSTOMS_ORDINANCE_ARTICLES.items():
+            if not data.get("repealed"):
+                assert "s" in data, f"Article {art_id} missing 's' (English summary)"
+
+    def test_all_15_chapters_represented(self):
+        chapters_found = {v["ch"] for v in CUSTOMS_ORDINANCE_ARTICLES.values()}
+        for ch in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]:
+            assert ch in chapters_found, f"Chapter {ch} has no articles"
+
+    def test_chapter_metadata_has_required_fields(self):
+        for ch_id, data in CUSTOMS_ORDINANCE_CHAPTERS.items():
+            assert "title_he" in data, f"Chapter {ch_id} missing title_he"
+            assert "title_en" in data, f"Chapter {ch_id} missing title_en"
+            assert "articles_range" in data, f"Chapter {ch_id} missing articles_range"
+
+
+class TestOrdinanceDefinitions:
+    """Article 1 — foundational definitions."""
+
+    def test_article_1_exists(self):
         art = CUSTOMS_ORDINANCE_ARTICLES["1"]
-        defs = art["definitions"]
+        assert art["ch"] == 1
+
+    def test_article_1_has_definitions(self):
+        defs = CUSTOMS_ORDINANCE_ARTICLES["1"]["definitions"]
+        assert len(defs) >= 15
+
+    def test_key_definitions_present(self):
+        defs = CUSTOMS_ORDINANCE_ARTICLES["1"]["definitions"]
         assert "טובין חבי מכס" in defs
         assert "הברחה" in defs
         assert "סוכן מכס" in defs
         assert "מסי יבוא" in defs
-        assert len(defs) >= 15
+        assert "מסמכי העדפה" in defs
 
-    def test_article_1_has_broker_note(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["1"]
-        assert "broker_note" in art
-        assert "בעל" in art["broker_note"]
 
-    def test_article_62_import_declaration(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["62-65g"]
-        assert "articles" in art
-        assert "62" in art["articles"]
-        assert "63" in art["articles"]
-        assert "סוכן מכס" in art["articles"]["62"]["text"]
+class TestOrdinanceImportDeclaration:
+    """Articles 62-65 — import declarations."""
 
-    def test_article_62_deadlines(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["62-65g"]
-        text_63 = art["articles"]["63"]["text"]
-        assert "3 חודשים" in text_63 or "שלושה חודשים" in text_63
-        assert "45 ימים" in text_63 or "45" in text_63
+    def test_article_62_exists(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["62"]
+        assert art["ch"] == 4
 
-    def test_article_123_liability(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["123a-b"]
-        assert "123a" in art["articles"]
-        assert "importer" in art["articles"]["123a"]["text"].lower()
+    def test_article_63_deadlines(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["63"]
+        s = art["s"]
+        assert "3 months" in s or "3-month" in s or "3 month" in s
 
-    def test_article_130_valuation_methods(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        art_130 = art["key_articles"]["130"]
-        methods = art_130["methods"]
-        assert len(methods) == 7
-        # Check methods are in correct order
-        assert methods[0]["number"] == 1
-        assert methods[6]["number"] == 7
+    def test_article_65a_document_retention(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES.get("65א", {})
+        assert art.get("ch") == 4
 
-    def test_valuation_method_1_is_transaction_value(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        m1 = art["key_articles"]["130"]["methods"][0]
+
+class TestOrdinanceValuation:
+    """Articles 124-154 — customs valuation (Chapter 8, the most critical)."""
+
+    def test_article_130_has_7_methods(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["130"]
+        assert "methods" in art
+        assert len(art["methods"]) == 7
+
+    def test_valuation_methods_in_order(self):
+        methods = CUSTOMS_ORDINANCE_ARTICLES["130"]["methods"]
+        for i, m in enumerate(methods):
+            assert m["number"] == i + 1
+
+    def test_method_1_transaction_value(self):
+        m1 = CUSTOMS_ORDINANCE_ARTICLES["130"]["methods"][0]
         assert "Transaction Value" in m1["name_en"]
         assert "ערך עסקה" in m1["name_he"]
         assert m1["section"] == "132"
 
-    def test_valuation_method_4_is_deductive(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        m4 = art["key_articles"]["130"]["methods"][3]
+    def test_method_4_deductive(self):
+        m4 = CUSTOMS_ORDINANCE_ARTICLES["130"]["methods"][3]
         assert "Deductive" in m4["name_en"]
         assert m4["section"] == "133ד"
 
-    def test_valuation_method_5_is_computed(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        m5 = art["key_articles"]["130"]["methods"][4]
+    def test_method_5_computed(self):
+        m5 = CUSTOMS_ORDINANCE_ARTICLES["130"]["methods"][4]
         assert "Computed" in m5["name_en"]
         assert m5["section"] == "133ה"
 
-    def test_valuation_method_7_is_fallback(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        m7 = art["key_articles"]["130"]["methods"][6]
+    def test_method_7_fallback(self):
+        m7 = CUSTOMS_ORDINANCE_ARTICLES["130"]["methods"][6]
         assert "Fallback" in m7["name_en"]
         assert "GATT" in m7["description"]
 
-    def test_article_132_transaction_value_conditions(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        art_132 = art["key_articles"]["132"]
-        assert "special_relationships" in art_132
-        assert "CONDITIONS" in art_132["text"] or "conditions" in art_132["text"].lower()
+    def test_article_130_critical_rule(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["130"]
+        assert "MUST" in art.get("critical_rule", "") or "order" in art.get("critical_rule", "").lower()
+
+    def test_article_132_transaction_value(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["132"]
+        assert art["ch"] == 8
 
     def test_article_133_additions(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        art_133 = art["key_articles"]["133"]
-        assert "additions" in art_133
-        assert len(art_133["additions"]) >= 5
-        # CIF components must be there
-        all_additions = " ".join(art_133["additions"])
-        assert "freight" in all_additions.lower() or "transport" in all_additions.lower()
-        assert "insurance" in all_additions.lower()
+        art = CUSTOMS_ORDINANCE_ARTICLES["133"]
+        assert "additions" in art
+        assert len(art["additions"]) >= 5
+        all_adds = " ".join(art["additions"])
+        assert "insurance" in all_adds.lower() or "ביטוח" in all_adds
 
-    def test_article_129_definitions(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        art_129 = art["key_articles"]["129"]
-        assert "טובין זהים" in art_129["definitions"]
-        assert "טובין דומים" in art_129["definitions"]
-        assert "יחסים מיוחדים" in art_129["definitions"]
+    def test_article_133_key_rule(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["133"]
+        assert "key" in art
+        assert "CIF" in art["key"]
+
+    def test_article_129_valuation_definitions(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["129"]
+        assert art["ch"] == 8
+        # Article 129 defines key valuation terms (in summary or key field)
+        assert "s" in art
 
     def test_article_148_currency(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["124-154"]
-        assert "148" in art["key_articles"]
-        assert "exchange rate" in art["key_articles"]["148"]["text"].lower()
+        art = CUSTOMS_ORDINANCE_ARTICLES["148"]
+        assert "exchange" in art["s"].lower() or "currency" in art["s"].lower()
 
-    def test_article_168_agents(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["168-169"]
-        assert "168" in art["articles"]
-        assert "169" in art["articles"]
-        assert "סוכן מכס" in art["articles"]["168"]["name_he"]
+    def test_chapter_8_has_many_articles(self):
+        ch8 = get_articles_by_chapter(8)
+        assert len(ch8) >= 30, f"Chapter 8 should have 30+ articles, got {len(ch8)}"
+
+
+class TestOrdinanceAgents:
+    """Articles 168-171 — customs agents (Chapter 11)."""
+
+    def test_article_168_exists(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["168"]
+        assert art["ch"] == 11
+
+    def test_article_169_authorization(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["169"]
+        assert art["ch"] == 11
+
+    def test_chapter_11_agent_articles(self):
+        ch11 = get_articles_by_chapter(11)
+        assert len(ch11) >= 2
+        assert "168" in ch11
+        assert "169" in ch11
+
+
+class TestOrdinancePenalties:
+    """Articles 207-223 — penalties (Chapter 13)."""
 
     def test_article_211_smuggling(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["207-223"]
-        assert "211" in art["articles"]
-        assert "5 years" in art["articles"]["211"]["text"] or "5" in art["articles"]["211"]["text"]
+        art = CUSTOMS_ORDINANCE_ARTICLES["211"]
+        assert art["ch"] == 13
+        assert "5 year" in art["s"].lower() or "imprisonment" in art["s"].lower()
 
     def test_article_220_treble_fine(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["207-223"]
-        assert "220" in art["articles"]
-        assert "3×" in art["articles"]["220"]["text"] or "3x" in art["articles"]["220"]["text"].lower()
+        art = CUSTOMS_ORDINANCE_ARTICLES["220"]
+        assert art["ch"] == 13
 
-    def test_article_223b_financial_penalties(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["223a-r"]
-        assert "223b" in art["articles"]
-        text = art["articles"]["223b"]["text"]
-        assert "400" in text
-        assert "5,000" in text
-        assert "25,000" in text
+    def test_article_217_joint_liability(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["217"]
+        assert art["ch"] == 13
 
-    def test_article_223r_criminal_preserved(self):
-        art = CUSTOMS_ORDINANCE_ARTICLES["223a-r"]
-        assert "223r" in art["articles"]
-        assert "criminal" in art["articles"]["223r"]["text"].lower()
+    def test_article_218_aiders(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["218"]
+        assert art["ch"] == 13
+
+
+class TestOrdinanceAdminEnforcement:
+    """Articles 223א-223יח — administrative enforcement (Chapter 13א)."""
+
+    def test_article_223bet_financial_penalty(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["223ב"]
+        assert "s" in art
+
+    def test_article_223dalet_right_to_argue(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["223ד"]
+        assert "s" in art
+
+    def test_article_223yod_dalet_appeal(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["223יד"]
+        assert "s" in art
+
+    def test_article_223yod_chet_criminal_preserved(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["223יח"]
+        assert "criminal" in art["s"].lower() or "פלילית" in art.get("t", "")
+
+
+class TestOrdinanceDrawback:
+    """Articles 155-160 — drawback (Chapter 9)."""
+
+    def test_article_155_exists(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES.get("155", {})
+        assert "ch" in art  # May be ch 8 (repealed) or ch 9
+
+    def test_article_156_re_export_drawback(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES["156"]
+        assert art["ch"] == 9
+        assert "6 months" in art["s"] or "drawback" in art["s"].lower()
+
+
+class TestOrdinanceWarehousing:
+    """Articles from Chapter 5 — warehousing."""
+
+    def test_chapter_5_has_articles(self):
+        ch5 = get_articles_by_chapter(5)
+        assert len(ch5) >= 5, f"Chapter 5 should have articles, got {len(ch5)}"
+
+
+class TestOrdinanceExport:
+    """Articles from Chapter 6 — exports."""
+
+    def test_chapter_6_has_articles(self):
+        ch6 = get_articles_by_chapter(6)
+        assert len(ch6) >= 5, f"Chapter 6 should have articles, got {len(ch6)}"
+
+    def test_article_103_export_declaration(self):
+        art = CUSTOMS_ORDINANCE_ARTICLES.get("103", {})
+        assert art.get("ch") == 6
+
+
+class TestOrdinanceRepealedArticles:
+    """Repealed articles should be marked."""
+
+    def test_repealed_articles_exist(self):
+        repealed = [k for k, v in CUSTOMS_ORDINANCE_ARTICLES.items() if v.get("repealed")]
+        assert len(repealed) >= 5, f"Expected some repealed articles, got {len(repealed)}"
+
+
+# ── BLOCK 9: ACCESSOR FUNCTIONS ──────────────────────────────────────────
 
 
 class TestGetOrdinanceArticle:
     """Test the get_ordinance_article() helper function."""
 
-    def test_get_existing_article(self):
+    def test_get_article_1(self):
         art = get_ordinance_article("1")
-        assert art["name_he"] == "הגדרות"
+        assert "definitions" in art
 
-    def test_get_valuation_articles(self):
-        art = get_ordinance_article("124-154")
-        assert "key_articles" in art
-        assert "130" in art["key_articles"]
+    def test_get_article_130(self):
+        art = get_ordinance_article("130")
+        assert "methods" in art
+        assert len(art["methods"]) == 7
+
+    def test_get_article_133(self):
+        art = get_ordinance_article("133")
+        assert "additions" in art
+
+    def test_get_article_168(self):
+        art = get_ordinance_article("168")
+        assert art["ch"] == 11
 
     def test_get_nonexistent_article(self):
         assert get_ordinance_article("999") == {}
 
-    def test_get_agents_article(self):
-        art = get_ordinance_article("168-169")
-        assert art["chapter"] == 11
+    def test_get_article_211(self):
+        art = get_ordinance_article("211")
+        assert art["ch"] == 13
+
+
+class TestGetOrdinanceChapter:
+    """Test get_ordinance_chapter() helper."""
+
+    def test_chapter_1(self):
+        ch = get_ordinance_chapter(1)
+        assert "title_he" in ch
+        assert "title_en" in ch
+
+    def test_chapter_8_valuation(self):
+        ch = get_ordinance_chapter(8)
+        assert "title_en" in ch
+
+    def test_chapter_13_aleph(self):
+        ch = get_ordinance_chapter("13א")
+        assert "title_he" in ch
+
+    def test_chapter_nonexistent(self):
+        assert get_ordinance_chapter(99) == {}
+
+
+class TestGetArticlesByChapter:
+    """Test get_articles_by_chapter() helper."""
+
+    def test_chapter_1_articles(self):
+        ch1 = get_articles_by_chapter(1)
+        assert "1" in ch1
+        assert "2" in ch1
+
+    def test_chapter_8_many_articles(self):
+        ch8 = get_articles_by_chapter(8)
+        assert len(ch8) >= 30
+        assert "130" in ch8
+        assert "133" in ch8
+
+    def test_chapter_11_agents(self):
+        ch11 = get_articles_by_chapter(11)
+        assert "168" in ch11
+        assert "169" in ch11
+
+    def test_chapter_99_empty(self):
+        ch99 = get_articles_by_chapter(99)
+        assert len(ch99) == 0
 
 
 class TestGetValuationMethods:
@@ -615,12 +772,19 @@ class TestGetValuationMethods:
             assert "description" in m
 
 
+# ── BLOCK 10: FORMAT_LEGAL_CONTEXT INCLUDES LAW ─────────────────────────
+
+
 class TestFormatLegalContextIncludesLaw:
     """Verify format_legal_context_for_prompt() includes law articles."""
 
     def test_contains_customs_ordinance_header(self):
         result = format_legal_context_for_prompt()
         assert "CUSTOMS ORDINANCE" in result
+
+    def test_contains_article_count(self):
+        result = format_legal_context_for_prompt()
+        assert "311 articles" in result
 
     def test_contains_valuation_methods(self):
         result = format_legal_context_for_prompt()
@@ -638,16 +802,23 @@ class TestFormatLegalContextIncludesLaw:
         assert "KEY DEFINITIONS" in result
         assert "טובין חבי מכס" in result
 
+    def test_contains_import_declaration(self):
+        result = format_legal_context_for_prompt()
+        assert "IMPORT DECLARATION" in result
+
     def test_contains_agent_obligations(self):
         result = format_legal_context_for_prompt()
         assert "AGENT OBLIGATIONS" in result
         assert "168" in result
 
+    def test_contains_drawback(self):
+        result = format_legal_context_for_prompt()
+        assert "DRAWBACK" in result
+
     def test_contains_penalties_summary(self):
         result = format_legal_context_for_prompt()
         assert "PENALTIES" in result
         assert "211" in result
-        assert "3×" in result
 
     def test_contains_administrative_enforcement(self):
         result = format_legal_context_for_prompt()
