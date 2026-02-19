@@ -3460,15 +3460,46 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             <p style="margin:5px 0 0 0">✅ קיבלתי את המסמכים ועיבדתי אותם. להלן הדו"ח המלא:</p>
         </div>'''
 
-        # Final HTML: ack banner + classification report + clarification section
-        final_html = ack_banner + html
-        if clarification_html:
-            # Insert clarification before the footer (before the last </div></div>)
-            footer_pos = final_html.rfind('<!-- Footer -->')
-            if footer_pos > 0:
-                final_html = final_html[:footer_pos] + clarification_html + final_html[footer_pos:]
+        # Final HTML: insert ack banner + clarification INSIDE the HTML structure
+        # The ack banner goes right after the header; clarification before footer.
+        # Both must stay inside </body></html>.
+        final_html = html
+
+        # Insert ack banner after the first <tr> header section
+        header_end = final_html.find('<!-- HEADER -->')
+        if header_end > 0:
+            # Find end of header row
+            tr_end = final_html.find('</tr>', header_end)
+            if tr_end > 0:
+                tr_end = final_html.find('>', tr_end) + 1
+                insert_pos = tr_end
             else:
-                final_html += clarification_html
+                insert_pos = header_end
+        else:
+            # Fallback: insert after first <table> row
+            insert_pos = final_html.find('</tr>')
+            if insert_pos > 0:
+                insert_pos = final_html.find('>', insert_pos) + 1
+            else:
+                insert_pos = 0
+        ack_row = f'<tr><td style="padding:15px 30px 0 30px;">{ack_banner}</td></tr>'
+        final_html = final_html[:insert_pos] + ack_row + final_html[insert_pos:]
+
+        if clarification_html:
+            clar_row = f'<tr><td style="padding:0 30px 15px 30px;">{clarification_html}</td></tr>'
+            # Insert before footer (case-insensitive search)
+            footer_pos = final_html.rfind('<!-- FOOTER -->')
+            if footer_pos < 0:
+                footer_pos = final_html.rfind('<!-- Footer -->')
+            if footer_pos > 0:
+                final_html = final_html[:footer_pos] + clar_row + final_html[footer_pos:]
+            else:
+                # Last resort: insert before closing </table></td></tr></table></body></html>
+                close_pos = final_html.rfind('</body>')
+                if close_pos > 0:
+                    final_html = final_html[:close_pos] + clar_row + final_html[close_pos:]
+                else:
+                    final_html = final_html + clar_row
 
         attachments = []
         if excel:
