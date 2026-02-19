@@ -153,12 +153,19 @@ def search_tariff_codes(db, keywords):
     )
     for r in tariff:
         data = r["data"]
+        if data.get("corrupt_code"):
+            continue  # Skip corrupt tariff entries (188 flagged in Session 33a)
+        desc_he = data.get('description_he', '')
+        # Penalize entries with empty/very short descriptions (low data quality)
+        score = r["score"]
+        if not desc_he or len(desc_he.strip()) < 5:
+            score = max(1, score - 2)  # Demote: no description = low signal
         results.append({
             "source": "tariff",
             "hs_code": data.get('hs_code', ''),
-            "description_he": data.get('description_he', ''),
+            "description_he": desc_he,
             "chapter": data.get('chapter', ''),
-            "score": r["score"]
+            "score": score
         })
     
     print("    🔍 Searching hs_code_index...")
@@ -571,6 +578,8 @@ def validate_hs_code(db, hs_code):
         tariff_ref = db.collection('tariff').limit(500).stream()
         for doc in tariff_ref:
             data = doc.to_dict()
+            if data.get("corrupt_code"):
+                continue  # Skip corrupt tariff entries
             doc_code = normalize_hs_code(data.get('hs_code', ''))
             
             if doc_code == normalized:

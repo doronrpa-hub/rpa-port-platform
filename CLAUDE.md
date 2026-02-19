@@ -545,6 +545,7 @@ HTML email report: 27,974 chars generated successfully.
 - Schedule email detection active in CC email handler
 
 ### TODO for Future Sessions
+- **Set $9 monthly cost alert** — email doron@rpa-port.co.il when AI spend approaches $9. Options: Google Cloud Billing budget alert (fastest) or code-level monthly accumulator in cost_tracker.py + Firestore. Clarify: per month? charge to client credit?
 - Register at aisstream.io (free) and add `AISSTREAM_API_KEY` to Secret Manager
 - Configure carrier API secrets: `MAERSK_CONSUMER_KEY`, `ZIM_API_TOKEN`, `HAPAG_CLIENT_ID`, `HAPAG_CLIENT_SECRET`, `COSCO_API_KEY`, `COSCO_SECRET_KEY`
 - Monitor `rcb_port_schedule` cloud function logs to verify scheduled execution

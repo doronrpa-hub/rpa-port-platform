@@ -85,6 +85,18 @@ STATUS_ENTITY_PATTERNS = {
     'container': re.compile(r'\b([A-Z]{4}\d{7})\b'),
 }
 
+# CORRECTION patterns (ADMIN only — must be checked BEFORE CUSTOMS_QUESTION
+# to prevent "wrong, should be 8507.6000" from triggering on the HS code)
+CORRECTION_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in [
+        r'(?:wrong|incorrect|not\s*correct|fix\s*(?:the|this)|change\s*(?:to|hs|code))',
+        r'(?:should\s*(?:be|have\s*been)\s*\d{4})',
+        r'(?:טעות|לא\s*נכון|שגוי|תקן|תיקון|צריך\s*להיות)',
+        r'(?:הסיווג\s*(?:שגוי|לא\s*נכון)|סיווג\s*(?:שגוי|לא\s*נכון))',
+        r'(?:correct\s*(?:code|hs|classification)\s*(?:is|should))',
+    ]
+]
+
 # CUSTOMS_QUESTION patterns
 CUSTOMS_Q_PATTERNS = [
     re.compile(p, re.IGNORECASE) for p in [
@@ -234,6 +246,18 @@ def detect_email_intent(subject, body_text, from_email, privilege=None, get_secr
                 "entities": entities,
             }
 
+    # 3b. CORRECTION (ADMIN only — before CUSTOMS_QUESTION to prevent HS code misroute)
+    if privilege == "ADMIN":
+        for pat in CORRECTION_PATTERNS:
+            if pat.search(combined):
+                corr_entities = _extract_correction_entities(combined)
+                if corr_entities.get('corrected_hs'):
+                    return {
+                        "intent": "CORRECTION",
+                        "confidence": 0.95,
+                        "entities": corr_entities,
+                    }
+
     # 4. CUSTOMS_QUESTION
     for pat in CUSTOMS_Q_PATTERNS:
         if pat.search(combined):
@@ -338,6 +362,28 @@ def _extract_customs_entities(text):
     return entities
 
 
+def _extract_correction_entities(text):
+    """Extract corrected HS code and product from a correction email."""
+    entities = {}
+    # Look for the corrected HS code — the one Doron says it SHOULD be
+    hs_match = re.search(r'(?:should\s*be|צריך\s*להיות|correct\s*(?:code|hs)\s*(?:is)?|תקן\s*ל?)\s*(\d{4}[\.\s]?\d{2,6})', text, re.IGNORECASE)
+    if not hs_match:
+        # Fallback: find any HS code in the text
+        hs_match = re.search(r'\b(\d{4}\.\d{2}(?:\.\d{2,6})?)\b', text)
+    if hs_match:
+        entities['corrected_hs'] = re.sub(r'\s', '', hs_match.group(1))
+    # Try to extract what the original wrong code was
+    wrong_match = re.search(r'(?:wrong|incorrect|שגוי|טעות|not\s*correct)\s*[:\-]?\s*(\d{4}[\.\s]?\d{2,6})', text, re.IGNORECASE)
+    if wrong_match:
+        entities['original_hs'] = re.sub(r'\s', '', wrong_match.group(1))
+    # Extract product description if mentioned
+    product_match = re.search(r'(?:for|of|עבור|של|the)\s+(.{5,80}?)(?:\s*(?:should|צריך|is\s*not|לא\s*נכון))', text, re.IGNORECASE)
+    if product_match:
+        entities['product_description'] = product_match.group(1).strip()
+    entities['correction_text'] = text.strip()[:500]
+    return entities
+
+
 def _classify_instruction(text):
     """Classify instruction sub-type."""
     text_lower = text.lower()
@@ -359,6 +405,7 @@ def _classify_with_gemini_flash(gemini_key, subject, body_text):
     prompt = f"""Classify this email into ONE intent category. Return ONLY a JSON object.
 
 Categories:
+- CORRECTION: correcting a previous classification (wrong HS code, should be X)
 - STATUS_REQUEST: asking about shipment status, BL tracking, container location
 - CUSTOMS_QUESTION: asking about HS codes, tariff rates, duty, customs classification
 - KNOWLEDGE_QUERY: asking about customs procedures, regulations, trade agreements
@@ -748,6 +795,81 @@ def _handle_admin_instruction(db, firestore_module, msg, entities, access_token,
     )
     _send_reply_safe(reply_html, msg, access_token, rcb_email)
     return {"status": "replied", "intent": "ADMIN_INSTRUCTION", "cost_usd": 0.0}
+
+
+def _handle_correction(db, firestore_module, msg, entities, access_token, rcb_email):
+    """Handle CORRECTION — apply Doron's HS code correction to learned_corrections."""
+    corrected_hs = entities.get('corrected_hs', '')
+    if not corrected_hs:
+        return {"status": "skipped", "reason": "no_corrected_hs"}
+
+    original_hs = entities.get('original_hs', '')
+    product_desc = entities.get('product_description', '')
+    correction_text = entities.get('correction_text', '')
+    msg_id = msg.get('id', '')
+    subject = msg.get('subject', '')
+
+    # Try to find the classification being corrected from the email thread
+    classification_id = ""
+    try:
+        conv_id = msg.get('conversationId', '')
+        if conv_id:
+            cls_docs = list(
+                db.collection("rcb_classifications")
+                .where("conversation_id", "==", conv_id)
+                .limit(1).stream()
+            )
+            for doc in cls_docs:
+                classification_id = doc.id
+                cls_data = doc.to_dict()
+                if not product_desc:
+                    product_desc = cls_data.get("product_description", "") or cls_data.get("items", [{}])[0].get("description", "") if cls_data.get("items") else ""
+                if not original_hs:
+                    original_hs = cls_data.get("suggested_hs", "") or cls_data.get("hs_code", "")
+    except Exception as e:
+        logger.warning(f"Correction: could not find classification thread: {e}")
+
+    # Write to learned_corrections (Level -1 override)
+    corr_id = re.sub(r'[^a-zA-Z0-9]', '_', (product_desc or corrected_hs).lower()[:80])
+    try:
+        corr_doc = {
+            "product": product_desc[:200] if product_desc else f"[correction from email] {subject[:100]}",
+            "corrected_code": corrected_hs,
+            "original_code": original_hs,
+            "source": "email_correction_admin",
+            "reason": correction_text[:500],
+            "learned_at": datetime.now(timezone.utc).isoformat(),
+            "classification_id": classification_id,
+            "email_msg_id": msg_id,
+        }
+        db.collection("learned_corrections").document(f"email_{corr_id}").set(corr_doc, merge=True)
+        print(f"  CORRECTION: saved to learned_corrections: {corrected_hs} (was {original_hs})")
+    except Exception as e:
+        logger.error(f"Failed to save correction: {e}")
+        return {"status": "error", "reason": str(e)}
+
+    # Also update the original classification if found
+    if classification_id:
+        try:
+            db.collection("rcb_classifications").document(classification_id).update({
+                "status": "corrected",
+                "our_hs_code": corrected_hs,
+                "corrected_at": firestore_module.SERVER_TIMESTAMP,
+                "corrected_by": ADMIN_EMAIL,
+            })
+        except Exception as e:
+            logger.warning(f"Correction: could not update classification {classification_id}: {e}")
+
+    # Confirm reply to Doron
+    reply_html = _wrap_html_rtl(
+        f"<b>תיקון סיווג נקלט</b><br><br>"
+        f"קוד מתוקן: <b>{corrected_hs}</b><br>"
+        + (f"קוד קודם: {original_hs}<br>" if original_hs else "")
+        + (f"מוצר: {product_desc[:100]}<br>" if product_desc else "")
+        + f"<br>התיקון נשמר ויחול על סיווגים עתידיים של מוצר זהה."
+    )
+    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    return {"status": "replied", "intent": "CORRECTION", "cost_usd": 0.0}
 
 
 def _detect_instruction_scope(text):
@@ -1151,6 +1273,9 @@ def _dispatch(intent, result, msg, db, firestore_module,
     if intent == 'ADMIN_INSTRUCTION':
         return _handle_admin_instruction(db, firestore_module, msg, entities,
                                          access_token, rcb_email)
+    if intent == 'CORRECTION':
+        return _handle_correction(db, firestore_module, msg, entities,
+                                  access_token, rcb_email)
     if intent == 'NON_WORK':
         return _handle_non_work(msg, access_token, rcb_email)
 
@@ -1261,8 +1386,8 @@ def process_email_intent(msg, db, firestore_module, access_token, rcb_email, get
                                        msg, db, firestore_module, access_token, rcb_email)
         return {"status": "no_intent"}
 
-    # ADMIN_INSTRUCTION only allowed for ADMIN
-    if intent == 'ADMIN_INSTRUCTION' and privilege != 'ADMIN':
+    # ADMIN-only intents
+    if intent in ('ADMIN_INSTRUCTION', 'CORRECTION') and privilege != 'ADMIN':
         return {"status": "skipped", "reason": "not_admin"}
 
     # Handle

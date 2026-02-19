@@ -270,6 +270,22 @@ def on_classification_correction(event: firestore_fn.Event) -> None:
                 "created_at": firestore.SERVER_TIMESTAMP
             })
 
+        # ── Write to learned_corrections (Level -1 override for future classifications) ──
+        if product:
+            corr_id = re.sub(r'[^a-zA-Z0-9]', '_', product.lower()[:80])
+            corr_doc = {
+                "product": product[:200],
+                "corrected_code": final_hs,
+                "original_code": suggested_hs or "",
+                "source": "human_correction",
+                "reason": f"Manual correction by user on classification {class_id}",
+                "learned_at": datetime.now().isoformat(),
+                "seller": seller or "",
+                "classification_id": class_id,
+            }
+            get_db().collection("learned_corrections").document(f"hc_{corr_id}").set(corr_doc, merge=True)
+            print(f"  Written to learned_corrections: {product[:50]} -> {final_hs}")
+
         # Log the learning event
         get_db().collection("learning_log").add({
             "type": "classification_correction",

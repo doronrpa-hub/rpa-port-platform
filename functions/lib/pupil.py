@@ -1930,6 +1930,21 @@ def _apply_approved_suggestion(db, case):
         "tags": ["pupil", "human_approved", "אומת"],
     }, merge=True)
     
+    # ── Write to learned_corrections (Level -1 override for future classifications) ──
+    product = case.get("product_description", "") or description
+    if product and hs_code:
+        import re as _re
+        corr_id = _re.sub(r'[^a-zA-Z0-9]', '_', product.lower()[:80])
+        db.collection("learned_corrections").document(f"pupil_{corr_id}").set({
+            "product": product[:200],
+            "corrected_code": hs_code,
+            "original_code": case.get("system_hs_code", ""),
+            "source": "pupil_human_approved",
+            "reason": case.get("ai_method", "")[:500],
+            "learned_at": datetime.now(timezone.utc).isoformat(),
+            "case_id": case.get("case_id", ""),
+        }, merge=True)
+
     # Store teaching rule for Librarian
     if case.get("ai_teaching"):
         db.collection("pupil_teachings").document(f"approved_{case['case_id']}").set({

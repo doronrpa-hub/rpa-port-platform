@@ -334,6 +334,7 @@ class SelfLearningEngine:
 
         # Level -1: Corrections — highest priority (manual/cross-validated overrides)
         try:
+            # Phase 1: Exact match
             corr_docs = list(
                 self.db.collection("learned_corrections")
                 .where("product", "==", product_description)
@@ -345,27 +346,60 @@ class SelfLearningEngine:
                     .where("product", "==", product_lower)
                     .limit(3).stream()
                 )
+
+            matched_data = None
             for doc in corr_docs:
                 data = doc.to_dict()
                 if not data:
                     continue
-                # Skip unresolved disputes
                 if data.get("status") == "needs_review":
                     continue
                 hs_code = (data.get("tiebreaker_hs")
                            or data.get("corrected_code")
                            or data.get("validated_hs"))
                 if hs_code:
-                    print(f"    🧠 SelfLearning: CORRECTION match for "
-                          f"'{product_description[:40]}'")
-                    return {
-                        "hs_code": hs_code,
-                        "source": "learned_corrections",
-                        "confidence": 0.95,
-                        "product": product_description,
-                        "correction": True,
-                        "method": "manual",
-                    }, "exact"
+                    matched_data = (hs_code, "exact")
+                    break
+
+            # Phase 2: Keyword overlap fallback (>= 60% bidirectional)
+            if not matched_data and len(keywords) >= 2:
+                query_kws = set(keywords)
+                all_corrections = list(
+                    self.db.collection("learned_corrections").limit(500).stream()
+                )
+                for doc in all_corrections:
+                    data = doc.to_dict()
+                    if not data or data.get("status") == "needs_review":
+                        continue
+                    stored_product = data.get("product", "")
+                    if not stored_product:
+                        continue
+                    stored_kws = set(self._extract_keywords(stored_product))
+                    if not stored_kws:
+                        continue
+                    overlap = query_kws & stored_kws
+                    ratio_q = len(overlap) / len(query_kws)
+                    ratio_s = len(overlap) / len(stored_kws)
+                    if ratio_q >= 0.6 and ratio_s >= 0.6:
+                        hs_code = (data.get("tiebreaker_hs")
+                                   or data.get("corrected_code")
+                                   or data.get("validated_hs"))
+                        if hs_code:
+                            matched_data = (hs_code, "fuzzy")
+                            break
+
+            if matched_data:
+                hs_code, match_type = matched_data
+                print(f"    🧠 SelfLearning: CORRECTION {match_type} match for "
+                      f"'{product_description[:40]}'")
+                return {
+                    "hs_code": hs_code,
+                    "source": "learned_corrections",
+                    "confidence": 0.95,
+                    "product": product_description,
+                    "correction": True,
+                    "method": "manual",
+                }, "exact"
         except Exception as e:
             print(f"    🧠 SelfLearning: correction check error: {e}")
 

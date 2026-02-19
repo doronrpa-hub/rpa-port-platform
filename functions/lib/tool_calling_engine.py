@@ -197,6 +197,58 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
             memory_hits[desc[:50]] = mem
             print(f"  [TOOL ENGINE] Memory HIT (exact): {desc[:40]} → {mem.get('hs_code')}")
 
+    # ── Step 4a: Mandatory tariff search (Firestore — before AI gets control) ──
+    # Session 54: Enforce call order — search_tariff runs BEFORE AI loop
+    tariff_hits = {}     # High-confidence results that can replace AI
+    tariff_context = {}  # All candidate lists as context hints for AI
+    for item in items[:5]:
+        if not isinstance(item, dict):
+            continue
+        desc = item.get("description", "")
+        if not desc:
+            continue
+        desc_key = desc[:50]
+        if desc_key in memory_hits:
+            continue  # Already resolved by memory — skip tariff search
+        try:
+            tariff_result = executor.execute("search_tariff", {
+                "item_description": desc,
+                "origin_country": origin,
+                "seller_name": (invoice.get("seller") or ""),
+            })
+            if isinstance(tariff_result, dict) and tariff_result.get("candidates"):
+                candidates = tariff_result["candidates"]
+                top = candidates[0]
+                top_conf = top.get("confidence", 0)
+                top_source = top.get("source", "")
+                # High confidence: corrections always (>=80), product/keyword index >=85, any >=90
+                is_high_conf = (
+                    (top_source == "correction" and top_conf >= 80) or
+                    (top_source in ("product_index", "keyword_index") and top_conf >= 85) or
+                    (top_conf >= 90)
+                )
+                if is_high_conf:
+                    tariff_hits[desc_key] = {
+                        "found": True,
+                        "level": "tariff_search",
+                        "hs_code": top.get("hs_code", ""),
+                        "confidence": top_conf / 100,
+                        "source": f"tariff_{top_source}",
+                    }
+                    print(f"  [TOOL ENGINE] Tariff HIT ({top_source}, conf={top_conf}): {desc[:40]} → {top.get('hs_code')}")
+                else:
+                    print(f"  [TOOL ENGINE] Tariff LOW ({top_source}, conf={top_conf}): {desc[:40]} — needs AI")
+                # Always store candidates as context for AI
+                tariff_context[desc_key] = candidates[:5]
+            else:
+                print(f"  [TOOL ENGINE] Tariff: no candidates for {desc[:40]}")
+        except Exception as e:
+            print(f"  [TOOL ENGINE] Tariff search error for {desc[:40]}: {e}")
+
+    if tariff_hits:
+        print(f"  [TOOL ENGINE] Tariff pre-search: {len(tariff_hits)} high-confidence, "
+              f"{len(tariff_context) - len(tariff_hits)} low-confidence")
+
     # ── Step 4b: Pre-enrichment — deterministic external lookups ──
     enrichment = {}
 
@@ -299,22 +351,45 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
         except Exception:
             pass
 
-    # ── Step 5: AI classification call (skip if ALL items hit memory) ──
+    # ── Step 5: AI classification call ──
+    # Session 54: Enforced call order — memory (Level -1) + tariff (Level 0) run FIRST.
+    # AI only gets full control when pre-steps don't resolve it.
+    pre_resolved = {**memory_hits, **tariff_hits}
+    unresolved_count = len(items) - len(pre_resolved)
     ai_response = None
-    if len(memory_hits) < len(items):
-        print(f"  [TOOL ENGINE] {len(memory_hits)} memory hits, {len(items) - len(memory_hits)} need AI")
 
-        # Build user prompt with invoice data + pre-enrichment
-        user_prompt = _build_user_prompt(items, origin, invoice, doc_text, enrichment=enrichment)
+    if unresolved_count <= 0:
+        print(f"  [TOOL ENGINE] ALL {len(items)} items pre-resolved "
+              f"({len(memory_hits)} memory + {len(tariff_hits)} tariff) — skipping AI")
+    else:
+        print(f"  [TOOL ENGINE] {len(pre_resolved)} pre-resolved "
+              f"({len(memory_hits)} memory + {len(tariff_hits)} tariff), "
+              f"{unresolved_count} need AI")
+
+        # Build user prompt with pre-resolved results + tariff context as hints
+        user_prompt = _build_user_prompt(
+            items, origin, invoice, doc_text,
+            enrichment=enrichment,
+            pre_resolved=pre_resolved,
+            tariff_context=tariff_context,
+        )
+
+        # Shorten AI loop when most items already resolved
+        effective_rounds = _MAX_ROUNDS
+        if len(pre_resolved) > 0 and unresolved_count <= 2:
+            effective_rounds = min(_MAX_ROUNDS, 8)
+            print(f"  [TOOL ENGINE] Shortened AI loop: {effective_rounds} rounds "
+                  f"(only {unresolved_count} items need AI)")
 
         # Multi-turn tool calling loop (Gemini primary, Claude fallback)
-        ai_response = _run_tool_loop(api_key, user_prompt, executor, gemini_key=gemini_key)
-    else:
-        print(f"  [TOOL ENGINE] ALL {len(items)} items from memory — skipping AI")
+        ai_response = _run_tool_loop(
+            api_key, user_prompt, executor,
+            gemini_key=gemini_key, max_rounds=effective_rounds,
+        )
 
     # ── Step 6: Parse AI response into classifications ──
     classifications, regulatory, fta, risk, synthesis = _parse_ai_response(
-        ai_response, memory_hits, items
+        ai_response, memory_hits, items, tariff_hits=tariff_hits,
     )
 
     # ── Step 7: Post-processing (same as old pipeline) ──
@@ -534,33 +609,35 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
 # Multi-turn tool calling loop (Claude API)
 # ---------------------------------------------------------------------------
 
-def _run_tool_loop(api_key, user_prompt, executor, gemini_key=None):
+def _run_tool_loop(api_key, user_prompt, executor, gemini_key=None, max_rounds=None):
     """
     Send message to AI with tools, execute tool calls, repeat.
     Tries Gemini Flash first (20x cheaper), falls back to Claude if needed.
 
     Constraints:
-        - Max 15 rounds
+        - Max 15 rounds (or fewer if pre-steps resolved most items)
         - 180 second time budget
     """
+    effective_rounds = max_rounds or _MAX_ROUNDS
     # Choose model: Gemini first if available and preferred
     use_gemini = _PREFER_GEMINI and gemini_key
     model_label = "Gemini" if use_gemini else "Claude"
-    print(f"  [TOOL ENGINE] Using {model_label} for tool-calling loop")
+    print(f"  [TOOL ENGINE] Using {model_label} for tool-calling loop (max {effective_rounds} rounds)")
 
     if use_gemini:
-        return _run_gemini_tool_loop(gemini_key, user_prompt, executor, api_key)
+        return _run_gemini_tool_loop(gemini_key, user_prompt, executor, api_key, max_rounds=effective_rounds)
     else:
-        return _run_claude_tool_loop(api_key, user_prompt, executor)
+        return _run_claude_tool_loop(api_key, user_prompt, executor, max_rounds=effective_rounds)
 
 
-def _run_claude_tool_loop(api_key, user_prompt, executor):
+def _run_claude_tool_loop(api_key, user_prompt, executor, max_rounds=None):
     """Claude tool-calling loop (fallback — more expensive)."""
+    effective_rounds = max_rounds or _MAX_ROUNDS
     messages = [{"role": "user", "content": user_prompt}]
     t0 = time.time()
     text_parts = []
 
-    for round_num in range(_MAX_ROUNDS):
+    for round_num in range(effective_rounds):
         elapsed = time.time() - t0
         if elapsed > _TIME_BUDGET_SEC:
             print(f"  [TOOL ENGINE] Time budget exhausted ({elapsed:.0f}s) at round {round_num}")
@@ -636,18 +713,19 @@ def _run_claude_tool_loop(api_key, user_prompt, executor):
     return "\n".join(text_parts) if text_parts else None
 
 
-def _run_gemini_tool_loop(gemini_key, user_prompt, executor, claude_api_key=None):
+def _run_gemini_tool_loop(gemini_key, user_prompt, executor, claude_api_key=None, max_rounds=None):
     """
     Gemini Flash tool-calling loop (PRIMARY — 20x cheaper than Claude).
     Falls back to Claude if Gemini fails completely.
     """
+    effective_rounds = max_rounds or _MAX_ROUNDS
     t0 = time.time()
 
     # Gemini uses a different message format
     contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
     text_parts = []
 
-    for round_num in range(_MAX_ROUNDS):
+    for round_num in range(effective_rounds):
         elapsed = time.time() - t0
         if elapsed > _TIME_BUDGET_SEC:
             print(f"  [TOOL ENGINE] Time budget exhausted ({elapsed:.0f}s) at round {round_num}")
@@ -848,7 +926,8 @@ def _call_claude_with_tools(api_key, messages):
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-def _build_user_prompt(items, origin, invoice, doc_text, enrichment=None):
+def _build_user_prompt(items, origin, invoice, doc_text, enrichment=None,
+                       pre_resolved=None, tariff_context=None):
     """Build the user prompt with invoice data for the AI."""
     parts = ["Classify the following items from the invoice:\n"]
 
@@ -886,8 +965,37 @@ def _build_user_prompt(items, origin, invoice, doc_text, enrichment=None):
                 parts.append(f"{key}: {summary}")
         parts.append("")
 
+    # Session 54: Show pre-resolved items so AI skips them
+    if pre_resolved:
+        parts.append("\n--- ALREADY CLASSIFIED (high confidence — do NOT reclassify) ---")
+        for desc_key, hit in pre_resolved.items():
+            hs = hit.get("hs_code", "?")
+            src = hit.get("source", hit.get("level", ""))
+            conf = hit.get("confidence", 0)
+            conf_pct = int(conf * 100) if isinstance(conf, float) and conf <= 1 else conf
+            parts.append(f"  • {desc_key} → {hs} (source: {src}, confidence: {conf_pct}%)")
+        parts.append("  DO NOT call search_tariff or check_memory for items listed above.")
+        parts.append("")
+
+    # Session 54: Show tariff candidates as hints for unresolved items
+    if tariff_context:
+        unresolved_hints = {k: v for k, v in tariff_context.items()
+                           if not pre_resolved or k not in pre_resolved}
+        if unresolved_hints:
+            parts.append("--- TARIFF SEARCH RESULTS (pre-fetched — use as starting points) ---")
+            for desc_key, candidates in unresolved_hints.items():
+                top3 = candidates[:3]
+                hints = ", ".join(
+                    f"{c.get('hs_code', '?')} ({c.get('confidence', 0)}%)"
+                    for c in top3
+                )
+                parts.append(f"  • {desc_key} → candidates: {hints}")
+            parts.append("  These candidates were already searched. Verify and refine with verify_hs_code, get_chapter_notes, etc.")
+            parts.append("")
+
     parts.append("\nClassify each item to the most specific Israeli HS code.")
-    parts.append("Use the tools to check memory, search tariff DB, verify codes, and check regulatory requirements.")
+    parts.append("Focus on items NOT in the 'ALREADY CLASSIFIED' list above.")
+    parts.append("Use verify_hs_code, get_chapter_notes, and check_regulatory to verify — search_tariff is already done for all items.")
 
     return "\n".join(parts)
 
@@ -896,10 +1004,10 @@ def _build_user_prompt(items, origin, invoice, doc_text, enrichment=None):
 # Response parser
 # ---------------------------------------------------------------------------
 
-def _parse_ai_response(ai_text, memory_hits, items):
+def _parse_ai_response(ai_text, memory_hits, items, tariff_hits=None):
     """
     Parse the AI's final text response into structured data.
-    Also merges any memory hits.
+    Also merges any memory hits and tariff pre-search hits.
 
     Returns: (classifications, regulatory, fta, risk, synthesis)
     """
@@ -931,6 +1039,20 @@ def _parse_ai_response(ai_text, memory_hits, items):
                 "reasoning": f"From memory ({mem.get('level', 'exact')})",
                 "source": "memory",
             })
+
+    # Session 54: Merge tariff pre-search hits for items not in AI response or memory
+    if tariff_hits:
+        ai_described = {c.get("item_description", "").lower()[:50] for c in classifications}
+        for desc_key, th in tariff_hits.items():
+            if desc_key.lower() not in ai_described:
+                classifications.append({
+                    "item": desc_key,
+                    "item_description": desc_key,
+                    "hs_code": th.get("hs_code", ""),
+                    "confidence": "גבוהה",
+                    "reasoning": f"From tariff DB ({th.get('source', 'search')})",
+                    "source": "tariff_pre_search",
+                })
 
     # Normalize classification fields
     for c in classifications:

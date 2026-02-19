@@ -1523,9 +1523,11 @@ def _search_corrections(db, item_description, desc_lower):
     """Search learned_corrections for matching product.
 
     Returns corrections with resolved HS codes — these override all other sources.
+    Strategy: exact match first, then keyword overlap fallback (>= 60% overlap).
     """
     results = []
     try:
+        # ── Phase 1: Exact match (original behavior) ──
         docs = list(
             db.collection("learned_corrections")
             .where("product", "==", item_description)
@@ -1537,6 +1539,7 @@ def _search_corrections(db, item_description, desc_lower):
                 .where("product", "==", desc_lower)
                 .limit(3).stream()
             )
+
         for doc in docs:
             data = doc.to_dict()
             if not data:
@@ -1552,6 +1555,42 @@ def _search_corrections(db, item_description, desc_lower):
                     "source": data.get("source", "correction"),
                     "description": data.get("product", ""),
                 })
+
+        # ── Phase 2: Keyword overlap fallback (if no exact match) ──
+        if not results:
+            query_kws = set(_extract_keywords(item_description))
+            if len(query_kws) >= 2:
+                all_corrections = list(
+                    db.collection("learned_corrections").limit(500).stream()
+                )
+                for doc in all_corrections:
+                    data = doc.to_dict()
+                    if not data:
+                        continue
+                    if data.get("status") == "needs_review":
+                        continue
+                    stored_product = data.get("product", "")
+                    if not stored_product:
+                        continue
+                    stored_kws = set(_extract_keywords(stored_product))
+                    if not stored_kws:
+                        continue
+                    overlap = query_kws & stored_kws
+                    # Require >= 60% overlap in BOTH directions
+                    ratio_query = len(overlap) / len(query_kws)
+                    ratio_stored = len(overlap) / len(stored_kws)
+                    if ratio_query >= 0.6 and ratio_stored >= 0.6:
+                        hs_code = (data.get("tiebreaker_hs")
+                                   or data.get("corrected_code")
+                                   or data.get("validated_hs"))
+                        if hs_code:
+                            results.append({
+                                "hs_code": hs_code,
+                                "source": data.get("source", "correction_fuzzy"),
+                                "description": stored_product,
+                            })
+                if results:
+                    print(f"  🧠 INTELLIGENCE: fuzzy correction match → {len(results)} results")
     except Exception as e:
         print(f"  🧠 INTELLIGENCE: corrections check error: {e}")
     return results
@@ -1773,10 +1812,15 @@ def _search_tariff(db, keywords):
                     # Don't duplicate
                     already = any(r["hs_code"] == hs for r in results)
                     if not already:
+                        desc_he = data.get("description_he", "")
+                        # Penalize entries with empty/short descriptions (low quality)
+                        adj_score = min(80, score * 15)
+                        if not desc_he or len(desc_he.strip()) < 5:
+                            adj_score = max(10, adj_score - 15)
                         results.append({
                             "hs_code": hs,
-                            "score": min(80, score * 15),
-                            "description_he": data.get("description_he", ""),
+                            "score": adj_score,
+                            "description_he": desc_he,
                             "duty_rate": data.get("duty_rate", ""),
                             "source": "tariff",
                         })

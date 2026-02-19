@@ -141,11 +141,12 @@ except ImportError as e:
 
 # Session 51: Embedded customs law expertise — broker's brain before any search
 try:
-    from lib.customs_law import format_legal_context_for_prompt
+    from lib.customs_law import format_legal_context_for_prompt, KNOWN_FAILURES
     CUSTOMS_LAW_AVAILABLE = True
 except ImportError as e:
     print(f"Customs law module not available: {e}")
     CUSTOMS_LAW_AVAILABLE = False
+    KNOWN_FAILURES = []
 
 # =============================================================================
 # FEATURE FLAGS (Session 26/27: cost optimization + cross-check)
@@ -240,6 +241,61 @@ def _is_product_description(text):
     if len(text) > 400 and text.count("===") > 1:
         return False
     return True
+
+
+# ── KNOWN_FAILURES pattern matching ──
+# Programmatic guard against historically known classification mistakes.
+# Maps failure ID → (product_keywords, wrong_heading_prefix, correct_heading, warning_he)
+_KNOWN_FAILURE_PATTERNS = [
+    {
+        "id": "F001",
+        "product_keywords": {"kiwi", "קיווי", "קווי"},
+        "wrong_headings": {"0305", "1604", "1605"},  # fish/caviar chapters
+        "correct_hint": "08.05 / 08.10 (fruits)",
+        "warning": "⚠️ F001: קיווי = פרי (פרק 8), לא קוויאר (פרק 3/16)",
+    },
+    {
+        "id": "F003",
+        "product_keywords": {"tire", "tyre", "tires", "tyres", "pneumatic", "צמיג", "צמיגים"},
+        "wrong_headings": {"4001", "4002", "4003", "4004", "4005"},  # raw rubber headings
+        "correct_hint": "40.11 (pneumatic tires)",
+        "warning": "⚠️ F003: צמיגים = 40.11 (צמיגים פנאומטיים), לא 40.01 (גומי גולמי)",
+    },
+]
+
+
+def _check_known_failure_patterns(classifications):
+    """Check classification results against KNOWN_FAILURES patterns.
+
+    Adds warning to any classification that matches a known failure pattern.
+    Returns the number of warnings added.
+    """
+    warnings_added = 0
+    for c in classifications:
+        hs = c.get("hs_code", "").replace(".", "").replace("/", "").replace(" ", "")
+        if not hs or len(hs) < 4:
+            continue
+        heading = hs[:4]
+        desc = (c.get("description", "") or c.get("item", "") or "").lower()
+        if not desc:
+            continue
+
+        for pattern in _KNOWN_FAILURE_PATTERNS:
+            if heading not in pattern["wrong_headings"]:
+                continue
+            # Check if any product keyword appears in description
+            if any(kw in desc for kw in pattern["product_keywords"]):
+                c["known_failure_warning"] = pattern["warning"]
+                c["known_failure_id"] = pattern["id"]
+                c["known_failure_correct_hint"] = pattern["correct_hint"]
+                if c.get("confidence") == "גבוהה":
+                    c["confidence"] = "נמוכה"
+                elif c.get("confidence") == "בינונית":
+                    c["confidence"] = "נמוכה"
+                print(f"    🚨 KNOWN FAILURE {pattern['id']}: {desc[:60]} → HS {hs} matches failure pattern!")
+                warnings_added += 1
+                break
+    return warnings_added
 
 
 # =============================================================================
@@ -1104,6 +1160,11 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
                 print(f"    ⚠️ HS corrected: {c.get('original_hs_code')} → {c.get('hs_code')}")
             elif c.get('hs_warning'):
                 print(f"    ⚠️ {c.get('hs_warning')}")
+
+        # ── KNOWN_FAILURES pattern guard ──
+        kf_count = _check_known_failure_patterns(validated_classifications)
+        if kf_count:
+            print(f"    🚨 KNOWN FAILURE GUARD: {kf_count} classification(s) match known failure patterns!")
 
         # ── FREE IMPORT ORDER: Verify HS codes against official API ──
         # Only for valid HS codes — skip text like "לא ניתן לסווג"
