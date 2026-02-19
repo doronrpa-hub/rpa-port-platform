@@ -27,7 +27,6 @@ COLOR_OK = "#27ae60"
 COLOR_WARN = "#f39c12"
 COLOR_ERR = "#e74c3c"
 COLOR_PENDING = "#999999"
-LOGO_URL = "https://rpa-port.com/wp-content/uploads/2016/09/logo.png"
 
 
 def _to_israel_time(dt_obj):
@@ -402,8 +401,7 @@ def _section_header(deal, completed, total, direction):
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding:20px 30px;" valign="middle">
-      <img src="{LOGO_URL}" alt="RPA-PORT" width="48" height="48"
-           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;width:48px;height:48px;line-height:48px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:20px;font-weight:bold;border-radius:6px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
       <span style="display:inline-block;vertical-align:middle;padding-left:12px;">
         <span style="color:#ffffff;font-size:18px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
         <span style="color:#aed6f1;font-size:13px;display:block;">RCB Shipment Tracker</span>
@@ -814,8 +812,7 @@ def _section_footer():
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding-bottom:10px;">
-      <img src="{LOGO_URL}" alt="RPA-PORT" width="32" height="32"
-           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;width:32px;height:32px;line-height:32px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:12px;font-weight:bold;border-radius:4px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
       <span style="display:inline-block;vertical-align:middle;padding-left:8px;">
         <span style="font-size:12px;font-weight:bold;color:{RPA_BLUE};">RCB &#8212; AI Customs Broker</span><br>
         <span style="font-size:11px;color:#888;">R.P.A. PORT LTD</span>

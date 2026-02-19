@@ -166,7 +166,7 @@ _gemini_quota_exhausted = False
 try:
     from lib.tracker_email import (
         _RPA_BLUE, _RPA_ACCENT, _COLOR_OK, _COLOR_WARN, _COLOR_ERR,
-        _LOGO_URL, _html_open, _html_close, _to_israel_time,
+        _html_open, _html_close, _to_israel_time,
     )
 except ImportError:
     _RPA_BLUE = "#1e3a5f"
@@ -174,7 +174,6 @@ except ImportError:
     _COLOR_OK = "#27ae60"
     _COLOR_WARN = "#f39c12"
     _COLOR_ERR = "#e74c3c"
-    _LOGO_URL = "https://rpa-port.com/wp-content/uploads/2016/09/logo.png"
     _html_open = None
     _html_close = None
     _to_israel_time = None
@@ -1766,8 +1765,7 @@ def _cls_header(tracking_code):
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding:20px 30px;" valign="middle">
-      <img src="{_LOGO_URL}" alt="RPA-PORT" width="48" height="48"
-           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;width:48px;height:48px;line-height:48px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:20px;font-weight:bold;border-radius:6px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
       <span style="display:inline-block;vertical-align:middle;padding-left:12px;">
         <span style="color:#ffffff;font-size:18px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
         <span style="color:#aed6f1;font-size:13px;display:block;">&#1491;&#1493;&#1524;&#1495; &#1505;&#1497;&#1493;&#1493;&#1490; &#1502;&#1499;&#1505; &mdash; RCB</span>
@@ -2491,8 +2489,7 @@ def _cls_footer():
   <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding-bottom:10px;">
-      <img src="{_LOGO_URL}" alt="RPA-PORT" width="32" height="32"
-           style="display:inline-block;vertical-align:middle;border:0;">
+      <span style="display:inline-block;vertical-align:middle;width:32px;height:32px;line-height:32px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:12px;font-weight:bold;border-radius:4px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
       <span style="display:inline-block;vertical-align:middle;padding-left:8px;">
         <span style="font-size:12px;font-weight:bold;color:{_RPA_BLUE};">RCB &#8212; AI Customs Broker</span><br>
         <span style="font-size:11px;color:#888;">R.P.A. PORT LTD</span>

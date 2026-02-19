@@ -699,7 +699,7 @@ def build_full_daily_digest(db, yesterday_iso, date_str):
     <div style="background:#f8faff;padding:20px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">
         <table style="width:100%" cellpadding="0" cellspacing="0"><tr>
             <td style="vertical-align:middle;width:60px">
-                <img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:50px;border-radius:8px" alt="RPA PORT">
+                <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:12px;font-weight:bold;border-radius:4px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
             </td>
             <td style="vertical-align:middle;border-right:3px solid #1a3a5c;padding-right:16px">
                 <strong style="color:#0f2439;font-size:13px">RCB — AI Customs Broker</strong><br>
