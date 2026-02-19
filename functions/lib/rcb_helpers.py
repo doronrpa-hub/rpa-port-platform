@@ -1110,6 +1110,267 @@ def email_quality_gate(recipient, subject, html_body,
 
 
 # ============================================================
+# SMART SUBJECT GENERATION
+# ============================================================
+
+import re as _re_mod
+
+
+def _gather_subject_context(db=None, deal=None, deal_id=None, invoice_data=None,
+                            container_statuses=None, status=None, tracking_code=None,
+                            update_type=None):
+    """Assemble a flat dict of all available shipment context for subject generation.
+
+    Max 2 Firestore reads in worst case (0 when data is pre-loaded).
+    """
+    ctx = {
+        'rpa_file': '', 'bl': '', 'awb': '', 'vessel': '', 'shipping_line': '',
+        'direction': '', 'eta': '', 'importer': '', 'goods': '', 'status': status or '',
+        'handler': '', 'load_type': '', 'mode': '', 'tracking_code': tracking_code or '',
+        'update_type': update_type or '',
+    }
+
+    # ── Pull from deal dict ──
+    if deal:
+        ctx['rpa_file'] = deal.get('rpa_file_number', '') or ''
+        ctx['bl'] = deal.get('bol_number', '') or ''
+        ctx['awb'] = deal.get('awb_number', '') or ''
+        ctx['vessel'] = (deal.get('vessel_name', '') or '')[:20]
+        ctx['shipping_line'] = deal.get('shipping_line', '') or ''
+        ctx['direction'] = deal.get('direction', '') or ''
+        ctx['eta'] = deal.get('eta', '') or ''
+        ctx['handler'] = deal.get('handler', '') or ''
+        containers = deal.get('containers', [])
+        n = len(containers)
+        ctx['load_type'] = 'LCL' if n == 0 else 'FCL'
+        ctx['importer'] = (deal.get('consignee', '') or '')[:25]
+        if not ctx['importer'] or ctx['importer'].lower() == 'unknown':
+            ctx['importer'] = (deal.get('shipper', '') or '')[:25]
+
+    # ── Pull from invoice_data dict ──
+    if invoice_data:
+        if not ctx['rpa_file']:
+            ctx['rpa_file'] = invoice_data.get('rpa_file_number', '') or ''
+        if not ctx['bl']:
+            ctx['bl'] = invoice_data.get('bl_number', '') or ''
+        if not ctx['awb']:
+            ctx['awb'] = invoice_data.get('awb_number', '') or ''
+        freight = invoice_data.get('freight_type', '')
+        ctx['mode'] = 'AIR' if freight == 'air' else 'SEA' if freight == 'sea' else ''
+        if not ctx['direction']:
+            ctx['direction'] = invoice_data.get('direction', '') or ''
+        seller = (invoice_data.get('seller', '') or '').split(',')[0].strip()[:25]
+        buyer = (invoice_data.get('buyer', '') or '').split(',')[0].strip()[:25]
+        if not ctx['importer'] or ctx['importer'].lower() == 'unknown':
+            ctx['importer'] = buyer or seller
+        # Goods description from items
+        items = invoice_data.get('items', [])
+        if items and isinstance(items, list):
+            first_desc = ''
+            for item in items:
+                if isinstance(item, dict):
+                    first_desc = item.get('description', '') or item.get('item', '') or ''
+                elif isinstance(item, str):
+                    first_desc = item
+                if first_desc:
+                    break
+            ctx['goods'] = first_desc[:30]
+
+    # ── Summarize container statuses ──
+    if container_statuses:
+        total = len(container_statuses)
+        direction = ctx.get('direction', 'import')
+        completed_step = 'cargo_exit' if direction != 'export' else 'ship_sailing'
+        completed = sum(1 for cs in container_statuses
+                        if cs.get('current_step') == completed_step)
+        status_word = 'Released' if direction != 'export' else 'Sailed'
+        if completed == total and total > 0:
+            ctx['status'] = f'All {status_word}'
+        elif total > 0:
+            ctx['status'] = f'{completed}/{total} {status_word}'
+
+    # ── Derive mode from deal if not from invoice ──
+    if not ctx['mode'] and ctx.get('awb'):
+        ctx['mode'] = 'AIR'
+    elif not ctx['mode']:
+        ctx['mode'] = 'SEA'
+
+    # ── Optional Firestore enrichment (max 2 reads) ──
+    if db:
+        # Enrich importer name from knowledge_base
+        if not ctx['importer'] or ctx['importer'].lower() in ('unknown', ''):
+            try:
+                _name_query = ctx.get('bl', '') or ctx.get('awb', '')
+                if _name_query:
+                    docs = db.collection('knowledge_base').where(
+                        'category', '==', 'supplier'
+                    ).limit(1).stream()
+                    for doc in docs:
+                        d = doc.to_dict()
+                        ctx['importer'] = (d.get('name', '') or '')[:25]
+                        break
+            except Exception:
+                pass
+
+        # Enrich goods from learned_corrections
+        if not ctx['goods']:
+            try:
+                items = (invoice_data or {}).get('items', [])
+                first_desc = ''
+                for item in items:
+                    if isinstance(item, dict):
+                        first_desc = item.get('description', '') or ''
+                    if first_desc:
+                        break
+                if first_desc:
+                    doc = db.collection('learned_corrections').document(first_desc[:100]).get()
+                    if doc.exists:
+                        ctx['goods'] = (doc.to_dict().get('corrected', '') or '')[:30]
+            except Exception:
+                pass
+
+    # Clean out "Unknown" values
+    for k in list(ctx.keys()):
+        if isinstance(ctx[k], str) and ctx[k].lower() in ('unknown', 'n/a', 'tbd'):
+            ctx[k] = ''
+
+    return ctx
+
+
+def generate_smart_subject(gemini_key=None, db=None, deal=None, invoice_data=None,
+                           container_statuses=None, status=None, tracking_code=None,
+                           update_type=None, deal_id=None, email_type="tracker"):
+    """Generate an AI-powered email subject line, falling back to best-available-field template.
+
+    Args:
+        gemini_key: Gemini API key (None → skip AI, use fallback)
+        db: Firestore client (optional, for enrichment)
+        deal: dict from tracker_deals
+        invoice_data: dict from Agent 1 extraction
+        container_statuses: list of container status dicts
+        status: status label string
+        tracking_code: RCB tracking code
+        update_type: what triggered this email
+        deal_id: deal document ID
+        email_type: "tracker" or "classification"
+
+    Returns:
+        Subject line string (max 120 chars)
+    """
+    ctx = _gather_subject_context(
+        db=db, deal=deal, deal_id=deal_id, invoice_data=invoice_data,
+        container_statuses=container_statuses, status=status,
+        tracking_code=tracking_code, update_type=update_type
+    )
+
+    # ── Try Gemini Flash ──
+    if gemini_key:
+        try:
+            from lib.classification_agents import call_gemini_fast
+            prompt = (
+                "Generate a concise English email subject line (max 120 characters) using pipe (|) separators.\n"
+                "Include ONLY fields that have values. Skip empty fields entirely.\n"
+                "No emojis, no quotes, no brackets.\n\n"
+                f"Available data:\n"
+                f"- RPA File Number: {ctx['rpa_file']}\n"
+                f"- BL Number: {ctx['bl']}\n"
+                f"- AWB Number: {ctx['awb']}\n"
+                f"- Direction: {ctx['direction']}\n"
+                f"- Transport Mode: {ctx['mode']}\n"
+                f"- Load Type: {ctx['load_type']}\n"
+                f"- Importer/Buyer: {ctx['importer']}\n"
+                f"- Goods: {ctx['goods']}\n"
+                f"- Status: {ctx['status']}\n"
+                f"- Handler: {ctx['handler']}\n"
+                f"- Vessel: {ctx['vessel']}\n"
+                f"- ETA: {ctx['eta']}\n\n"
+                "Example format: RPA-2026-0042 | MEDURS12345 | Import SEA FCL | ACME Corp | Steel Boxes | 3/5 Released | Lubna | ITAL WIT\n"
+                "Output ONLY the subject line, nothing else."
+            )
+            result = call_gemini_fast(gemini_key, "You generate email subject lines.", prompt, max_tokens=200)
+            if result and isinstance(result, str):
+                subject = result.strip().strip('"').strip("'")
+                # Remove any emojis
+                subject = _re_mod.sub(r'[\U00010000-\U0010ffff]', '', subject).strip()
+                # Enforce RPA file number presence
+                rpa = ctx.get('rpa_file', '')
+                if rpa and rpa not in subject:
+                    subject = f"{rpa} | {subject}"
+                if len(subject) > 120:
+                    subject = subject[:117] + '...'
+                if len(subject) >= 15:
+                    return subject
+        except Exception as e:
+            print(f"    \u26a0\ufe0f Smart subject AI failed: {e}")
+
+    # ── Fallback: best-available-field template ──
+    return _build_fallback_subject(ctx, email_type)
+
+
+def _build_fallback_subject(ctx, email_type="tracker"):
+    """Build subject from best available fields, no AI. Max 120 chars."""
+    parts = []
+
+    # RPA file number first
+    rpa = ctx.get('rpa_file', '')
+    if rpa:
+        parts.append(rpa)
+    elif ctx.get('tracking_code'):
+        parts.append(ctx['tracking_code'])
+    else:
+        parts.append('RCB')
+
+    # BL or AWB
+    ref = ctx.get('bl', '') or ctx.get('awb', '')
+    if ref:
+        parts.append(ref[:15])
+
+    # Direction + mode + load type
+    direction = ctx.get('direction', '')
+    mode = ctx.get('mode', '')
+    load = ctx.get('load_type', '')
+    dir_parts = []
+    if direction:
+        dir_parts.append(direction.capitalize())
+    if mode:
+        dir_parts.append(mode)
+    if load:
+        dir_parts.append(load)
+    if dir_parts:
+        parts.append(' '.join(dir_parts))
+
+    # Importer
+    importer = ctx.get('importer', '')
+    if importer:
+        parts.append(importer)
+
+    # Goods
+    goods = ctx.get('goods', '')
+    if goods:
+        parts.append(goods)
+
+    # Status
+    status = ctx.get('status', '')
+    if status:
+        parts.append(status)
+
+    # Handler
+    handler = ctx.get('handler', '')
+    if handler:
+        parts.append(handler)
+
+    # Vessel
+    vessel = ctx.get('vessel', '')
+    if vessel:
+        parts.append(vessel)
+
+    subject = ' | '.join(parts)
+    if len(subject) > 120:
+        subject = subject[:117] + '...'
+    return subject
+
+
+# ============================================================
 # HEBREW NAMES
 # ============================================================
 
