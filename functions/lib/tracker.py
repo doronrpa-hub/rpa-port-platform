@@ -511,6 +511,7 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
             "extractions": extractions,
             "observed_at": datetime.now(timezone.utc).isoformat(),
             "doc_text_preview": full_text[:15000],
+            "is_direct": is_direct,
         }
         db.collection("tracker_observations").document(obs_id).set(observation)
         # Attach non-serializable refs for downstream use (NOT stored in Firestore)
@@ -563,11 +564,15 @@ def tracker_process_email(msg, db, firestore_module, access_token, rcb_email, ge
                 _deal_id = deal_result["deal_id"]
                 _deal_doc = db.collection("tracker_deals").document(_deal_id).get()
                 if _deal_doc.exists:
-                    _update_type = "new_deal" if deal_result.get("action") == "created" else "status_update"
-                    _send_tracker_email(
-                        db, _deal_id, _deal_doc.to_dict(), access_token, rcb_email,
-                        _update_type, observation=observation, extractions=extractions,
-                        get_secret_func=get_secret_func)
+                    _deal = _deal_doc.to_dict()
+                    if not _deal.get('send_authorized', False):
+                        print(f"    📭 STEP 8: email suppressed — deal {_deal_id} not send_authorized")
+                    else:
+                        _update_type = "new_deal" if deal_result.get("action") == "created" else "status_update"
+                        _send_tracker_email(
+                            db, _deal_id, _deal, access_token, rcb_email,
+                            _update_type, observation=observation, extractions=extractions,
+                            get_secret_func=get_secret_func)
             except Exception as email_err:
                 print(f"    Warning: Tracker email error: {email_err}")
 
@@ -1239,6 +1244,10 @@ def _create_deal(db, firestore_module, observation):
         _handler = _HANDLER_MAP.get(_sender_local, '')
         if _handler:
             deal_data['handler'] = _handler
+
+    # ── Send authorization gate ──
+    _is_direct = observation.get('is_direct', False)
+    deal_data['send_authorized'] = bool(_is_direct and _from.endswith('@rpa-port.co.il'))
 
     # Lifecycle tracking — what doc types have been received, what's expected next
     initial_doc_type = _guess_doc_type_from_attachments(observation.get('attachment_names', []))
@@ -2306,6 +2315,11 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
                 gemini_key = get_secret_func("GEMINI_API_KEY")
             except Exception:
                 pass
+
+        # ── Guard 0: send authorization ──
+        if not deal.get('send_authorized', False):
+            print(f"    📭 Tracker email suppressed: deal {deal_id} not send_authorized")
+            return False
 
         # ── Guard 1: minimum data ──
         if not _deal_has_minimum_data(deal):
