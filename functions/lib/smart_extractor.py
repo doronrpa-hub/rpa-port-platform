@@ -626,6 +626,8 @@ class SmartExtractor:
             "חשבוו": "חשבון",
             'מע"ט': 'מע"מ',
             "עמיל מכם": "עמיל מכס",
+            "מתווך מכס": "עמיל מכס",
+            "מתווכי מכס": "עמילי מכס",
         }
         for wrong, right in replacements.items():
             text = text.replace(wrong, right)

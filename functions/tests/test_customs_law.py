@@ -7,6 +7,8 @@ from lib.customs_law import (
     NONEXISTENT_SUPPLEMENTS,
     GIR_RULES,
     KNOWN_FAILURES,
+    CORRECT_TERMS,
+    WRONG_TERMS,
     get_classification_methodology,
     get_gir_rule,
     get_chapter_section,
@@ -387,3 +389,38 @@ class TestFormatLegalContextForPrompt:
         result = format_legal_context_for_prompt(chapters=[1, 40, 85])
         # All 22 sections always included — substantial but bounded
         assert 5000 < len(result) < 25000
+
+    def test_contains_terminology_reminder(self):
+        result = format_legal_context_for_prompt()
+        assert "עמיל מכס" in result
+        assert "סוכן מכס" in result
+        assert "מתווך מכס" in result  # mentioned as the WRONG term to avoid
+
+
+# ── BLOCK 7: TERMINOLOGY ─────────────────────────────────────────────────
+
+
+class TestTerminology:
+    """Correct Hebrew customs terminology constants."""
+
+    def test_correct_terms_exist(self):
+        assert "customs_broker" in CORRECT_TERMS
+        assert "customs_agent" in CORRECT_TERMS
+
+    def test_correct_broker_term(self):
+        assert CORRECT_TERMS["customs_broker"] == "עמיל מכס"
+
+    def test_correct_agent_term(self):
+        assert CORRECT_TERMS["customs_agent"] == "סוכן מכס"
+
+    def test_wrong_terms_mapped(self):
+        assert "מתווך מכס" in WRONG_TERMS
+        assert WRONG_TERMS["מתווך מכס"] == "עמיל מכס"
+
+    def test_wrong_plural_mapped(self):
+        assert "מתווכי מכס" in WRONG_TERMS
+        assert WRONG_TERMS["מתווכי מכס"] == "עמילי מכס"
+
+    def test_wrong_qualified_mapped(self):
+        assert "מתווך מכס מוסמך" in WRONG_TERMS
+        assert WRONG_TERMS["מתווך מכס מוסמך"] == "עמיל מכס מוסמך"

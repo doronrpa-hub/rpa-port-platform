@@ -778,6 +778,7 @@ def run_classification_agent(api_key, items, tariff_data, rules, knowledge_conte
         except Exception:
             pass
     system = f"""{_legal_ctx}אתה סוכן סיווג מכס ישראלי מומחה.
+מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס.
 
 {knowledge_context}
 
@@ -868,6 +869,7 @@ def run_synthesis_agent(api_key, all_results, gemini_key=None):
     """Agent 6: Final synthesis with proper Hebrew formatting
     Session 15: Uses Gemini 2.5 Pro (good Hebrew, lower cost than Claude)"""
     system = """אתה סוכן סיכום מקצועי. כתוב סיכום מעוצב היטב בעברית.
+מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס.
 
 חובה לעקוב אחר הפורמט הבא בדיוק:
 

@@ -861,6 +861,7 @@ RULES:
 - If no candidates found, use your training knowledge but verify the code.
 - Always provide Hebrew descriptions alongside English.
 - If a tool returns no results, try broader search terms or alternative tools (see suggestions in tool responses).
+- TERMINOLOGY: In Hebrew, customs broker = עמיל מכס or סוכן מכס. NEVER use מתווך מכס (wrong — מתווך means mediator, not a legal customs term).
 
 OUTPUT FORMAT (in your final text response, as JSON):
 {

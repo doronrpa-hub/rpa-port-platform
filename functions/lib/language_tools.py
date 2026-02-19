@@ -160,6 +160,9 @@ KNOWN_TYPOS = {
     "רגולצייה": "רגולציה",
     "דקלרציה": "הצהרה",     # translate to Hebrew
     "טריף": "תעריף",
+    "מתווך מכס": "עמיל מכס",        # WRONG term — מתווך = mediator, not customs
+    "מתווך מכס מוסמך": "עמיל מכס מוסמך",
+    "מתווכי מכס": "עמילי מכס",       # plural
 }
 
 # ─── Common Hebrew formal ↔ informal equivalents ──────────────────────────────

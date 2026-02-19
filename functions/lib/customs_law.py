@@ -18,6 +18,26 @@ Source documents:
 from lib.chapter_expertise import SEED_EXPERTISE, get_section_for_chapter
 
 # ============================================================================
+# BLOCK 0 — TERMINOLOGY (CORRECT HEBREW CUSTOMS TERMS)
+# ============================================================================
+# Source: פקודת המכס (Customs Ordinance), פרק אחד עשר — סוכנים
+# The Israeli customs profession uses ONLY these terms:
+#   עמיל מכס = customs broker (the person who holds the license)
+#   סוכן מכס = customs agent (synonym, used in the Customs Ordinance)
+# NEVER use: מתווך מכס (wrong — מתווך means "mediator/middleman", not a legal term)
+
+CORRECT_TERMS = {
+    "customs_broker": "עמיל מכס",
+    "customs_agent": "סוכן מכס",
+}
+
+WRONG_TERMS = {
+    "מתווך מכס": "עמיל מכס",       # מתווך = mediator, NOT a customs term
+    "מתווך מכס מוסמך": "עמיל מכס מוסמך",
+    "מתווכי מכס": "עמילי מכס",      # plural
+}
+
+# ============================================================================
 # BLOCK 1 — CLASSIFICATION_METHODOLOGY (Phases 0-9)
 # ============================================================================
 
@@ -595,6 +615,7 @@ def format_legal_context_for_prompt(chapters: list = None, phase: int = None) ->
     parts.append("- Stop ONLY at XX.XX.XXXXXX/X format. No partial codes.")
     parts.append("- אחרים (Others) valid ONLY after eliminating every specific code above it.")
     parts.append("- Supplements 11, 12, 13 DO NOT EXIST — never reference them.")
+    parts.append("- TERMINOLOGY: The correct Hebrew for customs broker is עמיל מכס or סוכן מכס. NEVER use מתווך מכס (wrong term — מתווך means mediator).")
     parts.append("=== END EMBEDDED EXPERTISE ===")
     parts.append("")
 
