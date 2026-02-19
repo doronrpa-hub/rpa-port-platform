@@ -2788,3 +2788,40 @@ Full audit of every code path that can send email via `helper_graph_send()` (16 
 
 ### Test Results
 - **1106 passed, 1 skipped** (no regressions, identical to Session 51 baseline)
+
+## Session 52B Tier 3 Summary (2026-02-19) — Security Logging, CC Orphan Fix, Rate Limiting
+
+### What Was Done
+
+Fixed 4 issues from Session 52B audit Tier 3. All security-boundary hardening with Firestore `security_log` visibility.
+
+### Fixes Implemented
+
+| # | Issue | File | Fix |
+|---|-------|------|-----|
+| M1 | Blocked external sends not logged | `rcb_helpers.py:723` | `helper_graph_send` now writes `BLOCKED_EXTERNAL_SEND` to `security_log` when external recipient blocked (uses existing `db` param) |
+| M2 | Blocked external replies not logged | `rcb_helpers.py:775` | `helper_graph_reply` now writes `BLOCKED_EXTERNAL_REPLY` to `security_log` for both `to_email=None` and external recipient blocks. Added `db=None` kwarg (backward compatible) |
+| M5 | CC path created orphaned Firestore docs | `main.py:918-929` | Removed `process_email_intent()` call from CC path entirely. Was creating `questions_log` docs and sending clarification emails when RCB is only in CC (should be silent observe-only) |
+| M6 | No rate limiting on external senders before classification | `main.py:1087` | External senders (non `@rpa-port.co.il`) limited to 5 classifications/hour via `rcb_processed` query. Exceeding logs `EXTERNAL_RATE_LIMITED` to `security_log`, marks email read, skips. Fail-open on query errors |
+
+### Security Log Event Types Added
+| Type | Source | Trigger |
+|------|--------|---------|
+| `BLOCKED_EXTERNAL_SEND` | `helper_graph_send` | Any attempt to send to non `@rpa-port.co.il` |
+| `BLOCKED_EXTERNAL_REPLY` | `helper_graph_reply` | Reply to external or `to_email=None` |
+| `EXTERNAL_RATE_LIMITED` | `main.py` CC classification | External sender exceeds 5 classifications/hour |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/rcb_helpers.py` | +security_log writes in `helper_graph_send` (M1) and `helper_graph_reply` (M2), +`db=None` kwarg on `helper_graph_reply` |
+| `functions/main.py` | Removed `process_email_intent` from CC path (M5), +external rate limiting before classification (M6) |
+
+### Git Commit
+- `69ec0b7` — Tier 3: Log blocked sends to security_log, fix CC orphans, add external rate limit
+
+### Deployment
+- All 31 Cloud Functions deployed to Firebase (2026-02-19)
+
+### Test Results
+- **1106 passed, 1 skipped** — identical to baseline, zero regressions
