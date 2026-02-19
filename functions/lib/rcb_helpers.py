@@ -772,13 +772,15 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html,
         return False
 
 
-def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None, subject=None, db=None):
+def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None, subject=None, db=None, deal_id=None, alert_type=None):
     """Reply to an existing email via Graph API (threads correctly in Outlook).
 
     Args:
         subject: Optional override for reply subject line. If provided,
                  replaces the default "Re: ..." subject inherited from the thread.
         db: Optional Firestore client for security_log logging.
+        deal_id: Optional deal ID for dedup checks via email_quality_gate.
+        alert_type: Optional alert type for dedup checks via email_quality_gate.
     """
     # ── HARD BLOCK: Never reply to external recipients ──
     if not to_email:
@@ -814,7 +816,9 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
 
     # ── Email quality gate (fail-open) ──
     try:
-        approved, reason = email_quality_gate(to_email, subject or "", body_html)
+        approved, reason = email_quality_gate(
+            to_email, subject or "", body_html,
+            deal_id=deal_id, alert_type=alert_type, db=db)
         if not approved:
             print(f"\U0001f4e7 Reply BLOCKED by quality gate: {reason} | to={to_email}")
             return False

@@ -2346,7 +2346,8 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
             sent = helper_graph_reply(
                 access_token, rcb_email, thread_msg_id,
                 body_html, to_email=follower, cc_emails=cc_list,
-                subject=subject
+                subject=subject, db=db,
+                deal_id=deal_id, alert_type="tracker_update"
             )
             # Persist stable thread anchor for future emails
             if sent and not deal.get('deal_thread_id'):
