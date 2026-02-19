@@ -2825,3 +2825,75 @@ Fixed 4 issues from Session 52B audit Tier 3. All security-boundary hardening wi
 
 ### Test Results
 - **1106 passed, 1 skipped** — identical to baseline, zero regressions
+
+## Session 53 Summary (2026-02-19) — Full Customs Ordinance Embedded (311 Articles)
+
+### What Was Done
+
+Parsed the complete פקודת המכס (Customs Ordinance) from `pkudat_mechess.txt` (9,897 lines, 426K chars) and embedded all 311 articles + 17 chapters as Python constants in the codebase. This replaces the previous 9 grouped article summaries with individual article-level data covering every article in the law.
+
+### Architecture
+
+| Component | Before | After |
+|-----------|--------|-------|
+| `customs_law.py` BLOCK 4B | 9 grouped keys, ~523 lines inline | Import from `_ordinance_data.py`, ~30 lines |
+| Total articles | ~33 (in 9 groups) | 311 (individual flat keys) |
+| Chapters covered | 6 (1, 3, 4, 8, 11, 13) | All 15 chapters + 13א + 14א |
+| Data structure | Nested grouped dicts (`"124-154"` → `key_articles` → `"130"`) | Flat per-article dicts (`"130"` directly) |
+| Article keys | Latin letters (`223b`) | Hebrew letters (`223ב`) matching the law |
+
+### Files Created/Modified
+
+| Action | File | Changes |
+|--------|------|---------|
+| **CREATE** | `functions/lib/_ordinance_data.py` | ~1,400 lines: `ORDINANCE_CHAPTERS` (17 entries) + `ORDINANCE_ARTICLES` (311 entries) |
+| **MODIFY** | `functions/lib/customs_law.py` | BLOCK 4B: 523 lines → 30-line import; updated `get_ordinance_article()`, `get_valuation_methods()`, `format_legal_context_for_prompt()`; added `get_ordinance_chapter()`, `get_articles_by_chapter()`, `CUSTOMS_ORDINANCE_CHAPTERS` |
+| **REWRITE** | `functions/tests/test_customs_law.py` | 111 → 145 tests; 20 test classes covering all chapters, flat keys, Hebrew letter keys |
+
+### New Public API
+
+| Function | Purpose |
+|----------|---------|
+| `get_ordinance_chapter(ch)` | Chapter metadata (title_he, title_en, articles_range) |
+| `get_articles_by_chapter(ch)` | All articles in a chapter as {id: data} dict |
+| `CUSTOMS_ORDINANCE_CHAPTERS` | 17-chapter metadata constant |
+
+### Data Quality
+
+- Each article has: `ch` (chapter), `t` (Hebrew title), `s` (English summary)
+- Critical articles have extra fields: `definitions` (art 1), `methods` (art 130), `additions` (art 133), `key` (art 133)
+- Repealed articles marked with `"repealed": True`
+- Article keys use Hebrew letter suffixes: `133א`, `223ב`, `65א` (matching the actual law)
+- Source: `C:\Users\doron\Desktop\doronrpa\tariff_data\pkudat_mechess.txt`
+
+### Chapter Coverage
+
+| Chapter | Title | Articles |
+|---------|-------|----------|
+| 1 | Introduction / הגדרות | ~15 |
+| 2 | Administration / מינהל | ~22 |
+| 3 | Supervision / פיקוח | ~38 |
+| 4 | Imports / ייבוא | ~33 |
+| 5 | Warehousing / החסנה | ~27 |
+| 6 | Exports / ייצוא | ~16 |
+| 7 | Ship's Stores / צידה | ~5 |
+| 8 | Customs Payments / תשלומי מכס | ~44 |
+| 9 | Drawback / הישבון | ~23 |
+| 10 | Coastal Trade / סחר חופים | ~5 |
+| 11 | Agents / סוכנים | ~4 |
+| 12 | Powers / סמכויות | ~22 |
+| 13 | Penalties / עונשין | ~30 |
+| 13א | Admin Enforcement / אכיפה מינהלית | ~19 |
+| 14+14א | Prosecutions + e-Reporting | ~7 |
+| 15 | Miscellaneous / שונות | ~5 |
+
+### Prompt Impact
+`format_legal_context_for_prompt()` output: 19,577 chars (was ~15K). Now includes:
+- Article count mention ("311 articles across 17 chapters")
+- Import declaration section (§62-63)
+- Drawback section (§155-156)
+- All penalty articles pulled dynamically from data
+- Admin enforcement articles with Hebrew keys
+
+### Test Results
+- **1,184 passed**, 1 skipped — 145 customs law tests (was 111), zero regressions
