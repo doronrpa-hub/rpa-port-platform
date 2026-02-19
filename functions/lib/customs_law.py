@@ -469,6 +469,576 @@ KNOWN_FAILURES = [
 ]
 
 # ============================================================================
+# BLOCK 4B — CUSTOMS_ORDINANCE_ARTICLES (פקודת המכס [נוסח חדש])
+# ============================================================================
+# Source: https://www.nevo.co.il/law_html/law01/265_001.htm
+# Structured summaries of key articles a licensed עמיל מכס uses daily.
+# Full law = 272K chars (15 chapters, 241+ articles).
+# Below: structured summaries of the articles most critical for classification,
+# valuation, declarations, liability, and enforcement.
+#
+# The law has 15 chapters:
+#   1. Introduction (הגדרות)           2. Administration
+#   3. Supervision & declarations       4. Imports
+#   5. Warehousing                      6. Exports
+#   7. Ship's stores                    8. Customs payments (valuation)
+#   9. Drawback & temporary admission  10. Coastal trade
+#  11. Agents (סוכנים)                 12. Powers of customs officers
+#  13. Forfeitures & penalties         13א. Administrative enforcement
+#  14. Customs prosecutions + e-reporting  15. Miscellaneous
+
+CUSTOMS_ORDINANCE_ARTICLES = {
+    # ── ARTICLE 1: KEY DEFINITIONS ──────────────────────────────────────
+    "1": {
+        "name_he": "הגדרות",
+        "name_en": "Definitions",
+        "chapter": 1,
+        "summary": "Foundational definitions used throughout the Customs Ordinance.",
+        "definitions": {
+            "טובין חבי מכס": "Goods subject to customs duty.",
+            "בעל (טובין)": "Owner, importer, exporter, carrier, or agent of goods; "
+                           "anyone holding, entitled to benefit from, or with control/authority over them.",
+            "הברחה": "Importing/exporting/transporting goods along coast or borders intending to defraud "
+                     "Treasury or evade prohibition/restriction — including attempts.",
+            "הצהרת ייבוא": "Import declaration as defined in Section 62.",
+            "הצהרת ייצוא": "Export declaration as defined in Section 103.",
+            "מצהר": "Cargo manifest as defined in Section 53.",
+            "סוכן מכס": "Customs agent as defined in Customs Agents Law (חוק סוכני המכס, תשכ\"ה-1964).",
+            "פקיד מכס": "Person employed by customs authority (non-laborer) and any civil servant "
+                        "serving customs functions.",
+            "מסי יבוא": "Import taxes: customs duty + purchase tax (חוק מס קנייה) + VAT (חוק מע\"מ) "
+                        "+ all other import taxes/levies.",
+            "מסמכי העדפה": "Preference documents under trade agreements granting duty reduction/exemption — "
+                          "including EUR.1, origin declarations, compliance statements.",
+            "כלי הובלה": "Vessel, vehicle, aircraft, or animal used to transport goods.",
+            "מחסן רשוי": "Licensed warehouse — authorized to deposit goods under customs supervision.",
+            "מחסן המכס": "Customs warehouse — government-allocated place to deposit goods securing payment.",
+            "הישבון": "Drawback — refund of customs duties under Part IX, or cancellation of "
+                      "deferred customs debt under Section 160b(a).",
+            "שטעון": "Transit — export of imported goods remaining under customs supervision.",
+            "נמל": "Port, airport, transit terminal, or border crossing as confirmed by Director.",
+            "גובה מכס": "Customs collector — the Director and any customs officer serving in that matter.",
+            "רשות המכס": "Customs & Excise Authority (רשות המכס והמע\"מ).",
+        },
+        "broker_note": "Every classification report must use these definitions precisely. "
+                       "When the law says בעל it means ANYONE with control — not just the registered importer.",
+    },
+
+    # ── ARTICLE 2: DUTY TO ANSWER & PROVIDE DOCUMENTS ───────────────────
+    "2": {
+        "name_he": "חובה להשיב תשובות ולמסור תעודות",
+        "name_en": "Duty to Answer Questions and Provide Documents",
+        "chapter": 1,
+        "summary": "Any person required must answer truthfully; any person required to provide "
+                   "documents must submit all relevant documentation.",
+        "broker_note": "Applies to importers, exporters, agents, and customs brokers alike. "
+                       "Refusal = obstruction under Section 212.",
+    },
+
+    # ── ARTICLE 24: DECLARATION OBLIGATIONS ─────────────────────────────
+    "24": {
+        "name_he": "הצהרות",
+        "name_en": "Declarations",
+        "chapter": 3,
+        "summary": "Import goods and export-destined goods require import declaration (per Section 62) "
+                   "or export declaration (per Section 103) as applicable.",
+        "amendment": "Amended 2018 (Amendment 28) — restructured declaration requirements.",
+        "broker_note": "This is the legal mandate for every import/export declaration. "
+                       "No goods move without a declaration filed by the importer or their סוכן מכס.",
+    },
+
+    # ── ARTICLES 62-65G: IMPORT DECLARATION ─────────────────────────────
+    "62-65g": {
+        "name_he": "הצהרת ייבוא",
+        "name_en": "Import Declaration Requirements",
+        "chapter": 4,
+        "sign": "ה (Sign E of Part IV)",
+        "articles": {
+            "62": {
+                "name_he": "הצהרת ייבוא",
+                "text": "(א) כל יבואן חייב להגיש הצהרת ייבוא לרשות המכס. "
+                        "(ב) ההצהרה כוללת תיאור הטובין, כמות, ערך, מקור ופרטים נוספים שהמנהל קובע. "
+                        "(ג) ההצהרה מוגשת באופן אלקטרוני לפי סעיף 64. "
+                        "(ד) המנהל רשאי לדרוש צירוף מסמכים נוספים. "
+                        "(ה) הגשת הצהרה יכול שתיעשה בידי סוכן מכס כאמור בסעיף 168.",
+            },
+            "63": {
+                "name_he": "המועד להגשת הצהרת ייבוא",
+                "text": "(א) הצהרה תוגש לאחר הגשת המצהר, לא יאוחר מ-3 חודשים ממועד הייבוא. "
+                        "יבוא אווירי: לא יאוחר מ-45 ימים ממועד הייבוא. "
+                        "(ב) לא הוגשה במועד — גובה המכס רשאי למכור או להשמיד את הטובין.",
+            },
+            "64": {
+                "name_he": "הצהרת ייבוא אלקטרונית",
+                "text": "המנהל רשאי להתיר הגשה אלקטרונית — תוקפה כתוקף הצהרה בכתב.",
+            },
+            "65": {
+                "name_he": "בדיקת טובין שנכללו בהצהרת ייבוא",
+                "text": "טובין בהצהרה ניתנים לבדיקה/אימות לפני שחרור.",
+            },
+            "65a": {
+                "name_he": "שמירת מסמכים",
+                "text": "יבואן חייב לשמור מסמכים הנוגעים לטובין ולמסרם לפי דרישה.",
+            },
+            "65b": {
+                "name_he": "חובה להשיב על שאלות",
+                "text": "מגיש הצהרה חייב להשיב על שאלות פקיד המכס.",
+            },
+            "65c": {
+                "name_he": "מסמך חלופי",
+                "text": "המנהל רשאי לקבל מסמך חלופי במקום הצהרת ייבוא.",
+            },
+        },
+        "broker_note": "Section 62(ה) explicitly authorizes סוכן מכס to file. The 3-month deadline (sea) "
+                       "and 45-day deadline (air) are strict — after that, goods can be sold/destroyed.",
+    },
+
+    # ── ARTICLES 123A-123B: CUSTOMS PAYMENT LIABILITY ───────────────────
+    "123a-b": {
+        "name_he": "חיוב בתשלומי מכס",
+        "name_en": "Liability for Customs Payments",
+        "chapter": 8,
+        "articles": {
+            "123a": {
+                "name_he": "חיוב בתשלום מכס",
+                "text": "Person liable: importer/owner when goods enter Israel; "
+                        "exporter when goods exit.",
+            },
+            "123b": {
+                "name_he": "תשלום המכס",
+                "text": "Customs payable upon goods entry/exit. Director determines "
+                        "payment timing and method by regulations.",
+            },
+        },
+        "broker_note": "The customs broker is NOT the party liable for duty — the importer/owner is. "
+                       "But broker liability exists under Section 168 and the Customs Agents Law.",
+    },
+
+    # ── ARTICLES 124-154: CUSTOMS VALUATION ─────────────────────────────
+    # This is the most important block for daily broker work.
+    "124-154": {
+        "name_he": "הערכת טובין ותשלומי מכס",
+        "name_en": "Customs Valuation and Duty Assessment",
+        "chapter": 8,
+        "key_articles": {
+            "124": {
+                "name_he": "שעת חיוב המכס",
+                "text": "Rate applicable when goods physically enter/exit Israel — "
+                        "NOT when declaration submitted.",
+            },
+            "129": {
+                "name_he": "הגדרות להערכת טובין",
+                "text": "Defines: טובין מוערכים (appraised goods), טובין זהים (identical goods), "
+                        "טובין דומים (similar goods), יחסים מיוחדים (special relationships between parties).",
+                "definitions": {
+                    "טובין זהים": "Identical goods — same in all respects: physical characteristics, quality, reputation. "
+                                  "Minor appearance differences do not prevent goods from being identical.",
+                    "טובין דומים": "Similar goods — not identical but with similar characteristics and components, "
+                                  "performing the same functions and commercially interchangeable.",
+                    "יחסים מיוחדים": "Special relationships: officers/directors of each other's business, "
+                                     "legally recognized partners, employer/employee, 5%+ ownership, "
+                                     "control relationship, both controlled by third party, family members.",
+                },
+            },
+            "130": {
+                "name_he": "דרכי קביעת ערכם של טובין מוערכים",
+                "name_en": "Valuation Methods for Appraised Goods",
+                "text": "The 7 valuation methods IN MANDATORY ORDER (WTO/GATT Article VII):",
+                "methods": [
+                    {
+                        "number": 1,
+                        "name_he": "ערך עסקה",
+                        "name_en": "Transaction Value",
+                        "section": "132",
+                        "description": "Price actually paid or payable for goods sold for export to Israel, "
+                                       "adjusted per Section 133 additions. PRIMARY METHOD — try this first.",
+                    },
+                    {
+                        "number": 2,
+                        "name_he": "ערך עסקה של טובין זהים",
+                        "name_en": "Transaction Value of Identical Goods",
+                        "section": "133א+133ג",
+                        "description": "Transaction value of identical goods exported to Israel at approximately "
+                                       "the same time. Computed per Section 132 rules.",
+                    },
+                    {
+                        "number": 3,
+                        "name_he": "ערך עסקה של טובין דומים",
+                        "name_en": "Transaction Value of Similar Goods",
+                        "section": "133ב+133ג",
+                        "description": "Transaction value of similar goods exported to Israel at approximately "
+                                       "the same time. Computed per Section 132 rules.",
+                    },
+                    {
+                        "number": 4,
+                        "name_he": "מחיר מכירה בישראל (ערך ניכוי)",
+                        "name_en": "Deductive Value (Domestic Resale Price)",
+                        "section": "133ד",
+                        "description": "Resale price in Israel MINUS: commissions/profit markup, "
+                                       "domestic transport/insurance, import costs per 133(א)(5), "
+                                       "customs duty and other import taxes.",
+                    },
+                    {
+                        "number": 5,
+                        "name_he": "ערך מחושב",
+                        "name_en": "Computed Value",
+                        "section": "133ה",
+                        "description": "Cost of materials + fabrication + profit + general expenses "
+                                       "in producing country + transport to Israeli port per 133(א)(5).",
+                    },
+                    {
+                        "number": 6,
+                        "name_he": "היפוך סדר (4↔5)",
+                        "name_en": "Reversed Order (Methods 4 and 5 swapped)",
+                        "section": "130(6)",
+                        "description": "Importer may REQUEST to apply Method 5 before Method 4 "
+                                       "(requires customs collector approval).",
+                    },
+                    {
+                        "number": 7,
+                        "name_he": "קביעת ערך במקרים אחרים (שיטת שארית)",
+                        "name_en": "Fallback Method",
+                        "section": "133ו",
+                        "description": "Reasonable means consistent with GATT 1994 principles. "
+                                       "PROHIBITED bases: domestic production price, higher-of-two values, "
+                                       "export country market price, minimum customs value, "
+                                       "arbitrary/fictitious values.",
+                    },
+                ],
+                "critical_rule": "Methods MUST be applied IN ORDER. You cannot skip to Method 4 "
+                                 "without proving Methods 1-3 are inapplicable.",
+            },
+            "131": {
+                "name_he": "קביעת ערכם של טובין שחלפה שנה מעת ייבואם",
+                "text": "Goods unredeemed for >1 year: valued per Methods 2-7 only "
+                        "(Method 1 excluded). Director may allow Method 1 by request.",
+            },
+            "132": {
+                "name_he": "ערך עסקה",
+                "name_en": "Transaction Value (Method 1 Detail)",
+                "text": "Transaction value = price paid or payable for export to Israel + Section 133 additions. "
+                        "CONDITIONS: (a) no restrictions on sale/use except legal/geographic/non-material; "
+                        "(b) sale not subject to unquantifiable conditions; "
+                        "(c) no proceeds accrue to seller beyond Section 133 items; "
+                        "(d) no special relationships, OR relationships don't affect price.",
+                "special_relationships": "If special relationships exist, importer must prove price is close to: "
+                                         "(1) transaction value of identical/similar goods to unrelated buyers, "
+                                         "(2) deductive value per 133ד, or (3) computed value per 133ה.",
+                "exclusions": "Financing interest excluded if: separate from price, in writing, "
+                              "and rate not above market. Post-redemption discounts NOT included.",
+            },
+            "133": {
+                "name_he": "התוספות למחיר העסקה",
+                "name_en": "Additions to Transaction Value",
+                "text": "Added to transaction value (if not already included), based on objective data:",
+                "additions": [
+                    "(1) Buyer's expenses: (א) commissions/brokerage (NOT buying commissions), "
+                    "(ב) container costs deemed part of goods, (ג) packing costs including labor/materials.",
+                    "(2) Proportional value of buyer-supplied inputs: (א) materials/components in goods, "
+                    "(ב) tools/molds used in production, (ג) materials consumed in production, "
+                    "(ד) engineering/design/artwork done OUTSIDE Israel.",
+                    "(3) Royalties and license fees the buyer must pay as condition of sale.",
+                    "(4) Seller's share in resale/use proceeds after export sale.",
+                    "(5) Transport costs to port of import: (א) freight, (ב) loading/handling, "
+                    "(ג) insurance — (CIF basis).",
+                ],
+                "critical_rule": "If objective data for any addition is unavailable, "
+                                 "that transaction CANNOT be used for valuation under Section 130.",
+            },
+            "133א": {
+                "name_he": "ערך עסקה של טובין זהים",
+                "name_en": "Identical Goods Transaction Value",
+                "text": "Method 2: identical goods exported to Israel at same/similar time. "
+                        "Computed per Section 132. Must meet all conditions: same time, "
+                        "same commercial level, same quantity (with adjustments).",
+            },
+            "133ב": {
+                "name_he": "ערך עסקה של טובין דומים",
+                "name_en": "Similar Goods Transaction Value",
+                "text": "Method 3: similar goods exported to Israel at same/similar time. "
+                        "Same rules as 133א.",
+            },
+            "133ג": {
+                "name_he": "כללים לטובין זהים/דומים",
+                "name_en": "Rules for Identical/Similar Goods",
+                "text": "If multiple transaction values found for identical/similar goods, "
+                        "use the LOWEST. Adjust for transport cost differences.",
+            },
+            "133ד": {
+                "name_he": "קביעת ערך על פי מחיר מכירה בישראל",
+                "name_en": "Deductive Value (Method 4)",
+                "text": "Method 4: resale price in Israel of imported/identical/similar goods. "
+                        "Deduct: (א) commissions/profit markup, (ב) domestic transport/insurance, "
+                        "(ג) import transport per 133(א)(5), (ד) customs duty and taxes.",
+            },
+            "133ה": {
+                "name_he": "קביעת ערך מחושב",
+                "name_en": "Computed Value (Method 5)",
+                "text": "Method 5: (א) materials + production cost including 133(א)(1)(ב)+(ג), "
+                        "(ב) profit + general expenses for same class goods in country of production, "
+                        "(ג) transport to Israeli port per 133(א)(5).",
+            },
+            "133ו": {
+                "name_he": "קביעת ערך במקרים אחרים",
+                "name_en": "Fallback Method (Method 7)",
+                "text": "Method 7: reasonable means consistent with GATT/WTO principles. "
+                        "PROHIBITED: domestic production price, higher-of-two, export country market price, "
+                        "production cost (except computed value), export to third country price, "
+                        "minimum customs value, arbitrary/fictitious values. "
+                        "Director MAY use Methods 1-6 flexibly (without all conditions met).",
+            },
+            "133ז": {
+                "name_he": "ערך טובין שניזוקו",
+                "name_en": "Damaged Goods Valuation",
+                "text": "Damaged goods before redemption: valued per Section 130 methods "
+                        "with damage depreciation factored in.",
+            },
+            "133ח": {
+                "name_he": "מסירת פירוט חשבון ליבואן",
+                "name_en": "Valuation Notice to Importer",
+                "text": "Director must notify importer in writing: (1) the determined value, "
+                        "(2) the method used. On request, must provide detailed calculation.",
+            },
+            "133ט": {
+                "name_he": "תחולה — טובין לשימוש מסחרי",
+                "name_en": "Applicability — Commercial Goods Only",
+                "text": "Sections 129-133ח apply ONLY to commercially imported goods. "
+                        "Personal use goods: valued per Section 134א (Minister's regulations).",
+            },
+            "134": {
+                "name_he": "סמכות המנהל להתקין תקנות",
+                "text": "Director may issue regulations for Sections 129-133ט implementation. "
+                        "May require any person connected to import to provide information, "
+                        "accounting books, and purchase/import/sale documents.",
+            },
+            "148": {
+                "name_he": "המרת מטבע חוץ",
+                "text": "Foreign currency converted per exchange rate on goods entry date.",
+            },
+        },
+        "broker_note": "The 7 valuation methods are the backbone of customs value calculation. "
+                       "Method 1 (transaction value) applies in ~90% of cases. "
+                       "CIF basis: price + freight + insurance to Israeli port. "
+                       "The broker must verify: is there a special relationship? Are all additions declared? "
+                       "Missing additions = undervaluation = penalty under Sections 207-223.",
+    },
+
+    # ── ARTICLES 168-169: CUSTOMS AGENTS ────────────────────────────────
+    "168-169": {
+        "name_he": "סוכנים",
+        "name_en": "Customs Agents",
+        "chapter": 11,
+        "articles": {
+            "168": {
+                "name_he": "סוכן מכס",
+                "text_current": "Customs agent defined per Customs Agents Law (חוק סוכני המכס, תשכ\"ה-1964). "
+                                "Agent authorized to act for parties in all customs matters. "
+                                "(א) כל בעל טובין רשאי לקיים הוראות הפקודה על ידי סוכן מכס. "
+                                "(ב) סוכן מכס must verify and authenticate importer's power of attorney signature.",
+                "text_previous": "OLD version (pre-Amendment 28): 'סוכן מורשה' could be employee or "
+                                 "licensed עמיל מכס. Passenger baggage could be redeemed by anyone entrusted.",
+            },
+            "169": {
+                "name_he": "יש להראות הרשאה",
+                "text": "כל פקיד מכס רשאי לדרוש מסוכן שיראה הרשאה בכתב מן האדם שמטעמו הוא פועל. "
+                        "If authorization not shown — customs officer may refuse to recognize the agency.",
+            },
+        },
+        "broker_note": "These two articles + the Customs Agents Law (חוק סוכני המכס) define the entire "
+                       "legal framework for customs brokers. Key obligations: (1) written power of attorney, "
+                       "(2) signature verification, (3) show authorization on demand. "
+                       "Section 223ב(ה) penalty for failing to verify POA: ₪400. "
+                       "Section 223ב(ו) penalty for submitting invalid POA: ₪5,000.",
+    },
+
+    # ── ARTICLES 207-223: PENALTIES ─────────────────────────────────────
+    "207-223": {
+        "name_he": "עונשין",
+        "name_en": "Penalties",
+        "chapter": 13,
+        "sign": "ב (Sign B of Part XIII)",
+        "articles": {
+            "207": {
+                "name_he": "קשירת קשר להברחה",
+                "text": "Conspiracy to smuggle: imprisonment up to 5 years or fine.",
+            },
+            "208": {
+                "name_he": "הפעלת כוח, שוחד, השמדת טובין",
+                "text": "Using force to resist capture, bribing customs officer, destroying goods, "
+                        "preventing seizure: imprisonment up to 10 years or fine up to 3× goods value.",
+            },
+            "209": {
+                "name_he": "ירי על כלי שיט של המכס",
+                "text": "Firing at customs vessel/aircraft: imprisonment up to 10 years or fine.",
+            },
+            "210": {
+                "name_he": "הרחקת טובין חבי מכס",
+                "text": "Removing duty-liable goods or destroying them: imprisonment up to 7 years "
+                        "or fine up to 3× goods value.",
+            },
+            "211": {
+                "name_he": "הברחה",
+                "name_en": "Smuggling",
+                "text": "Smuggling goods with intent to defraud Treasury: imprisonment up to 5 years.",
+            },
+            "212": {
+                "name_he": "עבירות מכס אחרות",
+                "text": "Violating customs regulations not specified elsewhere: "
+                        "imprisonment up to 2 years or fine.",
+            },
+            "214": {
+                "name_he": "עונש כללי",
+                "text": "Unspecified customs violations: imprisonment up to 6 months or fine.",
+            },
+            "217": {
+                "name_he": "אחריות ביחד ולחוד",
+                "text": "Multiple violators liable jointly and severally for penalties/fines.",
+            },
+            "218": {
+                "name_he": "מסייעים ומשדלים",
+                "text": "Aiders and abettors prosecuted as principals.",
+            },
+            "219": {
+                "name_he": "ניסיון",
+                "text": "Attempted violations prosecuted same as completed offenses.",
+            },
+            "220": {
+                "name_he": "קנס פי שלושה מערך הטובין",
+                "text": "Smuggling penalty: up to 3× goods value.",
+            },
+            "221": {
+                "name_he": "עונש בנוסף לחילוט",
+                "text": "Penalties imposed IN ADDITION to goods forfeiture.",
+            },
+            "222": {
+                "name_he": "ערך הטובין לעניין הקנס",
+                "text": "Value for penalty = current market price.",
+            },
+        },
+        "broker_note": "Misclassification that reduces duty = defrauding Treasury under Section 211. "
+                       "The broker can be prosecuted under Section 218 as aider/abettor. "
+                       "Joint liability (217) means the broker AND the importer both face penalties. "
+                       "Fine up to 3× goods value (220) applies to smuggling but also to "
+                       "intentional undervaluation via wrong classification.",
+    },
+
+    # ── ARTICLES 223A-223R: ADMINISTRATIVE ENFORCEMENT ──────────────────
+    "223a-r": {
+        "name_he": "אמצעי אכיפה מינהליים",
+        "name_en": "Administrative Enforcement",
+        "chapter": "13א",
+        "articles": {
+            "223a": {
+                "name_he": "הגדרות — פרק י\"ג א'",
+                "text": "Definitions for the administrative enforcement chapter.",
+            },
+            "223b": {
+                "name_he": "עיצום כספי",
+                "name_en": "Financial Penalty",
+                "text": "Director may impose financial penalties for violations. "
+                        "Key amounts: (ה) ₪400 for failing to verify POA signature (סוכן מכס). "
+                        "(ו) ₪5,000 for submitting invalid POA. "
+                        "(ז) ₪25,000 for: late manifest, warehouse violations. "
+                        "(ח) warehouse license violations per schedule.",
+            },
+            "223c": {
+                "name_he": "הודעה על כוונת חיוב",
+                "text": "Director provides written notice: violation details, penalty amount, appeal rights.",
+            },
+            "223d": {
+                "name_he": "זכות טיעון",
+                "text": "Violator may submit written arguments within 30 days.",
+            },
+            "223e": {
+                "name_he": "החלטה וחיוב",
+                "text": "Director issues written decision and payment demand. Penalty becomes a debt.",
+            },
+            "223f": {
+                "name_he": "עבירה נמשכת וחוזרת",
+                "text": "Continuous violation = single breach. Repeated violations within 3 years "
+                        "may increase penalty.",
+            },
+            "223g": {
+                "name_he": "הפחתת סכומים",
+                "text": "Director may reduce penalty for: cooperation, small violations, other circumstances.",
+            },
+            "223h": {
+                "name_he": "עדכון סכומי עיצום",
+                "text": "Penalty amounts adjusted annually per Consumer Price Index.",
+            },
+            "223i": {
+                "name_he": "מועד תשלום",
+                "text": "Payment due within 30 days. Non-payment accrues interest + linkage adjustments.",
+            },
+            "223j": {
+                "name_he": "פיגורים וריבית",
+                "text": "Unpaid penalties accrue interest per Interest & Linkage Law.",
+            },
+            "223k": {
+                "name_he": "גבייה",
+                "text": "Collection via court enforcement, withholding, or asset seizure.",
+            },
+            "223l": {
+                "name_he": "התראה מינהלית",
+                "text": "Director may issue written warning for first violations. "
+                        "Warning remains effective 3 years.",
+            },
+            "223m": {
+                "name_he": "ביטול התראה",
+                "text": "Warning canceled after 3 consecutive years of compliance.",
+            },
+            "223n": {
+                "name_he": "חזרה על עבירה לאחר התראה",
+                "text": "Repeat violation within 3 years of warning → financial penalty.",
+            },
+            "223p": {
+                "name_he": "ערעור",
+                "text": "Appeal to District Court within 30 days of penalty decision.",
+            },
+            "223q": {
+                "name_he": "פרסום",
+                "text": "Director may publish penalty details for serious violations.",
+            },
+            "223r": {
+                "name_he": "שמירת אחריות פלילית",
+                "text": "Administrative penalties do NOT prevent criminal prosecution for same violation.",
+            },
+        },
+        "broker_note": "This is the הסדר בר-ענישה (administrative penalty regime) referenced in the "
+                       "classification methodology. It allows customs to impose ₪400-₪25,000 penalties "
+                       "WITHOUT criminal prosecution. 223r means BOTH administrative AND criminal "
+                       "penalties can apply — they are not mutually exclusive. "
+                       "The 3-year escalation window (223f, 223n) means second offenses are penalized harder.",
+    },
+}
+
+
+# Helper function for law article access
+def get_ordinance_article(article_id: str) -> dict:
+    """Return a specific article or article group from the Customs Ordinance.
+
+    Args:
+        article_id: Article identifier (e.g., '1', '24', '62-65g', '124-154', '168-169',
+                     '207-223', '223a-r').
+    Returns:
+        Dict with article data, or empty dict if not found.
+    """
+    return CUSTOMS_ORDINANCE_ARTICLES.get(article_id, {})
+
+
+def get_valuation_methods() -> list:
+    """Return the 7 customs valuation methods in mandatory order.
+
+    These are the methods from Section 130 of the Customs Ordinance,
+    implementing WTO/GATT Article VII.
+    """
+    valuation = CUSTOMS_ORDINANCE_ARTICLES.get("124-154", {})
+    key_articles = valuation.get("key_articles", {})
+    art_130 = key_articles.get("130", {})
+    return art_130.get("methods", [])
+
+
+# ============================================================================
 # BLOCK 5 — SEED_EXPERTISE (imported from chapter_expertise.py)
 # ============================================================================
 # Already imported at top: from lib.chapter_expertise import SEED_EXPERTISE, get_section_for_chapter
@@ -579,6 +1149,56 @@ def format_legal_context_for_prompt(chapters: list = None, phase: int = None) ->
     parts.append("=== KNOWN CLASSIFICATION FAILURES — DO NOT REPEAT ===")
     for f in KNOWN_FAILURES:
         parts.append(f"- {f['name']}: {f['lesson']}")
+    parts.append("")
+
+    # --- Customs Ordinance key articles ---
+    parts.append("=== CUSTOMS ORDINANCE — KEY ARTICLES (פקודת המכס [נוסח חדש]) ===")
+    parts.append("")
+
+    # Valuation methods (Section 130) — most critical for daily work
+    parts.append("CUSTOMS VALUATION (Section 130 — 7 methods in MANDATORY order):")
+    for method in get_valuation_methods():
+        parts.append(f"  Method {method['number']}: {method['name_en']} ({method['name_he']}) "
+                     f"[§{method['section']}] — {method['description']}")
+    parts.append("  RULE: Methods MUST be applied in order. Cannot skip to Method 4 without proving 1-3 inapplicable.")
+    parts.append("")
+
+    # Transaction value additions (Section 133) — CIF basis
+    art_133 = CUSTOMS_ORDINANCE_ARTICLES.get("124-154", {}).get("key_articles", {}).get("133", {})
+    if art_133:
+        parts.append("TRANSACTION VALUE ADDITIONS (Section 133 — what gets added to price):")
+        for add in art_133.get("additions", []):
+            parts.append(f"  {add}")
+        parts.append("")
+
+    # Key definitions (Section 1)
+    parts.append("KEY DEFINITIONS (Section 1):")
+    defs = CUSTOMS_ORDINANCE_ARTICLES.get("1", {}).get("definitions", {})
+    for term, meaning in list(defs.items())[:8]:  # Top 8 most relevant
+        parts.append(f"  {term}: {meaning}")
+    parts.append("")
+
+    # Agent obligations
+    parts.append("AGENT OBLIGATIONS (Sections 168-169):")
+    parts.append("  §168: סוכן מכס authorized to act per Customs Agents Law. Must verify POA signatures.")
+    parts.append("  §169: Must show written authorization on demand. Refusal = agency not recognized.")
+    parts.append("")
+
+    # Penalties summary
+    parts.append("PENALTIES (Sections 207-223):")
+    parts.append("  §211 Smuggling (defrauding Treasury): up to 5 years imprisonment.")
+    parts.append("  §220 Fine: up to 3× goods value.")
+    parts.append("  §217 Joint liability: broker AND importer both face penalties.")
+    parts.append("  §218 Aiders/abettors prosecuted as principals.")
+    parts.append("  Wrong classification reducing duty = defrauding Treasury.")
+    parts.append("")
+
+    # Administrative enforcement summary
+    parts.append("ADMINISTRATIVE ENFORCEMENT (Sections 223א-223ר):")
+    parts.append("  §223ב Financial penalty: ₪400 (POA failure) to ₪25,000 (manifest/warehouse).")
+    parts.append("  §223ד Right to argue within 30 days.")
+    parts.append("  §223פ Appeal to District Court within 30 days.")
+    parts.append("  §223ר Administrative AND criminal penalties can BOTH apply.")
     parts.append("")
 
     # --- Section/chapter expertise — ALL 22 sections always present ---
