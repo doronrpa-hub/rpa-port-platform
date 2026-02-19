@@ -353,14 +353,19 @@ def api(req: https_fn.Request) -> https_fn.Response:
 
     # Dashboard stats
     if path in ("stats", "") and method == "GET":
+        def _count(query):
+            """Firestore aggregation count — single RPC, no doc download."""
+            return query.count().get()[0][0].value
+
+        db = get_db()
         stats = {
-            "knowledge_count": len(list(get_db().collection("knowledge_base").stream())),
-            "inbox_count": len(list(get_db().collection("inbox").stream())),
-            "classifications_pending": len(list(get_db().collection("classifications").where("status", "==", "pending_classification").stream())),
-            "classifications_total": len(list(get_db().collection("classifications").stream())),
-            "sellers_count": len(list(get_db().collection("sellers").stream())),
-            "pending_tasks": len(list(get_db().collection("pending_tasks").where("status", "==", "pending").stream())),
-            "learning_events": len(list(get_db().collection("learning_log").stream()))
+            "knowledge_count": _count(db.collection("knowledge_base")),
+            "inbox_count": _count(db.collection("inbox")),
+            "classifications_pending": _count(db.collection("classifications").where("status", "==", "pending_classification")),
+            "classifications_total": _count(db.collection("classifications")),
+            "sellers_count": _count(db.collection("sellers")),
+            "pending_tasks": _count(db.collection("pending_tasks").where("status", "==", "pending")),
+            "learning_events": _count(db.collection("learning_log"))
         }
         return https_fn.Response(json.dumps(stats), content_type="application/json")
 
@@ -545,11 +550,15 @@ def _aggregate_deal_text(db, deal_id):
     if not deal.exists:
         return ""
     obs_ids = deal.to_dict().get('source_emails', [])
+    if not obs_ids:
+        return ""
+    # Batch read — single RPC instead of N+1 individual gets
+    obs_refs = [db.collection("tracker_observations").document(oid) for oid in obs_ids]
+    docs = db.get_all(obs_refs)
     texts = []
-    for obs_id in obs_ids:
-        obs = db.collection("tracker_observations").document(obs_id).get()
-        if obs.exists:
-            preview = obs.to_dict().get('doc_text_preview', '')
+    for doc in docs:
+        if doc.exists:
+            preview = doc.to_dict().get('doc_text_preview', '')
             if preview:
                 texts.append(preview)
     return "\n\n---\n\n".join(texts)
@@ -1594,33 +1603,6 @@ def _send_alert_email(issues):
         print(f"❌ Failed to send alert: {e}")
 
 
-# ============================================================
-@https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
-def monitor_self_heal(request):
-    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was self-healer v2."""
-    print("⏸️ monitor_self_heal v2 DISABLED — consolidated into rcb_check_email")
-    return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")
-
-
-
-@https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=540)
-def monitor_fix_all(request):
-    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was fix-all monitor."""
-    print("⏸️ monitor_fix_all DISABLED — consolidated into rcb_check_email")
-    return https_fn.Response(json.dumps({"status": "disabled", "reason": "consolidated"}), content_type="application/json")
-
-
-
-@scheduler_fn.on_schedule(
-    schedule="every 5 minutes",
-    region="us-central1",
-    memory=options.MemoryOption.GB_1,
-    timeout_sec=540
-)
-def monitor_fix_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
-    """DISABLED Session 13.1: Consolidated into rcb_check_email. Was scheduled fix monitor."""
-    print("⏸️ monitor_fix_scheduled DISABLED — consolidated into rcb_check_email")
-    return
 
 
 

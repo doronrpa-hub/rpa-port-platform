@@ -121,7 +121,6 @@ KNOWN_SCHEDULERS = {
     "enrich_knowledge":          {"schedule": "every 1 hours", "max_gap_minutes": 75},
     "rcb_retry_failed":          {"schedule": "every 6 hours", "max_gap_minutes": 390},
     "rcb_cleanup_old_processed": {"schedule": "every 24 hours", "max_gap_minutes": 1500},
-    "monitor_fix_scheduled":     {"schedule": "every 15 minutes", "max_gap_minutes": 20},
     "rcb_inspector_daily":       {"schedule": "every day 15:00 Jerusalem", "max_gap_minutes": 1500},
 }
 
@@ -487,11 +486,6 @@ def _detect_scheduler_clashes() -> List[str]:
         "Risk: same email processed twice if rcb_processed check has a gap."
     )
 
-    # monitor_agent (5min) + monitor_fix_scheduled (15min) — both write system_status
-    clashes.append(
-        "ℹ️ monitor_agent (5min) and monitor_fix_scheduled (15min) "
-        "both write to system_status — low risk, last-write-wins."
-    )
 
     return clashes
 
@@ -525,7 +519,7 @@ def _map_write_conflicts() -> List[Dict]:
     # Static analysis of known writers
     write_map = {
         "rcb_processed": {
-            "writers": ["rcb_check_email", "check_email_scheduled", "monitor_self_heal"],
+            "writers": ["rcb_check_email", "check_email_scheduled"],
             "risk": "MEDIUM — multiple writers, dedup by safe_id",
         },
         "rcb_classifications": {
@@ -533,7 +527,7 @@ def _map_write_conflicts() -> List[Dict]:
             "risk": "LOW — single pipeline",
         },
         "system_status": {
-            "writers": ["monitor_agent", "rcb_health_check", "monitor_fix_scheduled"],
+            "writers": ["monitor_agent", "rcb_health_check"],
             "risk": "LOW — status updates, last-write-wins acceptable",
         },
         "knowledge_queries": {

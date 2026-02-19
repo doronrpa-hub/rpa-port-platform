@@ -1,13 +1,14 @@
 """
 Overnight Audit — diagnostic scan of the entire RCB system.
 
-⚠️ WRITES TO PRODUCTION FIRESTORE:
+⚠️ WRITES TO PRODUCTION FIRESTORE (unless dry_run=True):
   - Saves audit results to `overnight_audit_results` collection
   - Calls pupil_process_email() which writes to learned_* collections
   - Calls tracker_process_email() which writes to tracker_* collections
   - Calls run_nightly_enrichment() which writes to knowledge_base
   - Calls run_pending_tasks() which writes to agent_tasks
 
+When dry_run=True, only read-only diagnostic checks run.
 Does NOT send emails.
 
 Checks:
@@ -26,10 +27,12 @@ from datetime import datetime, timedelta, timezone
 import traceback
 
 
-def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secret):
+def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secret, dry_run=False):
     """
     Main audit entry point. Returns summary dict, saves to Firestore.
-    All operations are read-only except writing the audit result.
+
+    When dry_run=True, skips all write operations (pupil, tracker, enrichment,
+    agent runner) and only runs read-only diagnostic checks.
     """
     started = datetime.now(timezone.utc)
     print("🔍 Overnight audit starting...")
@@ -48,7 +51,7 @@ def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secre
 
     # ── 1. Email reprocessing: feed last 30 days through Pupil + Tracker ──
     try:
-        email_stats = _audit_email_reprocessing(db, firestore_module, access_token, rcb_email, get_secret)
+        email_stats = _audit_email_reprocessing(db, firestore_module, access_token, rcb_email, get_secret, dry_run=dry_run)
         results["email_reprocessing"] = email_stats
         print(f"  ✅ Email reprocessing: {email_stats.get('total_emails', 0)} emails scanned")
     except Exception as e:
@@ -115,27 +118,33 @@ def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secre
         print(f"  ❌ Collection counts error: {e}")
 
     # ── 8. Self-enrichment: fill knowledge gaps (Session 27) ──
-    try:
-        from lib.self_enrichment import run_nightly_enrichment, generate_enrichment_report
-        enrichment_results = run_nightly_enrichment(db, max_gaps=50)
-        results["self_enrichment"] = enrichment_results
-        enrichment_report = generate_enrichment_report(enrichment_results)
-        print(f"  Self-enrichment: {enrichment_results['filled']} filled, "
-              f"{enrichment_results['failed']} failed, {enrichment_results['skipped']} flagged")
-    except Exception as e:
-        results["errors"].append(f"self_enrichment: {e}")
-        print(f"  Self-enrichment error: {e}")
+    if not dry_run:
+        try:
+            from lib.self_enrichment import run_nightly_enrichment, generate_enrichment_report
+            enrichment_results = run_nightly_enrichment(db, max_gaps=50)
+            results["self_enrichment"] = enrichment_results
+            enrichment_report = generate_enrichment_report(enrichment_results)
+            print(f"  Self-enrichment: {enrichment_results['filled']} filled, "
+                  f"{enrichment_results['failed']} failed, {enrichment_results['skipped']} flagged")
+        except Exception as e:
+            results["errors"].append(f"self_enrichment: {e}")
+            print(f"  Self-enrichment error: {e}")
+    else:
+        print("  ⏭️ Self-enrichment skipped (dry_run)")
 
     # ── 9. PC Agent Runner: execute pending tasks (Session 27, Assignment 14) ──
-    try:
-        from lib.pc_agent_runner import run_pending_tasks
-        runner_results = run_pending_tasks(db, max_tasks=10)
-        results["pc_agent_runner"] = runner_results
-        print(f"  PC Agent Runner: {runner_results['executed']} executed, "
-              f"{runner_results['skipped_browser']} skipped, {runner_results['failed']} failed")
-    except Exception as e:
-        results["errors"].append(f"pc_agent_runner: {e}")
-        print(f"  PC Agent Runner error: {e}")
+    if not dry_run:
+        try:
+            from lib.pc_agent_runner import run_pending_tasks
+            runner_results = run_pending_tasks(db, max_tasks=10)
+            results["pc_agent_runner"] = runner_results
+            print(f"  PC Agent Runner: {runner_results['executed']} executed, "
+                  f"{runner_results['skipped_browser']} skipped, {runner_results['failed']} failed")
+        except Exception as e:
+            results["errors"].append(f"pc_agent_runner: {e}")
+            print(f"  PC Agent Runner error: {e}")
+    else:
+        print("  ⏭️ PC Agent Runner skipped (dry_run)")
 
     # ── Save results ──
     finished = datetime.now(timezone.utc)
@@ -158,7 +167,7 @@ def run_overnight_audit(db, firestore_module, access_token, rcb_email, get_secre
 #  AUDIT MODULES
 # ═══════════════════════════════════════════════════════════════
 
-def _audit_email_reprocessing(db, firestore_module, access_token, rcb_email, get_secret):
+def _audit_email_reprocessing(db, firestore_module, access_token, rcb_email, get_secret, dry_run=False):
     """
     Read last 30 days of emails, feed each through Pupil + Tracker in silent mode.
     Does NOT send replies — is_direct=False for tracker, pupil never replies in Phase A.
@@ -225,21 +234,22 @@ def _audit_email_reprocessing(db, firestore_module, access_token, rcb_email, get
             stats["skipped_system"] += 1
             continue
 
-        # Feed to Pupil (silent observation — Phase A only, never sends)
-        if pupil_fn:
-            try:
-                pupil_fn(msg, db, firestore_module, access_token, rcb_email, get_secret)
-                stats["pupil_processed"] += 1
-            except Exception:
-                stats["pupil_errors"] += 1
+        if not dry_run:
+            # Feed to Pupil (silent observation — Phase A only, never sends)
+            if pupil_fn:
+                try:
+                    pupil_fn(msg, db, firestore_module, access_token, rcb_email, get_secret)
+                    stats["pupil_processed"] += 1
+                except Exception:
+                    stats["pupil_errors"] += 1
 
-        # Feed to Tracker (silent — is_direct=False skips notifications)
-        if tracker_fn:
-            try:
-                tracker_fn(msg, db, firestore_module, access_token, rcb_email, get_secret, is_direct=False)
-                stats["tracker_processed"] += 1
-            except Exception:
-                stats["tracker_errors"] += 1
+            # Feed to Tracker (silent — is_direct=False skips notifications)
+            if tracker_fn:
+                try:
+                    tracker_fn(msg, db, firestore_module, access_token, rcb_email, get_secret, is_direct=False)
+                    stats["tracker_processed"] += 1
+                except Exception:
+                    stats["tracker_errors"] += 1
 
     return stats
 
