@@ -1964,7 +1964,7 @@ def _cls_result_table(card_items, using_enriched):
         else:
             pt_display = '<span style="color:#aaa;">\u05dc\u05d0 \u05d7\u05dc</span>'
 
-        vat_display = c.get("vat_rate", "18%")
+        vat_display = c.get("vat_rate", "") or "\u2014"
 
         # Seller/Buyer row
         seller_buyer = ""
@@ -2603,7 +2603,7 @@ def build_excel_report(results, enriched_items=None):
                 ws2.cell(row, 9, c.get("tariff_text_he", ""))
                 ws2.cell(row, 10, c.get("duty_rate", ""))
                 ws2.cell(row, 11, c.get("purchase_tax_display", "לא חל"))
-                ws2.cell(row, 12, c.get("vat_rate", "18%"))
+                ws2.cell(row, 12, c.get("vat_rate", ""))
                 ws2.cell(row, 13, c.get("confidence", ""))
                 v_status = c.get('verification_status', '')
                 if v_status == 'official':
@@ -2632,7 +2632,7 @@ def build_excel_report(results, enriched_items=None):
                 pt = c.get("purchase_tax", {})
                 pt_text = pt.get("rate_he", "לא חל") if isinstance(pt, dict) else "לא חל"
                 ws2.cell(row, 4, pt_text)
-                ws2.cell(row, 5, c.get("vat_rate", "18%"))
+                ws2.cell(row, 5, c.get("vat_rate", ""))
                 ws2.cell(row, 6, c.get("confidence", ""))
                 v_status = c.get('verification_status', '')
                 if v_status == 'official':
@@ -2801,7 +2801,7 @@ def _enrich_results_for_email(results, invoice_data, db):
             "duty_rate": cls.get("duty_rate", ""),
             "purchase_tax": pt,
             "purchase_tax_display": pt_display,
-            "vat_rate": cls.get("vat_rate", "18%"),
+            "vat_rate": cls.get("vat_rate", ""),
             "confidence": cls.get("confidence", ""),
             "reasoning": cls.get("reasoning", ""),
             "verification_status": cls.get("verification_status", ""),

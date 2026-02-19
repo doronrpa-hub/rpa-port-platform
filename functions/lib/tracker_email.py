@@ -8,6 +8,11 @@ All timestamps displayed in Israel time (Asia/Jerusalem).
 """
 from datetime import datetime, timezone, timedelta
 
+try:
+    from lib.librarian import get_israeli_hs_format as _hs_fmt
+except ImportError:
+    _hs_fmt = None
+
 # Israel timezone: UTC+2 (IST) or UTC+3 (IDT, summer)
 # Simple approach: use fixed offset. For production, use zoneinfo if available.
 try:
@@ -517,9 +522,30 @@ def _section_shipment(deal):
     return html
 
 
+def _is_vessel_arrived(container_statuses, deal):
+    """Detect whether vessel has arrived at local port.
+
+    Returns True when TaskYam has port-side data (manifest or port_unloading)
+    for ANY container, or when ocean tracking shows pod_ata (vessel arrived).
+    """
+    direction = deal.get('direction', 'import')
+    process_key = 'import_process' if direction != 'export' else 'export_process'
+    local_fields = ['ManifestDate', 'PortUnloadingDate'] if direction != 'export' else ['StorageIDDate', 'PortStorageFeedbackDate']
+
+    for cs in container_statuses:
+        proc = cs.get(process_key) or {}
+        if any(proc.get(f) for f in local_fields):
+            return True
+        # Check ocean events for VA (Vessel Arrived) or UV (Discharged)
+        for evt in (cs.get('ocean_events') or []):
+            if evt.get('event_code') in ('VA', 'UV'):
+                return True
+    return False
+
+
 def _section_progress(steps_summary, completed, total, direction,
                       container_statuses, deal):
-    """Section 5: progress bar + step grid + ocean tracking + TaskYam table."""
+    """Section 5: progress bar + step grid + ocean tracking OR TaskYam table."""
     steps = _get_steps(direction)
     total_steps = len(steps)
 
@@ -584,9 +610,11 @@ def _section_progress(steps_summary, completed, total, direction,
         html += f'    <td align="center" style="color:#888;padding:2px 1px;font-size:10px;">{s["latest_date"]}</td>\n'
     html += "  </tr>\n  </table>\n</td></tr>"
 
-    # ── Global ocean tracking (same _extract_ocean_times logic) ──
+    # ── Switch: show ocean tracking while at sea, TaskYam once arrived ──
+    arrived = _is_vessel_arrived(container_statuses, deal)
     has_ocean = any(cs.get('ocean_events') for cs in container_statuses)
-    if has_ocean:
+
+    if has_ocean and not arrived:
         ocean_times = _extract_ocean_times(deal, container_statuses)
         num_sources = len(ocean_times['sources'])
         bol = deal.get('bol_number', 'Unknown')
@@ -675,8 +703,8 @@ def _section_progress(steps_summary, completed, total, direction,
 
             html += "  </table>\n</td></tr>"
 
-    # ── TaskYam Local Tracking (same per-container table) ──
-    if len(container_statuses) > 0:
+    # ── TaskYam Local Tracking (shown once vessel arrived at port) ──
+    if arrived and len(container_statuses) > 0:
         process_key = 'import_process' if direction != 'export' else 'export_process'
 
         html += f"""
@@ -772,7 +800,8 @@ def _section_goods(deal, container_statuses):
   <tr><td style="font-size:12px;font-weight:bold;color:{RPA_BLUE};padding-bottom:6px;">{hs_label}</td></tr>
   <tr><td>"""
         for hc in hs_codes[:5]:
-            hs_num = hc.get('hs_code', '')
+            _raw_hs = hc.get('hs_code', '')
+            hs_num = _hs_fmt(_raw_hs) if _hs_fmt and _raw_hs else _raw_hs
             hs_desc = hc.get('description', '')[:50]
             hs_conf = hc.get('confidence', '')
             conf_color = _confidence_color(hs_conf)

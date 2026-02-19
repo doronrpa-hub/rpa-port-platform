@@ -148,7 +148,7 @@ def create_classification_pdf(data, output_path=None, language="he"):
         
         # Duty
         duty = item.get('duty_rate', '-')
-        vat = item.get('vat_rate', '18%')
+        vat = item.get('vat_rate', '') or '\u2014'
         purchase = item.get('purchase_tax', heb('לא חל'))
         
         d = [[heb('מס קנייה'), heb('מע"מ'), heb('מכס')], [heb(str(purchase)), vat, duty]]
