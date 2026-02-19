@@ -1055,6 +1055,20 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
                 # Enrich Agent 2 context with elimination findings
                 if elimination_results:
                     combined_context += _build_elimination_context(elimination_results)
+                    # Session 53: Re-inject legal context with chapter-specific highlighting
+                    if CUSTOMS_LAW_AVAILABLE:
+                        try:
+                            _elim_chapters = set()
+                            for _er in elimination_results.values():
+                                for _s in (_er.get("survivors") or []):
+                                    _ch = _s.get("hs_code", "")[:2]
+                                    if _ch.isdigit() and 1 <= int(_ch) <= 97:
+                                        _elim_chapters.add(int(_ch))
+                            if _elim_chapters:
+                                print(f"    📚 Legal context: highlighting chapters {sorted(_elim_chapters)}")
+                                combined_context += "\n\n" + format_legal_context_for_prompt(chapters=sorted(_elim_chapters))
+                        except Exception:
+                            pass
             except Exception as elim_err:
                 print(f"    ⚠️ Elimination engine error: {elim_err}")
 

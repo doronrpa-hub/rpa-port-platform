@@ -561,21 +561,31 @@ def format_legal_context_for_prompt(chapters: list = None, phase: int = None) ->
         parts.append(f"- {f['name']}: {f['lesson']}")
     parts.append("")
 
-    # --- Section/chapter expertise for requested chapters ---
+    # --- Section/chapter expertise — ALL 22 sections always present ---
+    # A broker knows the full tariff structure before reading any invoice.
+    # When specific chapters are known, those sections are highlighted.
+    relevant_sections = set()
     if chapters:
-        sections_seen = set()
-        parts.append("=== RELEVANT SECTION/CHAPTER EXPERTISE ===")
         for ch in chapters:
             sec = get_chapter_section(ch)
-            if sec and sec not in sections_seen:
-                sections_seen.add(sec)
-                expertise = SEED_EXPERTISE.get(sec, {})
-                if expertise:
-                    parts.append(f"Section {sec}: {expertise.get('name_en', '')} ({expertise.get('name_he', '')})")
-                    parts.append(f"  Chapters: {expertise.get('chapters', [])}")
-                    for trap in expertise.get("traps", []):
-                        parts.append(f"  ⚠️ {trap}")
-        parts.append("")
+            if sec:
+                relevant_sections.add(sec)
+
+    parts.append("=== TARIFF SECTION & CHAPTER EXPERTISE (ALL 22 SECTIONS) ===")
+    for sec_id in ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+                    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII",
+                    "XIX", "XX", "XXI", "XXII"]:
+        expertise = SEED_EXPERTISE.get(sec_id, {})
+        if not expertise:
+            continue
+        marker = " >>> RELEVANT <<<" if sec_id in relevant_sections else ""
+        parts.append(f"Section {sec_id}: {expertise.get('name_en', '')} ({expertise.get('name_he', '')}){marker}")
+        parts.append(f"  Chapters: {expertise.get('chapters', [])}")
+        for note in expertise.get("notes", []):
+            parts.append(f"  {note}")
+        for trap in expertise.get("traps", []):
+            parts.append(f"  ⚠️ {trap}")
+    parts.append("")
 
     # --- Legal hierarchy reminder ---
     parts.append("=== CRITICAL REMINDERS ===")

@@ -355,9 +355,14 @@ class TestFormatLegalContextForPrompt:
         assert "Gather Information" in result or "Legally Mandated" in result
         assert "LEGAL WARNING" in result
 
-    def test_no_chapters_no_section_expertise(self):
+    def test_no_chapters_still_includes_all_sections(self):
         result = format_legal_context_for_prompt()
-        assert "RELEVANT SECTION/CHAPTER EXPERTISE" not in result
+        # All 22 sections always present even without chapters arg
+        assert "TARIFF SECTION & CHAPTER EXPERTISE (ALL 22 SECTIONS)" in result
+        assert "Section I:" in result
+        assert "Section XXII:" in result
+        # No RELEVANT markers when no chapters passed
+        assert ">>> RELEVANT <<<" not in result
 
     def test_includes_three_pillars_order(self):
         result = format_legal_context_for_prompt()
@@ -373,12 +378,12 @@ class TestFormatLegalContextForPrompt:
     def test_multiple_chapters_dedup_sections(self):
         result = format_legal_context_for_prompt(chapters=[84, 85])
         # Both ch.84 and ch.85 are in Section XVI — section header should appear only once
-        # (trap text may also mention "Section XVI" — that's fine, we check the header line)
-        section_block = result.split("RELEVANT SECTION/CHAPTER EXPERTISE")[1] if "RELEVANT SECTION/CHAPTER EXPERTISE" in result else ""
-        header_lines = [l for l in section_block.splitlines() if l.startswith("Section XVI:")]
+        # All 22 sections always present; ch.84+85 both map to XVI so only one RELEVANT marker
+        header_lines = [l for l in result.splitlines() if l.startswith("Section XVI:")]
         assert len(header_lines) == 1
+        assert ">>> RELEVANT <<<" in header_lines[0]
 
     def test_output_reasonable_length(self):
         result = format_legal_context_for_prompt(chapters=[1, 40, 85])
-        # Should be substantial but not enormous
-        assert 500 < len(result) < 10000
+        # All 22 sections always included — substantial but bounded
+        assert 5000 < len(result) < 25000
