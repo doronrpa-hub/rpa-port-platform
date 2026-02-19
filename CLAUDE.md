@@ -2726,3 +2726,64 @@ Both paths now have the law injected at the TOP — before any product descripti
 
 ### Test Results
 - **1106 passed, 1 skipped** (baseline was 1032 + 67 new + 7 from other session)
+
+## Session 52 Summary (2026-02-19) — Email Send Path Audit & Hardening
+
+### What Was Done
+
+Full audit of every code path that can send email via `helper_graph_send()` (16 call sites) and `helper_graph_reply()` (5 call sites) across the entire codebase. Found and fixed 5 security/reliability issues.
+
+### Issues Found & Fixed
+
+| # | Severity | Issue | Fix |
+|---|----------|-------|-----|
+| 1 | **HIGH** | `helper_graph_reply()` skips external-recipient check when `to_email=None` — reply goes to original (potentially external) sender with zero guards | Block reply when `to_email` is None; filter external addresses from `cc_emails` |
+| 2 | **MEDIUM** | `main.py:512` backup email default `airpaort@gmail.com` is external — silently blocked every time (dead code) | Changed fallback to `doron@rpa-port.co.il` |
+| 3 | **MEDIUM** | `helper_graph_reply()` has no `email_quality_gate()` — garbage body, placeholder-only data, duplicates go unchecked | Added quality gate call (fail-open, matches `helper_graph_send` pattern) |
+| 4 | **LOW** | `tracker.py:2617` gate cutoff alert missing `deal_id`/`alert_type` params — 4-hour dedup (Rule 4) can't work | Added `deal_id=deal_id, alert_type=f"cutoff_{alert_level}", db=db` |
+| 5 | **LOW** | `rcb_self_test.py:227` sends to self (`rcb@`) — always blocked by quality gate Rule 5 | Direct Graph API call, intentionally bypasses gate for loopback test |
+
+### Audit Map
+
+**`helper_graph_send()` — 16 production call sites:**
+- `main.py` (7): session backup, sanctions alert, I3 port alerts, TTL cleanup abort, health alert, morning digest, backup notification
+- `classification_agents.py` (3): extraction failed, pipeline error, final classification report
+- `brain_commander.py` (2): father reply fallback, brain daily digest
+- `tracker.py` (2): tracker update fallback, gate cutoff alert
+- `email_intent.py` (1): intent reply fallback
+- `rcb_inspector.py` (1): daily inspection report
+- `pupil.py` (2): review case email, correction email
+- `knowledge_query.py` (1): knowledge reply
+- `rcb_self_test.py` (1): self-test loopback
+
+**`helper_graph_reply()` — 5 production call sites:**
+- `brain_commander.py:692` — father reply (threaded)
+- `email_intent.py:594` — intent reply (threaded)
+- `tracker.py:1617` — stop-tracking confirmation
+- `tracker.py:1657` — follow-tracking pending notice
+- `tracker.py:2346` — tracker status update (threaded)
+
+### Guard Coverage After Fixes
+
+| Guard | `helper_graph_send` | `helper_graph_reply` |
+|-------|:---:|:---:|
+| External recipient hard block | Yes | **Yes** (was partial) |
+| `to_email=None` block | N/A (required param) | **Yes** (NEW) |
+| CC external filter | N/A | **Yes** (NEW) |
+| Quality gate (content checks) | Yes | **Yes** (NEW) |
+| Self-send block | Yes | Yes (via gate) |
+| Dedup (4h window) | Yes | Yes (via gate) |
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `functions/lib/rcb_helpers.py` | Hardened `helper_graph_reply`: block None to_email, filter external CC, add quality gate |
+| `functions/main.py` | Fix dead backup email fallback: gmail → doron@rpa-port.co.il |
+| `functions/lib/tracker.py` | Add deal_id/alert_type/db to cutoff alert for dedup |
+| `functions/lib/rcb_self_test.py` | Direct Graph API call for self-test loopback |
+
+### Git Commits
+- `58f3358` — Audit & fix all email send paths: 5 security/reliability issues
+
+### Test Results
+- **1106 passed, 1 skipped** (no regressions, identical to Session 51 baseline)
