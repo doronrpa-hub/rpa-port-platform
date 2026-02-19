@@ -2202,42 +2202,45 @@ class ToolExecutor:
                      "id", "caption", "schema", "score", "datasets", "properties"}
 
         def _fetch():
-            resp = _safe_get(
-                f"https://api.opensanctions.org/search/{requests.utils.quote(query)}",
-                params={"schema": "Company", "schema": "Person"},
-                timeout=15,
-            )
-            if not resp:
+            all_hits = []
+            any_response = False
+            for schema_type in ("Company", "Person"):
+                resp = _safe_get(
+                    f"https://api.opensanctions.org/search/{requests.utils.quote(query)}",
+                    params={"schema": schema_type},
+                    timeout=15,
+                )
+                if not resp:
+                    continue
+                any_response = True
+                try:
+                    data = resp.json()
+                    results = data.get("results", [])
+                    for r in results[:5]:
+                        score = r.get("score", 0)
+                        if score >= 0.7:
+                            all_hits.append({
+                                "id": str(r.get("id", "")),
+                                "caption": sanitize_external_text(
+                                    str(r.get("caption", "")), max_length=200
+                                ),
+                                "schema": str(r.get("schema", "")),
+                                "score": score,
+                                "datasets": r.get("datasets", [])[:5],
+                            })
+                except (ValueError, KeyError):
+                    continue
+            if not any_response:
                 return {"found": True, "hit": False, "query": query,
                         "message": "Sanctions API unavailable — manual check required",
                         "source": "opensanctions_api"}
-            try:
-                data = resp.json()
-                results = data.get("results", [])
-                hits = []
-                for r in results[:5]:
-                    score = r.get("score", 0)
-                    if score >= 0.7:  # Only report high-confidence matches
-                        hits.append({
-                            "id": str(r.get("id", "")),
-                            "caption": sanitize_external_text(
-                                str(r.get("caption", "")), max_length=200
-                            ),
-                            "schema": str(r.get("schema", "")),
-                            "score": score,
-                            "datasets": r.get("datasets", [])[:5],
-                        })
-                return {
-                    "found": True,
-                    "hit": len(hits) > 0,
-                    "results": hits,
-                    "source": "opensanctions_api",
-                    "query": query,
-                }
-            except (ValueError, KeyError):
-                return {"found": True, "hit": False, "query": query,
-                        "message": "Sanctions parse error — manual check required",
-                        "source": "opensanctions_api"}
+            return {
+                "found": True,
+                "hit": len(all_hits) > 0,
+                "results": all_hits,
+                "source": "opensanctions_api",
+                "query": query,
+            }
 
         return self._cached_external_lookup(query.lower(), "sanctions_cache", 1, _fetch, _ALLOWED)
 

@@ -1,16 +1,25 @@
 """
-Overnight Audit — one-time diagnostic scan of the entire RCB system.
+Overnight Audit — diagnostic scan of the entire RCB system.
 
-READ-ONLY: Does NOT send emails, does NOT modify existing data.
-Writes results to Firestore collection: overnight_audit_results
+⚠️ WRITES TO PRODUCTION FIRESTORE:
+  - Saves audit results to `overnight_audit_results` collection
+  - Calls pupil_process_email() which writes to learned_* collections
+  - Calls tracker_process_email() which writes to tracker_* collections
+  - Calls run_nightly_enrichment() which writes to knowledge_base
+  - Calls run_pending_tasks() which writes to agent_tasks
+
+Does NOT send emails.
 
 Checks:
-  1. Re-process last 30 days of emails through Pupil + Tracker (silent)
-  2. Memory hit rate on learned_classifications
-  3. Ghost deal count (no containers, no AWB, no storage_id)
-  4. AWB status count
-  5. Brain index size and recent growth
-  6. Sender/doc-type analysis
+  1. Re-process last 30 days of emails through Pupil + Tracker (WRITES)
+  2. Memory hit rate on learned_classifications (read-only)
+  3. Ghost deal count (no containers, no AWB, no storage_id) (read-only)
+  4. AWB status count (read-only)
+  5. Brain index size and recent growth (read-only)
+  6. Sender/doc-type analysis (read-only)
+  7. Collection counts (read-only)
+  8. Self-enrichment: fill knowledge gaps (WRITES)
+  9. PC Agent Runner: execute pending tasks (WRITES)
 """
 
 from datetime import datetime, timedelta, timezone

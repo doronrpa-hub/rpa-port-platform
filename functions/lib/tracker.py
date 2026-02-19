@@ -1671,7 +1671,7 @@ class TaskYamClient:
                     headers={"X-Session-Token": self.token},
                     timeout=10
                 )
-            except:
+            except Exception:
                 pass
             self.token = None
 
@@ -2158,7 +2158,7 @@ def _decode_header(header_str):
             else:
                 result += part
         return result
-    except:
+    except Exception:
         return str(header_str)
 
 
@@ -2297,28 +2297,39 @@ def _send_tracker_email(db, deal_id, deal, access_token, rcb_email, update_type=
         sent = False
         cc_list = deal.get('cc_list', [])
 
-        source_obs_ids = deal.get('source_emails', [])
-        original_msg_id = None
-        if source_obs_ids:
-            try:
-                latest_obs = db.collection("tracker_observations").document(source_obs_ids[-1]).get()
-                if latest_obs.exists:
-                    original_msg_id = latest_obs.to_dict().get('msg_id', '')
-            except Exception:
-                pass
+        # Stable threading: use deal_thread_id (set on first send),
+        # fall back to latest observation msg_id, then plain send.
+        thread_msg_id = deal.get('deal_thread_id', '')
+        if not thread_msg_id:
+            source_obs_ids = deal.get('source_emails', [])
+            if source_obs_ids:
+                try:
+                    latest_obs = db.collection("tracker_observations").document(source_obs_ids[-1]).get()
+                    if latest_obs.exists:
+                        thread_msg_id = latest_obs.to_dict().get('msg_id', '')
+                except Exception:
+                    pass
 
-        if original_msg_id and access_token:
+        if thread_msg_id and access_token:
             sent = helper_graph_reply(
-                access_token, rcb_email, original_msg_id,
+                access_token, rcb_email, thread_msg_id,
                 body_html, to_email=follower, cc_emails=cc_list,
-                subject=subject  # Override subject — prevents Re:Re:Re: garbage
+                subject=subject
             )
+            # Persist stable thread anchor for future emails
+            if sent and not deal.get('deal_thread_id'):
+                try:
+                    db.collection("tracker_deals").document(deal_id).update(
+                        {"deal_thread_id": thread_msg_id})
+                except Exception:
+                    pass
 
         # Fallback: send as new email (no threading, but at least it sends)
         if not sent and access_token:
             sent = helper_graph_send(
                 access_token, rcb_email, follower,
-                subject, body_html
+                subject, body_html,
+                deal_id=deal_id, alert_type="tracker_update", db=db
             )
 
         if sent:

@@ -831,15 +831,20 @@ def _build_status_summary(db, deal, deal_id):
             lines.append("<b>סטטוס מכולות:</b>")
             for cs_doc in container_statuses[:5]:
                 cs = cs_doc.to_dict()
-                cn = cs.get('container_number', '?')
+                cn = cs.get('container_id', '?')
                 proc = cs.get('import_process' if direction != 'export' else 'export_process', {})
                 last_step = ""
-                for step_key in reversed(['cargo_exit_date', 'port_release_date',
-                                          'customs_release_date', 'customs_check_date',
-                                          'delivery_order_date', 'port_unloading_date',
-                                          'manifest_date']):
+                for step_name, step_key in [
+                    ('cargo exit', 'CargoExitDate'),
+                    ('port release', 'PortReleaseDate'),
+                    ('customs release', 'CustomsReleaseDate'),
+                    ('customs check', 'CustomsCheckDate'),
+                    ('delivery order', 'DeliveryOrderDate'),
+                    ('port unloading', 'PortUnloadingDate'),
+                    ('manifest', 'ManifestDate'),
+                ]:
                     if proc.get(step_key):
-                        last_step = step_key.replace('_date', '').replace('_', ' ')
+                        last_step = step_name
                         break
                 lines.append(f"  {cn}: {last_step or 'ממתין'}")
     except Exception:

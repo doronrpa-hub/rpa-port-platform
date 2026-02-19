@@ -619,10 +619,10 @@ def _screen_deal_parties(db, deal_id, get_secret_func, access_token=None, rcb_em
             pass
         # Send alert email
         try:
-            from lib.rcb_helpers import helper_graph_send_email
+            from lib.rcb_helpers import helper_graph_send
             if access_token and rcb_email:
                 names_str = ", ".join(f"{d['role']}: {d['name']}" for d in hit_details)
-                helper_graph_send_email(
+                helper_graph_send(
                     access_token, rcb_email,
                     "doron@rpa-port.co.il",
                     f"🚨 SANCTIONS HIT — Deal {deal_id}",

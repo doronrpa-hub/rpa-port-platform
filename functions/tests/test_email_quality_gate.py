@@ -350,7 +350,7 @@ class TestRule7EmptyClassification:
 
     def test_classification_with_hs_codes_passes(self):
         """Classification email containing HS codes is allowed."""
-        body = '<html><body>' + 'x' * 200 + '<td>40.11</td><td>12%</td>' + 'x' * 100 + '</body></html>'
+        body = '<html><body>' + 'x' * 200 + '<td>40.11.100000/2</td><td>12%</td>' + 'x' * 100 + '</body></html>'
         subject = "[RCB-20260218-XYZAB] \u2705 \u05e1\u05d9\u05d5\u05d5\u05d2 \u05d9\u05d1\u05d5\u05d0 | Test Corp"
         ok, reason = email_quality_gate("doron@rpa-port.co.il", subject, body)
         assert ok
