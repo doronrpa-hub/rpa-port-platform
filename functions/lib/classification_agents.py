@@ -3356,14 +3356,17 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         else:
             status = "ACK"
         
-        # Session 14: Use improved subject line generator with fallback
-        if LANGUAGE_TOOLS_AVAILABLE:
-            try:
-                subject_line, tracking_code = build_rcb_subject_v2(invoice_data, status, score)
-            except Exception as e:
-                print(f"    ⚠️ Language tools subject failed ({e}), using original")
-                subject_line, tracking_code = build_rcb_subject(invoice_data, status, score)
-        else:
+        # AI-generated subject line with full shipment context
+        tracking_code = generate_tracking_code()
+        try:
+            from lib.rcb_helpers import generate_smart_subject
+            subject_line = generate_smart_subject(
+                gemini_key=gemini_key, db=db, invoice_data=invoice_data,
+                status=status, tracking_code=tracking_code,
+                email_type="classification"
+            )
+        except Exception as e:
+            print(f"    ⚠️ Smart subject failed ({e}), using original")
             subject_line, tracking_code = build_rcb_subject(invoice_data, status, score)
         print(f"  🏷️ Tracking: {tracking_code}")
         
