@@ -1133,42 +1133,107 @@ def to_hebrew_name(name):
 # ============================================================
 
 def build_rcb_reply(sender_name, attachments, subject="", is_first_email=False, include_joke=False):
-    """Build acknowledgment reply (Email 1)"""
+    """Build acknowledgment reply (Email 1) — table-based, Outlook-safe, RTL."""
     name = sender_name.split('<')[0].strip()
     name = to_hebrew_name(name.split()[0]) if name and '@' not in name else "שלום"
-    
+
     hour = datetime.now().hour
     greeting = "בוקר טוב" if 5 <= hour < 12 else "צהריים טובים" if 12 <= hour < 17 else "ערב טוב" if 17 <= hour < 21 else "לילה טוב"
-    
-    html = f'<div dir="rtl" style="font-family:Arial;font-size:12pt;line-height:1.6">'
-    html += f'<p><strong>{greeting} {name},</strong></p>'
-    html += '<p>תודה על פנייתך! קיבלתי את המסמכים שלך ואני מתחילה לעבור עליהם.</p>'
-    
-    if subject:
-        html += f'<p>📋 <strong>נושא:</strong> {subject}</p>'
-    
+
+    # ── Attachments list (table rows, not <ul>) ──
+    att_rows = ""
     if attachments:
-        html += f'<p>🔍 <strong>זיהיתי {len(attachments)} קבצים:</strong></p><ul>'
         for a in attachments:
             ext = a.get('type', '')
-            icon = "📑" if ext == '.pdf' else "📊" if ext in ['.xlsx', '.xls'] else "🖼️" if ext in ['.jpg', '.png'] else "📄"
-            html += f"<li>{icon} {a.get('filename', 'קובץ')}</li>"
-        html += "</ul>"
-    
-    html += '<p>⏳ אעבור על המסמכים ואשלח לך דו"ח סיווג מכס מפורט תוך מספר דקות.</p>'
-    
-    # Signature
-    html += '''<hr style="margin:25px 0">
-    <table dir="rtl"><tr>
-        <td style="padding-left:15px"><img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" style="width:80px"></td>
-        <td style="border-right:3px solid #1e3a5f;padding-right:15px">
-            <strong style="color:#1e3a5f">🤖 RCB - AI Customs Broker</strong><br>
-            <strong>R.P.A. PORT LTD</strong><br>
-            <span style="font-size:10pt">📧 rcb@rpa-port.co.il</span>
-        </td>
-    </tr></table>
-    </div>'''
-    
+            icon = "&#128209;" if ext == '.pdf' else "&#128202;" if ext in ['.xlsx', '.xls'] else "&#128444;" if ext in ['.jpg', '.png'] else "&#128196;"
+            fname = a.get('filename', '\u05e7\u05d5\u05d1\u05e5')
+            att_rows += (
+                f'<tr><td style="padding:4px 10px;font-family:Arial,sans-serif;font-size:13px;'
+                f'color:#333333;border-bottom:1px solid #f0f0f0;">{icon} {fname}</td></tr>'
+            )
+
+    att_section = ""
+    if att_rows:
+        att_section = (
+            '<tr><td style="padding:10px 30px 0 30px;">'
+            '<table width="100%" cellpadding="0" cellspacing="0" dir="rtl" '
+            'style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;">'
+            '<tr><td style="padding:10px;font-family:Arial,sans-serif;font-size:13px;'
+            f'font-weight:bold;color:#1e3a5f;border-bottom:1px solid #dee2e6;">'
+            f'&#128269; \u05d6\u05d9\u05d4\u05d9\u05ea\u05d9 {len(attachments)} \u05e7\u05d1\u05e6\u05d9\u05dd:</td></tr>'
+            f'{att_rows}'
+            '</table></td></tr>'
+        )
+
+    subject_row = ""
+    if subject:
+        subject_row = (
+            '<tr><td style="padding:10px 30px 0 30px;font-family:Arial,sans-serif;'
+            f'font-size:13px;color:#333333;">&#128203; <strong>\u05e0\u05d5\u05e9\u05d0:</strong> {subject}</td></tr>'
+        )
+
+    html = (
+        '<!DOCTYPE html>\n'
+        '<html dir="rtl" lang="he">\n'
+        '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>\n'
+        '<body dir="rtl" style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">\n'
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;">\n'
+        '<tr><td align="center">\n'
+        '<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;'
+        'background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">\n'
+        # ── Header bar ──
+        '<tr><td style="background:#1e3a5f;padding:20px 30px;">'
+        '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
+        '<td valign="middle">'
+        '<img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" alt="RPA-PORT" '
+        'width="48" height="48" style="display:inline-block;vertical-align:middle;border:0;">'
+        '<span style="display:inline-block;vertical-align:middle;padding-left:12px;">'
+        '<span style="color:#ffffff;font-size:18px;font-weight:bold;">R.P.A. PORT LTD</span><br>'
+        '<span style="color:#aed6f1;font-size:13px;">RCB &mdash; AI Customs Broker</span>'
+        '</span></td>'
+        '</tr></table></td></tr>\n'
+        # ── Greeting ──
+        '<tr><td style="padding:25px 30px 10px 30px;font-family:Arial,sans-serif;font-size:15px;'
+        f'color:#333333;line-height:1.6;"><strong>{greeting} {name},</strong></td></tr>\n'
+        # ── Body text ──
+        '<tr><td style="padding:0 30px 10px 30px;font-family:Arial,sans-serif;font-size:14px;'
+        'color:#333333;line-height:1.6;">'
+        '\u05ea\u05d5\u05d3\u05d4 \u05e2\u05dc \u05e4\u05e0\u05d9\u05d9\u05ea\u05da! '
+        '\u05e7\u05d9\u05d1\u05dc\u05ea\u05d9 \u05d0\u05ea \u05d4\u05de\u05e1\u05de\u05db\u05d9\u05dd '
+        '\u05e9\u05dc\u05da \u05d5\u05d0\u05e0\u05d9 \u05de\u05ea\u05d7\u05d9\u05dc\u05d4 '
+        '\u05dc\u05e2\u05d1\u05d5\u05e8 \u05e2\u05dc\u05d9\u05d4\u05dd.</td></tr>\n'
+        f'{subject_row}'
+        f'{att_section}'
+        # ── Status note ──
+        '<tr><td style="padding:15px 30px;font-family:Arial,sans-serif;font-size:14px;'
+        'color:#333333;line-height:1.6;">'
+        '&#9203; \u05d0\u05e2\u05d1\u05d5\u05e8 \u05e2\u05dc \u05d4\u05de\u05e1\u05de\u05db\u05d9\u05dd '
+        '\u05d5\u05d0\u05e9\u05dc\u05d7 \u05dc\u05da \u05d3\u05d5"\u05d7 \u05e1\u05d9\u05d5\u05d5\u05d2 '
+        '\u05de\u05db\u05e1 \u05de\u05e4\u05d5\u05e8\u05d8 \u05ea\u05d5\u05da \u05de\u05e1\u05e4\u05e8 '
+        '\u05d3\u05e7\u05d5\u05ea.</td></tr>\n'
+        # ── Divider ──
+        '<tr><td style="padding:0 30px;">'
+        '<table width="100%" cellpadding="0" cellspacing="0">'
+        '<tr><td style="border-top:1px solid #dee2e6;font-size:1px;height:1px;">&nbsp;</td></tr>'
+        '</table></td></tr>\n'
+        # ── Signature ──
+        '<tr><td style="padding:15px 30px;">'
+        '<table dir="rtl" cellpadding="0" cellspacing="0"><tr>'
+        '<td style="padding-left:15px;" valign="top">'
+        '<img src="https://rpa-port.com/wp-content/uploads/2016/09/logo.png" '
+        'width="48" height="48" style="border:0;"></td>'
+        '<td style="border-right:3px solid #1e3a5f;padding-right:15px;" valign="top">'
+        '<strong style="color:#1e3a5f;font-family:Arial,sans-serif;font-size:13px;">'
+        '&#129302; RCB - AI Customs Broker</strong><br>'
+        '<strong style="font-family:Arial,sans-serif;font-size:12px;">R.P.A. PORT LTD</strong><br>'
+        '<span style="font-family:Arial,sans-serif;font-size:11px;color:#666666;">'
+        '&#128231; rcb@rpa-port.co.il</span>'
+        '</td></tr></table></td></tr>\n'
+        # ── Close ──
+        '</table>\n</td></tr></table>\n'
+        '</body></html>'
+    )
+
     return html
 
 def get_anthropic_key(get_secret_func):
