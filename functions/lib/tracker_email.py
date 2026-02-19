@@ -79,7 +79,12 @@ def build_tracker_status_email(deal, container_statuses, update_type="status_upd
     # Build subject — clean format: RCB | identifier | status | vessel
     # Primary identifier: BOL, then AWB, then deal_id prefix
     deal_id_str = deal.get('deal_id', '')
-    identifier = bol if bol and bol != 'Unknown' else deal.get('awb_number', '') or deal_id_str[:8]
+    identifier = (
+        (bol if bol and bol != 'Unknown' else '')
+        or deal.get('awb_number', '')
+        or deal_id_str[:8]
+        or 'NO-REF'
+    )
 
     if update_type == "new_deal":
         status_label = "Tracking Started"
