@@ -345,6 +345,37 @@ class SelfLearningEngine:
         except Exception as e:
             print(f"    🧠 SelfLearning: classification exact error: {e}")
 
+        # Level 0.5: Normalized keyword-overlap match in learned_classifications
+        # Handles cases where same product is described with extra/missing/reordered words
+        if len(keywords) >= 2:
+            best_kw = max(keywords, key=len)
+            if len(best_kw) >= 3:
+                try:
+                    kw_docs = (self.db.collection("learned_classifications")
+                               .where("keywords", "array_contains", best_kw)
+                               .limit(5).stream())
+                    best_match = None
+                    best_overlap = 0.0
+                    query_kw = set(keywords)
+                    for doc in kw_docs:
+                        data = doc.to_dict()
+                        if not data or not data.get("hs_code"):
+                            continue
+                        stored_kw = set(data.get("keywords", []))
+                        if not stored_kw:
+                            continue
+                        intersection = query_kw & stored_kw
+                        overlap = len(intersection) / max(len(query_kw), len(stored_kw))
+                        if overlap > best_overlap:
+                            best_overlap = overlap
+                            best_match = data
+                    if best_match and best_overlap >= 0.6:
+                        print(f"    🧠 SelfLearning: classification NORMALIZED for "
+                              f"'{product_description[:40]}' (overlap={best_overlap:.0%})")
+                        return best_match, "exact"
+                except Exception as e:
+                    print(f"    🧠 SelfLearning: classification normalized error: {e}")
+
         # Level 1: Keyword match in keyword_index / product_index (READ ONLY)
         try:
             for kw in keywords:
@@ -433,6 +464,7 @@ class SelfLearningEngine:
 
             chapter = hs_code.split(".")[0] if "." in hs_code else hs_code[:4]
             keywords = self._extract_keywords(product_description)
+            product_normalized = " ".join(sorted(keywords[:50]))
 
             # Session 47: Normalize HS code to Israeli full format XX.XX.XXXXXX/X
             try:
@@ -444,6 +476,7 @@ class SelfLearningEngine:
             doc_ref.set({
                 "product": product_description.strip(),
                 "product_lower": product_lower,
+                "product_normalized": product_normalized,
                 "hs_code": hs_code_stored,
                 "chapter": chapter,
                 "keywords": keywords[:50],
