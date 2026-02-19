@@ -223,7 +223,6 @@ class ToolExecutor:
             "get_chapter_notes": self._get_chapter_notes,
             "lookup_tariff_structure": self._lookup_tariff_structure,
             "lookup_framework_order": self._lookup_framework_order,
-            "search_pre_rulings": self._stub_not_available,
             "search_classification_directives": self._search_classification_directives,
             "search_legal_knowledge": self._search_legal_knowledge,
             "run_elimination": self._run_elimination,
@@ -248,10 +247,6 @@ class ToolExecutor:
             "check_opensanctions": self._check_opensanctions,
             "get_israel_vat_rates": self._get_israel_vat_rates,
             "fetch_seller_website": self._fetch_seller_website,
-            # Stubs
-            "search_foreign_tariff": self._stub_not_available,
-            "search_court_precedents": self._stub_not_available,
-            "search_wco_decisions": self._stub_not_available,
         }.get(tool_name)
 
         if not handler:
@@ -1536,7 +1531,7 @@ class ToolExecutor:
                 "query": cmd_code,
             }
 
-        return self._cached_external_lookup(f"{reporter}_{period}_{cmd_code}", "comtrade_cache", 30, _fetch)
+        return self._cached_external_lookup(f"{reporter}_{period}_{cmd_code}", "comtrade_cache", 7, _fetch)
 
     # ------------------------------------------------------------------
     # Tool #19: lookup_food_product
@@ -2349,7 +2344,7 @@ class ToolExecutor:
             # Direct request — seller domains are dynamic, not in static allowlist
             try:
                 resp = requests.get(url, timeout=10, headers={
-                    "User-Agent": "Mozilla/5.0 (RCB Customs Classifier)"
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 })
                 if resp.status_code != 200:
                     resp = None
@@ -2409,6 +2404,3 @@ class ToolExecutor:
                 return candidate
         return f"{name}.com"
 
-    def _stub_not_available(self, inp):
-        """Stub for tools whose data sources are not yet loaded."""
-        return {"available": False, "message": "Data source not yet loaded"}

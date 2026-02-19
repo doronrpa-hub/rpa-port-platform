@@ -540,8 +540,8 @@ def _run_tool_loop(api_key, user_prompt, executor, gemini_key=None):
     Tries Gemini Flash first (20x cheaper), falls back to Claude if needed.
 
     Constraints:
-        - Max 8 rounds
-        - 120 second time budget
+        - Max 15 rounds
+        - 180 second time budget
     """
     # Choose model: Gemini first if available and preferred
     use_gemini = _PREFER_GEMINI and gemini_key
