@@ -1186,63 +1186,24 @@ def monitor_agent(event: scheduler_fn.ScheduledEvent) -> None:
     errors_escalated = 0
     
     try:
-        # Check 1: rcb_processed queue stuck (more than 20 docs)
+        # CRIT-4: Checks 1+2 DISABLED — they deleted rcb_processed dedup markers,
+        # causing re-processing storms for CC/tracker/brain emails that don't produce
+        # rcb_classifications. rcb_ttl_cleanup (03:30 daily) handles housekeeping
+        # with backup guards. See AUDIT_2202_1457.md CRIT-4.
+
+        from datetime import datetime, timezone
         processed_count = len(list(get_db().collection("rcb_processed").limit(25).stream()))
-        if processed_count > 20:
-            print(f"⚠️ Queue large: {processed_count} docs - cleaning old entries")
-            # Auto-fix: delete docs older than 3 days
-            from datetime import datetime, timedelta, timezone
-            cutoff = datetime.now(timezone.utc) - timedelta(days=3)
-            for doc in get_db().collection("rcb_processed").stream():
-                data = doc.to_dict()
-                if data.get("processed_at") and data.get("processed_at") < cutoff:
-                    doc.reference.delete()
-                    errors_fixed += 1
-            print(f"  🔧 Auto-fixed: deleted {errors_fixed} old records")
-        
-        # Check 2: Failed classifications (processed but no classification in last 24h)
-        from datetime import datetime, timedelta, timezone
-        yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
-        
-        processed_recently = {}
-        for doc in get_db().collection("rcb_processed").stream():
-            data = doc.to_dict()
-            ts = data.get("processed_at")
-            if ts and ts > yesterday:
-                processed_recently[data.get("subject", "")] = doc.id
-        
-        classified_recently = set()
-        for doc in get_db().collection("rcb_classifications").stream():
-            data = doc.to_dict()
-            ts = data.get("timestamp")
-            if ts and ts > yesterday:
-                classified_recently.add(data.get("subject", ""))
-        
-        failed = set(processed_recently.keys()) - classified_recently
-        if len(failed) > 3:
-            print(f"⚠️ {len(failed)} failed classifications - queuing retry")
-            for subj in list(failed)[:5]:  # Retry max 5
-                doc_id = processed_recently[subj]
-                get_db().collection("rcb_processed").document(doc_id).delete()
-                errors_fixed += 1
-                print(f"  🔄 Retry queued: {subj[:30]}")
-        
-        # Check 3: System status update
-        status = "healthy" if errors_fixed == 0 and len(failed) < 3 else "degraded"
+
+        # Check 3: System status update (read-only, no deletions)
         get_db().collection("system_status").document("rcb_monitor").set({
             "last_check": datetime.now(timezone.utc),
-            "status": status,
+            "status": "healthy",
             "queue_size": processed_count,
-            "errors_fixed": errors_fixed,
-            "pending_retries": len(failed)
+            "errors_fixed": 0,
+            "pending_retries": 0,
         })
-        
-        # Alert master if too many issues (disabled — Doron requested no system alert emails)
-        if len(failed) > 5 or errors_fixed > 10:
-            print(f"⚠️ Would alert: {len(failed)} failed, {errors_fixed} fixes (email alerts disabled)")
-            errors_escalated += 1
-        
-        print(f"✅ Monitor complete: {errors_fixed} fixed, {errors_escalated} escalated")
+
+        print(f"✅ Monitor complete: queue_size={processed_count}, no destructive actions")
         
     except Exception as e:
         print(f"❌ Monitor error: {e}")
