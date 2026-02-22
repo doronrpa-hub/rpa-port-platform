@@ -1352,6 +1352,13 @@ def _update_deal_from_observation(db, firestore_module, deal_id, observation):
             if _handler:
                 updates['handler'] = _handler
 
+    # HIGH-1: Promote send_authorized when team member touches CC-originated deal
+    if not deal.get('send_authorized'):
+        _from = observation.get('from_email', '')
+        if _from.endswith('@rpa-port.co.il'):
+            updates['send_authorized'] = True
+            print(f"    🔓 Tracker: send_authorized promoted for deal {deal_id} (sender: {_from})")
+
     # Add new containers (merge, don't replace)
     # Batch-read existing container status docs (single query instead of N reads)
     existing_status_ids = set()
