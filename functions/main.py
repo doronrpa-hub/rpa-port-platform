@@ -990,7 +990,7 @@ def _rcb_check_email_inner(event) -> None:
                 intent_result = process_email_intent(
                     msg, get_db(), firestore, access_token, rcb_email, get_secret
                 )
-                if intent_result.get('status') in ('replied', 'cache_hit'):
+                if intent_result.get('status') in ('replied', 'cache_hit', 'clarification_sent'):
                     print(f"  🧠 Email intent handled: {intent_result.get('intent')}")
                     helper_graph_mark_read(access_token, rcb_email, msg_id)
                     get_db().collection("rcb_processed").document(safe_id).set({
