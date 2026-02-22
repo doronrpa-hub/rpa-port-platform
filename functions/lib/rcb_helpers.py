@@ -720,26 +720,6 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html,
 
     Optional gate params (deal_id, alert_type, db) enable Firestore dedup checks.
     """
-    # ── HARD BLOCK: Never send to external recipients ──
-    if not _is_internal_recipient(to_email):
-        print(f"\U0001f6ab BLOCKED outbound to external: {to_email} | subj={(subject or '')[:60]}")
-        try:
-            _db = db
-            if _db is None:
-                # Try to get db from caller context — but don't crash if unavailable
-                pass
-            if _db is not None:
-                _db.collection("security_log").add({
-                    "type": "BLOCKED_EXTERNAL_SEND",
-                    "function": "helper_graph_send",
-                    "to_email": to_email,
-                    "subject": (subject or "")[:120],
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
-        except Exception:
-            pass  # logging failure never blocks the guard
-        return False
-
     # ── Email quality gate (fail-open) ──
     try:
         approved, reason = email_quality_gate(
@@ -784,35 +764,6 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
         deal_id: Optional deal ID for dedup checks via email_quality_gate.
         alert_type: Optional alert type for dedup checks via email_quality_gate.
     """
-    # ── HARD BLOCK: Never reply to external recipients ──
-    if not to_email:
-        print(f"\U0001f6ab BLOCKED reply: to_email is None (cannot verify recipient)")
-        try:
-            if db is not None:
-                db.collection("security_log").add({
-                    "type": "BLOCKED_EXTERNAL_REPLY",
-                    "function": "helper_graph_reply",
-                    "reason": "to_email_is_none",
-                    "subject": (subject or "")[:120],
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
-        except Exception:
-            pass
-        return False
-    if not _is_internal_recipient(to_email):
-        print(f"\U0001f6ab BLOCKED reply to external: {to_email}")
-        try:
-            if db is not None:
-                db.collection("security_log").add({
-                    "type": "BLOCKED_EXTERNAL_REPLY",
-                    "function": "helper_graph_reply",
-                    "to_email": to_email,
-                    "subject": (subject or "")[:120],
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
-        except Exception:
-            pass
-        return False
     if cc_emails:
         cc_emails = [e for e in cc_emails if _is_internal_recipient(e)]
 
