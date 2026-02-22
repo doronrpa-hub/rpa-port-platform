@@ -1246,8 +1246,9 @@ def _create_deal(db, firestore_module, observation):
             deal_data['handler'] = _handler
 
     # ── Send authorization gate ──
-    _is_direct = observation.get('is_direct', False)
-    deal_data['send_authorized'] = bool(_is_direct and _from.endswith('@rpa-port.co.il'))
+    # NOTE: Existing CC deals pre-fix have send_authorized=False in Firestore.
+    # Backfill deferred — confirm fix works on new deals first. (Session 53)
+    deal_data['send_authorized'] = bool(_from.endswith('@rpa-port.co.il'))
 
     # Lifecycle tracking — what doc types have been received, what's expected next
     initial_doc_type = _guess_doc_type_from_attachments(observation.get('attachment_names', []))
