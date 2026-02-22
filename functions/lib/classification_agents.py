@@ -14,6 +14,7 @@ UPDATED: Session 15 - Multi-model optimization:
 """
 import json
 import re
+import time
 import requests
 import base64
 import io
@@ -160,7 +161,8 @@ ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine be
 VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
 
 # Session 48: Gemini quota fast-fail — skip all Gemini calls after first 429
-_gemini_quota_exhausted = False
+# CRIT-2 fix: timestamp instead of bare boolean — auto-resets after 60s
+_gemini_quota_exhausted_at = 0  # epoch timestamp; 0 = not exhausted
 
 # Session 40: Shared design constants from tracker email
 try:
@@ -508,11 +510,11 @@ def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="
 
     Falls back to Claude if Gemini fails or key is missing.
     """
-    global _gemini_quota_exhausted
+    global _gemini_quota_exhausted_at
     if not gemini_key:
         return None
-    # Session 48: Skip Gemini entirely after first 429 (quota exhausted)
-    if _gemini_quota_exhausted:
+    # Session 48+CRIT-2: Skip Gemini if 429 within last 60s
+    if _gemini_quota_exhausted_at and (time.time() - _gemini_quota_exhausted_at < 60):
         return None
     try:
         response = requests.post(
@@ -558,8 +560,8 @@ def call_gemini(gemini_key, system_prompt, user_prompt, max_tokens=2000, model="
         else:
             # Session 48: Detect 429 quota exhaustion — fast-fail for rest of run
             if response.status_code == 429:
-                _gemini_quota_exhausted = True
-                print(f"    ⚡ Gemini 429 quota exhausted — all subsequent calls will skip Gemini")
+                _gemini_quota_exhausted_at = time.time()
+                print(f"    ⚡ Gemini 429 quota exhausted — skipping Gemini for 60s")
             else:
                 print(f"Gemini API error ({model}): {response.status_code} - {response.text[:200]}")
             return None
@@ -3074,9 +3076,9 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             return False
         api_key = api_key.strip()  # Session 48: Safety — strip whitespace from Secret Manager
 
-        # Session 48: Reset Gemini quota flag at start of each run
-        global _gemini_quota_exhausted
-        _gemini_quota_exhausted = False
+        # Session 48+CRIT-2: Reset Gemini quota flag at start of each run
+        global _gemini_quota_exhausted_at
+        _gemini_quota_exhausted_at = 0
 
         # Session 15: Get Gemini key for cost-optimized agents
         gemini_key = None

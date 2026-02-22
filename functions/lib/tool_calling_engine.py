@@ -823,13 +823,13 @@ def _call_gemini_with_tools(gemini_key, contents):
 
     Session 48: Added 429 fast-fail — sets shared flag to skip Gemini for rest of run.
     """
-    # Session 48: Skip if Gemini quota already exhausted this run
+    # Session 48+CRIT-2: Skip if Gemini 429 within last 60s
     try:
-        from lib.classification_agents import _gemini_quota_exhausted
-        if _gemini_quota_exhausted:
-            print("  [TOOL ENGINE] Gemini quota exhausted — skipping, falling back to Claude")
+        import lib.classification_agents as _ca
+        if _ca._gemini_quota_exhausted_at and (time.time() - _ca._gemini_quota_exhausted_at < 60):
+            print("  [TOOL ENGINE] Gemini quota exhausted (TTL) — skipping, falling back to Claude")
             return None
-    except ImportError:
+    except (ImportError, AttributeError):
         pass
     try:
         resp = requests.post(
@@ -864,10 +864,10 @@ def _call_gemini_with_tools(gemini_key, contents):
         if resp.status_code == 429:
             try:
                 import lib.classification_agents as _ca
-                _ca._gemini_quota_exhausted = True
+                _ca._gemini_quota_exhausted_at = time.time()
             except Exception:
                 pass
-            print(f"  [TOOL ENGINE] Gemini 429 quota exhausted — skipping to Claude")
+            print(f"  [TOOL ENGINE] Gemini 429 quota exhausted — skipping for 60s")
         else:
             print(f"  [TOOL ENGINE] Gemini API error: {resp.status_code} - {resp.text[:200]}")
         return None
