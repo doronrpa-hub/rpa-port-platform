@@ -65,6 +65,9 @@ _STEP_LABELS_HE = {
     4: "הערות לפרק",
     5: "הנחיות סיווג",
     6: "החלטות מקדמיות",
+    7: "החלטות ותקדימים",
+    8: "תעריפים זרים",
+    9: "אימות תעריף בריטי",
 }
 
 
@@ -100,8 +103,9 @@ def build_justification_html(justification):
     for step in chain:
         step_num = step.get("step", 0)
         has_source = step.get("has_source", False)
-        decision = step.get("decision", "")
+        decision = step.get("decision_he") or step.get("decision", "")
         source_text = step.get("source_text", "")
+        reasoning = step.get("reasoning_he") or step.get("reasoning", "")
         label_he = _STEP_LABELS_HE.get(step_num, f"שלב {step_num}")
 
         dot_color = "#22c55e" if has_source else "#ef4444"
@@ -124,6 +128,12 @@ def build_justification_html(justification):
             html += (
                 f'<div style="font-size:11px;color:#666;margin-top:2px;'
                 f'font-style:italic">{_escape(short_source)}</div>'
+            )
+
+        if reasoning:
+            html += (
+                f'<div style="font-size:11px;color:#888;margin-top:2px">'
+                f'{_escape(reasoning)}</div>'
             )
 
         html += '</div></div>'

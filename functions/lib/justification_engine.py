@@ -61,11 +61,13 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             chain.append({
                 "step": 1,
                 "decision": f"Chapter {chapter} — {title_he}",
+                "decision_he": f"פרק {chapter} — {title_he}",
                 "source_type": "heading_to_chapter",
                 "source_ref": f"chapter {chapter}",
                 "source_text": preamble[:500] if preamble else "heading not found",
                 "has_source": bool(preamble),
                 "reasoning": f"Product classified to chapter {chapter} based on chapter preamble",
+                "reasoning_he": f"המוצר סווג לפרק {chapter} על בסיס פתיח הפרק",
             })
             sources_found += 1 if preamble else 0
 
@@ -80,11 +82,13 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             chain.append({
                 "step": 1,
                 "decision": f"Chapter {chapter}",
+                "decision_he": f"פרק {chapter}",
                 "source_type": "heading_to_chapter",
                 "source_ref": f"chapter {chapter}",
                 "source_text": "Chapter not found in system",
                 "has_source": False,
                 "reasoning": "Chapter notes not available",
+                "reasoning_he": "הערות לפרק לא זמינות",
             })
             gaps.append({
                 "type": "missing_chapter_notes",
@@ -109,23 +113,27 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             chain.append({
                 "step": 2,
                 "decision": f"Heading {heading[:2]}.{heading[2:4]}",
+                "decision_he": f"פריט {heading[:2]}.{heading[2:4]}",
                 "source_type": "tariff",
                 "source_ref": f"item {heading[:2]}.{heading[2:4]}",
                 "source_text": heading_data.get("description_he", ""),
                 "source_text_en": heading_data.get("description_en", ""),
                 "has_source": True,
                 "reasoning": "Heading matches product description",
+                "reasoning_he": "הפריט תואם את תיאור המוצר",
             })
             sources_found += 1
         else:
             chain.append({
                 "step": 2,
                 "decision": f"Heading {heading[:2]}.{heading[2:4]}",
+                "decision_he": f"פריט {heading[:2]}.{heading[2:4]}",
                 "source_type": "tariff",
                 "source_ref": f"item {heading[:2]}.{heading[2:4]}",
                 "source_text": "item not found",
                 "has_source": False,
                 "reasoning": "Heading not found in tariff DB",
+                "reasoning_he": "הפריט לא נמצא במאגר התעריפים",
             })
             gaps.append({
                 "type": "missing_heading",
@@ -162,6 +170,7 @@ def build_justification_chain(db, hs_code, product_description, classification_r
                 chain.append({
                     "step": 3,
                     "decision": f"Subheading {hs_code}",
+                    "decision_he": f"תת-פריט {hs_code}",
                     "source_type": "tariff",
                     "source_ref": f"sub-item {hs_code}",
                     "source_text": sub_data.get("description_he", ""),
@@ -170,6 +179,7 @@ def build_justification_chain(db, hs_code, product_description, classification_r
                     "duty_rate": sub_data.get("customs_duty", ""),
                     "purchase_tax": sub_data.get("purchase_tax", ""),
                     "reasoning": "Subheading selected based on product specifics",
+                    "reasoning_he": "תת-הפריט נבחר על בסיס מאפייני המוצר",
                 })
                 sources_found += 1
             else:
@@ -197,22 +207,26 @@ def build_justification_chain(db, hs_code, product_description, classification_r
                 chain.append({
                     "step": 4,
                     "decision": f"Applied {len(relevant_notes)} relevant notes",
+                    "decision_he": f"הוחלו {len(relevant_notes)} הערות רלוונטיות",
                     "source_type": "chapter_notes",
                     "source_ref": f"Notes for chapter {chapter}",
                     "source_text": "\n".join(relevant_notes)[:1000],
                     "has_source": True,
                     "reasoning": f"Found {len(relevant_notes)} notes referencing heading {heading}",
+                    "reasoning_he": f"נמצאו {len(relevant_notes)} הערות המתייחסות לפריט {heading}",
                 })
                 sources_found += 1
             else:
                 chain.append({
                     "step": 4,
                     "decision": "No specific notes found for this heading",
+                    "decision_he": "לא נמצאו הערות ספציפיות לפריט זה",
                     "source_type": "chapter_notes",
                     "source_ref": f"Notes for chapter {chapter}",
                     "source_text": f"Checked {len(notes)} notes, none reference heading {heading}",
                     "has_source": True,
                     "reasoning": "No specific notes apply",
+                    "reasoning_he": "אין הערות ספציפיות שחלות",
                 })
                 sources_found += 1
         else:
@@ -234,11 +248,13 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             chain.append({
                 "step": 5,
                 "decision": f"Found {len(directive_docs)} classification directives",
+                "decision_he": f"נמצאו {len(directive_docs)} הוראות סיווג",
                 "source_type": "classification_directive",
                 "source_ref": best.get("directive_id", "classification directive"),
                 "source_text": best.get("title", best.get("summary", ""))[:500],
                 "has_source": True,
                 "reasoning": f"Directive covers {'HS ' + hs_code if hs_code else 'chapter ' + chapter}",
+                "reasoning_he": f"הוראת סיווג חלה על {'פריט ' + hs_code if hs_code else 'פרק ' + chapter}",
             })
             sources_found += 1
         else:
@@ -270,11 +286,13 @@ def build_justification_chain(db, hs_code, product_description, classification_r
             chain.append({
                 "step": 6,
                 "decision": f"Found {len(preruling_docs)} pre-rulings",
+                "decision_he": f"נמצאו {len(preruling_docs)} פסקי מכס מקדמיים",
                 "source_type": "pre_ruling",
                 "source_ref": best.get("ruling_id", "pre-ruling"),
                 "source_text": best.get("product_description", best.get("reasoning_summary", ""))[:500],
                 "has_source": True,
                 "reasoning": "Pre-ruling supports this classification",
+                "reasoning_he": "פסק מכס מקדמי תומך בסיווג זה",
             })
             sources_found += 1
         else:
@@ -300,11 +318,13 @@ def build_justification_chain(db, hs_code, product_description, classification_r
         chain.append({
             "step": 7,
             "decision": f"Found {len(supporting_sources)} supporting decisions/precedents",
+            "decision_he": f"נמצאו {len(supporting_sources)} החלטות/תקדימים תומכים",
             "source_type": "supporting_evidence",
             "source_ref": ", ".join(s["source"] for s in supporting_sources[:3]),
             "source_text": supporting_sources[0].get("text", "")[:500],
             "has_source": True,
             "reasoning": "Additional legal sources support this classification",
+            "reasoning_he": "מקורות משפטיים נוספים תומכים בסיווג זה",
         })
         sources_found += 1
 
@@ -314,11 +334,13 @@ def build_justification_chain(db, hs_code, product_description, classification_r
         chain.append({
             "step": 8,
             "decision": f"Cross-referenced with {len(foreign_refs)} foreign tariff(s)",
+            "decision_he": f"הוצלב עם {len(foreign_refs)} תעריפים זרים",
             "source_type": "foreign_tariff",
             "source_ref": ", ".join(r["source"] for r in foreign_refs[:3]),
             "source_text": foreign_refs[0].get("text", "")[:500],
             "has_source": True,
             "reasoning": "Foreign tariff classification aligns with Israeli classification",
+            "reasoning_he": "סיווג בתעריף הזר תואם לסיווג הישראלי",
         })
 
     # ── STEP 9: UK Tariff Verification (live API) ──
@@ -328,10 +350,12 @@ def build_justification_chain(db, hs_code, product_description, classification_r
         uk_result = compare_il_uk_classification(db, hs_code, product_description)
         match_level = uk_result.get("match_level", "no_data")
 
+        _UK_MATCH_HE = {"strong": "חזק", "moderate": "בינוני", "description_match": "התאמת תיאור"}
         if match_level in ("strong", "moderate", "description_match"):
             chain.append({
                 "step": 9,
                 "decision": f"UK Tariff verification: {match_level}",
+                "decision_he": f"אימות תעריף בריטי: {_UK_MATCH_HE.get(match_level, match_level)}",
                 "source_type": "uk_tariff_verification",
                 "source_ref": f"UK ({uk_result.get('uk_code', '')})",
                 "source_text": uk_result.get("uk_description", "")[:500],
