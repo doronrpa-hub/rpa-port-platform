@@ -647,20 +647,11 @@ def _build_elimination_context(elimination_results):
 
 
 def query_tariff(db, search_terms):
-    """Query tariff collection for Israeli HS codes"""
-    results = []
-    try:
-        docs = db.collection('tariff').stream()
-        for doc in docs:
-            data = doc.to_dict()
-            desc = (data.get('description_he', '') + ' ' + data.get('description_en', '')).lower()
-            for term in search_terms:
-                if term.lower() in desc:
-                    results.append(data)
-                    break
-    except Exception as e:
-        print(f"Tariff query error: {e}")
-    return clean_firestore_data(results[:20])
+    """Legacy stub — tool engine search_tariff (tool #2) provides indexed tariff
+    lookups via intelligence.pre_classify(). This previously streamed all 11,753
+    tariff docs per call. Agent 2 prompt uses tariff_data[:15] for examples only;
+    the tool loop already provides comprehensive tariff context."""
+    return []
 
 def query_ministry_index(db):
     """Get ministry requirements"""

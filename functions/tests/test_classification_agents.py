@@ -159,63 +159,32 @@ class TestCallClaude:
 # ============================================================
 
 class TestQueryTariff:
-    """Tests for tariff collection queries"""
-    
-    def test_basic_search(self):
-        """Should find matching tariff codes"""
+    """Tests for query_tariff — now a stub (CRIT-3: full stream removed,
+    tool engine search_tariff #2 handles indexed lookups)."""
+
+    def test_returns_empty_list(self):
+        """Stub always returns empty — tool #2 search_tariff replaces this"""
         mock_db = Mock()
-        mock_doc = Mock()
-        mock_doc.to_dict.return_value = {
-            "code": "8516.31",
-            "description_he": "מייבשי שיער",
-            "description_en": "Hair drying apparatus"
-        }
-        mock_db.collection.return_value.stream.return_value = [mock_doc]
-        
         results = query_tariff(mock_db, ["hair", "dryer"])
-        
-        assert len(results) >= 0  # May or may not match depending on implementation
-        mock_db.collection.assert_called_with('tariff')
-    
-    def test_no_matches(self):
-        """Should return empty for no matches"""
-        mock_db = Mock()
-        mock_doc = Mock()
-        mock_doc.to_dict.return_value = {
-            "description_he": "רהיטים",
-            "description_en": "furniture"
-        }
-        mock_db.collection.return_value.stream.return_value = [mock_doc]
-        
-        results = query_tariff(mock_db, ["electronics", "computer"])
-        
-        assert len(results) == 0
-    
-    def test_error_handling(self):
-        """Should handle Firestore errors"""
-        mock_db = Mock()
-        mock_db.collection.return_value.stream.side_effect = Exception("DB error")
-        
-        results = query_tariff(mock_db, ["test"])
-        
         assert results == []
-    
-    def test_results_limit(self):
-        """Should limit results to 20"""
+
+    def test_no_firestore_calls(self):
+        """Stub must NOT stream the tariff collection"""
         mock_db = Mock()
-        docs = []
-        for i in range(50):
-            doc = Mock()
-            doc.to_dict.return_value = {
-                "description_he": "מייבש שיער",
-                "description_en": "hair dryer"
-            }
-            docs.append(doc)
-        mock_db.collection.return_value.stream.return_value = docs
-        
-        results = query_tariff(mock_db, ["hair"])
-        
-        assert len(results) <= 20
+        query_tariff(mock_db, ["electronics"])
+        mock_db.collection.assert_not_called()
+
+    def test_empty_search_terms(self):
+        """Should handle empty search terms"""
+        mock_db = Mock()
+        results = query_tariff(mock_db, [])
+        assert results == []
+
+    def test_error_resilience(self):
+        """Stub should never raise regardless of input"""
+        mock_db = Mock()
+        results = query_tariff(mock_db, [None, 123, ""])
+        assert results == []
 
 
 class TestQueryMinistryIndex:
@@ -268,32 +237,17 @@ class TestClassificationFlow:
     """Integration-style tests for classification flow"""
     
     def test_hebrew_input_handling(self):
-        """Should handle Hebrew product descriptions"""
-        # Test that Hebrew text doesn't break the flow
+        """Should handle Hebrew product descriptions without crashing"""
         keywords = ["מייבש", "שיער", "חשמלי"]
         mock_db = Mock()
-        mock_doc = Mock()
-        mock_doc.to_dict.return_value = {
-            "description_he": "מייבש שיער חשמלי",
-            "description_en": "electric hair dryer"
-        }
-        mock_db.collection.return_value.stream.return_value = [mock_doc]
-        
-        # Should not raise exception
         results = query_tariff(mock_db, keywords)
-    
+        assert results == []
+
     def test_mixed_language_handling(self):
-        """Should handle mixed Hebrew/English"""
+        """Should handle mixed Hebrew/English without crashing"""
         mock_db = Mock()
-        mock_doc = Mock()
-        mock_doc.to_dict.return_value = {
-            "description_he": "מכשיר Philips דגם 5000",
-            "description_en": "Philips device model 5000"
-        }
-        mock_db.collection.return_value.stream.return_value = [mock_doc]
-        
         results = query_tariff(mock_db, ["philips", "5000"])
-        # Should find match
+        assert results == []
 
 
 # ============================================================
@@ -306,24 +260,14 @@ class TestDataValidation:
     def test_empty_search_terms(self):
         """Should handle empty search terms"""
         mock_db = Mock()
-        mock_db.collection.return_value.stream.return_value = []
-        
         results = query_tariff(mock_db, [])
-        
         assert results == []
-    
+
     def test_special_characters(self):
         """Should handle special characters in search"""
         mock_db = Mock()
-        mock_doc = Mock()
-        mock_doc.to_dict.return_value = {
-            "description_he": "כבל USB-C",
-            "description_en": "USB-C cable"
-        }
-        mock_db.collection.return_value.stream.return_value = [mock_doc]
-        
-        # Should not crash
         results = query_tariff(mock_db, ["USB-C", "cable"])
+        assert results == []
     
     def test_unicode_handling(self):
         """Should handle Unicode characters"""
