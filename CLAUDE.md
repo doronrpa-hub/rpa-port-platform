@@ -2897,3 +2897,168 @@ Parsed the complete פקודת המכס (Customs Ordinance) from `pkudat_mechess
 
 ### Test Results
 - **1,184 passed**, 1 skipped — 145 customs law tests (was 111), zero regressions
+
+## Session 53-FINAL Summary (2026-02-23) — Knowledge Gap Remediation + PC Agent Tasks
+
+### Overview
+Fixed ordinance searchability gap, created 21 PC agent download tasks for FTA agreements and customs procedures, downloaded 2 procedure PDFs, fixed local PC agent collection mismatch, created XML conversion plan.
+
+### What Was Done
+
+**1. TASK 1: פקודת המכס Searchability — FIXED (commit `5b85628`)**
+
+311 ordinance articles were embedded in `_ordinance_data.py` but NOT searchable via the `search_legal_knowledge` tool. Tool only searched 19 Firestore docs in `legal_knowledge` collection.
+
+**Fix:** Extended `_search_legal_knowledge()` in `tool_executors.py` with 3 new in-memory cases:
+
+| Case | Pattern | Example Query | What It Returns |
+|------|---------|---------------|-----------------|
+| **A: Article lookup** | `סעיף 130`, `article 62`, `§133א`, bare `"130"` | `"סעיף 130"` | Full article: chapter, title_he, summary_en, definitions, methods |
+| **B: Chapter articles** | `פרק 8`, `articles in chapter 4` | `"פרק 8"` | All articles in that chapter (up to 30) with metadata |
+| **C: Keyword search** | Any text matched against 311 titles+summaries | `"smuggling"` | Up to 15 matching articles |
+
+- **Zero Firestore cost** — uses in-memory `CUSTOMS_ORDINANCE_ARTICLES` from `customs_law.py`
+- Lazy import inside function body (no top-level import, no circular deps)
+- Bare digit 1-15 without prefix falls through to existing chapter summary (Case 1)
+- Updated tool description in `tool_definitions.py` to document article-level queries
+
+**Files modified:**
+| File | Changes |
+|------|---------|
+| `functions/lib/tool_executors.py` | +87 lines: 3 new cases (A, B, C) in `_search_legal_knowledge()` |
+| `functions/lib/tool_definitions.py` | +10 lines: updated tool description with article query examples |
+
+**2. TASK 2: FTA Agreement Download Tasks — 13 Created**
+
+Searched web for direct gov.il FTA agreement pages. Found 2 URL patterns:
+- `gov.il/he/pages/...` (newer, 8 agreements)
+- `gov.il/he/departments/policies/...` (older, 3 agreements)
+
+Created 13 PC agent tasks in `pc_agent_tasks` collection:
+
+| # | Target Doc ID | Country/Agreement | URL |
+|---|--------------|-------------------|-----|
+| 1 | `fta_eu_protocol4` | EU | `gov.il/he/pages/eu-isr-fta` |
+| 2 | `fta_uk_agreement` | UK | `gov.il/he/pages/uk-israel-trade-agreement` |
+| 3 | `fta_uae_agreement` | UAE | `gov.il/he/pages/isr-uae-fta` |
+| 4 | `fta_turkey_agreement` | Turkey | `gov.il/he/pages/free-trade-area-agreement-israel-turkey` |
+| 5 | `fta_vietnam_agreement` | Vietnam | `gov.il/he/pages/israel-vietnam-fta` |
+| 6 | `fta_costa_rica_agreement` | Costa Rica | `gov.il/he/pages/costa-rica-il-fta` |
+| 7 | `fta_guatemala_agreement` | Guatemala | `gov.il/he/pages/guatemala-israel-fta` |
+| 8 | `fta_usa_agreement` | USA | `gov.il/he/departments/policies/fta-isr-usa` |
+| 9 | `fta_ukraine_agreement` | Ukraine | `gov.il/he/departments/policies/isr-ukraine-fta` |
+| 10 | `fta_canada_agreement` | Canada | `gov.il/he/departments/policies/israel-canada-fta` |
+| 11 | `fta_korea_agreement` | Korea | `gov.il/he/pages/il-korea-fta-180521` |
+| 12 | `fta_master_index` | Master Index | `gov.il/he/pages/free-trade-area` |
+| 13 | `fta_search_index` | Search Tool | `gov.il/he/departments/dynamiccollectors/bilateral-agreements-search` |
+
+All tasks: `requires_browser: True`, `target_collection: legal_knowledge`, `content_needed: "כללי מקור, תעודת מקור, EUR.1, יצואן מאושר, חשבון הצהרה, נספחים"`, `priority: high`, `task_category: fta_download`.
+
+**FTA agreements NOT found on gov.il** (may need manual search or are under master index): EFTA, Jordan, Egypt, Morocco, Mercosur, Mexico, Colombia, Panama, Bahrain.
+
+**3. TASK 3: נוהל סיווג טובין URL — FOUND + 8 Procedure Tasks Created**
+
+| # | Document | URL Found | Target Doc ID | Browser? | Status |
+|---|----------|-----------|---------------|----------|--------|
+| 1 | **נוהל סיווג טובין** (#3) | `gov.il/he/pages/noaalmeches3` | `procedure_classification` | Yes | pending |
+| 2 | הנחיות סיווג PDF | `chamber.org.il/media/163663/הנחיות-סיווג-מהנהלת-המכס.pdf` | `procedure_classification_guidelines` | Yes | pending |
+| 3 | **נוהל תש"ר** (#1 page) | `gov.il/he/departments/policies/noaalmeches1` | `procedure_tashar` | Yes | pending |
+| 4 | נוהל תש"ר PDF | `gov.il/BlobFolder/.../Noal_1_Shichror_ACC.pdf` | `procedure_tashar_pdf` | No | **DOWNLOADED** |
+| 5 | **נוהל הערכה** (#2 PDF) | `gov.il/BlobFolder/.../nohalHaraha2.pdf` | `procedure_valuation` | No | failed (redirect) |
+| 6 | **נוהל מצהרים** (#25 page) | `gov.il/he/departments/policies/noaalmeches25` | `procedure_declarants` | Yes | pending |
+| 7 | נוהל מצהרים PDF | `claltax.com/.../Noal_25_Mzharim_ACC-07012020.pdf` | `procedure_declarants_pdf` | No | **DOWNLOADED** |
+| 8 | **קודי הנחה** | `shaarolami.customs.mof.gov.il/.../DiscountCodes` | `discount_codes` | Yes | pending |
+
+Cloud runner executed: 2 PDFs downloaded to `customs_procedures` collection, 1 failed (gov.il redirect), 5 browser-required skipped.
+
+**4. PC Agent Collection Mismatch — FIXED (commit `540172a`)**
+
+| Component | Before | After |
+|-----------|--------|-------|
+| `scripts/rpa_agent.py` | Watched `agent_tasks` (dead collection) | Watches `pc_agent_tasks` |
+| `pc_agent_runner.py` (cloud) | Already reads `pc_agent_tasks` | No change |
+| `create_download_task()` | Already writes to `pc_agent_tasks` | No change |
+
+4 references updated in `rpa_agent.py` (lines 406, 449, 458, 467).
+
+**5. XML Conversion Plan — Created (commit `df0fe8b`)**
+
+Created `docs/XML_CONVERSION_PLAN.md` with 7 documents prioritized for conversion:
+1. פקודת המכס (311 articles) — HIGH
+2. צו יבוא חופשי — HIGH
+3. צו יצוא — HIGH
+4. צו מסגרת — MEDIUM
+5. תעריף המכס — MEDIUM
+6. FTA protocols — HIGH (once downloaded)
+7. נהלי מכס — MEDIUM (once downloaded)
+
+### Files Modified/Created This Session
+
+| Action | File | Changes |
+|--------|------|---------|
+| **MODIFY** | `functions/lib/tool_executors.py` | +87 lines: 3 new cases in `_search_legal_knowledge()` |
+| **MODIFY** | `functions/lib/tool_definitions.py` | +10 lines: updated `search_legal_knowledge` description |
+| **MODIFY** | `scripts/rpa_agent.py` | 4 refs: `agent_tasks` → `pc_agent_tasks` |
+| **CREATE** | `docs/XML_CONVERSION_PLAN.md` | XML conversion plan for next session |
+| **CREATE** | `docs/SESSION_53_FINAL_23022026.md` | Session backup |
+
+### Git Commits This Session (all on `main`, pending push)
+
+| Hash | Description |
+|------|-------------|
+| `5b85628` | fix: search_legal_knowledge now searches all 311 ordinance articles in-memory (Task 1) |
+| `df0fe8b` | docs: XML conversion plan + Session 53 final backup |
+| `540172a` | fix: rpa_agent.py watches pc_agent_tasks collection |
+| (pending) | This CLAUDE.md update |
+
+### Firestore Changes (data only, no code)
+
+| Collection | Change |
+|-----------|--------|
+| `pc_agent_tasks` | +21 new tasks (13 FTA + 8 procedures), all `status: pending` |
+| `customs_procedures` | +2 docs (downloaded PDFs: תש"ר + מצהרים) |
+| `config/agent_status` | Will update when local agent runs |
+
+### Deployment Status
+- **Firebase**: All 28 functions deployed successfully (2026-02-23 14:35 IL)
+- **Git push**: BLOCKED — PAT missing `workflow` scope
+- **Fix**: `gh auth login --scopes "repo,workflow" --web` then `git push origin main`
+
+### Test Results
+- **1,185 passed**, 0 failed, 0 skipped — zero regressions
+
+### PC Agent Tasks Summary (Firestore `pc_agent_tasks`)
+
+| Category | Total | Browser Required | Direct HTTP | Downloaded | Pending |
+|----------|-------|-----------------|-------------|------------|---------|
+| FTA agreements | 13 | 13 | 0 | 0 | 13 |
+| Procedures | 8 | 5 | 3 | 2 | 5+1 failed |
+| **Total** | **21** | **18** | **3** | **2** | **19** |
+
+To process the 18 browser-required tasks: run `python scripts/rpa_agent.py` on Doron's machine with `firebase-credentials.json` in the `scripts/` folder (already copied).
+
+### Knowledge Gap Status After This Session
+
+| Document | Status | Searchable? |
+|----------|--------|-------------|
+| פקודת המכס (311 articles) | In Python memory | **YES** — via `search_legal_knowledge` (fixed this session) |
+| צו יבוא חופשי + תוספות | In Firestore (6,121 docs) | YES — via `check_regulatory` |
+| צו יצוא + תוספות | In Firestore (979 docs) | YES — via `check_regulatory` |
+| צו מסגרת + תוספות | In Firestore (85 docs) | YES — via `lookup_framework_order` |
+| תעריף המכס | In Firestore (11,753 entries) | YES — via `search_tariff` |
+| חוק סוכני המכס | Partial (ordinance cross-refs) | Partial |
+| נוהל סיווג טובין | PC agent task created | **NO** — pending download |
+| נוהל הערכה | Download failed (redirect) | **NO** — needs browser |
+| נוהל תש"ר | **PDF downloaded** | Will be after indexing |
+| נוהל מצהרים | **PDF downloaded** | Will be after indexing |
+| קודי הנחה | PC agent task created | **NO** — pending download |
+| FTA agreements (13) | PC agent tasks created | **NO** — pending download |
+
+### COLLECTION_FIELDS Total: 70 collections registered
+
+### Next Session Priorities
+1. Fix PAT → push 3 commits to GitHub
+2. Run local PC agent → process 18 browser tasks
+3. XML conversion — start with פקודת המכס (item 1 in XML_CONVERSION_PLAN.md)
+4. Index downloaded procedure PDFs into `legal_knowledge`
+5. Process FTA content after download into structured legal_knowledge docs
