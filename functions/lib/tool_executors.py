@@ -994,16 +994,80 @@ class ToolExecutor:
         }
 
     def _search_legal_knowledge(self, inp):
-        """Search legal knowledge: Customs Ordinance chapters, customs agents law,
-        EU/US standards reforms. C8: 19 docs from cached legal_knowledge collection.
+        """Search legal knowledge: 311 Customs Ordinance articles (in-memory),
+        Firestore chapter summaries, customs agents law, EU/US standards reforms.
         Uses word-boundary regex for English keywords to prevent false positives."""
         query = str(inp.get("query", "")).strip()
         if not query:
             return {"found": False, "error": "No query provided"}
 
+        # Lazy import — in-memory, no Firestore cost
+        try:
+            from lib.customs_law import CUSTOMS_ORDINANCE_ARTICLES, CUSTOMS_ORDINANCE_CHAPTERS
+            _ord_available = True
+        except ImportError:
+            _ord_available = False
+
         all_docs = self._get_legal_knowledge()
 
         try:
+            # ── Case A: Article number lookup (סעיף 130, article 133א, §62, bare "130") ──
+            if _ord_available:
+                art_match = re.search(
+                    r'(?:article|section|סעיף|§)\s*(\d{1,3}[א-ת]*)'
+                    r'|^(\d{1,3}[א-ת]*)$',
+                    query, re.IGNORECASE,
+                )
+                if art_match:
+                    art_id = (art_match.group(1) or art_match.group(2) or "").strip()
+                    # Bare digit 1-15 without prefix → fall through to chapter lookup (Case 1)
+                    if not (art_id.isdigit() and 1 <= int(art_id) <= 15
+                            and not re.search(r'(?:article|section|סעיף|§)', query, re.IGNORECASE)):
+                        art = CUSTOMS_ORDINANCE_ARTICLES.get(art_id, {})
+                        if art:
+                            result = {
+                                "found": True, "type": "ordinance_article",
+                                "article_id": art_id,
+                                "chapter": art.get("ch", ""),
+                                "title_he": art.get("t", ""),
+                                "summary_en": art.get("s", ""),
+                            }
+                            if art.get("definitions"):
+                                result["definitions"] = dict(list(art["definitions"].items())[:15])
+                            if art.get("methods"):
+                                result["methods"] = art["methods"]
+                            if art.get("additions"):
+                                result["additions"] = art["additions"]
+                            if art.get("repealed"):
+                                result["repealed"] = True
+                            return result
+
+            # ── Case B: Chapter-scoped article list (פרק 8, "articles in chapter 4") ──
+            if _ord_available:
+                ch_match = re.search(
+                    r'(?:articles?\s+(?:in|of|from)\s+chapter|פרק)\s*(\d{1,2})',
+                    query, re.IGNORECASE,
+                )
+                if ch_match:
+                    ch_num = int(ch_match.group(1))
+                    ch_key = ch_num if ch_num in CUSTOMS_ORDINANCE_CHAPTERS else str(ch_num)
+                    ch_meta = CUSTOMS_ORDINANCE_CHAPTERS.get(ch_key, {})
+                    articles = [
+                        {"id": k, "title_he": v.get("t", ""), "summary_en": v.get("s", "")}
+                        for k, v in CUSTOMS_ORDINANCE_ARTICLES.items()
+                        if v.get("ch") == ch_num
+                    ]
+                    if articles:
+                        return {
+                            "found": True, "type": "ordinance_chapter_articles",
+                            "chapter": ch_num,
+                            "title_he": ch_meta.get("title_he", ""),
+                            "title_en": ch_meta.get("title_en", ""),
+                            "articles_range": ch_meta.get("articles_range", ""),
+                            "count": len(articles),
+                            "articles": articles[:30],
+                        }
+
             # Case 1: Ordinance chapter by number — direct lookup from cache
             if query.isdigit() and 1 <= int(query) <= 15:
                 target_id = f"ordinance_ch_{query.zfill(2)}"
@@ -1049,7 +1113,28 @@ class ToolExecutor:
                             if k not in ("source", "seeded_at")
                         }}
 
-            # Case 5: General keyword search across cached docs
+            # ── Case C: Keyword search across all 311 ordinance articles ──
+            if _ord_available:
+                query_lower = query.lower()
+                ord_matches = []
+                for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
+                    searchable = f"{art.get('t', '')} {art.get('s', '')}".lower()
+                    if query_lower in searchable:
+                        ord_matches.append({
+                            "article_id": art_id,
+                            "chapter": art.get("ch", ""),
+                            "title_he": art.get("t", ""),
+                            "summary_en": art.get("s", ""),
+                        })
+                if ord_matches:
+                    return {
+                        "found": True, "type": "ordinance_article_search",
+                        "query": query,
+                        "count": len(ord_matches),
+                        "articles": ord_matches[:15],
+                    }
+
+            # Case 5: General keyword search across cached Firestore docs
             query_lower = query.lower()
             matches = []
             for doc_id, data in all_docs:

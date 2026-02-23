@@ -261,11 +261,11 @@ CLAUDE_TOOLS = [
     {
         "name": "search_legal_knowledge",
         "description": (
-            "Search Israeli customs legal knowledge: Customs Ordinance chapters (פקודת המכס), "
-            "Customs Agents Law (חוק סוכני המכס), "
-            "EU standards reform ('What's Good for Europe is Good for Israel'), "
-            "US standards reform ('What's Good for the USA is Good for Israel'). "
-            "Query by chapter number (1-15), keyword, or topic (e.g., 'agents', 'EU reform')."
+            "Search Israeli customs legal knowledge: 311 individual Customs Ordinance articles (סעיפי פקודת המכס), "
+            "chapter summaries, Customs Agents Law (חוק סוכני המכס), "
+            "EU standards reform, US standards reform. "
+            "Query by article number ('סעיף 130', 'article 62'), chapter articles ('פרק 8'), "
+            "chapter number (1-15), keyword across 311 articles, or topic."
         ),
         "input_schema": {
             "type": "object",
@@ -273,10 +273,12 @@ CLAUDE_TOOLS = [
                 "query": {
                     "type": "string",
                     "description": (
-                        "What to look up. Can be: chapter number ('11' for Agents), "
+                        "What to look up. Can be: article number ('סעיף 130', 'article 62', '133א'), "
+                        "chapter articles ('פרק 8', 'articles in chapter 4'), "
+                        "chapter number ('11' for Agents chapter summary), "
                         "'agents' or 'סוכנים' for customs agents law, "
                         "'EU' or 'אירופה' for EU reform, 'USA' for US reform, "
-                        "or any keyword to search across legal texts."
+                        "or any keyword to search across 311 ordinance articles and legal texts."
                     ),
                 },
             },
