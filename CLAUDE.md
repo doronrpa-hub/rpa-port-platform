@@ -3057,8 +3057,77 @@ To process the 18 browser-required tasks: run `python scripts/rpa_agent.py` on D
 ### COLLECTION_FIELDS Total: 70 collections registered
 
 ### Next Session Priorities
-1. Fix PAT → push 3 commits to GitHub
+1. Fix PAT → push 3 commits to GitHub — DONE (Session 53-FINAL)
 2. Run local PC agent → process 18 browser tasks
-3. XML conversion — start with פקודת המכס (item 1 in XML_CONVERSION_PLAN.md)
+3. XML conversion — start with פקודת המכס (item 1 in XML_CONVERSION_PLAN.md) — DONE (Session 55)
 4. Index downloaded procedure PDFs into `legal_knowledge`
 5. Process FTA content after download into structured legal_knowledge docs
+
+## Session 55 Summary (2026-02-23) — Full Hebrew Ordinance Text + Email Quality Fixes
+
+### Overview
+Embedded full Hebrew text of all 311 Customs Ordinance articles into `_ordinance_data.py` (117,433 chars). Fixed 3 bugs that prevented knowledge query replies from reaching users. Live-tested and confirmed working — Doron received a correct reply quoting the law.
+
+### Test Email Diagnosis
+Doron's test email ("האם מותר לעסקה לפי פקודת המכס לקבע על ידי הסכום שמשולם בפועל?") was processed but reply was **blocked by email quality gate** (`generic_subject` — email subject was just `Re: `). Knowledge query found 15 results, generated an answer, but quality gate rejected it. Then fell through to classification (useless for a question).
+
+### 4 Fixes Implemented
+
+| # | Fix | File | Impact |
+|---|-----|------|--------|
+| 1 | Full Hebrew ordinance text | `_ordinance_data.py` | All 311 articles now have `"f"` field with full Hebrew law text (117,433 chars parsed from pkudat_mechess.txt). System can now quote the law verbatim. |
+| 2 | Knowledge query reply subject fallback | `knowledge_query.py` | When original subject is generic/empty, generates `RCB \| [question preview]` instead of bare `Re: `. Passes quality gate. |
+| 3 | Hebrew prefix stripping in keyword search | `tool_executors.py` | Case C strips ל,ב,ה,ש,מ,כ,ו,וה,של prefixes from query words. Article 132 (ערך עסקה) now ranks #1 for valuation questions. |
+| 4 | Legal knowledge search in customs question handler | `email_intent.py` | `_handle_customs_question` now calls `search_legal_knowledge`. Was missing — legal data unreachable when intent misclassified as CUSTOMS_QUESTION instead of KNOWLEDGE_QUERY. |
+
+### Additional Fix
+| Fix | File | Impact |
+|-----|------|--------|
+| Remove invalid single-field Firestore indexes | `firestore.indexes.json` | `free_import_order` and `free_export_order` hs_10 indexes were rejected by API (single-field indexes are automatic). Removed to allow `firestore:indexes` deploy. |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/_ordinance_data.py` | +1,748/-589 lines: Added `"f"` field (full Hebrew text) to all 311 articles |
+| `functions/lib/knowledge_query.py` | +15 lines: Reply subject fallback from question text when original is generic |
+| `functions/lib/tool_executors.py` | +40 lines: Case A returns full_text_he (3000 cap), Case C Hebrew prefix stripping + text_snippet |
+| `functions/lib/email_intent.py` | +23 lines: full_text_he in AI context, text_snippet for Case C, search_legal_knowledge in _handle_customs_question |
+| `firestore.indexes.json` | -14 lines: Removed invalid single-field indexes |
+
+### Tool Search Enhancement
+| Query | Before | After |
+|-------|--------|-------|
+| "סעיף 130" | Returns article with title + English summary only | Returns article with title + English summary + **876 chars of Hebrew law text** |
+| "ערך עסקה טובין מוערכים" | Art 124, 19, 39 (wrong — no prefix stripping) | **Art 132 (#1), 133, 130** (correct — valuation articles) |
+| Keyword search general | Full-word match only | Hebrew prefix stripping (ל,ב,ה,ש,מ,כ,ו,וה,של) expands matches |
+
+### Live Test Result (confirmed working)
+- **17:44:08** — Email picked up, detected as direct from doron@
+- **17:44:09-14** — 5 tools called: search_tariff, **search_legal_knowledge (0.4s)**, search_classification_directives, lookup_fta, lookup_framework_order
+- **17:44:14-23** — AI composition (~9s, ChatGPT/Gemini composed Hebrew reply)
+- **17:44:23** — `Email intent handled: KNOWLEDGE_QUERY` — status='replied' confirmed
+- **Reply received by Doron** with correct law citations
+
+### Firestore Index
+- `questions_log` composite index (from_email + created_at) deployed — fixes rate limit check error
+- `free_import_order` / `free_export_order` single-field indexes removed (Firestore auto-creates these)
+
+### Git Commits
+- `2fe1018` — Session 55: Full Hebrew ordinance text + quality gate fix + customs question legal search
+- `b203489` — fix: remove single-field Firestore indexes rejected by API
+
+### Deployment
+- All 31 Cloud Functions deployed to Firebase (2026-02-23)
+- Firestore indexes deployed successfully
+
+### Test Results
+- **1,185 passed**, 0 failed, 0 skipped — zero regressions
+
+### COLLECTION_FIELDS Total: 70 collections registered (unchanged)
+
+### Next Session Priorities
+1. Run local PC agent → process 18 browser tasks (FTA agreements + procedures)
+2. Index downloaded procedure PDFs into `legal_knowledge`
+3. Process FTA content after download into structured legal_knowledge docs
+4. Framework order Hebrew text (data_c3/framework_order_text.txt, 82KB) — same treatment as ordinance
+5. Consider paid Gemini tier for production stability (free tier quota issues)
