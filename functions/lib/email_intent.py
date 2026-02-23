@@ -634,15 +634,22 @@ def _send_reply_safe(body_html, msg, access_token, rcb_email):
 
     msg_id = msg.get('id', '')
     try:
-        from lib.rcb_helpers import helper_graph_reply, helper_graph_send
+        from lib.rcb_helpers import helper_graph_reply, helper_graph_send, _RE_FWD_PATTERN
     except ImportError:
-        from rcb_helpers import helper_graph_reply, helper_graph_send
+        from rcb_helpers import helper_graph_reply, helper_graph_send, _RE_FWD_PATTERN
+
+    # Build a safe subject — original if present, fallback to 'RCB' minimum
+    orig_subject = (msg.get('subject', '') or '').strip()
+    orig_subject = _RE_FWD_PATTERN.sub('', orig_subject).strip() if orig_subject else ''
+    if not orig_subject:
+        subject = 'RCB'
+    else:
+        subject = f"Re: {orig_subject}"
 
     # Try threaded reply first, fallback to send
     sent = helper_graph_reply(access_token, rcb_email, msg_id, body_html,
-                              to_email=from_email)
+                              to_email=from_email, subject=subject)
     if not sent:
-        subject = f"Re: {msg.get('subject', '')}"
         sent = helper_graph_send(access_token, rcb_email, from_email,
                                  subject, body_html)
     return sent
