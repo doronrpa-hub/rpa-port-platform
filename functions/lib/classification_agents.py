@@ -3248,6 +3248,16 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             except Exception as cc_err:
                 print(f"  ⚠️ Cross-check error: {cc_err}")
 
+        # ── HIGH-5: Apply cross-reference confidence adjustments ──
+        try:
+            _cr_cls = results.get("agents", {}).get("classification", {}).get("classifications", [])
+            for c in _cr_cls:
+                adj = c.get("cross_ref_adjustment", 0)
+                if adj:
+                    _apply_confidence_adjustment(c, adj)
+        except Exception:
+            pass
+
         # ── SESSION 27: JUSTIFICATION + CHALLENGE (Assignment 11) ──
         try:
             from lib.justification_engine import (
