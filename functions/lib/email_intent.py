@@ -672,7 +672,10 @@ def _send_clarification(clarification_type, original_intent, original_entities,
     """Send clarification reply and store pending doc for follow-up matching."""
     message_text = CLARIFICATION_MESSAGES.get(clarification_type, CLARIFICATION_MESSAGES['ambiguous_intent'])
     reply_html = _wrap_html_rtl(message_text)
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    if not sent:
+        return {"status": "send_failed", "intent": original_intent,
+                "clarification_type": clarification_type, "cost_usd": 0.0}
 
     # Store pending clarification doc (upsert per sender)
     from_email = _get_sender_address(msg)
@@ -801,8 +804,8 @@ def _handle_admin_instruction(db, firestore_module, msg, entities, access_token,
         f"תחום: {scope}<br>"
         f"תחול על כל המיילים העתידיים."
     )
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
-    return {"status": "replied", "intent": "ADMIN_INSTRUCTION", "cost_usd": 0.0}
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    return {"status": "replied" if sent else "send_failed", "intent": "ADMIN_INSTRUCTION", "cost_usd": 0.0}
 
 
 def _handle_correction(db, firestore_module, msg, entities, access_token, rcb_email):
@@ -876,8 +879,8 @@ def _handle_correction(db, firestore_module, msg, entities, access_token, rcb_em
         + (f"מוצר: {product_desc[:100]}<br>" if product_desc else "")
         + f"<br>התיקון נשמר ויחול על סיווגים עתידיים של מוצר זהה."
     )
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
-    return {"status": "replied", "intent": "CORRECTION", "cost_usd": 0.0}
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    return {"status": "replied" if sent else "send_failed", "intent": "CORRECTION", "cost_usd": 0.0}
 
 
 def _detect_instruction_scope(text):
@@ -927,16 +930,16 @@ def _handle_status_request(db, entities, msg, access_token, rcb_email,
             f"לא נמצאה משלוח תואם עבור {lookup_key or 'הנתונים שצוינו'}.<br>"
             f"אנא וודא את מספר שטר המטען או המכולה ונסה שנית."
         )
-        _send_reply_safe(reply_html, msg, access_token, rcb_email)
-        return {"status": "replied", "intent": "STATUS_REQUEST", "cost_usd": 0.0,
+        sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+        return {"status": "replied" if sent else "send_failed", "intent": "STATUS_REQUEST", "cost_usd": 0.0,
                 "answer_text": "deal_not_found"}
 
     deal = deal_doc.to_dict()
     status_text = _build_status_summary(db, deal, deal_doc.id)
 
     reply_html = _wrap_html_rtl(status_text)
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
-    return {"status": "replied", "intent": "STATUS_REQUEST", "cost_usd": 0.0,
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    return {"status": "replied" if sent else "send_failed", "intent": "STATUS_REQUEST", "cost_usd": 0.0,
             "answer_text": status_text, "answer_html": reply_html}
 
 
@@ -1055,10 +1058,10 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         model = "template"
 
     reply_html = _wrap_html_rtl(reply_text)
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
 
     return {
-        "status": "replied",
+        "status": "replied" if sent else "send_failed",
         "intent": "CUSTOMS_QUESTION",
         "cost_usd": cost,
         "answer_text": reply_text,
@@ -1148,10 +1151,10 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
             model = "template"
 
     reply_html = _wrap_html_rtl(reply_text)
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
 
     return {
-        "status": "replied",
+        "status": "replied" if sent else "send_failed",
         "intent": "KNOWLEDGE_QUERY",
         "cost_usd": cost,
         "answer_text": reply_text,
@@ -1187,8 +1190,8 @@ def _handle_instruction(db, entities, msg, access_token, rcb_email, get_secret_f
         "- הוסף מכולה (למעקב)<br>"
         "- הפסק מעקב"
     )
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
-    return {"status": "replied", "intent": "INSTRUCTION", "action": action, "cost_usd": 0.0}
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    return {"status": "replied" if sent else "send_failed", "intent": "INSTRUCTION", "action": action, "cost_usd": 0.0}
 
 
 def _stop_deal(db, deal_doc):
@@ -1246,10 +1249,10 @@ def _execute_stop_tracking(db, entities, msg, access_token, rcb_email,
             "אנא ציין מספר BL או מכולה ספציפי."
         )
 
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
 
     return {
-        "status": "replied",
+        "status": "replied" if sent else "send_failed",
         "intent": "INSTRUCTION",
         "action": "stop_tracking",
         "cost_usd": 0.0,
@@ -1265,8 +1268,8 @@ def _handle_non_work(msg, access_token, rcb_email):
         "לשאלות מכס וסחר בינלאומי, אשמח לעזור. "
         "לשאלות כלליות, אנא פנה למקורות אחרים."
     )
-    _send_reply_safe(reply_html, msg, access_token, rcb_email)
-    return {"status": "replied", "intent": "NON_WORK", "cost_usd": 0.0}
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+    return {"status": "replied" if sent else "send_failed", "intent": "NON_WORK", "cost_usd": 0.0}
 
 
 # ═══════════════════════════════════════════
@@ -1378,9 +1381,10 @@ def process_email_intent(msg, db, firestore_module, access_token, rcb_email, get
     # Check questions_log cache first
     cached = _check_cache(db, subject, body_text)
     if cached:
-        _send_reply_safe(cached['answer_html'], msg, access_token, rcb_email)
-        _increment_hit_count(db, cached['question_hash'])
-        return {"status": "cache_hit", "intent": cached['intent']}
+        sent = _send_reply_safe(cached['answer_html'], msg, access_token, rcb_email)
+        if sent:
+            _increment_hit_count(db, cached['question_hash'])
+        return {"status": "cache_hit" if sent else "send_failed", "intent": cached['intent']}
 
     # Detect intent (pass privilege for ADMIN_INSTRUCTION detection)
     result = detect_email_intent(subject, body_text, from_email,
