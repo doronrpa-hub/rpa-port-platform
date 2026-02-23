@@ -1001,6 +1001,97 @@ def _build_status_summary(db, deal, deal_id):
     return "<br>".join(lines)
 
 
+def _extract_legal_context(result, context_parts):
+    """Extract context from search_legal_knowledge result into context_parts.
+    Handles all 7 return types from the tool executor."""
+    rtype = result.get("type", "")
+
+    # Case A: Single ordinance article (סעיף 130, article 62)
+    if rtype == "ordinance_article":
+        parts = []
+        if result.get("title_he"):
+            parts.append(f"סעיף {result.get('article_id', '?')}: {result['title_he']}")
+        if result.get("summary_en"):
+            parts.append(result["summary_en"][:500])
+        if result.get("definitions"):
+            defs = result["definitions"]
+            for k, v in (defs.items() if isinstance(defs, dict) else []):
+                parts.append(f"  {k}: {str(v)[:200]}")
+        if result.get("methods"):
+            methods = result["methods"]
+            if isinstance(methods, list):
+                for m in methods:
+                    if isinstance(m, dict):
+                        parts.append(f"  שיטה {m.get('number', '?')}: {m.get('name_he', '')} — {m.get('name_en', '')}".strip())
+                    else:
+                        parts.append(f"  שיטה: {str(m)[:200]}")
+            elif isinstance(methods, dict):
+                for k, v in methods.items():
+                    parts.append(f"  שיטה {k}: {str(v)[:200]}")
+        if result.get("key"):
+            parts.append(f"עיקרי: {str(result['key'])[:300]}")
+        if result.get("critical_rule"):
+            parts.append(f"כלל קריטי: {str(result['critical_rule'])[:300]}")
+        if result.get("additions"):
+            parts.append(f"תוספות: {str(result['additions'])[:500]}")
+        if result.get("repealed"):
+            parts.append("(סעיף זה בוטל)")
+        context_parts.extend(parts)
+        return
+
+    # Case B: Chapter article listing (פרק 8)
+    if rtype == "ordinance_chapter_articles":
+        header = f"פרק {result.get('chapter', '?')}: {result.get('title_he', '')} ({result.get('title_en', '')})"
+        context_parts.append(header)
+        for art in (result.get("articles") or [])[:10]:
+            context_parts.append(f"  סעיף {art.get('id', '?')}: {art.get('title_he', '')} — {art.get('summary_en', '')[:200]}")
+        return
+
+    # Case C: Keyword search across ordinance articles
+    if rtype == "ordinance_article_search":
+        for art in (result.get("articles") or [])[:8]:
+            context_parts.append(f"סעיף {art.get('article_id', '?')} (פרק {art.get('chapter', '?')}): {art.get('title_he', '')} — {art.get('summary_en', '')[:200]}")
+        return
+
+    # Case 1: Firestore ordinance chapter (chapter summary with text field)
+    if rtype == "ordinance_chapter":
+        if result.get("title_he"):
+            context_parts.append(f"פרק {result.get('chapter_number', '?')}: {result['title_he']}")
+        if result.get("text"):
+            context_parts.append(str(result["text"])[:500])
+        return
+
+    # Case 2: Customs agents law
+    if rtype == "customs_agents_law":
+        if result.get("law_name_he"):
+            context_parts.append(result["law_name_he"])
+        if result.get("key_topics"):
+            context_parts.append("נושאים: " + ", ".join(str(t) for t in result["key_topics"][:10]))
+        if result.get("chapter_11_text"):
+            context_parts.append(str(result["chapter_11_text"])[:500])
+        return
+
+    # Cases 3-4: Reform docs (EU/US standards)
+    if rtype == "reform":
+        for key in ("reform_name_he", "reform_name_en", "effective_date", "legal_basis", "description"):
+            if result.get(key):
+                context_parts.append(f"{key}: {str(result[key])[:300]}")
+        return
+
+    # Case 5: General Firestore search results
+    if isinstance(result.get("results"), list):
+        for r in result["results"][:5]:
+            title = r.get("title", "") or r.get("doc_id", "")
+            context_parts.append(f"מסמך: {title}")
+        return
+
+    # Fallback: dump any text-like fields
+    for key in ("text", "summary", "content", "title_he", "title_en"):
+        if result.get(key):
+            context_parts.append(str(result[key])[:500])
+            break
+
+
 def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_secret_func):
     """Handle CUSTOMS_QUESTION — use Firestore tools first, AI for composition."""
     try:
@@ -1126,16 +1217,9 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     # Search legal knowledge
     try:
         result = executor.execute("search_legal_knowledge", {"query": question[:200]})
-        if result and isinstance(result, dict):
-            for key in ('text', 'summary', 'content'):
-                if result.get(key):
-                    context_parts.append(str(result[key])[:500])
-                    sources.append("legal_knowledge")
-                    break
-            if isinstance(result.get('results'), list):
-                for r in result['results'][:2]:
-                    context_parts.append(str(r.get('text', r.get('title', '')))[:300])
-                sources.append("legal_knowledge")
+        if result and isinstance(result, dict) and result.get("found"):
+            _extract_legal_context(result, context_parts)
+            sources.append("legal_knowledge")
     except Exception:
         pass
 

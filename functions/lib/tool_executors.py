@@ -1038,6 +1038,10 @@ class ToolExecutor:
                                 result["methods"] = art["methods"]
                             if art.get("additions"):
                                 result["additions"] = art["additions"]
+                            if art.get("key"):
+                                result["key"] = art["key"]
+                            if art.get("critical_rule"):
+                                result["critical_rule"] = art["critical_rule"]
                             if art.get("repealed"):
                                 result["repealed"] = True
                             return result
