@@ -1,39 +1,39 @@
 # RPA-PORT Customs AI - Cloud Functions Dependencies
-firebase-functions>=0.5.0
-firebase-admin>=6.2.0
-google-cloud-secret-manager>=2.16.0
-google-cloud-logging>=3.5.0
-requests>=2.31.0
-openpyxl>=3.1.0
+firebase-functions>=0.5.0,<1.0.0
+firebase-admin>=6.2.0,<8.0.0
+google-cloud-secret-manager>=2.16.0,<3.0.0
+google-cloud-logging>=3.5.0,<4.0.0
+requests>=2.31.0,<3.0.0
+openpyxl>=3.1.0,<4.0.0
 
 # PDF Text Extraction
-pdfplumber>=0.10.0
-pypdf>=3.0.0
+pdfplumber>=0.10.0,<1.0.0
+pypdf>=3.0.0,<7.0.0
 
 # OCR Support (for scanned PDFs)
-google-cloud-vision>=3.4.0
-PyMuPDF>=1.23.0
-Pillow>=10.0.0
+google-cloud-vision>=3.4.0,<4.0.0
+PyMuPDF>=1.23.0,<2.0.0
+Pillow>=10.0.0,<13.0.0
 
 # HTML Parsing
-beautifulsoup4>=4.12.0
+beautifulsoup4>=4.12.0,<5.0.0
 
 # Word Document Support
-python-docx>=1.0.0
+python-docx>=1.0.0,<2.0.0
 
 # Outlook .msg file support
-extract-msg>=0.48.0
+extract-msg>=0.48.0,<1.0.0
 
 # PDF Generation
-reportlab>=4.0.0
+reportlab>=4.0.0,<5.0.0
 
 # Gemini API configured
 
 # HTTP client (web search in self_learning.py)
-httpx>=0.25.0
+httpx>=0.25.0,<1.0.0
 
 # OpenAI (ChatGPT cross-check in self_learning.py)
-openai>=1.0.0
+openai>=1.0.0,<3.0.0
 
 # Testing
-pytest>=7.0.0
+pytest>=7.0.0,<10.0.0
