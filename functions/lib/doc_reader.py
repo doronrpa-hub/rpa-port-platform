@@ -358,8 +358,8 @@ def try_template_extraction(full_text, shipping_line, doc_type, db):
                     "times_used": template.get('times_used', 0) + 1,
                     "last_used": datetime.now(timezone.utc)
                 })
-            except:
-                pass
+            except Exception as e:
+                print(f"doc_reader: template stats update failed: {e}")
             return extractions, True
 
         return None, False

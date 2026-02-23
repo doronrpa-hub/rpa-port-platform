@@ -73,8 +73,8 @@ def setup_fonts():
                 pdfmetrics.registerFont(TTFont(name, path))
                 print(f"Registered font: {name}")
                 return name
-            except:
-                pass
+            except Exception as e:
+                print(f"pdf_creator: Font registration failed for {name}: {e}")
     return 'Helvetica'
 
 

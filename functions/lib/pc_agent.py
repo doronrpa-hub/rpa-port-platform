@@ -499,9 +499,9 @@ def run_agent():
                         content_preview = " ".join(
                             page.get_text() for page in doc[:3]
                         )[:2000]
-                    except:
-                        pass
-                
+                    except Exception as e:
+                        print(f"pc_agent: PDF preview extraction failed for {save_path}: {e}")
+
                 report_upload_complete(db, task_id, storage_path)
                 report_download_complete(
                     db, task_id, save_path,
