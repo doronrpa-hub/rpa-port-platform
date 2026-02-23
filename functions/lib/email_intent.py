@@ -1045,6 +1045,32 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         except Exception as e:
             logger.warning(f"check_regulatory error: {e}")
 
+    # Lookup FTA if origin country detected in entities or question
+    origin = entities.get('origin_country', '')
+    body_text = _get_body_text(msg)
+    if hs_code or origin or product_desc:
+        try:
+            result = executor.execute("lookup_fta", {
+                "hs_code": hs_code or "",
+                "origin_country": origin or product_desc or body_text[:200],
+            })
+            if result and isinstance(result, dict) and result.get('eligible'):
+                parts = []
+                if result.get('origin_proof'):
+                    parts.append(f"תעודת מקור: {result['origin_proof']}")
+                if result.get('origin_proof_alt'):
+                    parts.append(f"חלופה: {result['origin_proof_alt']}")
+                if result.get('preferential_rate'):
+                    parts.append(f"שיעור: {result['preferential_rate']}")
+                fw_clause = result.get('framework_order_clause', {})
+                if fw_clause.get('clause_text'):
+                    parts.append(f"צו מסגרת: {fw_clause['clause_text'][:300]}")
+                if parts:
+                    context_parts.append("FTA: " + " | ".join(parts))
+                    sources.append("fta_agreements")
+        except Exception:
+            pass
+
     # Build question text
     question = entities.get('product_description', '') or f"HS code {hs_code}" if hs_code else "customs question"
     context = "\n".join(context_parts) if context_parts else ""
@@ -1120,6 +1146,52 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
             for r in result['results'][:2]:
                 context_parts.append(f"הנחיית סיווג: {r.get('title', '')} — {r.get('content', '')[:200]}")
             sources.append("classification_directives")
+    except Exception:
+        pass
+
+    # Lookup FTA agreements (origin country detection from question text)
+    try:
+        result = executor.execute("lookup_fta", {
+            "hs_code": "",
+            "origin_country": question[:200],
+        })
+        if result and isinstance(result, dict) and result.get('eligible'):
+            parts = []
+            if result.get('agreement_name'):
+                parts.append(f"הסכם: {result.get('agreement_name_he', result['agreement_name'])}")
+            if result.get('origin_proof'):
+                parts.append(f"תעודת מקור: {result['origin_proof']}")
+            if result.get('origin_proof_alt'):
+                parts.append(f"חלופה: {result['origin_proof_alt']}")
+            if result.get('preferential_rate'):
+                parts.append(f"שיעור העדפה: {result['preferential_rate']}")
+            fw_clause = result.get('framework_order_clause', {})
+            if fw_clause.get('clause_text'):
+                parts.append(f"צו מסגרת: {fw_clause['clause_text'][:400]}")
+            if parts:
+                context_parts.append("FTA: " + " | ".join(parts))
+                sources.append("fta_agreements")
+    except Exception:
+        pass
+
+    # Search framework order (definitions, FTA clauses, legal text)
+    try:
+        result = executor.execute("lookup_framework_order", {"query": question[:200]})
+        if result and isinstance(result, dict):
+            fw_results = result.get('results', [])
+            if isinstance(fw_results, list):
+                for r in fw_results[:2]:
+                    text = r.get('clause_text', r.get('definition', r.get('text', '')))
+                    if text:
+                        context_parts.append(f"צו מסגרת: {str(text)[:400]}")
+                if fw_results:
+                    sources.append("framework_order")
+            elif result.get('clause_text'):
+                context_parts.append(f"צו מסגרת: {result['clause_text'][:400]}")
+                sources.append("framework_order")
+            elif result.get('definition'):
+                context_parts.append(f"הגדרה (צו מסגרת): {result['definition'][:400]}")
+                sources.append("framework_order")
     except Exception:
         pass
 
