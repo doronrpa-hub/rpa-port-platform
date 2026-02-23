@@ -714,8 +714,21 @@ def generate_reply(msg: dict, parsed: dict, knowledge: dict,
 </tr></table>
 </div>'''
 
+    # Build a meaningful subject — avoid generic "Re: " that quality gate blocks
+    _re_fwd = re.compile(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+')
+    stripped_subj = _re_fwd.sub('', original_subject).strip()
+    if stripped_subj and len(stripped_subj) >= 3:
+        reply_subject = f"Re: {stripped_subj}"
+    else:
+        # Original subject is empty/generic — build from question text
+        q_text = parsed.get("question_text", "").strip()
+        q_preview = q_text[:60].rstrip() if q_text else "שאלת מכס"
+        if len(q_text) > 60:
+            q_preview += "..."
+        reply_subject = f"RCB | {q_preview}"
+
     return {
-        "subject": f"Re: {original_subject}",
+        "subject": reply_subject,
         "body_html": body_html,
         "body_text": body_text,
     }

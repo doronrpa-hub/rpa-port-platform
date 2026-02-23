@@ -1,9 +1,21 @@
 """
 Comprehensive Customs Ordinance articles data.
 Generated from pkudat_mechess.txt (272K chars, 9,897 lines).
-Covers ALL 17 chapters and ~275 articles.
+Covers ALL 17 chapters and 311 articles.
 
 This file is imported by customs_law.py to replace the partial BLOCK 4B.
+
+Fields per article:
+  ch  — chapter number (int)
+  t   — Hebrew title
+  s   — English summary
+  f   — full Hebrew text from the ordinance (117K chars total)
+  key — key takeaway (25 articles)
+  repealed — True if article was repealed (24 articles)
+  definitions — article 1 only (20 defined terms)
+  methods — article 130 only (7 valuation methods)
+  additions — article 133 only (5 addition categories)
+  critical_rule — article 130 only
 """
 
 # Chapter metadata
@@ -28,12 +40,13 @@ ORDINANCE_CHAPTERS = {
 }
 
 
+
 # ════════════════════════════════════════════════════════════════════
 # All articles, keyed by article number (string).
 # Structure per article:
-#   "N": {"ch": chapter, "t": title_he, "s": summary_en, ...}
+#   "N": {"ch": chapter, "t": title_he, "s": summary_en, "f": full_text_he, ...}
 # Critical articles have additional fields (definitions, methods, etc.)
-# Repealed articles: {"ch": N, "t": "...", "repealed": True}
+# Repealed articles: {"ch": N, "t": "...", "repealed": True, "f": "...", "s": "..."}
 # ════════════════════════════════════════════════════════════════════
 
 ORDINANCE_ARTICLES = {
@@ -42,677 +55,1771 @@ ORDINANCE_ARTICLES = {
     # CHAPTER 1: INTRODUCTION (מבוא)
     # ══════════════════════════════════════════════
 
-    "1": {
-        "ch": 1, "t": "הגדרות", "s": "Foundational definitions for the entire Customs Ordinance and all customs laws.",
+    '1': {
+        "ch": 1, "t": 'הגדרות',
+        "s": 'Foundational definitions for the entire Customs Ordinance and all customs laws.',
+        "f": 'בפקודה זו ובכל שאר דיני המכס –\n\n"אריזה" – לרבות כל דבר שטובין המיועדים להובלה חבושים, מכוסים, לוטים, כלולים או צרורים בו;\n\n"ארץ חוץ" או "חוץ לארץ" – כל מקום שמחוץ לישראל;\n\n"בעל", לענין טובין – הבעל, היבואן, היצואן, הנשגר או הסוכן של אותם טובין, וכל המחזיק, או הזכאי לטובת הנאה, בהם, או שיש לו שליטה עליהם או כוח לעשות בהם, וכל המתחזה כאחד מאלה, למעט פקיד-מכס במילוי תפקידו הרשמי;\n\n"בעל" לענין כלי הובלה – לרבות אדם הפועל כסוכנו של הבעל, או מי שהבעל הרשהו לקבל דמי הובלה או תשלומים אחרים המשתלמים בקשר לאותם כלי הובלה;\n\n"בעל רציף" – לרבות מי שהרציף תפוס על ידיו;\n\n"גובה מכס" – המנהל וכל גובה מכס, וכן פקיד ראשי הממלא תפקיד באותה שעה ובאותו מקום וכל פקיד-מכס הממלא תפקיד באותו ענין;\n\n(תיקון מס\' 29) תשפ"ד-2023\n\n"דמי פיגורים" ו"ריבית שקלית" – כהגדרתם בחוק פסיקת ריבית והצמדה;',
         "definitions": {
-            "טובין חבי מכס": "Goods subject to customs duty.",
-            "בעל (טובין)": "Owner: importer, exporter, consignee, agent, holder, or anyone with beneficial interest or control.",
-            "הברחה": "Smuggling: import/export/transport with intent to defraud Treasury or evade prohibition — including attempts.",
-            "הצהרת ייבוא": "Import declaration per Section 62.",
-            "הצהרת ייצוא": "Export declaration per Section 103.",
-            "מצהר": "Cargo manifest per Section 53.",
-            "סוכן מכס": "Customs agent per Customs Agents Law (חוק סוכני המכס, תשכ\"ה-1964).",
-            "פקיד מכס": "Customs officer: any non-laborer employed by customs authority.",
-            "מסי יבוא": "Import taxes: customs duty + purchase tax + VAT + all other import levies.",
-            "מסמכי העדפה": "Preference documents (EUR.1, origin declarations) under trade agreements.",
-            "כלי הובלה": "Transport vehicle: vessel, vehicle, aircraft, or animal.",
-            "מחסן רשוי": "Licensed warehouse for goods under customs supervision.",
-            "מחסן המכס": "Customs warehouse: government place for depositing goods securing payment.",
-            "הישבון": "Drawback: refund of customs duties (Ch. 9) or cancellation of deferred debt.",
-            "שטעון": "Transit: export of imported goods remaining under customs supervision.",
-            "נמל": "Port, airport, transit terminal, or border crossing as confirmed by Director.",
-            "גובה מכס": "Customs collector: the Director and any customs officer serving in that matter.",
-            "תעודות": "Documents: all types including books, printouts, and computer-stored information.",
-            "אריזה": "Packaging: anything goods destined for transport are packed, covered, or bound in.",
-            "המנהל": "The Director: head of customs administration.",
+            'טובין חבי מכס': 'Goods subject to customs duty.',
+            'בעל (טובין)': 'Owner: importer, exporter, consignee, agent, holder, or anyone with beneficial interest or control.',
+            'הברחה': 'Smuggling: import/export/transport with intent to defraud Treasury or evade prohibition — including attempts.',
+            'הצהרת ייבוא': 'Import declaration per Section 62.',
+            'הצהרת ייצוא': 'Export declaration per Section 103.',
+            'מצהר': 'Cargo manifest per Section 53.',
+            'סוכן מכס': 'Customs agent per Customs Agents Law (חוק סוכני המכס, תשכ"ה-1964).',
+            'פקיד מכס': 'Customs officer: any non-laborer employed by customs authority.',
+            'מסי יבוא': 'Import taxes: customs duty + purchase tax + VAT + all other import levies.',
+            'מסמכי העדפה': 'Preference documents (EUR.1, origin declarations) under trade agreements.',
+            'כלי הובלה': 'Transport vehicle: vessel, vehicle, aircraft, or animal.',
+            'מחסן רשוי': 'Licensed warehouse for goods under customs supervision.',
+            'מחסן המכס': 'Customs warehouse: government place for depositing goods securing payment.',
+            'הישבון': 'Drawback: refund of customs duties (Ch. 9) or cancellation of deferred debt.',
+            'שטעון': 'Transit: export of imported goods remaining under customs supervision.',
+            'נמל': 'Port, airport, transit terminal, or border crossing as confirmed by Director.',
+            'גובה מכס': 'Customs collector: the Director and any customs officer serving in that matter.',
+            'תעודות': 'Documents: all types including books, printouts, and computer-stored information.',
+            'אריזה': 'Packaging: anything goods destined for transport are packed, covered, or bound in.',
+            'המנהל': 'The Director: head of customs administration.',
         },
     },
-    "2": {
-        "ch": 1, "t": "חובה להשיב תשובות ולמסור תעודות",
-        "s": "Must answer truthfully (best of knowledge) and submit all relevant documents (best of ability).",
+    '2': {
+        "ch": 1, "t": 'חובה להשיב תשובות ולמסור תעודות',
+        "s": 'Must answer truthfully (best of knowledge) and submit all relevant documents (best of ability).',
+        "f": 'נדרש אדם לפי הפקודה להשיב על שאלה, חייב הוא להשיב תשובה נכונה כמיטב ידיעתו ואמונתו; נדרש לפי הפקודה להגיש תעודות, חייב כמיטב יכלתו להגיש לגובה כל התעודות הנוגעות לדבר.\n\n\nתפקידי המנהל',
     },
 
     # ══════════════════════════════════════════════
     # CHAPTER 2: ADMINISTRATION (מינהל)
     # ══════════════════════════════════════════════
 
-    "3": {"ch": 2, "t": "תפקידי המנהל", "s": "Director is chief administrative authority for customs."},
-    "4": {"ch": 2, "t": "אצילת סמכויות", "s": "Director may delegate powers in writing; revocable; does not extinguish Director's own authority."},
-    "5": {"ch": 2, "t": "דגל המכס", "s": "Customs service vessels carry prescribed identification flag."},
-    "6": {"ch": 2, "t": "קביעת נמלים, שדות תעופה",
-        "s": "Government may designate by order: boarding stations, places of entry, aviation stations, overland routes, wharves, examination places. May be limited or unlimited in scope.",
+    '3': {
+        "ch": 2, "t": 'תפקידי המנהל',
+        "s": 'Director is chief administrative authority for customs.',
+        "f": 'המנהל יהא ממונה על ניהול הענינים לפי הפקודה.\n\nאצילת סמכויות',
     },
-    "7": {"ch": 2, "t": "סידורים ברציפים", "s": "Wharf owner must provide customs office space and sheltered storage if Director requests."},
-    "8": {"ch": 2, "t": "הצהרה בפני מי", "s": "Declarations may be made before customs collector, authorized officer, or any legally authorized person."},
-    "9": {"ch": 2, "t": "בוטל", "repealed": True, "s": "Formerly prohibited declarations from minors under 18. Repealed 1995."},
-    "10": {"ch": 2, "t": "ימי עבודה ושעות עבודה", "s": "Cargo operations restricted to official work days/hours unless overtime authorized."},
-    "11": {"ch": 2, "t": "בוטל", "repealed": True, "s": "Formerly: overtime fees. Repealed 2018."},
-    "12": {"ch": 2, "t": "בוטל", "repealed": True, "s": "Formerly: porter regulations. Repealed 2018."},
-    "13": {"ch": 2, "t": "אגרות השגחה", "s": "Government may prescribe fees for: guarding goods, remote supervision, special arrangements, explosives/flammables handling."},
+    '4': {
+        "ch": 2, "t": 'אצילת סמכויות',
+        "s": "Director may delegate powers in writing; revocable; does not extinguish Director's own authority.",
+        "f": 'המנהל רשאי, בכתב חתום בידו, לאצול לפקיד-מכס מסמכויותיו לפי כל דין מדיני המכס לגבי ענין מסויים או סוג מסויים של ענינים או תחומי מחוז או נפה מסויימים; אצילת סמכות ניתנת לביטול, בכתב, לפי רצון המנהל ואינה מונעת אותו מהשתמש בכל סמכות מסמכויותיו.\n\nדגל המכס',
+    },
+    '5': {
+        "ch": 2, "t": 'דגל המכס',
+        "s": 'Customs service vessels carry prescribed identification flag.',
+        "f": "כלי השיט שבשירות רשות-המכס ישאו עליהם, לשם היכר, דגל בצורה שנקבעה.\n\nקביעת נמלים, שדות תעופה וכו'",
+    },
+    '6': {
+        "ch": 2, "t": 'קביעת נמלים, שדות תעופה',
+        "s": 'Government may designate by order: boarding stations, places of entry, aviation stations, overland routes, wharves, examination places. May be limited or unlimited in scope.',
+        "f": '(א)  הממשלה רשאית, בצו, לקבוע:\n\n(1)   תחנות מעלֶה, שבהן יעלו פקידי-מכס אל כלי שיט;\n\n(2)   מקומות כניסה;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(3)   (נמחקה);\n\n(4)   תחנות תעופה אזרחית;\n\n(5)   נתיבים להובלה ביבשה;\n\n(6)   רציפים בנמלים ותחומיהם;\n\n(7)   מקומות לבדיקת טובין;\n\n(8)   מקומות בחוף למשלוח תוצרת הארץ בלבד.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ב)  רציפים, תחנות תעופה ונתיבי הובלה ביבשה – יכול שייקבעו למטרות מוגבלות ומפורשות, או לתקופה מוגבלת ומפורשת, או ללא כל הגבלה.',
+    },
+    '7': {
+        "ch": 2, "t": 'סידורים ברציפים',
+        "s": 'Wharf owner must provide customs office space and sheltered storage if Director requests.',
+        "f": 'כל בעל רציף חייב לספק ברציפו, להנחת דעתו של המנהל, מקום מתאים לעבודה משרדית לשימושו הייחודי של פקיד-המכס העובד ברציף, וכן מקום מוסך לשמירה על טובין אם המנהל הודיע בכתב שיש צורך בכך.\n\nהצהרה בפני מי',
+    },
+    '8': {
+        "ch": 2, "t": 'הצהרה בפני מי',
+        "s": 'Declarations may be made before customs collector, authorized officer, or any legally authorized person.',
+        "f": 'כל הצהרה לפי הפקודה מותר להצהיר בפני גובה מכס או פקיד-מכס שהוסמך לכך, או בפני כל המוסמך לפי החוק לקבל הצהרות.\n\n(תיקון מס\' 12) תשנ"ה-1995',
+    },
+    '9': {
+        "ch": 2, "t": 'בוטל',
+        "s": 'Formerly prohibited declarations from minors under 18. Repealed 1995.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '10': {
+        "ch": 2, "t": 'ימי עבודה ושעות עבודה',
+        "s": 'Cargo operations restricted to official work days/hours unless overtime authorized.',
+        "f": '(א)  ימי העבודה ושעות העבודה של רשות-המכס יהיו כפי שנקבעו.\n\n(ב)  לא יקובל מטען, לא יוטען, לא יטופל בו ולא ייפּרק מעל כל כלי שיט ולא ייפּדו טובין ולא יימסרו, אלא בימי העבודה ובשעות העבודה בלבד, או במקום שהותרה עבודה בשעות נוספות.\n\n(תיקון מס\' 28) תשע"ח-2018',
+    },
+    '11': {
+        "ch": 2, "t": 'בוטל',
+        "s": 'Formerly: overtime fees. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '12': {
+        "ch": 2, "t": 'בוטל',
+        "s": 'Formerly: porter regulations. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '13': {
+        "ch": 2, "t": 'אגרות השגחה',
+        "s": 'Government may prescribe fees for: guarding goods, remote supervision, special arrangements, explosives/flammables handling.',
+        "f": 'הממשלה רשאית להתקין תקנות הקובעות אַגרות בעד –\n\n(1)   השמירה על טובין המופקדים בנמלים או בתחנות מכס;\n\n(2)   ההשגחה על פעולות טעינה, פריקה, שיטעון, בדיקה, שקילה, אימות, הערכה או כל פעולה אחרת המחייבת נוכחותם של פקידי-מכס והותר לעשותם במרוחק מהמקום המיועד לכך והמשמש כרגיל לפעולות אלה;\n\n(3)   סידורים מיוחדים לפי בקשת המעונינים, כשהסידורים מצריכים מצד רשות-המכס שימת לב העולה על הרגיל;\n\n(4)   עבודה המצריכה להוציא פקיד-מכס מתפקידיו הרגילים ולהטיל עליו תפקידים מיוחדים או תפקידים המצריכים השגחה מיוחדת של רשות-המכס כגון טעינתם, פריקתם או החסנתם של חמרי נפץ או של חמרים מתלקחים.\n\n(תיקון מס\' 28) תשע"ח-2018',
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 3: SUPERVISION, INSPECTION, DECLARATIONS (פיקוח, בדיקה, הצהרות)
     # ══════════════════════════════════════════════
 
-    "14": {"ch": 3, "t": "הפיקוח על טובין",
-        "s": "Import: supervised from import until delivery/export. Export: from export site or declaration filing, whichever earlier, until export.",
+    '14': {
+        "ch": 3, "t": 'הפיקוח על טובין',
+        "s": 'Import: supervised from import until delivery/export. Export: from export site or declaration filing, whichever earlier, until export.',
+        "f": 'טובין יהיו נתונים לפיקוח רשות-המכס כאמור להלן:\n\n(1)  טובין שיובאו – משעת ייבואם עד מסירתם לצריכה בארץ או עד ייצואם, הכל לפי הענין;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(2)  (נמחקה);\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(3)  טובין שנועדו ליצוא – משעת הבאתם של הטובין לאחד המקומות שנקבעו ליצוא או משעה שהוגשה לגביהם הצהרת ייצוא לפי הוראות סימן ב\' לפרק שישי, לפי המוקדם, עד ייצואם.',
     },
-    "15": {"ch": 3, "t": "טובין בכלי הובלה", "s": "Goods in transport vehicles from abroad supervised while vehicle in Israeli port or foreign trade."},
-    "16": {"ch": 3, "t": "זכות בדיקה", "s": "Customs may examine any goods under its supervision."},
-    "17": {"ch": 3, "t": "הובלת טובין", "s": "All handling, examination prep, and storage costs borne by goods owner."},
-    "18": {"ch": 3, "t": "שטר מסירה", "s": "Holder of delivery order treated as owner or authorized agent. Includes international forwarders."},
-    "19": {"ch": 3, "t": "פתיחת אריזות",
-        "s": "Opening packages for examination requires owner/consignee presence. 15-day wait if absent. Exception: perishable, prohibited, dangerous goods.",
+    '15': {
+        "ch": 3, "t": 'טובין בכלי הובלה',
+        "s": 'Goods in transport vehicles from abroad supervised while vehicle in Israeli port or foreign trade.',
+        "f": 'טובין הנמצאים בכלי הובלה הבא מחוץ לארץ יהיו נתונים אף הם לפיקוח רשות-המכס כל עוד כלי ההובלה נמצא בתחומי נמל בישראל או משמש בסחר החוץ של ישראל.',
     },
-    "20": {"ch": 3, "t": "סימון ומספר אריזות", "s": "Customs officer may require marking/numbering at owner's expense."},
-    "21": {"ch": 3, "t": "טובין במצב רע", "s": "Damaged goods set aside for examination; damage certificate may be demanded from captain."},
-    "22": {"ch": 3, "t": "אין לנגוע בטובין", "s": "Supervised goods shall not be moved/altered without authority. Fine: 100 liras."},
-    "23": {"ch": 3, "t": "אין תביעת פיצויים", "s": "No State liability for loss/damage to supervised goods unless willful act by customs officer."},
-    "24": {"ch": 3, "t": "הצהרות",
-        "s": "Mandatory filing of import declaration (Ch.4 §E) or export declaration (Ch.6 §B). Amendment 28 replaced the old רשמון system.",
+    '16': {
+        "ch": 3, "t": 'זכות בדיקה',
+        "s": 'Customs may examine any goods under its supervision.',
+        "f": 'פיקוחה של רשות-המכס כולל את זכותה לבדוק כל טובין הנתונים לפיקוחה.\n\nהובלת טובין והפקדתם על חשבון בעליהם',
     },
-    "25": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: hand-delivery of רשמון. Repealed 1995."},
-    "26": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: special customs entries. Repealed 2018."},
-    "27": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: duty to answer about רשמון. Repealed 2018."},
-    "28": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: approval of רשמון as registration. Repealed 2018."},
-    "29": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: immediate handling per approved entry. Repealed 2018."},
-    "30": {"ch": 3, "t": "מטען אישי של נוסעים", "s": "Accompanied passenger luggage may be imported/exported without declaration, subject to conditions."},
-    "30א": {"ch": 3, "t": "חובת מתן הצהרה",
-        "s": "Finance Minister may require declarations in writing, oral, by conduct, or other manner. May apply generally or by category.",
+    '17': {
+        "ch": 3, "t": 'הובלת טובין',
+        "s": 'All handling, examination prep, and storage costs borne by goods owner.',
+        "f": 'הובלתם של טובין מתוך ארבה או מעל מגשה או רציף, הבאתם אל המקום הנכון לשם בדיקה ושקילה, היינוחם על המאזניים, פתיחתם, התרתם, אריזתם שנית, מיונם, סימונם ומספורם, כל אימת שפעולות אלה דרושות או מותרות, וכן סילוקם של טובין למקום ההפקדה הנכון והיינוחם בו עד למסירתם כהלכה – יבוצעו על ידי בעל הטובין או על חשבונו.\n\nדין אדם שבידו שטר מסירה – כדין בעל הטובין או מורשהו (תיקון מס\' 11)  תשמ"ו-1986',
     },
-    "31": {"ch": 3, "t": "זכות לדרוש ערובה",
-        "s": "Customs may demand bonds/sureties. May refuse delivery until bond given. Joint and several liability.",
+    '18': {
+        "ch": 3, "t": 'שטר מסירה',
+        "s": 'Holder of delivery order treated as owner or authorized agent. Includes international forwarders.',
+        "f": '(א)  שטר מסירה שניתן מאת קברניט, מאת סוכן של כלי שיט, מאת משלח בינלאומי או מאת כל מוביל שהוא, ונקוב בו שמו של אדם אשר לו או לפקודתו יש למסור טובין שבאותם כלי הובלה – רשאית הממשלה לראות אותו אדם כבעל הטובין או כמורשהו.\n\n(תיקון מס\' 13)  תשנ"ה-1995\n\n(ב)  בסעיף זה, "משלח בינלאומי" – כמשמעותו בחוק סוכני המכס, תשכ"ה-1965.',
     },
-    "32": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: forms of security. Repealed 1995."},
-    "33": {"ch": 3, "t": "ערובה כללית", "s": "Director may accept general/blanket bond covering all transactions for approved period and amount."},
-    "34": {"ch": 3, "t": "חילוט ערבון", "s": "Cash deposit forfeited if conditions not met within deadline."},
-    "35": {"ch": 3, "t": "ערובה חדשה", "s": "Collector may demand new bond at any time if existing one deemed insufficient."},
-    "36": {"ch": 3, "t": "כוחה של ערובה", "s": "Bond document is prima facie proof in court; burden shifts to defendant."},
-    "37": {"ch": 3, "t": "מתן היתר טובין", "s": "All customs permits conditional; collector may revoke, modify, or suspend."},
-    "38": {"ch": 3, "t": "המיובאים בדואר", "s": "Mail imports get full customs supervision like all other imports."},
-    "39": {"ch": 3, "t": "חבילות דואר",
-        "s": "Director may accept postal form/label as import declaration. Non-matching goods subject to forfeiture.",
+    '19': {
+        "ch": 3, "t": 'פתיחת אריזות',
+        "s": 'Opening packages for examination requires owner/consignee presence. 15-day wait if absent. Exception: perishable, prohibited, dangerous goods.',
+        "f": '(א)  פתיחת אריזות לשם בדיקה תהיה במעמד בעל הטובין או הנשגר או במעמד מורשהו של אחד מאלה; אולם טובין שיובאו בדואר מותר לנהוג בהם כפי שנקבע בכל חיקוק הנוגע לעניני הדואר.\n\n(ב)  מקום שהבעל או הנשגר אינו ידוע, או שאי אפשר למצאו או שאינו מתייצב בעצמו או על ידי מורשהו תוך חמישה עשר יום מיום שנכנסו הטובין לפיקוח רשות-המכס, מותר לפתוח את האריזות שלא בפניו ועל חשבונו כדי לברר כמותם של הטובין, תיאורם ושוויים; ואולם אם חשש פקיד-המכס שאריזה מכילה טובין שהם דבר האבד, או אסורים או מסוכנים רשאי פקיד המכס לפתוח אותה בכל עת.\n\nסימונן ומספרן של אריזות',
     },
-    "39א": {"ch": 3, "t": "בוטל", "repealed": True, "s": "Formerly: third-party customs payment. Repealed 2018."},
+    '20': {
+        "ch": 3, "t": 'סימון ומספר אריזות',
+        "s": "Customs officer may require marking/numbering at owner's expense.",
+        "f": 'רשאי פקיד-מכס לדרוש, כי כל אריזה שלא סומנה או לא מוספרה או שסימונה או מספורה אינו מספיק, ייעשה בה אחד מאלה, או שניהם, על חשבון בעל הטובין.\n\nטובין שנפרקו לכאורה במצב רע',
+    },
+    '21': {
+        "ch": 3, "t": 'טובין במצב רע',
+        "s": 'Damaged goods set aside for examination; damage certificate may be demanded from captain.',
+        "f": '(א)  טובין שנפרקו והם נראים במצב רע או ניזוקים, או חסרים, מותר להניחם לחוד לשם בדיקה ושקילה במעמדו של סוכן האניה, והדבר יצויין במיוחד במצהר ומותר לדרוש מאת הקברניט או מאת מורשהו לחתום על תעודת נזקים.\n\n(ב)  באו הטובין בדרך היבשה או האויר, רשאי לחתום על תעודת הנזקים מוביל הטובין או מורשהו.\n\nאין לנגוע בטובין הנתונים לפיקוח',
+    },
+    '22': {
+        "ch": 3, "t": 'אין לנגוע בטובין',
+        "s": 'Supervised goods shall not be moved/altered without authority. Fine: 100 liras.',
+        "f": '(א)  טובין הנתונים לפיקוח רשות-המכס אין לטלטלם או לשנותם או לנגוע בהם אלא על פי רשות ולפי פקודה זו.\n\n(ב)  העובר על הוראות סעיף זה, דינו – קנס מאה לירות.\n\nאין תביעת פיצויים על הפסד אלא אם היה במזיד',
+    },
+    '23': {
+        "ch": 3, "t": 'אין תביעת פיצויים',
+        "s": 'No State liability for loss/damage to supervised goods unless willful act by customs officer.',
+        "f": 'רשות-המכס והמדינה לא ישאו באחריות לשום אבידה או נזק שנגרמו לטובין הנתונים לפיקוח רשות-המכס, אלא אם נגרמו במזיד על ידי אחד מפקידי-המכס.\n\nהצהרות (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '24': {
+        "ch": 3, "t": 'הצהרות',
+        "s": 'Mandatory filing of import declaration (Ch.4 §E) or export declaration (Ch.6 §B). Amendment 28 replaced the old רשמון system.',
+        "f": "טובין מיובאים או טובין שנועדו לייצוא, תוגש לגביהם לרשות המכס הצהרת ייבוא לפי הוראות סימן ה' לפרק רביעי או הצהרת ייצוא לפי הוראות סימן ב' לפרק שישי, לפי העניין.",
+    },
+    '25': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: hand-delivery of רשמון. Repealed 1995.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '26': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: special customs entries. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '27': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: duty to answer about רשמון. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '28': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: approval of רשמון as registration. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '29': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: immediate handling per approved entry. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '30': {
+        "ch": 3, "t": 'מטען אישי של נוסעים',
+        "s": 'Accompanied passenger luggage may be imported/exported without declaration, subject to conditions.',
+        "f": 'על אף האמור בסעיף 24, טובין שהם מטען לואי של הנוסעים באניה או בכל כלי הובלה אחר מותר ליבּאם וליצאם, בכפוף לתנאים שנקבעו לכך, בלי הצהרת ייבוא או הצהרת ייצוא, לפי העניין.',
+    },
+    '30א': {
+        "ch": 3, "t": 'חובת מתן הצהרה',
+        "s": 'Finance Minister may require declarations in writing, oral, by conduct, or other manner. May apply generally or by category.',
+        "f": '(א)  שר האוצר רשאי לקבוע חובה על אדם ליתן הצהרה לענין דיני המכס בכתב, בעל פה, בהתנהגות או בכל דרך אחרת.\n\n(ב)  קביעה לפי סעיף קטן (א) יכולה להיות כללית או לסוגים של בעלי טובין או לסוגי טובין או לסוגי מקומות.',
+    },
+    '31': {
+        "ch": 3, "t": 'זכות לדרוש ערובה',
+        "s": 'Customs may demand bonds/sureties. May refuse delivery until bond given. Joint and several liability.',
+        "f": '(א)  רשות המכס רשאית לדרוש ולקחת ערובּות לקיום הוראות דיני המכס ולהגנת הכנסותיה של רשות המכס בכלל; עד שלא ניתנה הערובה הנדרשת לגבי הטובין שבפיקוחה, רשאית היא לסרב למסירת הטובין או למתן התרה לגביהם לפי הוראות סעיף 65 לרבות כפי שהוחל בסעיף 103(ז).\n\n(תיקון מס\' 12) תשנ"ה-1995\n\n(ב)  הערובה תינתן ותאושר בתנאים ובאופן שיקבע גובה המכס.\n\n(תיקון מס\' 12) תשנ"ה-1995\n\n(ג)   ערובה שניתנה ואושרה כאמור בסעיף קטן (ב), תחייב את נותניה, ביחד ולחוד, לתשלום סכום הערובה במלואו.',
+    },
+    '32': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: forms of security. Repealed 1995.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '33': {
+        "ch": 3, "t": 'ערובה כללית',
+        "s": 'Director may accept general/blanket bond covering all transactions for approved period and amount.',
+        "f": 'מקום שנדרשת ערובה למטרה מסויימת, מותר על פי רשותו של המנהל, לקבל ערובה שתכסה את כל העסקאות שייעשו בתקופה ובסכום שיאשר המנהל.\n\nחילוטו של ערבון כסף',
+    },
+    '34': {
+        "ch": 3, "t": 'חילוט ערבון',
+        "s": 'Cash deposit forfeited if conditions not met within deadline.',
+        "f": 'ניתן ערבון במזומנים ולא קויימו תנאיו תוך המועד שנקבע לכך, מותר לחלט את הערבון.\n\nערובה חדשה',
+    },
+    '35': {
+        "ch": 3, "t": 'ערובה חדשה',
+        "s": 'Collector may demand new bond at any time if existing one deemed insufficient.',
+        "f": 'היה גובה המכס סבור ביום מן הימים שהערובה אינה מספקת, רשאי הוא לדרוש ערובה חדשה.\n\nכוחה של ערובה',
+    },
+    '36': {
+        "ch": 3, "t": 'כוחה של ערובה',
+        "s": 'Bond document is prima facie proof in court; burden shifts to defendant.',
+        "f": 'הגיש גובה המכס תביעה על ערובה שניתנה למכס, תהא הצגת כתב הערובה, בלי ראיות נוספות, מזכה את גובה המכס לקבל נגד בני-האדם שהם לכאורה חותמי כתב הערובה פסק דין לקיום ההתחייבות שבו, אלא אם כן הוכיחו הנתבעים שקיימו את תנאי הכתב, או שהכתב לא נחתם בידיהם או ששוחררו מן החבוּת או שיצאו ידי חובתם.\n\nמתן היתר טובין',
+    },
+    '37': {
+        "ch": 3, "t": 'מתן היתר טובין',
+        "s": 'All customs permits conditional; collector may revoke, modify, or suspend.',
+        "f": 'כל היתר הנקוב באחד מדיני המכס יכול שיינתן בכפוף לתנאים שנקבעו וגובה המכס רשאי לבטלו, לשנותו או להתלותו.\n\nהמיובאים בדואר',
+    },
+    '38': {
+        "ch": 3, "t": 'המיובאים בדואר',
+        "s": 'Mail imports get full customs supervision like all other imports.',
+        "f": 'טובין שיובאו בדואר יהיו נתונים לפיקוח רשות-המכס כדרך טובין שיובאו באופן אחר.\n\nהנוהל בחבילות דואר (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '39': {
+        "ch": 3, "t": 'חבילות דואר',
+        "s": 'Director may accept postal form/label as import declaration. Non-matching goods subject to forfeiture.',
+        "f": "(א)  על אף האמור בסעיף 24, בטובין שיובאו בדואר מותר, לפי שיקול דעתו של המנהל, לקבל את ההצהרה שבטופס או שבתווית המחוברים או הנלווים לאריזה לפי תקנות הדואר, במקום הצהרת הייבוא הנדרשת לפי סימן ה' לפרק רביעי זו, והכתוב בהצהרה שבטופס או שבתווית בדבר תכולת האריזה, שוויה ושאר פרטיה וחתום בידי השולח מותר לקבלו, בכפוף לאימות מצד רשות-המכס, לצורך שומת המכס שיש לשלם.\n\n(ב)  טובין באריזה שיובאו בדואר ונמצא שאינם מתאימים לפרטים הכתובים בהצהרה שבטופס או שבתווית יהיו נתונים לחילוט.",
+    },
+    '39א': {
+        "ch": 3, "t": 'בוטל',
+        "s": 'Formerly: third-party customs payment. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 4: IMPORT OF GOODS (ייבוא טובין)
     # ══════════════════════════════════════════════
 
-    "40": {"ch": 4, "t": "סמכות לאסור יבוא", "s": "Government may prohibit/restrict/regulate import by order, by land/sea/air, by country/route."},
-    "41": {"ch": 4, "t": "יבוא אסור", "s": "No person shall import goods whose import is prohibited."},
-    "42": {"ch": 4, "t": "טובין אסורים", "s": "Prohibited: goods banned by law, counterfeit coins, obscene materials."},
-    "43": {"ch": 4, "t": "יבוא מוגבל", "s": "Restricted goods importable only per applicable restrictions/regulations."},
-    "44": {"ch": 4, "t": "טובין אסורים בטרנזיט", "s": "Transit exception for prohibited goods in manifest, unless transshipment banned by law/treaty."},
-    "45": {"ch": 4, "t": "ייבוא בדרך הים", "s": "Sea import requires: boarding permitted, manifest submitted, goods unloaded for inspection."},
-    "46": {"ch": 4, "t": "חובת אניה להיכנס לנמל", "s": "Ships must enter designated ports only, unless force majeure."},
-    "47": {"ch": 4, "t": "חובת אניה להיענות", "s": "Must stop for customs boarding in Israeli coastal waters."},
-    "48": {"ch": 4, "t": "עצירה בתחנת מעלה", "s": "Stop at boarding station upon arrival from abroad."},
-    "49": {"ch": 4, "t": "הקלות לעליה", "s": "Captain must facilitate customs officer boarding."},
-    "50": {"ch": 4, "t": "למהר למקום הפריקה", "s": "Proceed directly to unloading point after customs boarding."},
-    "51": {"ch": 4, "t": "אין להשיט בלי רשות", "s": "Ship cannot depart until cargo fully discharged, unless authorized."},
-    "52": {"ch": 4, "t": "הגבלת העליה", "s": "Only port pilot, government doctor, or authorized persons may board before customs."},
-    "53": {"ch": 4, "t": "הגשת מצהר",
-        "s": "Manifest required for all imports. Deadlines: sea=24hrs before arrival, air=4hrs, land=1 day. Director prescribes format.",
-        "key": "Sea import manifest 24 hours before arrival; air 4 hours; land 1 day.",
+    '40': {
+        "ch": 4, "t": 'סמכות לאסור יבוא',
+        "s": 'Government may prohibit/restrict/regulate import by order, by land/sea/air, by country/route.',
+        "f": '(א)  הממשלה רשאית, בצו, לאסור, להגביל או להסדיר ייבואם של טובין או של סוג טובין – פרט לפרסומים, שניתן לאסור את ייבואם לפי סעיף קטן (ב) – לישראל או לשטח או למקום שבישראל בין ביבשה בין בים ובין באויר, ורשאית היא בצו זה לפרט את הטובין או את סוג הטובין שעליהם יחול הצו בין דרך כלל ובין במיוחד, בין בציון ארץ מוצאם או נתיב ייבואם ובין באופן אחר.\n\n(ב)  הממשלה רשאית, בצו, לאסור על ייבואם של פרסומים, אם היא סבורה שהוא פוגע בטובת הציבור; ולגבי פרסום עתי רשאית היא לאסור, באותו צו או בצו נוסף, גם ייבואם של גליונות הפרסום שיצאו קודם לכן או שיצאו מכאן ואילך.\n\nיבוא אסור',
     },
-    "54": {"ch": 4, "t": "תיקון מצהר", "s": "Director may permit corrected manifest; fee applies."},
-    "54א": {"ch": 4, "t": "מצהר אלקטרוני", "s": "Manifest must be submitted electronically per Chapter 14A."},
-    "55": {"ch": 4, "t": "קברניט אניה שנטרפה", "s": "Wreck/loss: captain must submit manifest at nearest customs house."},
-    "55א": {"ch": 4, "t": "חובה לסייע לפקיד", "s": "Must facilitate customs access, answer questions, submit documents about vehicle and cargo."},
-    "56": {"ch": 4, "t": "פירוק הצובר", "s": "No breaking bulk without customs permission or valid release."},
-    "57": {"ch": 4, "t": "הסרת טובין מאניה", "s": "Unloading only at designated places with customs permission; captain liable for improper placement."},
-    "58": {"ch": 4, "t": "חובה להפקיד", "s": "Unloaded goods must be immediately deposited in customs warehouse or approved place."},
-    "59": {"ch": 4, "t": "אריזה חוזרת", "s": "Repacking on wharf allowed with permission under customs supervision."},
-    "60": {"ch": 4, "t": "מניעת צפיפות", "s": "Director may halt loading/unloading to prevent congestion; customs immune from loss claims."},
-    "61": {"ch": 4, "t": "חובה לפרט נימוקים", "s": "Written notice with reasons required upon request for loading/unloading halt."},
-    "62": {"ch": 4, "t": "הצהרת ייבוא",
-        "s": "Owner must file import declaration for: (1) domestic consumption or (2) warehousing. "
-             "Required documents: invoices, insurance, B/L, packing lists, preference docs. Electronic filing via customs agent.",
-        "key": "Two purposes: consumption or warehousing. Required docs: invoices, B/L, insurance, packing list, preference documents.",
+    '41': {
+        "ch": 4, "t": 'יבוא אסור',
+        "s": 'No person shall import goods whose import is prohibited.',
+        "f": 'לא ייבא אדם טובין שייבואם אסור.\n\nטובין אסורים',
     },
-    "63": {"ch": 4, "t": "המועד להגשת הצהרת ייבוא",
-        "s": "Deadline: 3 months from import (sea/land), 45 days (air). No declaration = goods may be sold/destroyed.",
-        "key": "3 months sea/land, 45 days air.",
+    '42': {
+        "ch": 4, "t": 'טובין אסורים',
+        "s": 'Prohibited: goods banned by law, counterfeit coins, obscene materials.',
+        "f": 'ואלה טובין שייבואם אסור:\n\n(1)   טובין שייבואם נאסר בפקודה זו או בכל חוק אחר שהוא בר-תוקף בישראל אותה שעה, או על פיהם;\n\n(2)   מטבעות כוזבות או חקויות או שאינן לפי המתכונת הקבועה מבחינת המשקל או הצריפות;\n\n(3)   דברי דפוס, ציורים, ספרים, גלויות, תחריטים ליתוגרפיים או אחרים, שהם פרוצים או מגונים.\n\nיבוא מוגבל',
     },
-    "64": {"ch": 4, "t": "הגשת הצהרה אלקטרונית", "s": "Import declaration + documents must be submitted electronically per Chapter 14A."},
-    "65": {"ch": 4, "t": "התרה",
-        "s": "Director may grant online release. Denied if: incorrect details, missing docs, unpaid taxes, no security. "
-             "May suspend/revoke before delivery.",
-        "key": "6 grounds for denial; Director may suspend/revoke release before delivery.",
+    '43': {
+        "ch": 4, "t": 'יבוא מוגבל',
+        "s": 'Restricted goods importable only per applicable restrictions/regulations.',
+        "f": 'טובין שייבואם מוגבל או מוסדר אותה שעה על ידי הממשלה או מטעמה, לא ייבא אותם אדם אלא לפי ההגבלות וההסדר החלים עליהם.\n\nטובין שייבואם אסור ונשגרו למקום מחוץ לישראל (תיקון מס\' 28) תשע"ח-2018',
     },
-    "65א": {"ch": 4, "t": "שמירת מסמכים", "s": "Owner must retain declaration and all documents per Director's rules."},
-    "65ב": {"ch": 4, "t": "חובה להשיב על שאלות", "s": "Must answer customs officer questions about declared goods."},
-    "65ג": {"ch": 4, "t": "מסמך אחר", "s": "Director may allow alternative document instead of import declaration."},
-    "66": {"ch": 4, "t": "ייבוא שלא בים", "s": "Non-sea imports via designated entry points and routes; certificate from border customs if forwarded."},
-    "67": {"ch": 4, "t": "בוטל", "repealed": True, "s": "Formerly: border declaration for non-sea imports. Repealed 2018."},
+    '44': {
+        "ch": 4, "t": 'טובין אסורים בטרנזיט',
+        "s": 'Transit exception for prohibited goods in manifest, unless transshipment banned by law/treaty.',
+        "f": '(א)  טובין שייבואם אסור המצויים בכלי הובלה המגיע לאחד מנמלי ישראל, והם מיועדים או נשגרים לנמל או למקום שמחוץ לישראל, אין לראותם כטובין שיובאו באיסור, אם פורטו במצהר של כלי ההובלה ולא שוטענו ולא הונחתו, או אם שוטענו או הונחתו על פי רשות.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ב)  הוראות סעיף קטן (א) לא יחולו לעניין טובין ששטעונם אסור לפי כל דין או שהסחר בהם אסור לפי כל דין או התחייבות בין-לאומית של ישראל.',
+    },
+    '45': {
+        "ch": 4, "t": 'ייבוא בדרך הים',
+        "s": 'Sea import requires: boarding permitted, manifest submitted, goods unloaded for inspection.',
+        "f": 'כדי להבטיח שייבואם של טובין בדרך הים יהא כהלכה:\n\n(1)  יותן לעלות אל האניה;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(2)  יוגש מצהר על מטען האניה;\n\n(3)  הטובין שהוגש עליהם מצהר לפריקה ייפרקו ויותן לבדקם.',
+    },
+    '46': {
+        "ch": 4, "t": 'חובת אניה להיכנס לנמל',
+        "s": 'Ships must enter designated ports only, unless force majeure.',
+        "f": 'לא יתן קברניט לאנייתו שתיכנס לשום מקום שאינו נמל או מקום שאושר לכניסה, אלא בלחץ מזג האויר או מפני סיבה סבירה אחרת.\n\nחובת אניה להיענות לקריאה',
+    },
+    '47': {
+        "ch": 4, "t": 'חובת אניה להיענות',
+        "s": 'Must stop for customs boarding in Israeli coastal waters.',
+        "f": 'נכנסה אניה למימי חופין של ישראל, חייב הקברניט שלה לעצור אותה כדי לאפשר את העליה אליה, כל אימת שכלי שיט שבשירות רשות-המכס המניף דגל המכס, או כלי שיט שבשירות המדינה המניף נס ודגלון מתאימים, התקרב אליו או קרא לו או איתת לו.\n\nחובת אניה לעצור בתחנת מעלה',
+    },
+    '48': {
+        "ch": 4, "t": 'עצירה בתחנת מעלה',
+        "s": 'Stop at boarding station upon arrival from abroad.',
+        "f": 'קברניט של אניה הבאה מחוץ לארץ ופניה מועדות לאחד מנמלי ישראל או שהיא סרה אליו, חייב לעצור את אנייתו בתחנת מעלה שנקבעה לאותו נמל, על מנת לאפשר את העליה אליה.\n\nהקלות לעליה אל אניה',
+    },
+    '49': {
+        "ch": 4, "t": 'הקלות לעליה',
+        "s": 'Captain must facilitate customs officer boarding.',
+        "f": 'קברניט העוצר אנייתו על מנת לאפשר את העליה אליה ינקוט כל האמצעים הסבירים כדי להקל על פקיד-המכס לעלות אליה.\n\nחובת אניה למהר למקום הפריקה',
+    },
+    '50': {
+        "ch": 4, "t": 'למהר למקום הפריקה',
+        "s": 'Proceed directly to unloading point after customs boarding.',
+        "f": 'לאחר שהובאה האניה אל תחנת המעלה ולאחר שפקיד-המכס עלה אליה, יסיענה הקברניט במהירות האפשרית אל מקום העגינה או הפריקה הנכון בלי לסור לשום מקום אחר.\n\nאין להשיט אניה בלי רשות',
+    },
+    '51': {
+        "ch": 4, "t": 'אין להשיט בלי רשות',
+        "s": 'Ship cannot depart until cargo fully discharged, unless authorized.',
+        "f": 'משהגיעה האניה למקום העגינה או הפריקה הנכון, לא תורחק משם לפני שנסתיימה פריקת המטען המיועד לפריקה באותו נמל אלא על פי רשות.\n\nהגבלת העליה אל אניה',
+    },
+    '52': {
+        "ch": 4, "t": 'הגבלת העליה',
+        "s": 'Only port pilot, government doctor, or authorized persons may board before customs.',
+        "f": 'לא יעלה אדם אל אניה לפני פקיד-המכס הנכון אלא אם הוא נווט הנמל או רופא בשירות המדינה, או מי שהוסמך על ידיו כדין.\n\n(תיקון מס\' 28) תשע"ח-2018\n\nסימן ג\': מצהר על המטען',
+    },
+    '53': {
+        "ch": 4, "t": 'הגשת מצהר',
+        "s": 'Manifest required for all imports. Deadlines: sea=24hrs before arrival, air=4hrs, land=1 day. Director prescribes format.',
+        "f": '(א)  הובלו טובין לישראל דרך הים, האוויר או היבשה, תחול חובה להגיש לרשות המכס פרטים על כלי ההובלה וכן פירוט של כלל הטובין במטען המובל בכלי ההובלה, ובכלל זה מטען שיעדו הסופי אינו בישראל, ומאפייניהם, וכן פירוט של המכולות הריקות (בחוק זה – מצהר), בהתאם למפורט להלן, לפי העניין:\n\n(1)   לעניין מטען שהובל לישראל דרך הים לשם פריקתו בישראל –\n\n(א)   יגיש סוכן האנייה ובאין סוכן אנייה – קברניט האנייה את המצהר לא יאוחר מ-24 שעות לפני הגעת האנייה לישראל, או בעת יציאת האנייה לישראל מהנמל האחרון שבו הוטען מטען המובל לישראל, לפי המאוחר;\n\n(ב)   יגיש משלח בין-לאומי מצהר המתייחס לטובין שבטיפולו המיועדים לייבוא 24 שעות לפני הגעת האנייה לישראל; המנהל רשאי להאריך את המועד להגשת המצהר אם הוכח להנחת דעתו שלא היה בידי המשלח הבין-לאומי להגיש את המצהר במועד מסיבות שאינן תלויות בו; לעניין זה, "משלח בין-לאומי" – כהגדרתו בסעיף 24א לחוק סוכני המכס;\n\n(2)   לעניין מטען שהובל לישראל דרך הים לשם פריקתו מחוץ לישראל, תגיש חברת הספנות ובאין חברת ספנות – יגיש הקברניט את המצהר, במועדים המפורטים להלן, לפי העניין:\n\n(א)   בהפלגה לנמל בישראל שצפוי שתימשך שישה ימים או יותר ממועד יציאת האנייה מהנמל האחרון שבו ביקרה (בסעיף זה – נמל פקידה) – לא יאוחר משישה ימים לפני הגעת האנייה לנמל בישראל;\n\n(ב)   בהפלגה לנמל בישראל שצפוי שתימשך פחות משישה ימים ממועד יציאת האנייה מנמל הפקידה האחרון – בעת יציאת האנייה מכל נמל שבו הוטען מטען המובל לישראל;\n\n(3)   לעניין מטען שהובל לישראל דרך האוויר – תגיש חברת התעופה המובילה את המצהר לא יאוחר מארבע שעות לפני נחיתת המטוס בישראל או בעת המראתו לישראל, לפי המאוחר;\n\n(4)   לעניין מטען שהובל לישראל דרך היבשה – יגיש סוכן המכס של היבואן את המצהר יום אחד לפני הגעתו לישראל, לכל המאוחר.\n\n(ב)  המנהל רשאי לקבוע הוראות לעניין תוכן המצהר ומבנהו.',
+        "key": 'Sea import manifest 24 hours before arrival; air 4 hours; land 1 day.',
+    },
+    '54': {
+        "ch": 4, "t": 'תיקון מצהר',
+        "s": 'Director may permit corrected manifest; fee applies.',
+        "f": 'התגלתה טעות במצהר שהוגש, רשאי המנהל להתיר הגשת מצהר מתוקן; על הגשת מצהר מתוקן תשולם אגרה בסכום שיקבע שר האוצר בתקנות.',
+    },
+    '54א': {
+        "ch": 4, "t": 'מצהר אלקטרוני',
+        "s": 'Manifest must be submitted electronically per Chapter 14A.',
+        "f": "מצהר, וכל תיקון שלו, יוגשו באמצעות מסר אלקטרוני, בהתאם להוראות לפי פרק ארבעה עשר א'.",
+    },
+    '55': {
+        "ch": 4, "t": 'קברניט אניה שנטרפה',
+        "s": 'Wreck/loss: captain must submit manifest at nearest customs house.',
+        "f": 'אניה שאבדה או שנטרפה אל החוף, חייב הקברניט או הבעל להגיש, בלי דיחוי שאין בו הכרח, פרטים על האניה ועל מטענה, על ידי מסירת מצהר, במידה שיש ביכלתו לעשות זאת, לגובה המכס בבית המכס הקרוב ביותר למקום שבו אבדה או נטרפה האניה.',
+    },
+    '55א': {
+        "ch": 4, "t": 'חובה לסייע לפקיד',
+        "s": 'Must facilitate customs access, answer questions, submit documents about vehicle and cargo.',
+        "f": '(א)  המגיש מצהר חייב להקל על פקיד המכס המוסמך לכך את הכניסה אל כלי ההובלה, להשיב על כל שאלה ולהגיש כל מסמך ותעודה בנוגע לכלי ההובלה ומטענו.\n\n(ב)  קברניט של אנייה, חברת תעופה או כל אדם אחר המכניס טובין לישראל בכלי הובלה, עובדיהם שהוסמכו לכך על ידם, ובעלים של כלי ההובלה חייבים להשיב לפקיד מכס גם על שאלות בעניין כלי ההובלה, צוות עובדיו, נוסעיו, צידתו ומסעו.',
+    },
+    '56': {
+        "ch": 4, "t": 'פירוק הצובר',
+        "s": 'No breaking bulk without customs permission or valid release.',
+        "f": 'אין לפרק את הצוֹבר של אניה שנכנסה למימי חופין של ישראל אלא ברשות גובה המכס, או בשביל אותם טובין שניתנה לגביהם התרה לפי הוראות סעיף 65.',
+    },
+    '57': {
+        "ch": 4, "t": 'הסרת טובין מאניה',
+        "s": 'Unloading only at designated places with customs permission; captain liable for improper placement.',
+        "f": '(א)  אין לפרוק טובין ואין להנחיתם, אלא במעמדו של גובה המכס או על פי רשותו, ואין להנחית טובין אלא לרציף, או למקום אחר שהוקצה כהלכה להנחת או לפריקה של טובין או שהטובין הועברו אליו מן האניה בסירה רשויה או בארבּה רשויה; וטובין שנפרקו או שהונחתו בסירה או בארבה, אין לשטען אותם או לסלקם לסירה או לארבה אחרות לפני שהונחתו, אלא ברשות גובה המכס.\n\n(ב)  טובין שנפרקו והונחתו ברשות גובה המכס למקום שאיננו רציף ולא מקום שהוקצה לכך כהלכה, יהא הקברניט או בעל האניה שממנה נפרקו חייב להניחם, על חשבונו, במקום מבטחים שאושר על ידי גובה המכס; ועד שיסולקו משם כדין, יהיו על אחריותו של הקברניט או בעל האניה כאילו לא נפרקו.\n\nחובה להפקיד טובין',
+    },
+    '58': {
+        "ch": 4, "t": 'חובה להפקיד',
+        "s": 'Unloaded goods must be immediately deposited in customs warehouse or approved place.',
+        "f": 'טובין שנפרקו והונחתו מכלי שיט יש להפקידם, מיד לאחר הנחת, במחסן מכס או במקום מבטחים אחר שאושר על ידי גובה המכס.\n\nאריזה חוזרת ברציף',
+    },
+    '59': {
+        "ch": 4, "t": 'אריזה חוזרת',
+        "s": 'Repacking on wharf allowed with permission under customs supervision.',
+        "f": 'כל טובין מותר, על פי רשות, לחזור ולארזם ברציף בהשגחת פקיד-מכס.\n\nתקנות למניעת צפיפות',
+    },
+    '60': {
+        "ch": 4, "t": 'מניעת צפיפות',
+        "s": 'Director may halt loading/unloading to prevent congestion; customs immune from loss claims.',
+        "f": "כדי למנוע צפיפות במקום הנתון לפיקוח רשות-המכס או בכל מקום אחר, רשאי המנהל להתקין תקנות להפסקת טעינתם או פריקתם של כלי שיט, להסדר טעינתם של טובין, פריקתם, שטעונם, קבלתם ומסירתם ולפיקוח על פעולות אלה; אין לבוא בתביעה על רשות-המכס או על פקיד-מכס בעד הפסד שנגרם לקברניט או לבעל כלי שיט או לבעל טובין מחמת ההפסקה או ההסדר.\n\nחובה לפרט הנימוקים להפסקת הפריקה וכו'",
+    },
+    '61': {
+        "ch": 4, "t": 'חובה לפרט נימוקים',
+        "s": 'Written notice with reasons required upon request for loading/unloading halt.',
+        "f": 'גובה המכס חייב להמציא לקברניט של כלי שיט ולכל אדם אחר הנוגע בדבר, לפי דרישתם, הודעה בכתב, בה יפרט את הנימוקים להפסקות טעינתם או פריקתם של כלי שיט ושל מטענים, או לאיסור הינוחם של טובין ברציפים או ברציף פלוני או כניסתם למקום הנתון לפיקוח רשות-המכס או לכל מקום אחר.\n\n(תיקון מס\' 28) תשע"ח-2018\n\nסימן ה\': הצהרת ייבוא',
+    },
+    '62': {
+        "ch": 4, "t": 'הצהרת ייבוא',
+        "s": 'Owner must file import declaration for: (1) domestic consumption or (2) warehousing. Required documents: invoices, insurance, B/L, packing lists, preference docs. Electronic filing via customs agent.',
+        "f": '(א)  בעל טובין המיובאים לישראל, למעט טובין כאמור המיובאים למטרת שטעון, יגיש עליהם למנהל הצהרת ייבוא לאחת מהמטרות האלה (בחוק זה – הצהרת ייבוא):\n\n(1)   צריכה בארץ;\n\n(2)   אחסנה.\n\n(ב)  על אף הוראות סעיף קטן (א) וחוק סוכני המכס, המנהל רשאי לקבוע, לעניין ייבוא לשימוש עצמי כהגדרתו בסעיף 129, תנאים או נסיבות שבהתקיימם רשאי אדם שאינו בעל הטובין להגיש הצהרת ייבוא בעבור בעל הטובין.\n\n(ג)   הצהרת הייבוא תהיה ערוכה במבנה ולפי פרטים שקבע המנהל בכללים, דרך כלל או לסוגי מקרים, ויצורפו לה כל המסמכים המפורטים להלן שיכללו כל פרט שקבע המנהל, כשהם שלמים וניתנים לקריאה:\n\n(1)   חשבונות המכר, שטרי הביטוח, שטרי המטען, מפרט האריזות, שטרי החבילות ומסמכים אחרים הנוגעים לטובין ומלמדים על ערכם במקום קנייתם, לרבות דמי ההובלה, הביטוח ושאר התשלומים ששולמו בשלהם;\n\n(2)   אם ייבוא הטובין חייב בהיתר ייבוא, רישיון ייבוא או אישור ייבוא – היתר, רישיון או אישור כאמור;\n\n(3)   מסמכי העדפה;\n\n(4)   מסמך העברת בעלות לפני הגשת הצהרת הייבוא;\n\n(5)   כל מסמך אחר שקבע המנהל בכללים.\n\n(ד)  על אף הוראות סעיף קטן (ג)(1) –\n\n(1)   המנהל רשאי לפטור מהחובה לצרף מסמכים כאמור באותו סעיף קטן, כולם או חלקם, בהתקיים תנאים או נסיבות שקבע;\n\n(2)   המנהל רשאי להורות, לעניין מסמכים כאמור באותו סעיף קטן שיורה, ובהתקיים תנאים שיורה, כי הם יומצאו לרשות המכס לאחר הגשת הצהרת הייבוא.\n\n(ה)  הגשת הצהרת ייבוא לפי הוראות סעיף זה יכול שתיעשה בידי סוכן מכס כאמור בסעיף 168 ובחוק סוכני המכס.',
+        "key": 'Two purposes: consumption or warehousing. Required docs: invoices, B/L, insurance, packing list, preference documents.',
+    },
+    '63': {
+        "ch": 4, "t": 'המועד להגשת הצהרת ייבוא',
+        "s": 'Deadline: 3 months from import (sea/land), 45 days (air). No declaration = goods may be sold/destroyed.',
+        "f": '(א)  הצהרת ייבוא תוגש לאחר הגשת המצהר, למעט בסוגי מקרים שקבע המנהל בכללים, אך לא יאוחר משלושה חודשים ממועד הייבוא, ולעניין טובין שיובאו דרך האוויר – לא יאוחר מ-45 ימים ממועד הייבוא.\n\n(ב)  לא הוגשה הצהרת ייבוא במועד כאמור בסעיף קטן (א), רשאי גובה המכס למכור את הטובין או להשמידם.',
+        "key": '3 months sea/land, 45 days air.',
+    },
+    '64': {
+        "ch": 4, "t": 'הגשת הצהרה אלקטרונית',
+        "s": 'Import declaration + documents must be submitted electronically per Chapter 14A.',
+        "f": "הצהרת ייבוא, בצירוף המסמכים שיש לצרף לה לפי הוראות סעיף 62(ג), תוגש באמצעות מסר אלקטרוני בהתאם להוראות לפי פרק ארבעה עשר א'.",
+    },
+    '65': {
+        "ch": 4, "t": 'התרה',
+        "s": 'Director may grant online release. Denied if: incorrect details, missing docs, unpaid taxes, no security. May suspend/revoke before delivery.',
+        "f": '(א)  הוגשה הצהרת ייבוא, רשאי המנהל לתת, באופן מקוון, התרה לגבי הטובין הכלולים בה.\n\n(ב)  על אף הוראות סעיף קטן (א), לא ייתן המנהל התרה כאמור באותו סעיף קטן אם מתקיים אחד מאלה:\n\n(1)   המנהל מצא כי לא קוימה הוראה לפי כל דין בקשר לייבוא הטובין, ובכלל זה מצא כי מתקיים אחד מאלה:\n\n(א)   ההצהרה כוללת פרטים לא נכונים;\n\n(ב)   ההצהרה אינה כוללת פרטים שיש לכלול בה לפי הוראות סעיף 62(ג);\n\n(ג)    להצהרה לא צורפו מסמכים שיש לצרף לה לפי הוראות סעיף 62(ג), או שצורפו לה מסמכים כאמור שאינם שלמים או שאינם ניתנים לקריאה;\n\n(ד)    לא שולמו מסי ייבוא כדין;\n\n(ה)   לא שולמה הוצאה שהתחייב בה אדם על פי פקודה זו בקשר לטובין המיובאים;\n\n(2)   לא ניתנה ערובה לקיום הוראות פקודה זו שדרש המנהל.\n\n(ג)   נתן המנהל התרה לגבי טובין הכלולים בהצהרת ייבוא, כאמור בסעיף קטן (א), ינהגו בטובין האמורים על פי ההצהרה.\n\n(ד)  החליט המנהל, כאמור בסעיף קטן (ב), שלא לתת התרה, יודיע על כך למגיש ההצהרה.\n\n(ה)  על אף הוראות סעיף קטן (ג), נתן המנהל התרה לגבי טובין הכלולים בהצהרת ייבוא, כאמור בסעיף קטן (א), והיה לו יסוד סביר להניח, טרם מסירתם של הטובין לצריכה בארץ, כי מתקיים לגבי הצהרת הייבוא שהם נכללו בה האמור בסעיף קטן (ב), רשאי הוא להתלות את ההתרה או לבטלה.',
+        "key": '6 grounds for denial; Director may suspend/revoke release before delivery.',
+    },
+    '65א': {
+        "ch": 4, "t": 'שמירת מסמכים',
+        "s": "Owner must retain declaration and all documents per Director's rules.",
+        "f": 'הוגשה הצהרת ייבוא, ישמור בעל הטובין את ההצהרה וכל מסמך שצורף אליה לפי סעיף 62(ג), בהתאם לכללים שיקבע המנהל.',
+    },
+    '65ב': {
+        "ch": 4, "t": 'חובה להשיב על שאלות',
+        "s": 'Must answer customs officer questions about declared goods.',
+        "f": 'מי שמגיש הצהרת ייבוא חייב להשיב על כל שאלה בנוגע לטובין הכלולים בהצהרה בלבד, אם נדרש לכך בידי פקיד מכס.',
+    },
+    '65ג': {
+        "ch": 4, "t": 'מסמך אחר',
+        "s": 'Director may allow alternative document instead of import declaration.',
+        "f": 'על אף הוראות סעיף 62(א), המנהל רשאי להתיר, דרך כלל או בסוגי מקרים שקבע, הגשת מסמך אחר במקום הצהרת ייבוא; התיר כאמור, יראו מסמך כאמור, לעניין כל דין, כהצהרת ייבוא.',
+    },
+    '66': {
+        "ch": 4, "t": 'ייבוא שלא בים',
+        "s": 'Non-sea imports via designated entry points and routes; certificate from border customs if forwarded.',
+        "f": '(א)  טובין שיובּאו שלא בדרך הים יש להביאם למקום כניסה שהוקצה לכך ולהובילם בנתיב שיוּחד לשם הובלה ביבשה אל אותו מקום כניסה.\n\n(ב)  אם בית המכס אינו על הגבול, יש להוביל את הטובין בנתיב שיוחד מהגבול אל אותו בית מכס.\n\n(ג)   אם אין באפשרותו של בית המכס הקרוב ביותר לקבל טובין מיובּאים, יש להובילם לבית המכס הקרוב המסוגל לקבלם; אולם הממונים על הטובין צריכים להצטייד בתעודה מבית המכס הראשון המאשרת שביקרו שם והצהירו על הטובין.\n\n(ד)  יותן להיכנס לכלי ההובלה.\n\n(תיקון מס\' 28) תשע"ח-2018',
+    },
+    '67': {
+        "ch": 4, "t": 'בוטל',
+        "s": 'Formerly: border declaration for non-sea imports. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 5: WAREHOUSING (החסנת טובין)
     # ══════════════════════════════════════════════
 
-    "68": {"ch": 5, "t": "רישיון מחסן", "s": "License required from Director. Only goods with import declaration for warehousing + release may be stored."},
-    "69": {"ch": 5, "t": "מחסנים לסוגיהם", "s": "Two types: general (public) and private warehouses."},
-    "70": {"ch": 5, "t": "תקופת רשיון", "s": "Annual license, Jan 1 start. Fee due in advance; non-payment = expiry."},
-    "71": {"ch": 5, "t": "ביטול רשיון", "s": "Government may revoke for cause; published in Reshumot + written notice."},
-    "72": {"ch": 5, "t": "תוצאות ביטול", "s": "Revoked/expired: pay duty, export, or transfer within Director's deadline. Otherwise sold at auction."},
-    "73": {"ch": 5, "t": "רשימת טובין", "s": "Customs officer prepares detailed inventory upon deposit."},
-    "74": {"ch": 5, "t": "גמר האחסנה", "s": "Customs officer confirms warehousing completion."},
-    "75": {"ch": 5, "t": "סילוק למחסן", "s": "Customs may move goods to warehouse; license holder pays expenses and gets lien."},
-    "76": {"ch": 5, "t": "אריזה", "s": "Goods deposited in import packaging; repacked goods in packaging at declaration time."},
-    "77": {"ch": 5, "t": "חובות בעל רשיון", "s": "Five duties: accessibility, scales/lighting, labor/materials, office space, inventory records."},
-    "78": {"ch": 5, "t": "פתיחת מחסן", "s": "Access by permission only. Fine: 200 lira."},
-    "79": {"ch": 5, "t": "גישה למחסן", "s": "Unrestricted customs access at reasonable times; forcible entry if denied."},
-    "80": {"ch": 5, "t": "מדידה חוזרת", "s": "Re-measurement/weighing allowed; duty based on results."},
-    "81": {"ch": 5, "t": "תשלום מכס תוך שנה", "s": "Duty on warehoused goods must be paid within 1 year. Otherwise sold. Perishables earlier."},
-    "82": {"ch": 5, "t": "העברה למחסן כללי", "s": "Collector may require transfer from private to general warehouse or duty payment."},
-    "83": {"ch": 5, "t": "חובת בעל רשיון", "s": "Unauthorized removal: full duty + 5 lira/package OR double duty."},
-    "84": {"ch": 5, "t": "חסר בטובין", "s": "Unexplained shortage: double duty penalty on missing quantity."},
-    "85": {"ch": 5, "t": "הצגה", "s": "Duty-free removal for public exhibition with Director approval and bond."},
-    "86": {"ch": 5, "t": "דוגמאות", "s": "Modest samples from warehoused goods without declaration or duty."},
-    "87": {"ch": 5, "t": "טיפול בטובין", "s": "Sorting, repacking, preparation for sale with permission. Worthless portions destroyed duty-free."},
-    "88": {"ch": 5, "t": "הערכה שנית", "s": "Re-valuation of deteriorated ad valorem goods if accidental deterioration."},
-    "89": {"ch": 5, "t": "טובין לא שווים", "s": "Director may destroy goods worth less than duty and waive duty."},
-    "90": {"ch": 5, "t": "חומרים מתלקחים", "s": "Flammable/explosive goods need permission; 14-day sale if unredeemed."},
-    "91": {"ch": 5, "t": "הצהרה על טובין מוחסנים", "s": "Three options for removal: consumption, export, or transfer to another warehouse."},
-    "92": {"ch": 5, "t": "ויתור על מכס", "s": "Duty waiver/refund for goods lost/destroyed by force majeure."},
-    "93": {"ch": 5, "t": "אבדן במסירה", "s": "Duty waiver for released goods lost during delivery/loading by force majeure."},
-    "94": {"ch": 5, "t": "אחסנה להלכה", "s": "Constructive warehousing: goods treated as warehoused even if second declaration filed before deposit."},
-    "95": {"ch": 5, "t": "מחסני המכס", "s": "Government designates customs warehouses; fees apply; waiver for force majeure."},
-    "96": {"ch": 5, "t": "הפיכת מחסן", "s": "Director may convert licensed warehouse to customs warehouse."},
-    "97": {"ch": 5, "t": "זמן תשלום", "s": "Fees payable before removal."},
-    "98": {"ch": 5, "t": "סמכות למכור", "s": "Goods in customs warehouse not removed within 1 year may be sold."},
-    "99": {"ch": 5, "t": "תשלום היטלים", "s": "Proof of freight/landing charges required before release."},
+    '68': {
+        "ch": 5, "t": 'רישיון מחסן',
+        "s": 'License required from Director. Only goods with import declaration for warehousing + release may be stored.',
+        "f": '(א)  בעל מחסן לא יאחסן בו טובין הנתונים לפיקוח רשות מכס אלא אם כן ניתן לו רישיון לכך מאת המנהל ובהתאם לתנאים שקבע המנהל ברישיון (בפרק זה – רישיון מחסן); המנהל רשאי לקבוע ברישיון את סוגי הטובין שניתן לאחסן כאמור במחסן.\n\n(ב)  בעל רישיון מחסן יאחסן במחסן בהתאם להוראות לפי סעיף קטן (א) רק טובין שהוגשה לגביהם הצהרת ייבוא לשם אחסנה, כאמור בסעיף 62(א)(2), וניתנה לגביהם התרה (בפרק זה – טובין שהותרו לאחסנה); ואולם המנהל רשאי, מטעמים מיוחדים או בסוגי מקרים שיקבע, להורות על אחסנת טובין שלא הוגשה לגביהם הצהרה כאמור.\n\n(ג)   שר האוצר יקבע אילו סוגי טובין ניתן לאחסן במחסן רשוי מכל סוג, ותנאים לאחסנת טובין כאמור.',
+    },
+    '69': {
+        "ch": 5, "t": 'מחסנים לסוגיהם',
+        "s": 'Two types: general (public) and private warehouses.',
+        "f": 'מחסנים רשויים יכול שיהיו משני סוגים:\n\n(1)  מחסנים כלליים המשמשים להחסנת טובין בכלל;\n\n(2)  מחסנים פרטיים המשמשים להחסנת טובין של בעל הרשיון בלבד.\n\nתקופתו של רשיון מחסן',
+    },
+    '70': {
+        "ch": 5, "t": 'תקופת רשיון',
+        "s": 'Annual license, Jan 1 start. Fee due in advance; non-payment = expiry.',
+        "f": '(א)  רשיונות מחסן יינתנו לתקופת שנה שראשיתה באחד בינואר ויהיו ניתנים לחידוש כל שנה בתאריך זה.\n\n(ב)  הממשלה רשאית לקבוע, בתקנות, את התנאים שלפיהם ניתנים רשיונות מחסן ואת דירוג האגרות המשתלמות בעדם.\n\n(ג)   האגרה שנקבעה תהא משתלמת כל שנה מראש; ואם באחת השנים לא שולמה האגרה באחד בינואר או לפניו, יפקע הרשיון מאותו תאריך.\n\nכוחה של הממשלה לבטל רשיון',
+    },
+    '71': {
+        "ch": 5, "t": 'ביטול רשיון',
+        "s": 'Government may revoke for cause; published in Reshumot + written notice.',
+        "f": '(א)  הממשלה רשאית בכל עת לבטל רשיון מחסן אם היתה סיבה מספקת לכך.\n\n(ב)  הודעה על ביטול רשיון תפורסם ברשומות, גם תימסר בכתב לבעל הרשיון.\n\nתוצאות ביטולו של רשיון',
+    },
+    '72': {
+        "ch": 5, "t": 'תוצאות ביטול',
+        "s": "Revoked/expired: pay duty, export, or transfer within Director's deadline. Otherwise sold at auction.",
+        "f": '(א)  בוטל רשיון או פקע, ישולם המכס בעד הטובין המוחסנים או ייוצאו הטובין או יסולקו למחסן מאושר אחר, הכל תוך הזמן שהורה המנהל.\n\n(ב)  לא נפדו הטובין או לא סולקו, כאמור, יקח אותם גובה המכס על חשבון בעלם אל מחסן המכס הקרוב ביותר, ימכרם ויעשה בדמי המכר בדרך שנקבעה לכך.\n\nפקיד-המכס יערוך רשימת טובין שהונחתו להחסנה',
+    },
+    '73': {
+        "ch": 5, "t": 'רשימת טובין',
+        "s": 'Customs officer prepares detailed inventory upon deposit.',
+        "f": 'טובין שנועדו להחסנה יערוך מהם פקיד-המכס, עם הנחתם או באפשרות המעשית הראשונה שלאחר מכן, רשימה מפורטת וירשום אותה בפנקס שהוכן למטרה זו.\n\nגמר האחסנה (תיקון מס\' 12) תשנ"ה-1995 (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '74': {
+        "ch": 5, "t": 'גמר האחסנה',
+        "s": 'Customs officer confirms warehousing completion.',
+        "f": 'טובין שהותרו לאחסנה והופקדו במחסן כראוי, יאשר פקיד המכס, בדרך שתיקבע בתקנות כי האחסנה הסתיימה.',
+    },
+    '75': {
+        "ch": 5, "t": 'סילוק למחסן',
+        "s": 'Customs may move goods to warehouse; license holder pays expenses and gets lien.',
+        "f": '(א)  טובין שהותרו לאחסנה ולא אוחסנו על ידי בעל הטובין, רשאי גובה המכס לסלקם אל המחסן.\n\n(ב)  סילק גובה המכס את הטובין, ישלם בעל רשיון המחסן את כל ההוצאות שהוצאו לסילוקם ויהיה לו עכבון על הטובין כנגד הוצאות אלה.',
+    },
+    '76': {
+        "ch": 5, "t": 'אריזה',
+        "s": 'Goods deposited in import packaging; repacked goods in packaging at declaration time.',
+        "f": 'טובין שהותרו לאחסנה, יש להפקידם באריזה שבה יובּאו, אולם טובין שנארזו אריזה חדשה ברציף, יופקדו באריזה שבה היו נתונים בעת הגשת הצהרת הייבוא לגביהם.',
+    },
+    '77': {
+        "ch": 5, "t": 'חובות בעל רשיון',
+        "s": 'Five duties: accessibility, scales/lighting, labor/materials, office space, inventory records.',
+        "f": 'בעל רשיון מחסן –\n\n(1)  יערום ויסדר את הטובין במחסן באופן שתהא בכל עת גישה סבירה לכל אריזה ואפשרות לבדקה;\n\n(2)  יספק אורות במידה מספקת וכן מאזני צדק, משקלי צדק ומידות צדק לשימושו של פקיד-המכס;\n\n(3)  ישיג את הפועלים והחמרים הדרושים לקליטת הטובין המוחסנים, לבדיקתם, לאריזתם, לסימונם, לטמינתם בחביות, לשקילתם, ולעריכת המלאי שלהם בכל שעה שגובה המכס ירצה בכך;\n\n(4)  יספק להנחת דעתו של המנהל מקום מתאים לעבודה משרדית;\n\n(תיקון מס\' 12) תשנ"ה-1995\n\n(5)  ינהל רישום של מצאי הטובין במחסן, בדרך שתיקבע בתקנות.',
+    },
+    '78': {
+        "ch": 5, "t": 'פתיחת מחסן',
+        "s": 'Access by permission only. Fine: 200 lira.',
+        "f": '(א)  לא יפתח אדם מחסן ולא ישיג לעצמו גישה לטובין המצויים בו, אלא על פי רשות.\n\n(ב)  העובר על הוראות סעיף זה, דינו – קנס 200 לירות.\n\nלפקיד-המכס רשות גישה למחסן',
+    },
+    '79': {
+        "ch": 5, "t": 'גישה למחסן',
+        "s": 'Unrestricted customs access at reasonable times; forcible entry if denied.',
+        "f": 'לכל פקיד-מכס תהיה בכל זמן סביר גישה לכל חלק מכל מחסן ויהא מוסמך לבדוק את הטובין המצויים בו, ולשם כך הוא רשאי לדרוש מבעל הרשיון ליתן לו כניסה למחסן; לא עשה כן בעל הרשיון, רשאי גובה המכס לפרוץ את המחסן או כל חצרים שיש לעבור בהם כדי להבטיח את הגישה.\n\nרשות לשוב ולמדוד ולשקול טובין',
+    },
+    '80': {
+        "ch": 5, "t": 'מדידה חוזרת',
+        "s": 'Re-measurement/weighing allowed; duty based on results.',
+        "f": 'טובין שהוחסנו רשאי פקיד-מכס לשוב ולמדדם ולשקלם או לבדקם, בין על פי הוראות גובה המכס ובין על פי בקשתו של בעל הטובין ועל חשבונו, והמכס ישולם לפי התוצאות, זולת אם יש יסוד סביר להניח שמשהו מן הפחת או מן ההפרש שנתגלה נגרם על ידי אמצעים בלתי הוגנים.\n\nהמכס על טובין מוחסנים ישולם תוך שנה',
+    },
+    '81': {
+        "ch": 5, "t": 'תשלום מכס תוך שנה',
+        "s": 'Duty on warehoused goods must be paid within 1 year. Otherwise sold. Perishables earlier.',
+        "f": 'טובין חבי מכס המוחסנים במחסן רשוי, המכס עליהם ישולם תוך שנה אחת מיום שהוחסנו לראשונה, אם לא הרשה המנהל להחסינם תקופה ארוכה יותר; לא שולם המכס תוך הזמן האמור, מותר למכור את הטובין ויש לעשות בדמי המכר כפי שנקבע; היו הטובין דבר האבד, לדעת המנהל, רשאי המנהל למכרם גם לפני תום התקופה האמורה.\n\nגובה מכס רשאי לצוות על סילוק טובין למחסן כללי',
+    },
+    '82': {
+        "ch": 5, "t": 'העברה למחסן כללי',
+        "s": 'Collector may require transfer from private to general warehouse or duty payment.',
+        "f": 'רשאי גובה המכס לדרוש מבעל טובין שבמחסן פרטי לסלקם משם למחסן כללי תוך זמן שקבע, או לשלם את המכס עליהם; לא נתמלאה הדרישה, רשאי גובה המכס למכרם ולעשות בדמי המכר כפי שנקבע.\n\nחובתו של בעל רשיון',
+    },
+    '83': {
+        "ch": 5, "t": 'חובת בעל רשיון',
+        "s": 'Unauthorized removal: full duty + 5 lira/package OR double duty.',
+        "f": 'טובין מוחסנים שסולקו מן המחסן בלי רשות, או לא הוגשו לפקיד-המכס כשדרש זאת, ולא ניתן עליהם הסבר להנחת דעתו של גובה המכס – בעל הרשיון של המחסן ישלם את כל המכס על אותם טובין ונוסף על המכס סכום של חמש לירות על כל אריזה או חבילה שסולקה, או שלא הוגשה, או כפל המכס.\n\nחסר בטובין מוחסנים',
+    },
+    '84': {
+        "ch": 5, "t": 'חסר בטובין',
+        "s": 'Unexplained shortage: double duty penalty on missing quantity.',
+        "f": 'נמצא חִסֶר באחת האריזות של טובין שיובּאו והוחסנו, ואין לתלות את החסר בכליה טבעית או בסיבה כשרה אחרת, יהא בעל רשיון המחסן חב, לפי דרישה בכתב מאת גובה המכס, לשלם כפל המכס החל על כמותם או על שווים של הטובין כפי שהוחסנו לראשונה.\n\nהוצאת טובין לשם הצגה',
+    },
+    '85': {
+        "ch": 5, "t": 'הצגה',
+        "s": 'Duty-free removal for public exhibition with Director approval and bond.',
+        "f": 'מותר להרשות הוצאת טובין מוחסנים מן המחסן בלי תשלום מכס לשם הצגתם ברבים או למטרה דומה, לתקופה ובכמויות שאישר המנהל, ובלבד שתינתן ערובה להחזרת הטובין או לתשלום המכס.\n\nדוגמאות מטובין מוחסנים (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '86': {
+        "ch": 5, "t": 'דוגמאות',
+        "s": 'Modest samples from warehoused goods without declaration or duty.',
+        "f": 'רשאי גובה המכס להתיר ליבואן ליטול מטובין מוחסנים דוגמאות בשיעור צנוע ללא הגשת הצהרת ייבוא, ופרט למכס העשוי לחול לבסוף על החסר מן הכמות שהוחסנה לראשונה – אף ללא תשלום מכס.',
+    },
+    '87': {
+        "ch": 5, "t": 'טיפול בטובין',
+        "s": 'Sorting, repacking, preparation for sale with permission. Worthless portions destroyed duty-free.',
+        "f": 'גובה המכס יכול להרשות לבעל טובין מוחסנים או למי שבידו השליטה עליהם, למיינם, להפרידם, לארזם, ולשוב ולארזם, ולעשות בהם כל השינויים, הסידורים והמיונים החוקיים הדרושים לשמירתם או להכשרתם למכירה, למשלוח ולכל עשיה חוקית בהם, ויכול הוא גם להרשות שחלק מן הטובין שהופרד כאמור ושאיננו שווה במכס החל עליו, יושמד ללא תשלום מכס עליו.\n\nהערכה שנית של טובין מוחסנים',
+    },
+    '88': {
+        "ch": 5, "t": 'הערכה שנית',
+        "s": 'Re-valuation of deteriorated ad valorem goods if accidental deterioration.',
+        "f": 'טובין מוחסנים שהם חבי מכס לפי הערך והורעו תוך כדי החסנה, מותר להעריך אותם שנית לפי בקשת בעל הטובין, והמכס ישולם לפי התוצאות, ובלבד שגובה המכס משוכנע שהורעו דרך מקרה.\n\nטובין שאינם שווים במכס החל עליהם',
+    },
+    '89': {
+        "ch": 5, "t": 'טובין לא שווים',
+        "s": 'Director may destroy goods worth less than duty and waive duty.',
+        "f": '(א)  המנהל רשאי להביא לידי השמדת טובין מוחסנים אם לפי דעת גובה המכס אין הם שווים במכס החל עליהם, ורשאי הוא לוותר על המכס.\n\n(ב)  בעל טובין שהושמדו ישלם לבעל רשיון המחסן, או לגובה המכס אם היו הטובין במחסן המכס, את כל התשלומים החלים עליהם ושאינם מכס.\n\nטובין העלולים להתלקח או להתפוצץ',
+    },
+    '90': {
+        "ch": 5, "t": 'חומרים מתלקחים',
+        "s": 'Flammable/explosive goods need permission; 14-day sale if unredeemed.',
+        "f": '(א)  טובין העלולים בנקל להישרף, להתלקח או להתפוצץ אסור להחסינם אלא ברשות גובה המכס.\n\n(ב)  טובין כאמור שגובה המכס לא הרשה להחסינם, מותר להפקידם במקום בטוח שאושר על ידיו, וכל זמן שהם מופקדים שם יש לראותם כאילו הם במחסן המכס וגובה המכס רשאי למכרם כתום ארבעה עשר יום, אם לא נפדו כהלכה.\n\n(ג)   הוצאות סילוקם של הטובין, הבטחתם, וההשגחה והשמירה עליהם עד למכירתם ייזקפו כנגד הטובין.\n\nהצהרה על טובין מוחסנים והתרתם (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '91': {
+        "ch": 5, "t": 'הצהרה על טובין מוחסנים',
+        "s": 'Three options for removal: consumption, export, or transfer to another warehouse.',
+        "f": '(א)  בעל טובין מוחסנים המבקש להוציא טובין כאמור, כולם או חלקם, ממחסן רשוי, יגיש עליהם למנהל הצהרה שהיא אחת מאלה:\n\n(1)   הצהרת ייבוא לשם צריכה בארץ;\n\n(2)   הצהרת ייצוא;\n\n(3)   הצהרת ייבוא לשם אחסנה במחסן רשוי אחר.\n\n(ב)  לעניין הגשת הצהרה כאמור בסעיף קטן (א) ולעניין מתן התרה לגבי הטובין הכלולים בה יחולו, בשינויים המחויבים, הוראות הסעיפים המפורטים להלן, לפי העניין:\n\n(1)   לעניין הצהרת ייבוא כאמור בסעיף קטן (א)(1) או (3) – סעיפים 62(ב) עד (ה) ו-63 עד 65ג;\n\n(2)   לעניין הצהרת ייצוא כאמור בסעיף קטן (א)(2) – סעיפים 103(ב) עד (ו) ו-104.',
+    },
+    '92': {
+        "ch": 5, "t": 'ויתור על מכס',
+        "s": 'Duty waiver/refund for goods lost/destroyed by force majeure.',
+        "f": 'טובין שאוחסנו, טובין שהוגשה לגביהם הצהרת ייבוא לשם אחסנה או טובין מוחסנים שהוגשה לגביהם הצהרה כאמור בסעיף 91(א), ואבדו או הושמדו מחמת מאורע שלא ניתן למנוע, אם בהיותם באניה ואם בשעת העברתם, הנחתם או קבלתם למחסן ואם בתוך המחסן, רשאי המנהל לוותר על המכס החל עליהם או להחזיר את המכס ששולם עליהם, כולו או מקצתו.',
+    },
+    '93': {
+        "ch": 5, "t": 'אבדן במסירה',
+        "s": 'Duty waiver for released goods lost during delivery/loading by force majeure.',
+        "f": 'טובין מוחסנים שהוגשה לגביהם הצהרה כאמור בסעיף 91(א)(2) או (3), וניתנה לגביהם התרה, ואבדו או הושמדו מחמת מאורע שלא ניתן למנוע, בין בשעת מסירה ובין בשעת טעינה, רשאי המנהל לוותר על המכס החל עליהם או להחזיר את המכס ששולם עליהם, כולו או מקצתו.',
+    },
+    '94': {
+        "ch": 5, "t": 'אחסנה להלכה',
+        "s": 'Constructive warehousing: goods treated as warehoused even if second declaration filed before deposit.',
+        "f": 'טובין שהותרו לאחסנה, לרבות טובין שהוגשה לגביהם הצהרה כאמור בסעיף 91(א)(3) (בסעיף זה – ההצהרה הראשונה) וניתנה לגביהם התרה, ולפני שאוחסנו הוגשה לגביהם הצהרה כאמור בסעיף 91(א)(1) עד (3), יראו אותם כטובין שאוחסנו בהתאם להצהרה הראשונה.',
+    },
+    '95': {
+        "ch": 5, "t": 'מחסני המכס',
+        "s": 'Government designates customs warehouses; fees apply; waiver for force majeure.',
+        "f": '(א)  הממשלה רשאית, בצו, לקבוע מחסני מכס.\n\n(ב)  טובין שהוחסנו או שהופקדו במחסן מכס, תשולם עליהם אגרה לפי הדירוג שנקבע.\n\n(ג)   המנהל רשאי לוותר על אגרה, כולה או מקצתה, אם הורעו הטובין או אבדו או הושמדו מחמת מאורע שלא ניתן למנוע או במקרים אחרים שנקבעו.\n\nמותר להפוך מחסן רשוי למחסן מכס',
+    },
+    '96': {
+        "ch": 5, "t": 'הפיכת מחסן',
+        "s": 'Director may convert licensed warehouse to customs warehouse.',
+        "f": 'המנהל רשאי, בצו, לקבוע שמחסן רשוי יהיה למחסן מכס, בכפוף לכל תנאי שנקבע בצו.\n\nזמן תשלום האגרה',
+    },
+    '97': {
+        "ch": 5, "t": 'זמן תשלום',
+        "s": 'Fees payable before removal.',
+        "f": 'כל האגרות ישולמו לפני סילוק הטובין.\n\nסמכות למכור (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '98': {
+        "ch": 5, "t": 'סמכות למכור',
+        "s": 'Goods in customs warehouse not removed within 1 year may be sold.',
+        "f": 'טובין שהותרו לאחסנה במחסן מכס ולא סולקו משם כדין תוך שנה אחת מיום שאוחסנו, רשאי גובה המכס למכרם.',
+    },
+    '99': {
+        "ch": 5, "t": 'תשלום היטלים',
+        "s": 'Proof of freight/landing charges required before release.',
+        "f": "המנהל רשאי לא להרשות מסירת טובין שהופקדו במחסן מכס, עד שלא קיבל הוכחות מניחות את הדעת ששולמו דמי ההובלה וההנחת החלים על אותם טובין.\n\n\nסימן א': יצוא אסור ויצוא מוגבל\n\nסמכות לאסור יצוא",
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 6: EXPORT OF GOODS (ייצוא טובין)
     # ══════════════════════════════════════════════
 
-    "100": {"ch": 6, "t": "סמכות לאסור יצוא", "s": "Government may prohibit/restrict/regulate export by order, any route, any destination."},
-    "101": {"ch": 6, "t": "יצוא אסור", "s": "No export of prohibited goods."},
-    "102": {"ch": 6, "t": "יצוא מוגבל", "s": "Restricted goods exportable only per applicable restrictions."},
-    "103": {"ch": 6, "t": "הצהרת ייצוא",
-        "s": "Export declaration required before export. Documents: invoices, B/L, packing list, permits, preference docs. "
-             "5 business days grace for certain details. Release denied if goods not at customs site.",
-        "key": "5 business days grace for post-export documents. Release denied if goods not at customs-supervised site.",
+    '100': {
+        "ch": 6, "t": 'סמכות לאסור יצוא',
+        "s": 'Government may prohibit/restrict/regulate export by order, any route, any destination.',
+        "f": 'הממשלה רשאית, בצו, לאסור, להגביל או להסדיר, ייצואם של טובין או של סוג טובין מישראל, או משטח או ממקום שבישראל בין ביבשה, בין בים ובין באויר, ורשאית היא בצו זה לפרט את הטובין או סוג הטובין, בין דרך כלל ובין במיוחד, וכן לאסור, להגביל או להסדיר בו את הייצוא בין לכל מקום ובין לארץ מיוחדת או למקום מיוחד.\n\nיצוא אסור',
     },
-    "104": {"ch": 6, "t": "טובין שלא יוצאו", "s": "Unexported goods: 3 months (sea/land) or 45 days (air) to apply for release. Otherwise sold/destroyed."},
-    "105": {"ch": 6, "t": "מסמכים וערובות", "s": "Documents and security/bond may be demanded for dutiable export goods."},
-    "106": {"ch": 6, "t": "קיבול כלי שיט", "s": "Min 60 registered tons for warehoused/drawback/transshipment export goods."},
-    "107": {"ch": 6, "t": "טעינה מרציף", "s": "Export loading only from wharf/approved place or via licensed lighter."},
-    "108": {"ch": 6, "t": "יצוא ביבשה/אוויר", "s": "Nearest customs house; prescribed route without deviation; sealed railcar for rail."},
-    "109": {"ch": 6, "t": "תעודת מפדה", "s": "Captain cannot sail without clearance certificate from customs officer."},
-    "110": {"ch": 6, "t": "קנס הפלגה", "s": "Penalty: 20 lira skipping inspection; 100 lira sailing with customs officer without consent."},
-    "111": {"ch": 6, "t": "דרישות לפני מפדה", "s": "Exit report, Q&A, documents required; exit manifest for vessels under 300 tons."},
-    "112": {"ch": 6, "t": "מסירת מצהר", "s": "Exit manifest within 24 hours of clearance; Director may extend."},
-    "113": {"ch": 6, "t": "טעינת טובין שלא פורטו", "s": "No unlisted goods loaded unless Section 103 met; passenger baggage exempt."},
-    "114": {"ch": 6, "t": "תיקון מצהר יציאה", "s": "Correction of obvious errors only; fee may apply."},
-    "115": {"ch": 6, "t": "תנאים לפדיה", "s": "Full accounting of cargo/provisions and all legal requirements met before clearance."},
-    "116": {"ch": 6, "t": "עצירה בתחנת מעלה", "s": "Stop at boarding station on departure; no sailing without customs officer consent."},
-    "117": {"ch": 6, "t": "הסבר על טובין חסרים", "s": "Must produce clearance certificate and explain missing manifest goods."},
-    "118": {"ch": 6, "t": "איסור פריקת טובי יצוא", "s": "No unloading of export goods without customs permission."},
-    "119": {"ch": 6, "t": "תעודת הנחת", "s": "Landing certificate from destination may be required; failure may block future exports."},
+    '101': {
+        "ch": 6, "t": 'יצוא אסור',
+        "s": 'No export of prohibited goods.',
+        "f": 'לא ייצא אדם טובין שייצואם אסור.\n\nיצוא מוגבל',
+    },
+    '102': {
+        "ch": 6, "t": 'יצוא מוגבל',
+        "s": 'Restricted goods exportable only per applicable restrictions.',
+        "f": 'לא ייצא אדם טובין שיצואם מוגבל או מוסדר אותה שעה על פי פקודה זו או על פי כל חיקוק אחר בר תוקף, אלא לפי ההגבלות וההסדר החלים עליהם.\n\nסימן ב\': סדרי ייצוא\n\nהצהרת ייצוא (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '103': {
+        "ch": 6, "t": 'הצהרת ייצוא',
+        "s": 'Export declaration required before export. Documents: invoices, B/L, packing list, permits, preference docs. 5 business days grace for certain details. Release denied if goods not at customs site.',
+        "f": '(א)  בעל טובין המבקש לייצאם מישראל, יגיש עליהם למנהל הצהרת ייצוא.\n\n(ב)  על אף הוראות סעיף קטן (א) וחוק סוכני המכס, רשאי המנהל לקבוע תנאים או נסיבות שבהתקיימם רשאי אדם שאינו בעל הטובין להגיש הצהרת ייצוא בעבור בעל הטובין.\n\n(ג)   הצהרת הייצוא תהיה ערוכה במבנה ולפי פרטים שקבע המנהל בכללים, דרך כלל או לסוגי מקרים, ויצורפו לה כל המסמכים המפורטים להלן, כשהם שלמים וניתנים לקריאה:\n\n(1)   חשבונות המכר, שטר המטען ומפרט אריזות;\n\n(2)   אם ייצוא הטובין חייב בהיתר ייצוא, רישיון ייצוא או אישור ייצוא – היתר, רישיון או אישור כאמור;\n\n(3)   מסמכי העדפה או חשבונית הצהרה כמשמעותה בהסכם בדבר הקמת אזור תעשייה מוכר (\nQualified Industrial Zone – QIZ\n), לפי העניין;\n\n(4)   כל מסמך אחר שקבע המנהל בכללים.\n\n(ד)  על אף הוראות סעיף קטן (ג), המנהל רשאי לפטור מהחובה לצרף מסמכים כאמור באותו סעיף קטן, כולם או חלקם, בהתקיים תנאים או נסיבות שקבע.\n\n(ה)  הצהרת ייצוא תוגש בטרם יוצאו הטובין מישראל, ואולם המנהל רשאי לקבוע פרטים או מסמכים שיהיה ניתן להגיש או לצרף להצהרה עד תום חמישה ימי עסקים ממועד ייצוא הטובין.\n\n(ו)   הגשת הצהרת ייצוא לפי הוראות סעיף זה יכול שתיעשה בידי סוכן מכס כאמור בסעיף 168 ובחוק סוכני המכס.\n\n(ז)   הוראות סעיפים 64 עד 65ג יחולו לעניין הצהרת ייצוא, בשינויים המחויבים ובשינוי זה: על אף האמור בסעיף 65(ב), המנהל לא ייתן התרה אם מצא כי לא קוימה הוראת דין בקשר לייצוא הטובין או אם הטובין לא הובאו לאתר בפיקוח המכס.',
+        "key": '5 business days grace for post-export documents. Release denied if goods not at customs-supervised site.',
+    },
+    '104': {
+        "ch": 6, "t": 'טובין שלא יוצאו',
+        "s": 'Unexported goods: 3 months (sea/land) or 45 days (air) to apply for release. Otherwise sold/destroyed.',
+        "f": '(א)  טובין שהוגשה לגביהם הצהרת ייצוא וניתנה לגביהם התרה, או טובין שהיו תחת פיקוח המכס לשם ייצואם, ולא יוצאו מישראל, רשאי בעל הטובין להגיש בקשה לשחרורם מפיקוח המכס, בתוך שלושה חודשים מיום מתן ההתרה לגביהם או מיום שהובאו למקום שנקבע לייצוא, לפי העניין, ולעניין טובין המיוצאים דרך האוויר – בתוך 45 ימים מהמועד כאמור.\n\n(ב)  לא יוצאו טובין כאמור בסעיף קטן (א) מישראל ולא הוגשה בקשה כאמור באותו סעיף קטן עד תום התקופה כאמור בו, רשאי גובה המכס למכור את הטובין או להשמידם.\n\n(ג)   בקשה כאמור בסעיף קטן (א) תוגש בדרך שיקבע המנהל.',
+    },
+    '105': {
+        "ch": 6, "t": 'מסמכים וערובות',
+        "s": 'Documents and security/bond may be demanded for dutiable export goods.',
+        "f": 'גובה המכס רשאי לדרוש מבעל הטובין להגיש לו כל תעודה או מסמך הנוגעים לטובין שהוגשה לגביהם הצהרת ייצוא. ואם היו הטובין חבי מכס, רשאי גובה המכס לדרוש מבעל הטובין ערובה שהטובין יונחתו או יימסרו במקום האמור בהצהרה, או שיינתן הסבר עליהם להנחת דעתו של גובה המכס.',
+    },
+    '106': {
+        "ch": 6, "t": 'קיבול כלי שיט',
+        "s": 'Min 60 registered tons for warehoused/drawback/transshipment export goods.',
+        "f": 'טובין שהוחסנו במחסן, או שמתכוונים לתבוע עליהם הישבון, או שיש לשטען אותם – אין ליצאם בכלי שיט שקיבולו פחות מששים טונות רשומות.\n\nטובין חייבים בטעינה מרציף או ממקום מאושר',
+    },
+    '107': {
+        "ch": 6, "t": 'טעינה מרציף',
+        "s": 'Export loading only from wharf/approved place or via licensed lighter.',
+        "f": 'טובין הנתונים לפיקוח רשות-המכס והמיועדים לייצוא בדרך הים או להסעה לאורך החוף, וכן טובין שמתכוונים לתבוע עליהם הישבון, לא יוטענו על אניה אלא במישרין מרציף או ממקום מאושר אחר, או לאחר שהובאו במישרין משם אל האניה בסירה רשויה או בארבה רשויה.\n\nיצוא בדרך היבשה או האויר',
+    },
+    '108': {
+        "ch": 6, "t": 'יצוא ביבשה/אוויר',
+        "s": 'Nearest customs house; prescribed route without deviation; sealed railcar for rail.',
+        "f": '(א)  טובין המיועדים ליצוא בדרך היבשה שלא ברכבת, או ליצוא בדרך האויר, יש להביאם לבית המכס הסמוך ביותר למקום היצוא.\n\n(ב)  אם בית המכס אינו על הגבול יש להוביל את הטובין, לאחר בדיקה, אל הגבול בנתיב שנקבע לכך, ללא סטיה ממנו, וליצאם משם.\n\n(ג)   טובין נתונים לפיקוח רשות-המכס המוצאים ברכבת יש לשלוח אותם בקרון חתום כראוי בידי רשות-המכס.\n\n(ד)  כלי הובלה המייצא טובין ביבשה או באויר מותר לדרוש עליו מצהר-יציאה.\n\nתעודת מפדה',
+    },
+    '109': {
+        "ch": 6, "t": 'תעודת מפדה',
+        "s": 'Captain cannot sail without clearance certificate from customs officer.',
+        "f": 'קברניט של אניה לא יפליג עם אנייתו משום נמל בלי שקיבל מגובה המכס תעודת מפדה.\n\nקנס בעד הפלגה שרירותית',
+    },
+    '110': {
+        "ch": 6, "t": 'קנס הפלגה',
+        "s": 'Penalty: 20 lira skipping inspection; 100 lira sailing with customs officer without consent.',
+        "f": 'אניה שהפליגה מנמל בישראל ולא עצרה בתחנות שקבע המנהל לנחיתת פקידי-המכס או לעריכת בדיקה נוספת שלפני הפלגה ישלם הקברניט עשרים לירות; הפליגה האניה מנמל או מקום אחר כשפקיד-המכס או עובדי מדינה אחרים נמצאים בתוכה וההפלגה היתה שלא בהסכמתם ישלם הקברניט מאה לירות.\n\nדרישות שיש למלאותן לפני קבלת תעודת המפדה',
+    },
+    '111': {
+        "ch": 6, "t": 'דרישות לפני מפדה',
+        "s": 'Exit report, Q&A, documents required; exit manifest for vessels under 300 tons.',
+        "f": 'לפני שתינתן תעודת מפדה ימסור קברניט או בעל האניה תסקיר יציאה ראוי כפי שנקבע, ישיב על שאלות בדבר האניה, מטענה, צוות עובדיה, נוסעיה, צידתה ומסעה ויגיש תעודות בענין האניה ומטענה; ואם היה כלי השיט פחות משל 300 טונות רשומים – יגיש לקצין המכס מצהר-יציאה.\n\nמסירת מצהר',
+    },
+    '112': {
+        "ch": 6, "t": 'מסירת מצהר',
+        "s": 'Exit manifest within 24 hours of clearance; Director may extend.',
+        "f": 'בכפוף להוראות סעיף 111, חייב הקברניט, בעל האניה או סוכנה, למסור לגובה המכס את מצהר-היציאה תוך 24 שעות לאחר גמר המפדה, או תוך מועד מאוחר מזה ככל שירשה המנהל.\n\nטעינת טובין שלא פורטו',
+    },
+    '113': {
+        "ch": 6, "t": 'טעינת טובין שלא פורטו',
+        "s": 'No unlisted goods loaded unless Section 103 met; passenger baggage exempt.',
+        "f": 'לא יניח הקברניט להטעין על האניה טובין שלא פורטו או שלא אוזכרו במצהר היציאה, אלא לאחר שנתמלאו התנאים שנקבעו בסעיף 103; אין הוראה זו חלה על מטען לואי של נוסעים.\n\nתיקון מצהר יציאה',
+    },
+    '114': {
+        "ch": 6, "t": 'תיקון מצהר יציאה',
+        "s": 'Correction of obvious errors only; fee may apply.',
+        "f": '(א)  גובה המכס רשאי להתיר לקברניט או לבעל האניה לתקן כל טעות גלויה בגופו של מצהר או למלא כל חסר, שהם לדעת גובה המכס פרי מקרה או היסח הדעת; התיקון יהיה בהגשת מצהר מתוקן או מצהר מילואים, וגובה המכס רשאי, אם ייראה לו, לגבות בעדו את האגרה שנקבעה.\n\n(ב)  פרט לאמור בסעיף קטן (א) אין לתקן מצהר יציאה.\n\nתנאים לפדיה',
+    },
+    '115': {
+        "ch": 6, "t": 'תנאים לפדיה',
+        "s": 'Full accounting of cargo/provisions and all legal requirements met before clearance.',
+        "f": 'לא תינתן תעודת מפדה לאניה אלא לאחר שניתן הסבר כראוי, להנחת דעתו של גובה המכס, על מטענה ועל צידתה שהובאו מנמלים זרים, ולאחר שנתמלאו כראוי שאר הדרישות החוקיות בנוגע לאניה למטענה הנכנס והיוצא.\n\nיש לעצור את האניה בתחנת המעלה הנכונה',
+    },
+    '116': {
+        "ch": 6, "t": 'עצירה בתחנת מעלה',
+        "s": 'Stop at boarding station on departure; no sailing without customs officer consent.',
+        "f": 'אניה כשהיא מפליגה מנמל, חייב קברניטה, אם נדרש לכך, לעצרה בתחנת המעלה שנקבעה לאותו נמל, ולהקל בכל אמצעי סביר את עלייתו של פקיד-המכס על האניה, וכל זמן שפקיד-המכס נמצא באניה במילוי תפקידו לא יפליג הקברניט באנייתו מהנמל בלי הסכמתו.\n\nהקברניט חייב הסבר על טובין חסרים',
+    },
+    '117': {
+        "ch": 6, "t": 'הסבר על טובין חסרים',
+        "s": 'Must produce clearance certificate and explain missing manifest goods.',
+        "f": 'קברניט של אניה לאחר מפדה חייב –\n\n(1)   להגיש את תעודת המפדה, אם נדרש לכך על ידי פקיד-מכס;\n\n(2)   ליתן הסבר להנחת דעתו של גובה המכס על טובין שפורטו או שאוזכרו במצהר היציאה ואינם מצויים באניה.\n\nאיסור על פריקת טובי יצוא שלא ברשות',
+    },
+    '118': {
+        "ch": 6, "t": 'איסור פריקת טובי יצוא',
+        "s": 'No unloading of export goods without customs permission.',
+        "f": 'טובין שהטעינום ליצוא, בדרך הים או היבשה או האויר, אין לפרקם אלא ברשות גובה המכס.\n\nתעודת הנחת (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '119': {
+        "ch": 6, "t": 'תעודת הנחת',
+        "s": 'Landing certificate from destination may be required; failure may block future exports.',
+        "f": 'היצואן חייב, אם נדרש לכך על ידי המנהל, להגיש תעודה מאת פקיד-המכס הראשי בנמל היעוד, להוכחה שהטובין שהיו נתונים לפיקוח רשות-המכס הונחתו באותו נמל כראוי, בהתאם להצהרת הייצוא, ורשאי גובה המכס שלא להתיר לאותו יצואן ליצא טובין אחרים הנתונים לפיקוח רשות-המכס, אם לא המציא תוך מועד סביר את תעודת ההנחת של טובין שיצא קודם לכן, או אם לא נתן הסבר על הטובין להנחת דעתו של גובה המכס.',
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 7: SHIP'S STORES (צידת אניה)
     # ══════════════════════════════════════════════
 
-    "120": {"ch": 7, "t": "שימוש בצידת אניה", "s": "Stores for passengers/crew/ship use only; import declaration + release needed for other use."},
-    "121": {"ch": 7, "t": "הנחת צידת-אניה", "s": "No unauthorized use, unloading, or landing of ship's stores."},
-    "122": {"ch": 7, "t": "צידת-אניה חתומה", "s": "Customs seal on duty-free/drawback stores until final foreign departure."},
-    "123": {"ch": 7, "t": "עודפי צידת-אניה", "s": "Surplus: import declaration or warehousing for future use, with permission."},
+    '120': {
+        "ch": 7, "t": 'שימוש בצידת אניה',
+        "s": 'Stores for passengers/crew/ship use only; import declaration + release needed for other use.',
+        "f": 'צידת אניה, בין שהטעינוה בנמלי חוץ ובין בנמלי ישראל, לא ישתמשו בה אלא הנוסעים והצוות או לשירותי האניה בלבד, אלא אם כן הוגשה לגביה הצהרת ייבוא לשם צריכה בארץ וניתנה לגביה התרה או אם נקבעו הוראות אחרות בענין זה.',
+    },
+    '121': {
+        "ch": 7, "t": 'הנחת צידת-אניה',
+        "s": "No unauthorized use, unloading, or landing of ship's stores.",
+        "f": 'לא ישתמשו בצידת אניה בניגוד לסעיף 120 ולא יפרקוה ולא ינחיתוה אלא ברשות גובה המכס.\n\nצידת-אניה חתומה',
+    },
+    '122': {
+        "ch": 7, "t": 'צידת-אניה חתומה',
+        "s": 'Customs seal on duty-free/drawback stores until final foreign departure.',
+        "f": 'צידת אניה שהטעינוה ממחסן בלי תשלום מכס, או בהישבון, תישאר חתומה בחותם המכס כל זמן שהאניה היא בנמל או במקום אחר בישראל, או כל זמן שהיא עוברת מנמל או ממקום אחר בישראל למשנהו עד להפלגתה הסופית למסע חוץ.\n\nעודפי צידת-אניה מותר להנחית ברשות (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '123': {
+        "ch": 7, "t": 'עודפי צידת-אניה',
+        "s": 'Surplus: import declaration or warehousing for future use, with permission.',
+        "f": 'עודפי צידת אניה מותר, ברשות גובה המכס, להגיש לגביהם הצהרת ייבוא או לאחסנם במחסן שישמשו צידת אניה בעתיד.',
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 8: CUSTOMS PAYMENTS / VALUATION (תשלומי מכס)
-    # This is the MOST CRITICAL chapter for classification work.
     # ══════════════════════════════════════════════
 
-    "123א": {
-        "ch": 8, "t": "החייב במכס",
+    '123א': {
+        "ch": 8, "t": 'החייב במכס',
         "s": "Owner is liable for customs. Third party may assume obligation with Director's consent (full or partial).",
+        "f": '(א) החייב בתשלום מכס על טובין הוא בעל הטובין.\n\n(ב)  על אף הוראות סעיף קטן (א), אדם שאינו בעל הטובין רשאי, בהסכמת המנהל ובתנאים שיורה, לקבל על עצמו את תשלום המכס על טובין מסוימים, כולו או חלקו, ויראוהו מעת הסכמת המנהל כאמור כחייב במכס על אותם טובין.',
     },
-    "123ב": {
-        "ch": 8, "t": "תשלום המכס",
-        "s": "Duty paid at time of import declaration. Mail: at post office if no declaration. Director determines method.",
+    '123ב': {
+        "ch": 8, "t": 'תשלום המכס',
+        "s": 'Duty paid at time of import declaration. Mail: at post office if no declaration. Director determines method.',
+        "f": "(א) המכס על טובין מיובאים שחלה חובה להגיש לגביהם הצהרת ייבוא לפי הוראות סימן ה' בפרק רביעי, ישולם בעת הגשת הצהרת הייבוא.\n\n(ב)  המכס על טובין שיובאו בדואר ישולם בעת הגשת הצהרת הייבוא, ואם לא הוגשה הצהרת ייבוא – בעת קבלתם בסניף הדואר.\n\n(ג)   תשלום המכס לפי הוראות סעיף זה ייעשה בדרך שיקבע המנהל.\n\n(ד)  אין בהוראות סעיף זה כדי לגרוע מהוראות סעיף 81.",
     },
-    "124": {
-        "ch": 8, "t": "המועד הקובע לשיעור המכס",
-        "s": "Rate at time of payment (default). Exceptions: mail goods (assessment time), "
-             "no declaration (import time), conditional exemption (when condition ceases).",
-        "key": "Default: rate at payment time. Conditional exemption: rate when condition ceases.",
+    '124': {
+        "ch": 8, "t": 'המועד הקובע לשיעור המכס',
+        "s": 'Rate at time of payment (default). Exceptions: mail goods (assessment time), no declaration (import time), conditional exemption (when condition ceases).',
+        "f": '(א)  מכס ישולם לפי השיעור החל במועד התשלום.\n\n(ב)  על אף הוראות סעיף קטן (א), המכס על טובין שיובאו באמצעות הדואר ולא הוגשה לגביהם הצהרת ייבוא, ישולם לפי השיעור החל במועד עשיית השומה עליהם.\n\n(ג)   המכס על טובין מיובאים שחלה חובה להגיש לגביהם הצהרת ייבוא לפי הוראות סימן ה\' בפרק רביעי, ולא הוגשה לגביהם הצהרה כאמור, ישולם לפי השיעור החל בעת ייבואם, ואם מועד ייבואם אינו ידוע – בעת עשיית השומה עליהם.\n\n(ד)  על אף הוראות סעיף 123ב(א), שוחררו טובין מפיקוח רשות המכס בפטור מותנה, והוכח להנחת דעתו של המנהל כי חדל להתקיים לגביהם תנאי מהתנאים למתן פטור, תחול החובה לשלם את המכס בעד אותה טובין במועד שבו חדל להתקיים התנאי כאמור, ואם המועד האמור אינו ידוע – במועד הגשת הצהרת הייבוא, ולפי השיעור החל במועד כאמור; לעניין זה, "פטור מותנה" – פטור או הקלה משיעור המכס החלים לגבי טובין מיובאים בהתקיים תנאי הנוגע לשימוש בטובין, למעט פטור או הקלה החלים בכניסה זמנית, שקבע שר האוצר בצו לפי פקודת תעריף המכס והפטורים.\n\n(ה)  שוחררו טובין מפיקוח רשות המכס בפטור ממכס לפי סעיף 162, והוכח להנחת דעתו של המנהל שלא התקיים לגביהם תנאי מהתנאים לפי אותו סעיף למתן פטור, יחולו לעניין החובה לשלם את המכס בעד אותם טובין, ולעניין שיעור המכס שיחול, הוראות סעיף 123ב(א) והוראות סעיף קטן (א), בהתאמה.\n\n(ו)   אין בהוראות סעיף זה כדי לגרוע מההוראות לפי סעיפים 140 ו-160ב.',
+        "key": 'Default: rate at payment time. Conditional exemption: rate when condition ceases.',
     },
-    "125": {"ch": 8, "t": "משקלות ומידות", "s": "Weights/measures per Customs Authority approved standards."},
-    "126": {"ch": 8, "t": "חישוב יחסי", "s": "Pro rata calculation for any deviation from specified unit."},
-    "127": {"ch": 8, "t": "כמות גדולה יותר", "s": "Goods sold as larger than actual: duty on declared/apparent quantity."},
-    "128": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: place of payment. Repealed 1995."},
-
-    # ── VALUATION FRAMEWORK: Articles 129-133ט ──
-    "129": {
-        "ch": 8, "t": "הגדרות ופרשנות (הערכה)",
-        "s": "Definitions for WTO valuation framework (§§129-134א). Defines: goods being valued, identical goods, "
-             "similar goods, Israeli component, production, commercial level, special relationships "
-             "(8 criteria incl. 5% ownership threshold, family members), personal vs commercial use.",
-        "key": "Special relationships: 8 criteria; 5% ownership threshold; family members enumerated. "
-               "Israeli component excluded from identical/similar goods.",
+    '125': {
+        "ch": 8, "t": 'משקלות ומידות',
+        "s": 'Weights/measures per Customs Authority approved standards.',
+        "f": 'מקום שהמכס מוטל לפי המשקל או לפי המידה, ייקבעו משקלם או מידתם של הטובין לפי המשקלות והמידות שאושרו על-ידי רשות-המכס.\n\nהמכס – לפי חישוב יחסי',
     },
-    "130": {
-        "ch": 8, "t": "דרכי קביעת ערכם של טובין מוערכים",
-        "s": "THE MASTER HIERARCHY: 7 valuation methods in MANDATORY sequential order (WTO/GATT Article VII).",
+    '126': {
+        "ch": 8, "t": 'חישוב יחסי',
+        "s": 'Pro rata calculation for any deviation from specified unit.',
+        "f": 'מקום שהמכס מוטל לפי כמות, משקל, גודל או ערך מסויימים, יהא המכס שיוטל על כמות, משקל, גודל או ערך גדולים יותר או קטנים יותר, מחושב לפי חשבון יחסי.\n\nמתי המכס לפי הכמות הגדולה יותר',
+    },
+    '127': {
+        "ch": 8, "t": 'כמות גדולה יותר',
+        "s": 'Goods sold as larger than actual: duty on declared/apparent quantity.',
+        "f": 'טובין הנמכרים או המוכנים למכירה כבעלי שיעור או כמות גדולים משהם למעשה, או שמקובל שהם טובין כאלה, המכס עליהם יוטל לפי הגודל או הכמות הגדולים יותר.\n\n(תיקון מס\' 12) תשנ"ה-1995',
+    },
+    '128': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: place of payment. Repealed 1995.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '129': {
+        "ch": 8, "t": 'הגדרות ופרשנות (הערכה)',
+        "s": 'Definitions for WTO valuation framework (§§129-134א). Defines: goods being valued, identical goods, similar goods, Israeli component, production, commercial level, special relationships (8 criteria incl. 5% ownership threshold, family members), personal vs commercial use.',
+        "f": 'בסעיפים 129 עד 134א –\n\n"טובין מוערכים" – הטובין שיש לקבוע את ערכם לצורך מכס;\n\n"טובין זהים" – טובין הזהים לטובין המוערכים מכל בחינה שהיא, לרבות במאפייניהם הפיסיים, באיכותם ובמוניטין שלהם, ובלבד שיוצרו באותה מדינה שבה יוצרו הטובין המוערכים; לעניין זה –\n\n(1)   הבדלים צורניים מזעריים לא יפסלו טובין המקיימים את תנאי ההגדרה, בכל מובן אחר, מלהיחשב זהים;\n\n(2)   לא יראו טובין הכוללים מרכיב ישראלי כטובין זהים;\n\n"טובין דומים" – טובין, אשר אף שאינם זהים לחלוטין לטובין המוערכים, נתקיימו בהם כל אלה:\n\n(1)   הם יוצרו באותה מדינה שבה יוצרו הטובין המוערכים;\n\n(2)   הם בעלי מאפיינים דומים לטובין המוערכים ועשויים מחומרים דומים, המאפשרים להם תיפקוד דומה וחלופיות מבחינה מסחרית;\n\n(3)   הם אינם כוללים מרכיב ישראלי;\n\nלעניין קביעת הדמיון לטובין המוערכים יובאו בחשבון, בין היתר, איכות, מוניטין וסימן מסחרי;\n\n"מרכיב ישראלי" – הנדסה, פיתוח, עבודת אמנות, עבודת עיצוב, תכניות או סקיצות, שנעשו בישראל;\n\n"ייצור" – לרבות גידול וכריה;\n\n"מישור מסחרי" – סיטונות, קימעונות, מכירה באמצעות סוכן בלעדי, וכיוצא באלה;\n\n"יחסים מיוחדים" –\n\n(1)   יחסים בין צדדים לעסקת ייבוא, שמתקיים בהם לפחות אחד מאלה –\n\n(א)   אחד מהצדדים לעסקה הוא נושא משרה בעסקו של האחר; לעניין זה, "נושא משרה" – דירקטור, מנהל כללי, מנהל עסקים ראשי, משנה למנהל כללי, סגן מנהל כללי, מנהל אחר הכפוף במישרין למנהל הכללי, וכל ממלא תפקיד כאמור בחברה אף אם תוארו שונה;\n\n(ב)   הצדדים לעסקה מוכרים על פי דין כשותפים לעסקים;\n\n(ג)    הצדדים לעסקה הם עובד ומעביד;\n\n(ד)    אדם כלשהו הוא בעלים, שולט או מחזיק, בחמישה אחוזים או יותר מזכויות ההצבעה או מהמניות בכל אחד מהצדדים לעסקה, במישרין או בעקיפין;\n\n(ה)   אחד מהצדדים לעסקה שולט באחר, במישרין או בעקיפין;\n\n(ו)    הצדדים לעסקה נשלטים בידי צד שלישי, במישרין או בעקיפין;\n\n(ז)    הצדדים לעסקה שולטים ביחד בצד שלישי, במישרין או בעקיפין;\n\n(ח)   הצדדים לעסקה הם קרובי משפחה; לעניין זה, "קרוב משפחה" – בן זוג, אח, אחות, הורה, הורי הורה, הורה של בן-הזוג, צאצא, צאצא של בן-הזוג, ובן-זוגו של כל אחד מאלה;\n\n(2)   לעניין הגדרה זו יראו אדם כשולט באחר, כאשר הוא מצוי בעמדה חוקית או מעשית, המאפשרת לו להגביל או לכוון את פעילותו;\n\n(3)   סוכן בלעדי, מפיץ בלעדי או בעל זכיון בלעדי, בעסקו של אחר, יהא תיאור היחסים ביניהם אשר יהא, יראו כאילו מתקיימים ביניהם יחסים מיוחדים רק אם מתקיים לגביהם לפחות אחד התנאים שבפסקה (1);\n\n"שימוש עצמי" – אחד מאלה:\n\n(1)   שימוש בטובין שייבא יחיד לצרכיו או לצורכי בני ביתו;\n\n(2)   נתינה במתנה של טובין שייבא יחיד, לצרכיו או לצורכי בני ביתו של יחיד אחר;\n\n"שימוש מסחרי" – שימוש שאינו שימוש עצמי.',
+        "key": 'Special relationships: 8 criteria; 5% ownership threshold; family members enumerated. Israeli component excluded from identical/similar goods.',
+    },
+    '130': {
+        "ch": 8, "t": 'דרכי קביעת ערכם של טובין מוערכים',
+        "s": 'THE MASTER HIERARCHY: 7 valuation methods in MANDATORY sequential order (WTO/GATT Article VII).',
+        "f": 'ערכם של טובין מוערכים ייקבע כלהלן –\n\n(1)  לפי ערך עסקה שבה נרכשו, מחושב לפי הוראות סעיף 132;\n\n(2)  בהעדר אפשרות לקבוע את ערך הטובין המוערכים כאמור בפסקה (1) – לפי ערך עסקה שבה נרכשו טובין זהים, מחושב לפי הוראות סעיפים 133א ו-133ג;\n\n(3)  בהעדר אפשרות לקבוע את ערך הטובין המוערכים כאמור בפסקה (2) – לפי ערך עסקה שבה נרכשו טובין דומים, מחושב לפי הוראות סעיפים 133ב ו-133ג;\n\n(4)  בהעדר אפשרות לקבוע את ערך הטובין המוערכים כאמור בפסקה (3) – לפי מחיר מכירה בישראל, מחושב לפי הוראות סעיף 133ד;\n\n(5)  בהעדר אפשרות לקבוע את ערך הטובין המוערכים כאמור בפסקה (4) – לפי ערך מחושב, בהתאם להוראות סעיף 133ה;\n\n(6)  בהעדר אפשרות לקבוע את ערך הטובין המוערכים לפי פסקה (3), ועל אף שניתן לקבוע את ערך הטובין לפי הוראות פסקה (4) – לפי הוראות פסקה (5) תחילה, וזאת בהתאם לבקשת היבואן ובאישור גובה המכס;\n\n(7)  בהעדר אפשרות לקבוע את ערך הטובין המוערכים כאמור בפסקאות (1) עד (6) – לפי הוראות סעיף 133ו.',
         "methods": [
-            {"number": 1, "name_en": "Transaction Value", "name_he": "ערך עסקה",
-             "section": "132", "description": "Price paid/payable + Section 133 additions. 4 conditions must be met."},
-            {"number": 2, "name_en": "Transaction Value of Identical Goods", "name_he": "ערך עסקה של טובין זהים",
-             "section": "133א+133ג", "description": "Same country, same/proximate export time. Lowest value rule."},
-            {"number": 3, "name_en": "Transaction Value of Similar Goods", "name_he": "ערך עסקה של טובין דומים",
-             "section": "133ב+133ג", "description": "Similar characteristics/materials, same country. Lowest value rule."},
-            {"number": 4, "name_en": "Deductive Value (Sale Price in Israel)", "name_he": "ערך ניכוי",
-             "section": "133ד", "description": "Greatest aggregate quantity sold in Israel, minus deductions. 90-day rule."},
-            {"number": 5, "name_en": "Computed Value", "name_he": "ערך מחושב",
-             "section": "133ה", "description": "Cost build-up: materials + production + profit/expenses + CIF."},
-            {"number": 6, "name_en": "Reversed Order (Methods 4↔5)", "name_he": "סדר הפוך",
-             "section": "130(6)", "description": "Importer may REQUEST to apply Method 5 before Method 4 (with approval)."},
-            {"number": 7, "name_en": "Fallback Method", "name_he": "שיטת שארית",
-             "section": "133ו", "description": "Reasonable means per GATT principles. 7 prohibited bases (no minimums, no arbitrary)."},
+            {
+                'number': 1,
+                'name_en': 'Transaction Value',
+                'name_he': 'ערך עסקה',
+                'section': '132',
+                'description': 'Price paid/payable + Section 133 additions. 4 conditions must be met.',
+            },
+            {
+                'number': 2,
+                'name_en': 'Transaction Value of Identical Goods',
+                'name_he': 'ערך עסקה של טובין זהים',
+                'section': '133א+133ג',
+                'description': 'Same country, same/proximate export time. Lowest value rule.',
+            },
+            {
+                'number': 3,
+                'name_en': 'Transaction Value of Similar Goods',
+                'name_he': 'ערך עסקה של טובין דומים',
+                'section': '133ב+133ג',
+                'description': 'Similar characteristics/materials, same country. Lowest value rule.',
+            },
+            {
+                'number': 4,
+                'name_en': 'Deductive Value (Sale Price in Israel)',
+                'name_he': 'ערך ניכוי',
+                'section': '133ד',
+                'description': 'Greatest aggregate quantity sold in Israel, minus deductions. 90-day rule.',
+            },
+            {
+                'number': 5,
+                'name_en': 'Computed Value',
+                'name_he': 'ערך מחושב',
+                'section': '133ה',
+                'description': 'Cost build-up: materials + production + profit/expenses + CIF.',
+            },
+            {
+                'number': 6,
+                'name_en': 'Reversed Order (Methods 4↔5)',
+                'name_he': 'סדר הפוך',
+                'section': '130(6)',
+                'description': 'Importer may REQUEST to apply Method 5 before Method 4 (with approval).',
+            },
+            {
+                'number': 7,
+                'name_en': 'Fallback Method',
+                'name_he': 'שיטת שארית',
+                'section': '133ו',
+                'description': 'Reasonable means per GATT principles. 7 prohibited bases (no minimums, no arbitrary).',
+            },
         ],
-        "critical_rule": "Methods MUST be applied IN ORDER. Cannot skip to Method 4 without proving 1-3 inapplicable.",
+        "critical_rule": 'Methods MUST be applied IN ORDER. Cannot skip to Method 4 without proving 1-3 inapplicable.',
     },
-    "131": {
-        "ch": 8, "t": "טובין שחלפה שנה",
-        "s": "Goods under customs >1 year: Method 1 excluded by default. Director may reinstate on request.",
+    '131': {
+        "ch": 8, "t": 'טובין שחלפה שנה',
+        "s": 'Goods under customs >1 year: Method 1 excluded by default. Director may reinstate on request.',
+        "f": '(א)  ערכם של טובין מוערכים שחלפה שנה משעת ייבואם כאמור בסעיף 144 בטרם נפדו מפיקוח רשות המכס, ייקבע לפי הוראות סעיף 130 החל מהוראת פסקה (2), והוראת פסקה (1) לא תחול.\n\n(ב)  על אף הוראות סעיף קטן (א) רשאי המנהל, על פי בקשת היבואן ומנימוקים שיירשמו, להורות כי ערכם של טובין כמשמעותם בסעיף קטן (א) ייקבע לפי הוראות סעיף 130, החל בהוראת פסקה (1).',
     },
-    "132": {
-        "ch": 8, "t": "ערך עסקה",
-        "s": "METHOD 1 DETAIL: Price paid/payable + §133 additions. 4 CONDITIONS: "
-             "(1) no sale restrictions (except legal/geographic/immaterial); "
-             "(2) no unquantifiable conditions; "
-             "(3) no seller-attributed resale proceeds not in §133; "
-             "(4) no special relationship influence (or importer can prove non-influence via 3 benchmarks). "
-             "Interest excluded if separate, written, and at prevailing rate. Post-release discounts excluded.",
-        "key": "4 mandatory conditions. Special relationship test: 3 benchmarks (identical/similar TV, deductive, computed). "
-               "Interest: 3 exclusion conditions. Post-release discounts: always excluded.",
+    '132': {
+        "ch": 8, "t": 'ערך עסקה',
+        "s": 'METHOD 1 DETAIL: Price paid/payable + §133 additions. 4 CONDITIONS: (1) no sale restrictions (except legal/geographic/immaterial); (2) no unquantifiable conditions; (3) no seller-attributed resale proceeds not in §133; (4) no special relationship influence (or importer can prove non-influence via 3 benchmarks). Interest excluded if separate, written, and at prevailing rate. Post-release discounts excluded.',
+        "f": '(א)  ערך עסקה הוא המחיר ששולם או שיש לשלמו בעד הטובין, בעת מכירתם לשם ייצוא לישראל (להלן – מחיר העסקה), בתוספת ההוצאות והסכומים המפורטים בסעיף 133, ובלבד שהתקיימו כל התנאים המנויים בסעיף קטן (ב).\n\n(ב)  ערך עסקה ייקבע לפי סעיף קטן (א) רק בהתקיים כל אלה:\n\n(1)   אין הגבלות באשר למכירת הטובין או לשימוש בהם בידי היבואן, למעט –\n\n(א)   הגבלות המוטלות או הנדרשות בישראל על פי דין;\n\n(ב)   הגבלות לגבי האזורים הגאוגרפיים שבהם מותר למכור את הטובין;\n\n(ג)    הגבלות שאינן משפיעות באופן משמעותי על ערך הטובין;\n\n(2)   מכירת הטובין או מחירם אינם כפופים לתנאי או לתמורה כלשהם, שלא ניתן לאמוד את ערכם לצורך קביעת ערך הטובין;\n\n(3)   לא ניתן ליחס למוכר הטובין, בין במישרין ובין בעקיפין, כל חלק בתקבולים הצפויים ממכירת הטובין או משימוש בהם על ידי היבואן, למעט ההוצאות והסכומים המפורטים בסעיף 133, אם אינם כלולים במחיר העסקה מלכתחילה;\n\n(4)   (א)   אין יחסים מיוחדים בין המוכר ליבואן;\n\n(ב)   היו יחסים מיוחדים בין המוכר ליבואן – ערך העסקה לא הושפע מאותם יחסים; לעניין זה, יראו את ערך העסקה כאילו לא הושפע מיחסים מיוחדים אם הוכיח היבואן שערך העסקה קרוב, ככל האפשר, לאחד מהערכים המפורטים להלן –\n\n(1)   ערך העסקה במכירתם לייצוא לישראל של טובין זהים או דומים, ליבואנים שאין ביניהם לבין המוכר יחסים מיוחדים;\n\n(2)   ערך טובין זהים או דומים שנקבע לפי הוראות סעיף 133ד;\n\n(3)   ערך טובין זהים או דומים שנקבע לפי הוראות סעיף 133ה;\n\n(ג)    סבר המנהל כי ערך העסקה הושפע מיחסים מיוחדים, יודיע על כך ליבואן ויתן לו הזדמנות להשמיע בפניו את טענותיו.\n\n(ג)   עסקה שלא מתקיים לגביה אחד התנאים האמורים בסעיף קטן (ב), לא תשמש לקביעת ערכם של טובין לפי סעיף 130.\n\n(ד)  בקביעת ערך עסקה לא תובא בחשבון ריבית על פי הסדרי מימון שעשה היבואן בקשר לייבוא הטובין, אם נתקיימו כל אלה:\n\n(1)   דמי הריבית נפרדים ממחיר העסקה;\n\n(2)   הסדרי המימון נעשו בכתב;\n\n(3)   היבואן הוכיח, אם נדרש לעשות זאת, שהטובין אכן נמכרים במחיר שהוצהר עליו כמחיר העסקה וכי שער הריבית המוצהר, אינו עולה על הרמה המקובלת בעסקאות דומות במדינה שבה ניתן המימון, בעת שנעשה הסדר המימון.\n\n(ה)  הנחות במחיר טובין שיינתנו לאחר פדייתם מפיקוח רשות המכס, לא יובאו בחשבון לעניין קביעת ערך העסקה של אותם טובין.',
+        "key": '4 mandatory conditions. Special relationship test: 3 benchmarks (identical/similar TV, deductive, computed). Interest: 3 exclusion conditions. Post-release discounts: always excluded.',
     },
-    "133": {
-        "ch": 8, "t": "התוספות למחיר העסקה",
-        "s": "5 categories of MANDATORY additions to transaction price (CIF basis):",
+    '133': {
+        "ch": 8, "t": 'התוספות למחיר העסקה',
+        "s": '5 categories of MANDATORY additions to transaction price (CIF basis):',
+        "f": '(א)  לצורך קביעת ערך העסקה כאמור בסעיף 132, ייווספו למחיר העסקה אך ורק ההוצאות והסכומים המפורטים להלן, אם אינם כלולים בו מלכתחילה, כשהם מחושבים על יסוד נתונים אובייקטיביים הניתן לאומדן –\n\n(1)   ההוצאות ששילם הקונה או שעליו לשלמן הקשורות בקניית הטובין כלהלן –\n\n(א)   עמלות ודמי תיווך למעט עמלות קניה; לעניין זה, "עמלות קניה" – תשלומים שמשלם היבואן לסוכנו תמורת שירותי הייצוג בקניית הטובין שהסוכן מעניק לו בחוץ לארץ;\n\n(ב)   עלות כלי הקיבול הנחשבים לעניין המכס כחלק בלתי נפרד מהטובין;\n\n(ג)    עלות האריזה לרבות עלות העבודה ועלות חומרי האריזה;\n\n(2)   הערך היחסי של השירותים ואמצעי הייצור המפורטים להלן, שסיפק היבואן, במישרין או בעקיפין, ללא תמורה או במחיר מוזל, בקשר לייצורם ולמכירתם לייצוא של הטובין –\n\n(א)   חומרים, מרכיבים, חלקים ופריטים דומים, הכלולים בטובין;\n\n(ב)   כלים, תבניות ופריטים דומים, ששימשו בייצור הטובין;\n\n(ג)    חומרים שנצרכו והתכלו בייצור הטובין;\n\n(ד)    הנדסה, פיתוח, עבודת אמנות, עבודת עיצוב תכניות וסקיצות, שנעשו מחוץ לישראל, ונדרשו בייצור הטובין;\n\n(3)   תמלוגים ודמי רשיון המתייחסים לטובין, שהיבואן חייב בתשלומם, במישרין או בעקיפין, כתנאי למכירת הטובין\n\nבישראל על ידו;\n\n(4)   ערכו של כל חלק שניתן ליחסו למוכר, במישרין או בעקיפין, בתקבולים הצפויים מכל מכירה של הטובין או משימוש בהם, שבוצעו לאחר מכירתם לייצוא לישראל;\n\n(5)   העלויות שלהלן הכרוכות בהבאת הטובין לנמל הייבוא או למקום הייבוא –\n\n(תיקון מס\' 17) תשס"א-2000\n\n(א)   עלות ההובלה של הטובין לנמל הייבוא או למקום הייבוא, למעט עלויות כאמור שנגרמו עקב נסיבות מיוחדות שאין ליבואן שליטה עליהן והמנהל קבע שאין לכלול אותן בערך העסקה; המנהל רשאי לקבוע כללים ותנאים לענין זה, לרבות סוגי טובין, סוגי הובלות\n\nושירותים אחרים;\n\n(ב)   תשלומים עבור טעינה, פריקה וטיפול, הקשורים בהובלת הטובין לנמל הייבוא או למקום הייבוא, ובכלל זה אגרות סבלות, אגרות סוורות ואגרות רציף;\n\n(ג)    עלות הביטוח.\n\n(ב)  בהעדר נתונים אובייקטיביים הניתנים לאומדן לצורך חישוב הוצאה או סכום כלשהם מן המפורטים בסעיף קטן (א), שהוצאו במסגרת עסקה, לא תשמש העסקה האמורה לקביעת ערכם של טובין לפי סעיף 130.',
+        "key": 'CIF basis. Buying commissions EXCLUDED. Israeli engineering EXCLUDED from assists. No objective data = transaction disqualified.',
         "additions": [
             "(1) Buyer's costs: (א) commissions/brokerage (EXCLUDING buying commissions), (ב) containers, (ג) packing",
-            "(2) Assists: (א) materials/components, (ב) tools/dies/molds, (ג) consumed materials, (ד) engineering/design done OUTSIDE Israel",
-            "(3) Royalties and license fees as condition of sale",
-            "(4) Resale proceeds attributable to seller",
-            "(5) CIF costs: (א) transport to port, (ב) loading/unloading/handling, (ג) insurance",
+            '(2) Assists: (א) materials/components, (ב) tools/dies/molds, (ג) consumed materials, (ד) engineering/design done OUTSIDE Israel',
+            '(3) Royalties and license fees as condition of sale',
+            '(4) Resale proceeds attributable to seller',
+            '(5) CIF costs: (א) transport to port, (ב) loading/unloading/handling, (ג) insurance',
         ],
-        "key": "CIF basis. Buying commissions EXCLUDED. Israeli engineering EXCLUDED from assists. "
-               "No objective data = transaction disqualified.",
     },
-    "133א": {
-        "ch": 8, "t": "ערך עסקה — טובין זהים",
-        "s": "METHOD 2: Identical goods TV. Same country, same/proximate export time. Same commercial level/quantity preferred; "
-             "adjustments with proven evidence. Section 132 calculation applies.",
+    '133א': {
+        "ch": 8, "t": 'ערך עסקה — טובין זהים',
+        "s": 'METHOD 2: Identical goods TV. Same country, same/proximate export time. Same commercial level/quantity preferred; adjustments with proven evidence. Section 132 calculation applies.',
+        "f": 'לעניין סעיף 130(2) –\n\n(1)  ערך עסקה שבה נרכשו טובין זהים יחושב לפי הוראות סעיף 132;\n\n(2)  עסקה שבה נרכשו טובין זהים תשמש לקביעת ערכם של הטובין המוערכים אם נתקיימו כל אלה:\n\n(א)   הטובין הזהים יוצאו לישראל באותה עת שבה יוצאו הטובין המוערכים, או בסמוך לאותה עת;\n\n(ב)   העסקה שבה נרכשו הטובין הזהים התבצעה באותו מישור מסחרי שבו התבצעה העסקה בטובין המוערכים ובכמויות דומות; בהעדר עסקה כאמור – עסקה שבה נרכשו טובין זהים במישור מסחרי שונה מהמישור המסחרי שבו נרכשו הטובין המוערכים או בכמויות שונות, ובלבד שההבדלים שניתן ליחסם למישור המסחרי או לכמויות נלקחו בחשבון לצורך התאמת ערך העסקה; ההתאמה תתבסס על ראיות\n\nמוכחות המצביעות באופן ברור על סבירות ההערכה ודיוקה.',
     },
-    "133ב": {
-        "ch": 8, "t": "ערך עסקה — טובין דומים",
-        "s": "METHOD 3: Similar goods TV. Same conditions as Method 2 but for similar (not identical) goods.",
+    '133ב': {
+        "ch": 8, "t": 'ערך עסקה — טובין דומים',
+        "s": 'METHOD 3: Similar goods TV. Same conditions as Method 2 but for similar (not identical) goods.',
+        "f": 'לעניין סעיף 130(3) –\n\n(1)  ערך עסקה שבה נרכשו טובין דומים יחושב לפי הוראות סעיף 132;\n\n(2)  עסקה שבה נרכשו טובין דומים תשמש לקביעת ערכם של הטובין המוערכים אם נתקיימו כל אלה:\n\n(א)   הטובין הדומים יוצאו לישראל באותה עת שבה יוצאו הטובין המוערכים, או בסמוך לאותה עת;\n\n(ב)   העסקה שבה נרכשו הטובין הדומים התבצעה באותו מישור מסחרי שבו התבצעה העסקה בטובין המוערכים ובכמויות דומות; בהעדר עסקה כאמור – עסקה שבה נרכשו טובין דומים במישור מסחרי שונה מהמישור המסחרי שבו נרכשו הטובין המוערכים או בכמויות שונות, ובלבד שההבדלים שניתן ליחסם למישור המסחרי או לכמויות, נלקחו בחשבון לצורך התאמת ערך העסקה; ההתאמה תתבסס על ראיות מוכחות המצביעות באופן ברור על סבירות ההערכה ודיוקה.',
     },
-    "133ג": {
-        "ch": 8, "t": "כללים לטובין זהים/דומים",
-        "s": "Supplementary rules for Methods 2-3: LOWEST value selection; transport cost differential adjustments.",
+    '133ג': {
+        "ch": 8, "t": 'כללים לטובין זהים/דומים',
+        "s": 'Supplementary rules for Methods 2-3: LOWEST value selection; transport cost differential adjustments.',
+        "f": 'לעניין סעיף 130(2) ו-(3) –\n\n(1)  נמצא יותר מערך עסקה אחד של טובין זהים או טובין דומים, לפי העניין, שמתקיימות לגביהם הוראות סעיפים 129 עד 133ט, ייקבע ערך הטובין המוערכים לפי הנמוך מבין הערכים שנמצאו;\n\n(2)  במקרים שבהם ההוצאות המפורטות בסעיף 133(א)(5) נכללות בערך העסקה, תתבצע התאמה, לשם התחשבות בהבדלים משמעותיים בהוצאות האמורות, הנובעים מהבדלים במרחק או באופן ההובלה, בין ערך העסקה של הטובין הזהים או הדומים, לפי העניין, לבין ערך העסקה של הטובין המוערכים.',
     },
-    "133ד": {
-        "ch": 8, "t": "מחיר מכירה בישראל",
-        "s": "METHOD 4 (Deductive): Greatest aggregate quantity sold in Israel. Deductions: commissions, domestic transport, "
-             "CIF costs, import taxes. 90-day rule for later sales. Further-processing option on request.",
-        "key": "90-day window. Greatest aggregate quantity. 4 deductions. Assists-related sales excluded.",
+    '133ד': {
+        "ch": 8, "t": 'מחיר מכירה בישראל',
+        "s": 'METHOD 4 (Deductive): Greatest aggregate quantity sold in Israel. Deductions: commissions, domestic transport, CIF costs, import taxes. 90-day rule for later sales. Further-processing option on request.',
+        "f": 'לעניין סעיף 130(4) –\n\n(1)  באין אפשרות לקבוע את ערך הטובין המוערכים לפי סעיף 130(1) עד (3), וטובין זהים או דומים לטובין המוערכים נמכרים בישראל באותו מצב שבו יובאו – יחושב ערך הטובין המוערכים לפי סעיף זה, בהתבסס על המחיר ליחידה שבו נמכרים הטובין הזהים או הדומים לראשונה לאחר הייבוא, בכמות המצרפית הגדולה ביותר, בעת ייבוא הטובין המוערכים או בסמוך לכך, לבני אדם שאין יחסים מיוחדים ביניהם לבין המוכר בישראל, בניכוי סכומים אלה:\n\n(א)   העמלות המשתלמות בדרך כלל או שהוסכם לשלמן, או התוספות שנהוג בדרך כלל להוסיפן בחישוב הרווח, והוצאות כלליות, בקשר עם מכירות של טובין מיובאים באותה רמה או מאותו סוג בישראל;\n\n(ב)   ההוצאות הרגילות של הובלה וביטוח והוצאות נלוות, הנוצרות בדרך כלל בישראל;\n\n(ג)    עלויות הכרוכות בהבאת הטובין לנמל הייבוא או למקום הייבוא, כמפורט בסעיף 133(א)(5);\n\n(ד)   מכס ומסים אחרים שיש לשלמם בישראל עקב ייבוא הטובין או מכירתם;\n\n(2)  לא נמכרו טובין זהים או דומים בעת ייבוא הטובין המוערכים או בסמוך לכך – יחושב ערך הטובין המוערכים כאמור בפסקה (1), אך בהתבסס על המחיר ליחידה שבו נמכרים הטובין הזהים או הדומים בישראל באותו מצב שבו יובאו, במועד הקרוב ביותר לאחר ייבוא הטובין המוערכים, ובלבד שטרם חלפו 90 ימים ממועד הייבוא של הטובין המוערכים;\n\n(3)  לא נמכרים טובין זהים או דומים בישראל באותו מצב שבו יובאו – יחושב ערך הטובין המוערכים, אם ביקש זאת היבואן, כאמור בפסקה (1), אך בהתבסס על המחיר ליחידה שבו נמכרים הטובין האמורים לאחר עיבוד נוסף, בכמות המצרפית הגדולה ביותר, לקונה בישראל שאין בינו ובין המוכר בישראל יחסים מיוחדים, תוך ניכוי הערך המוסף הנובע מהעיבוד האמור; הערך המוסף יחושב על בסיס נתונים אובייקטיביים הניתנים לאומדן;\n\n(4)  מכירה בישראל של טובין זהים או דומים, לאדם שסיפק, במישרין או בעקיפין, ללא תמורה או במחיר מוזל, אחד מן המרכיבים המפורטים בסעיף 133(א)(2), לשימוש בקשר עם ייצורם ומכירתם לייצוא של הטובין האמורים, לא תשמש לקביעת ערכם של טובין מוערכים לפי סעיף זה.',
+        "key": '90-day window. Greatest aggregate quantity. 4 deductions. Assists-related sales excluded.',
     },
-    "133ה": {
-        "ch": 8, "t": "ערך מחושב",
-        "s": "METHOD 5 (Computed): Materials + manufacturing cost + profit/expenses + CIF. Foreign producer not compellable; "
-             "verification abroad with consent and foreign authority notice.",
+    '133ה': {
+        "ch": 8, "t": 'ערך מחושב',
+        "s": 'METHOD 5 (Computed): Materials + manufacturing cost + profit/expenses + CIF. Foreign producer not compellable; verification abroad with consent and foreign authority notice.',
+        "f": 'לעניין סעיף 130(5) –\n\n(1)  ערכם של הטובין המוערכים ייקבע לפי ערך מחושב שהוא סך כל הערכים שלהלן:\n\n(א)   עלותם או ערכם של חומרים וייצור או כל עיבוד אחר, המשמשים בייצורם של הטובין המוערכים, לרבות עלות המרכיבים המפורטים בסעיף 133(א)(1), בפסקאות משנה (ב) ו-(ג);\n\n(ב)   סכום השווה לרווחים ולהוצאות הכלליות שיש בדרך כלל במכירות של טובין ברמתם או מסוגם של הטובין המוערכים, הנעשות בידי יצרנים במדינת הייצוא לשם ייצוא לישראל;\n\n(ג)    העלויות הכרוכות בהבאת הטובין המוערכים לנמל הייבוא או למקום הייבוא כמפורט בסעיף 133(א)(5);\n\n(2)  אדם שאינו תושב ישראל, לא יחויב להמציא חשבונות, רשומות או מסמכים אחרים, לשם בדיקה, ולא יחויב להתיר גישה אליהם, לצורך קביעת ערך מחושב; ואולם, המנהל רשאי לאמת במדינה אחרת מידע שסיפק יצרן טובין, לשם קביעת ערך מחושב, בהסכמת אותו יצרן, לאחר מתן הודעה מוקדמת ראויה לרשות המוסמכת במדינתו של היצרן, ומשלא התנגדה הרשות האמורה תוך זמן סביר.',
     },
-    "133ו": {
-        "ch": 8, "t": "שיטת שארית",
-        "s": "METHOD 7 (Fallback): Reasonable means per GATT 1994. PROHIBITED: domestic prices, higher-of-two, "
-             "export-country prices, cost of production (except Method 5 for identical/similar), export to other countries, "
-             "minimum values, arbitrary values. Director may apply earlier methods flexibly.",
-        "key": "7 prohibited bases. No minimum customs values. No arbitrary values.",
+    '133ו': {
+        "ch": 8, "t": 'שיטת שארית',
+        "s": 'METHOD 7 (Fallback): Reasonable means per GATT 1994. PROHIBITED: domestic prices, higher-of-two, export-country prices, cost of production (except Method 5 for identical/similar), export to other countries, minimum values, arbitrary values. Director may apply earlier methods flexibly.',
+        "f": 'לעניין סעיף 130(7) –\n\n(1)  באין אפשרות לקבוע את ערך הטובין המוערכים לפי סעיף 130(1) עד (6) – ייקבע ערכם תוך שימוש באמצעים סבירים העולים בקנה אחד עם העקרונות וההוראות שנקבעו בהסכם גאט"ט, משנת 1994 ובהסכם בדבר יישום סעיף\nVII\nלהסכם גאט"ט, משנת 1994, כפי שבאו לידי ביטוי בסעיפים 129 עד 133ט;\n\n(2)  ערך הטובין המוערכים לפי סעיף זה, לא ייקבע על יסוד אחד מאלה:\n\n(א)   המחיר לצרכן של טובין מייצור מקומי;\n\n(ב)   שיטה המורה על קביעת ערך למטרות מכס, לפי הגבוה משני ערכים נתונים;\n\n(ג)    מחירם של הטובין בשוק המקומי במדינת הייצוא;\n\n(ד)   עלות הייצור, למעט ערך מחושב שנקבע לטובין זהים או לטובין דומים לפי סעיף 133ה, ולעניין זה, יראו טובין כטובין זהים או כטובין דומים אף אם לא יוצרו באותה מדינה;\n\n(ה)   מחירם של הטובין לייצוא אל מדינה שאינה מדינת\n\nישראל;\n\n(ו)    ערך מינימלי למטרות מכס;\n\n(ז)    ערכים שרירותיים או פיקטיביים;\n\n(3)  מבלי לגרוע מהוראות פסקה (1), רשאי המנהל, לשם יישום הוראות סעיף זה, להיעזר בשיטות הערכת הטובין המפורטות בסעיף 130, גם אם לא ניתן למלא אחר כל תנאיהן.',
+        "key": '7 prohibited bases. No minimum customs values. No arbitrary values.',
     },
-    "133ז": {"ch": 8, "t": "טובין שניזוקו", "s": "Damaged goods: valuation hierarchy applies with damage discount. No double recovery (§150 excluded)."},
-    "133ח": {"ch": 8, "t": "מסירת פירוט", "s": "Director must give written notice of value + method used. Detailed calculation on request."},
-    "133ט": {"ch": 8, "t": "תחולה מסחרית", "s": "WTO valuation (§§129-133ח) applies ONLY to commercial imports. Personal use: §134א."},
-    "134": {"ch": 8, "t": "תקנות להערכה", "s": "Director may make regulations; compulsory disclosure of accounts/books/documents. Fine: 100 lira."},
-    "134א": {"ch": 8, "t": "ערך לשימוש עצמי", "s": "Personal-use imports valued per Finance Minister regulations (Knesset approval required)."},
-    "135": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: classification at highest rate. Repealed 1965."},
-    "136": {"ch": 8, "t": "חלק מן השלם", "s": "Parts of a whole: each part taxed at rate of complete item (ad valorem). Anti-avoidance."},
-    "137": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: composite materials classification. Repealed 1965."},
-    "138": {"ch": 8, "t": "מדידה", "s": "Goods arranged for measurement at owner's expense. Bulk: full extent of stack/pile."},
-    "139": {"ch": 8, "t": "ערך מכירה פומבית", "s": "Customs auction price = permissible value for ad valorem goods."},
-    "140": {"ch": 8, "t": "טובין במצהר שלא הוצגו",
-        "s": "Goods in manifest but not presented: vessel owner/master/agent pays duty at rate when manifest delivered.",
+    '133ז': {
+        "ch": 8, "t": 'טובין שניזוקו',
+        "s": 'Damaged goods: valuation hierarchy applies with damage discount. No double recovery (§150 excluded).',
+        "f": 'ערכם של טובין שניזוקו לפני פדייתם מפיקוח רשות המכס ייקבע לפי שיטות ההערכה הקבועות בסעיף 130, תוך התחשבות בירידת ערך הטובין המוערכים כתוצאה מן הנזק; נקבע ערכם של טובין שניזוקו לפי הוראות סעיף זה, לא יחולו לגביהם הוראות סעיף 150(1).',
     },
-    "141": {"ch": 8, "t": "טובין פטורים שהועברו",
-        "s": "Duty-free goods transferred to non-exempt entity: ad valorem at transfer value; specific rate with deterioration adjustment. "
-             "Pre-transfer notification + payment required. Diplomatic car reciprocal exemption.",
+    '133ח': {
+        "ch": 8, "t": 'מסירת פירוט',
+        "s": 'Director must give written notice of value + method used. Detailed calculation on request.',
+        "f": 'המנהל ימסור ליבואן הודעה בכתב על ערך הטובין שנקבע לפי הוראות סעיפים 130 עד 133ז, לפי העניין, ועל השיטה שלפיה נקבע הערך האמור; לבקשת היבואן, ימסור לו המנהל בכתב גם את פירוט החישוב.',
     },
-    "142": {"ch": 8, "t": "דוגמאות", "s": "Small samples from supervised bulk: customs-free with conditions."},
-    "143": {"ch": 8, "t": "שינוי בהסכם", "s": "Contract price adjusts for customs rate changes between contract and declaration. Contractual override permitted."},
-    "144": {"ch": 8, "t": "מועד ייבוא",
-        "s": "Time of import: sea = entry into port limits; land/air = border crossing.",
-        "key": "Sea: entry into port limits. Land/air: border crossing. Used for applicable rates.",
+    '133ט': {
+        "ch": 8, "t": 'תחולה מסחרית',
+        "s": 'WTO valuation (§§129-133ח) applies ONLY to commercial imports. Personal use: §134א.',
+        "f": 'הוראות סעיפים 129 עד 133ח יחולו רק לגבי טובין שיובאו לשימוש מסחרי.',
     },
-    "145": {"ch": 8, "t": "ניכוי המכס", "s": "State holds FIRST AND PREFERENTIAL LIEN on goods for customs/charges/fines regardless of ownership."},
-    "146": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: documents with רשמון. Repealed 2018."},
-    "147": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: invoice particulars. Repealed 2018."},
-    "148": {"ch": 8, "t": "המרת מטבע",
-        "s": "Foreign currency → Israeli currency per Finance Minister rules (Knesset approval).",
-        "key": "Currency conversion rules set by Finance Minister.",
+    '134': {
+        "ch": 8, "t": 'תקנות להערכה',
+        "s": 'Director may make regulations; compulsory disclosure of accounts/books/documents. Fine: 100 lira.',
+        "f": '(א)  המנהל רשאי להתקין תקנות להפעלת הסעיפים 129 עד 133ט וביחוד כדי לחייב כל אדם הקשור ביבוא טובין לישראל לספק למנהל, בצורה שידרוש, כל ידיעה הנחוצה לדעתו, בשביל הערכה נכונה של הטובין וכן פנקסי חשבונות וכל תעודה אחרת המתייחסת לקניית הטובין, ייבואם או מכירתם על ידי אותו אדם.\n\n(ב)  העובר על תקנה שהותקנה על פי סעיף זה, דינו – קנס מאה לירות על כל עבירה.',
     },
-    "149": {"ch": 8, "t": "ליטול טובין בערכם",
-        "s": "Suspected undervaluation: Director may take customs in kind OR seize goods at declared value + 5%. Payment within 30 days.",
-        "key": "Compulsory purchase at declared value + 5% premium. 30-day payment.",
+    '134א': {
+        "ch": 8, "t": 'ערך לשימוש עצמי',
+        "s": 'Personal-use imports valued per Finance Minister regulations (Knesset approval required).',
+        "f": 'ערכם של טובין שיובאו לשימוש עצמי, בין במטען נלווה ובין בדרך אחרת, יחושב בהתאם לתקנות שיקבע שר האוצר, באישור ועדת הכספים של הכנסת.',
     },
-    "150": {"ch": 8, "t": "החזרת מכס",
-        "s": "Refund for: (1) lost/destroyed/damaged before release; (2) non-conformity/defect within 6 months of release. "
-             "Immediate claim + no-use condition.",
-        "key": "6-month post-release defect window. Immediate claim required. No-use or discovery-use only.",
+    '135': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: classification at highest rate. Repealed 1965.',
+        "f": '(בוטל).',
+        "repealed": True,
     },
-    "151": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: deficit collection. Repealed 1968."},
-    "152": {"ch": 8, "t": "אין החזרה עקב שינוי",
-        "s": "Classification practice changes are PROSPECTIVE only. No retroactive refunds.",
-        "key": "Classification changes = no retroactive refund for past payments.",
+    '136': {
+        "ch": 8, "t": 'חלק מן השלם',
+        "s": 'Parts of a whole: each part taxed at rate of complete item (ad valorem). Anti-avoidance.',
+        "f": 'טובין שהם חבי מכס לפי הערך והם מורכבים משני חלקים נפרדים או יותר, כל חלק מהם, או שיובא בנפרד, יוטל עליו מכס לפי השיעור החל על הטובין השלמים.\n\n(תיקון מס\' 3) תשכ"ה-1965',
     },
-    "153": {"ch": 8, "t": "טובין שחזרו",
-        "s": "Re-imported goods: exempt if no foreign processing. Repair/improvement abroad: duty on improvement value only. "
-             "Rate difference payable if rates increased.",
-        "key": "No processing abroad = exempt. Repair/improvement = duty on value of improvement only.",
+    '137': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: composite materials classification. Repealed 1965.',
+        "f": '(בוטל).',
+        "repealed": True,
     },
-    "154": {"ch": 8, "t": "סכסוך בנוגע לתשלום",
+    '138': {
+        "ch": 8, "t": 'מדידה',
+        "s": "Goods arranged for measurement at owner's expense. Bulk: full extent of stack/pile.",
+        "f": 'טובין שהם חבי מכס לפי המידה יש לסוורם, לערמם, למיינם, לשימם במסגרת או להניחם בכל דרך אחרת, לפי דרישת גובה המכס ועל חשבון בעל הטובין, כדי לאפשר מדידתם ומיפרטם; היו הטובין נמדדים בצובר, תיקבע המידה לפי מלוא היקפם של הסוָר או של הערימה.\n\nערכם של טובין שנמכרו על ידי רשות המכס',
+    },
+    '139': {
+        "ch": 8, "t": 'ערך מכירה פומבית',
+        "s": 'Customs auction price = permissible value for ad valorem goods.',
+        "f": 'טובין שהם חבי מכס לפי הערך ונמכרו באחת ממכירות רשות-המכס, מותר לראות את המחיר שנתברר במכירה זו כערכם של הטובין.\n\nתשלום המכס על טובין שנכללו במצהר ולא הוצגו (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '140': {
+        "ch": 8, "t": 'טובין במצהר שלא הוצגו',
+        "s": 'Goods in manifest but not presented: vessel owner/master/agent pays duty at rate when manifest delivered.',
+        "f": 'טובין חבי מכס שנכללו במצהר ולא הוצגו לפני פקיד-המכס, ישלם בעל כלי ההובלה, קברניטו, מפקדו או סוכנו, את המכס עם דרישתו של גובה המכס ולפי שומתו ובשיעור שהיה בר-תוקף בשעת מסירת המצהר שהטובין נכללים בו, אלא אם כן ניתן הסבר עליהם להנחת דעתו של גובה המכס.',
+    },
+    '141': {
+        "ch": 8, "t": 'טובין פטורים שהועברו',
+        "s": 'Duty-free goods transferred to non-exempt entity: ad valorem at transfer value; specific rate with deterioration adjustment. Pre-transfer notification + payment required. Diplomatic car reciprocal exemption.',
+        "f": '(א)  טובין שיובּאו לארץ כשהם פטורים ממכס מחמת היותם רכוש של צבא-הגנה לישראל או של פקיד קונסולרי, סוכן מסחרי, חברה, פירמה או כל מוסד או אדם אחר שהיו אותה שעה, לפי כל חיקוק בר-תוקף בעניני מכס, בעלי זכות יתר ליבּא טובין אלה בלי מכס, והוצאו הטובין לרשותם של חברה, פירמה, מוסד או אדם אחר שאינם זכאים ליבא אותם טובין בלי מכס, ינהגו בהם לפי כללים אלה:\n\n(1)   היה המכס לפי תעריפו בשעת הוצאת מכס לפי הערך, יהיו הטובין חבים במכס לפי הערך על ערכם בשעת הוצאה ומכס זה יוטל עליהם;\n\n(2)   היה המכס לפי תעריפו בשעת הוצאת מכס לפי שיעור קצוב, והוכח להנחת דעתו של המנהל, כי מצב הטובין הורע מיום שיובאו, יהיו חבים בסכום שהוא ביחס לערכם בשעת הוצאה כיחס שבין הסכום שיש להטיל לפי אותו שיעור קצוב לבין ערכם בשעת יבואם ומכס זה יוטל עליהם; לא הוכח כאמור, יהיו חבים במכס לפי השעור הקצוב שנקבע להם ומכס זה יוטל עליהם.\n\n(ב)  כל המוציא טובין כאמור בסעיף קטן (א), ימסור למנהל פרטים על כך וישלם את המכס העשוי לחול עליהם לפני הוצאתם.\n\n(ג)   שר האוצר רשאי לפטור מהמכס החל לפי סעיף זה, מכולו או מקצתו, ובתנאים שקבע, מכונית נוסעים שנציג דיפלומטי או נציגות דיפלומטית של מדינה אחרת העבירה אותה לזולתם, במידה שאותה מדינה גומלת פטור כזה למדינת ישראל.\n\nדוגמאות',
+    },
+    '142': {
+        "ch": 8, "t": 'דוגמאות',
+        "s": 'Small samples from supervised bulk: customs-free with conditions.',
+        "f": 'דוגמאות קטנות מתוך צובר של טובין הנתון לפיקוחה של רשות-המכס מותר לפי תנאים שנקבעו, למסור בלי תשלום מכס.\n\nשינוי בהסכם אגב שינוי במכס (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '143': {
+        "ch": 8, "t": 'שינוי בהסכם',
+        "s": 'Contract price adjusts for customs rate changes between contract and declaration. Contractual override permitted.',
+        "f": 'אם לאחר שהוסכם על מכירתם או על מסירתם של טובין כשהמכס עליהם משולם, ולפני שהוגשה לגבי הטובין הצהרת ייבוא לשם צריכה בארץ, כאמור בסעיף 62(א)(1), חל במכס הנגבה שינוי הנוגע לאותם טובין, יהא ההסכם נתון לתנאים שלהלן, אם אין בו הוראה אחרת מפורשת בכתב:\n\n(1)  היה השינוי הטלת מכס חדש או הגדלת המכס הקיים, יכול המוכר, לאחר ששילם את המכס החדש או המוגדל, להוסיף את ההפרש על המחיר המוסכם;\n\n(2)  היה השינוי ביטול המכס או הקטנתו, יכול הקונה לנכות מן המחיר המוסכם את ההפרש שבא מחמת השינוי.',
+    },
+    '144': {
+        "ch": 8, "t": 'מועד ייבוא',
+        "s": 'Time of import: sea = entry into port limits; land/air = border crossing.',
+        "f": 'מקום שהיה דרוש, לענין דיני המכס, לקבוע בדיוק אימתי חלה שעת ייבּואם של טובין, יראו כשעת הייבּוא את זמן כניסתה של האניה המביאה את הטובין לתחומי אותו נמל שבו יש למסור, לפי הסדר הראוי, מצהר על האנייה ומטענה ולפרוק את הטובין; ואם יובּאו הטובין שלא בדרך הים, יראו כשעת הייבּוא את הזמן שבו חצו הטובין את הגבול.',
+        "key": 'Sea: entry into port limits. Land/air: border crossing. Used for applicable rates.',
+    },
+    '145': {
+        "ch": 8, "t": 'ניכוי המכס',
+        "s": 'State holds FIRST AND PREFERENTIAL LIEN on goods for customs/charges/fines regardless of ownership.',
+        "f": 'למדינה יהיה עכבון ראשון ועדיף על טובין הנתונים לפיקוח רשות-המכס, יהא נשגרם אשר יהא, להבטחת תשלום המכס והתשלומים החלים עליהם, יהא החייב בתשלומים אשר יהא, והקנסות שתשלומם על השוגר או על הנשגר.\n\n(תיקון מס\' 28) תשע"ח-2018',
+    },
+    '146': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: documents with רשמון. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '147': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: invoice particulars. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '148': {
+        "ch": 8, "t": 'המרת מטבע',
+        "s": 'Foreign currency → Israeli currency per Finance Minister rules (Knesset approval).',
+        "f": 'מקום שמחיר הטובין או כל סכום אחר שיש להביאו בחשבון לענין דיני המכס אינו נקוב במטבע ישראלי, יחושב במטבע ישראלי לפי הכללים שקבע שר האוצר באשור ועדת הכספים של הכנסת.',
+        "key": 'Currency conversion rules set by Finance Minister.',
+    },
+    '149': {
+        "ch": 8, "t": 'ליטול טובין בערכם',
+        "s": 'Suspected undervaluation: Director may take customs in kind OR seize goods at declared value + 5%. Payment within 30 days.',
+        "f": '(א)  מקום שהמכס הוא לפי הערך ויש למנהל יסוד להניח שהערך המוצהר על ידי היבואן או על ידי סוכנו הוא נמוך מדי, רשאי המנהל ליטול את המכס בעין, או ליטול, במסירת מודעה תחילה ליבואן או לסוכנו, את הטובין בתשלום ערכם כאמור ותוספת של חמישה אחוזים.\n\n(ב)  תשלום הערך המוצהר, כאמור, והחזרת המכס ששולם על הטובין, ייעשו תוך שלושים יום לאחר הצהרתו של היבואן או של סוכנו.\n\nהחזרת מכס ששולם (תיקון מס\' 1) תשכ"א-1961',
+        "key": 'Compulsory purchase at declared value + 5% premium. 30-day payment.',
+    },
+    '150': {
+        "ch": 8, "t": 'החזרת מכס',
+        "s": 'Refund for: (1) lost/destroyed/damaged before release; (2) non-conformity/defect within 6 months of release. Immediate claim + no-use condition.',
+        "f": 'המנהל רשאי להחזיר מכס או לוותר על תשלומו, כולו או מקצתו, באחת מאלה:\n\n(1)  הטובין אבדו, הושמדו, ניזוקו או נעזבו לרשות המכס, בין בעודם בפיקוחה ובין לפני כן; ובלבד שלא תוגש תביעה להחזרה או לויתור אחרי שסולקו הטובין מפיקוח רשות המכס;\n\n(2)  הטובין סולקו מפיקוח רשות המכס ותוך ששה חדשים לאחר סילוקם נתגלו בהם אי התאמה לתנאי המכר או ליקוי, שהיו קיימים בהם בשעת סילוקם; ובלבד שהתביעה על החזרה או ויתור הוגשה מיד לאחר הגילוי האמור והוכח להנחת דעתו של גובה המכס כי לא היה בטובין כל שימוש בישראל, או אם היה שימוש, לא היה זה אלא השימוש שגרם לגילוי אי-התאמתם לתנאי המכר או לגילוי ליקוי שהיה קיים בהם בשעת סילוקם ואילולא אותו שימוש לא היו אי-ההתאמה או הליקוי ניתנים לגילוי.',
+        "key": '6-month post-release defect window. Immediate claim required. No-use or discovery-use only.',
+    },
+    '151': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: deficit collection. Repealed 1968.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '152': {
+        "ch": 8, "t": 'אין החזרה עקב שינוי',
+        "s": 'Classification practice changes are PROSPECTIVE only. No retroactive refunds.',
+        "f": 'הוקטן סכום המכס המשתלם על חפץ מסויים, מחמת שרשות-המכס שינתה מדרכה בסיווגו או במיונו של אותו חפץ, אין השינוי מזכה אדם לקבל בחזרה משהו ממכס ששולם לפני שהשינוי נכנס לתקפו.\n\nתשלומים על טובין שחזרו ויובאו לישראל (תיקון מס\' 28) תשע"ח-2018',
+        "key": 'Classification changes = no retroactive refund for past payments.',
+    },
+    '153': {
+        "ch": 8, "t": 'טובין שחזרו',
+        "s": 'Re-imported goods: exempt if no foreign processing. Repair/improvement abroad: duty on improvement value only. Rate difference payable if rates increased.',
+        "f": 'טובין, בין שנעשו או יוצרו בישראל ובין שלא בישראל, והם לפי סוגם או הגדרם מעין הטובין שמכס חל עליהם, והטובין יוצאו מישראל וחזרו ויובאו אליה והוגשה לגביהם הצהרת ייבוא לשם צריכה בארץ, והוכח להנחת דעתו של המנהל שהמכס או הבלו שניתן להטיל על אותם טובין לפני ייצואם שולם כהלכה, בין לפני הייצוא ובין לאחריו, ולא ניתן הישבון עליו בשעת הייצוא או שהישבון שניתן עליו הוחזר למנהל, ינהגו בהם כך:\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(1)  אם הוכח עוד, כאמור, שלא חל בחוץ לארץ שום תהליך בטובין אלה, יהיו פטורים ממכס או מבלו בשעת הגשת הצהרת הייבוא לגביהם לאחר שהוחזרו לישראל; אלא שאם בשעה שהוגשה לגביהם ההצרה כאמור היה שיעור הבלו או המכס, הכל לפי הענין, הניתן להטיל על טובין באותו סוג או הגדר גדול מן השיעור ששולם עליהם אם בתור בלו ואם בתור מכס בשעת ייבואם והגשת הצהרת הייבוא לגביהם לראשונה, הכל לפי הענין, יהיו מחוייבים בשיעור שהוא כהפרש שבין השיעור שלפיו חושב המכס או הבלו ששולם עליהם קודם לכן ובין השיעור המחייב בשעת הגשת הצהרת הייבוא לגביהם לאחר שהוחזרו לישראל;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(2)  אם הטובין בשעה שהוגשה לגביהם הצהרת הייבוא לאחר שהוחזרו לישראל היו לפי סוגם או הגדרם טובין החבים במכס לפי הערך, ואם הוכח עוד, כאמור, כי בחוץ לארץ חל בטובין אלה תהליך של תיקון, חידוש או שיפור, אלא שלא חל כל שינוי בצורתם או במתכונתם, יהיו הטובין חבים במכס כאילו כל ערכם הוא כשיעור השבח שלהם בגלל התהליך האמור, ואם הוסכם לשלם סכום מסויים בעד ביצוע אותו תהליך, יהיה סכום זה ראיה לכאורה על שיעור השבח, אך זה לא יגרע מסמכותו של המנהל לפי דיני המכס בקביעת ערך הטובין לשם שומת המכס לפי הערך החל עליהם; ואולם אם בשעה שהוגשה לגביהם ההצהרה כאמור היה שיעור הבלו או המכס, הכל לפי הענין, שניתן להטיל על טובין מאותו סוג או הגדר, גדול מן השיעור ששולם עליהם אם בתור בלו ואם בתור מכס, בשעת ייבואם והגשת הצהרת הייבוא לגביהם לראשונה, הכל לפי הענין, יהיו מחוייבים, בנוסף על המכס לפי ערך שיש לשלם לפי שיעור השבח כאמור בסעיף קטן זה, גם בבלו או במכס שיחושבו לפי סעיף (א), כאילו לא חל בהם בהיותם בחוץ לארץ שום תהליך של תיקון, שינוי או שיפור.',
+        "key": 'No processing abroad = exempt. Repair/improvement = duty on value of improvement only.',
+    },
+    '154': {
+        "ch": 8, "t": 'סכסוך בנוגע לתשלום',
         "s": "Payment under protest mechanism. 3-month limitation for lawsuit. Must write 'PAID UNDER PROTEST' on declaration before payment.",
+        "f": '(א)  התגלע סכסוך בנוגע לסכום המכס או לשיעור המכס המשתלם על טובין מסויימים, או בנוגע לחבות הטובין במכס לפי דיני המכס, רשאי בעל הטובין לשלם אגב מחאה את הסכום הנדרש על ידי גובה המכס, וסכום ששולם בדרך זו ייחשב לגבי בעל הטובין כשיעור המכס הנכון המשתלם על הטובין, כל עוד לא ניתנה החלטה אחרת בתובענה שהוגשה לפי סעיף זה.\n\n(ב)  בעל הטובין רשאי, תוך שלושה חדשים מיום התשלום, להגיש תובענה נגד הממשלה להחזרת הסכום ששילם כאמור, כולו או מקצתו.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ג)   אין להגיש תובענה להחזרת כל סכום לפי סעיף זה, אלא אם לפני התשלום נכתבו בהצהרת הייבוא המלים "שולם אגב מחאה" ונחתמו בידי בעל הטובין או בידי סוכנו.',
         "key": "'שולם אגב מחאה' must be written + signed BEFORE payment. 3-month lawsuit deadline.",
     },
-    "155": {"ch": 8, "t": "בוטל", "repealed": True, "s": "Formerly: overpayment refund within 2 years. Repealed 1968."},
+    '155': {
+        "ch": 8, "t": 'בוטל',
+        "s": 'Formerly: overpayment refund within 2 years. Repealed 1968.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
 
     # ══════════════════════════════════════════════
-    # CHAPTER 9: DRAWBACK & TEMPORARY ADMISSION (הישבון)
+    # CHAPTER 9: DRAWBACK AND TEMPORARY ADMISSION (הישבון וכניסה זמנית)
     # ══════════════════════════════════════════════
 
-    "156": {"ch": 9, "t": "הישבון ללא ייצור", "s": "Full customs drawback for re-exported goods within 6 months (extendable to 3 years). No use in Israel."},
-    "157": {"ch": 9, "t": "הישבון רכב תייר", "s": "Tourist car drawback: 100% within 1 year; graduated 90/60/40/20% for later re-export."},
-    "158": {"ch": 9, "t": "תביעות הישבון", "s": "Drawback claims on prescribed form to Collector."},
-    "159": {"ch": 9, "t": "הצהרת תובע", "s": "Claimant declares goods exported and entitlement. Signature = proof of payment."},
-    "160": {"ch": 9, "t": "הישבון עם ייצור", "s": "Finance Minister may order drawback on imported materials used in manufacturing for export."},
-    "160א": {"ch": 9, "t": "בוטל", "repealed": True, "s": "Formerly: investment incentive drawback. Repealed 1976."},
-    "160ב": {"ch": 9, "t": "דין טובין מותרים",
-        "s": "Director may defer duty payment for drawback goods. Interest at max legal rate if unpaid by deadline.",
+    '156': {
+        "ch": 9, "t": 'הישבון ללא ייצור',
+        "s": 'Full customs drawback for re-exported goods within 6 months (extendable to 3 years). No use in Israel.',
+        "f": '(א)  טובין שיובאו – חוץ מטובין שיובאו בצובר – והם מיוצאים תוך ששה חדשים מיום סילוקם מפיקוח רשות המכס, יותר עליהם הישבון בגובה מלוא הסכום המכס ששולם עליהם, ובלבד שהוכח להנחת דעתו של גובה המכס כי לא היה בטובין כל שימוש בישראל, או אם היה שימוש, לא היה זה אלא השימוש שגרם לגילוי אי התאמתם לתנאי המכר או לגילוי ליקוי שהיה קיים בהם בשעת סילוקם ואילולא אותו שימוש לא היו אי-ההתאמה או הליקוי ניתנים לגילוי.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ב)  המנהל רשאי להאריך את התקופה לייצוא הטובין כאמור בסעיף קטן (א) עד לשלוש שנים מיום סילוקם מפיקוח רשות המכס.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ג)   (בוטל).',
     },
-    "160ג": {"ch": 9, "t": "החלפת טובין", "s": "Drawback on imported goods substituted with equivalent Israeli goods for manufacturing."},
-    "161": {"ch": 9, "t": "הגבלת תשלום", "s": "3-month deadline from loading for export; Director's consent required."},
-    "162": {"ch": 9, "t": "כניסה זמנית",
-        "s": "Temporary duty-free admission for: manufacturing for export, packaging, processing, repair, renovation, public display.",
+    '157': {
+        "ch": 9, "t": 'הישבון רכב תייר',
+        "s": 'Tourist car drawback: 100% within 1 year; graduated 90/60/40/20% for later re-export.',
+        "f": '(א)  תייר שייבא מכונית או אופנוע וייצאם תוך תקופה מסויימת מיום הייבוא כמפורש להלן, יותר לו הישבון באחוזים מסכום המכס ששולם עליהם כמפורש בצדה של אותה תקופה:\n\nהתקופה\n\nהישבון\n\nתוך שנה                                                                                     100%\n\nלאחר תום שנה אך לא יאוחר משנתיים                                            90%\n\nלאחר תום שנתיים אך לא יאוחר משנתיים ושלושה חדשים                 60%\n\nלאחר תום שנתיים ושלושה חדשים אך לא יותר משנתיים וששה חדשים      40%\n\nלאחר תום שנתיים וששה חדשים אך לא יאוחר משנתיים ותשעה חדשים      20%\n\n(תיקון מס\' 12) תשנ"ה-1995\n\n(ב)  התרת הישבון כאמור בסעיף קטן (א) מותנית במסירת הצהרה בידי התייר בשעת היבוא, הכל כפי שייקבע בתקנות באישור ועדת הכספים של הכנסת.\n\n(ג)   "תייר" לענין סעיף זה – אדם שנכנס לישראל על פי אשרה ורשיון לישיבת מעבר, לישיבת ביקור או לישיבת ארעי כמשמעותם בחוק הכניסה לישראל, תשי"ב-1952.',
     },
-    "162א": {"ch": 9, "t": "סירוב התרה", "s": "Director may refuse clearance on other goods if deferred duty/interest unpaid."},
-    "162ב": {"ch": 9, "t": "תקנות הישבון", "s": "Finance Minister regulation power for drawback; information/book production requirements."},
-    "162ג": {"ch": 9, "t": "עונשים", "s": "Fine: 1,000 liras or 3× revenue lost, whichever higher, per offense."},
+    '158': {
+        "ch": 9, "t": 'תביעות הישבון',
+        "s": 'Drawback claims on prescribed form to Collector.',
+        "f": 'תביעת הישבון לפי הסעיפים 156 ו-157 יש להגיש לגובה המכס בטופס שנקבע.\n\nהצהרת התובע הישבון',
+    },
+    '159': {
+        "ch": 9, "t": 'הצהרת תובע',
+        "s": 'Claimant declares goods exported and entitlement. Signature = proof of payment.',
+        "f": '(א)  התובע הישבון על טובין לפי סעיפים 156 ו-157 יצהיר בגופה של התביעה, שהטובין יוצאו ושהוא היה בשעת ייצואם זכאי להישבון.\n\n(ב)  שמו של התובע יצויין בתביעה וחתימתו בגוף התביעה על קבלת הסכום תהא ראיה מספקת על תשלום ההישבון; אלא שאם הועברה בינתיים התביעה לאחר לא תהא חתימת התובע ראיה כאמור, אלא אם יש כנגדה חתימתו של המחזיק בתביעה.\n\nהישבון בטובין שחל בהם תהליך ייצור (תיקון מס\' 1) תשכ"א-1961 (תיקון מס\' 6)  תשל"ו-1975',
+    },
+    '160': {
+        "ch": 9, "t": 'הישבון עם ייצור',
+        "s": 'Finance Minister may order drawback on imported materials used in manufacturing for export.',
+        "f": 'טובין מכל סוג או הגדר שיוצרו בישראל והם מיוצאים לחוץ לארץ, או שאינם מיוצאים אבל הם מן הסוג שיבואו פטור ממכס, או שחל עליהם פטור ממס קניה אם הם נמכרים לעולה כמשמעותו בתוספת לפקודת תעריף המכס והפטורים, 1937, רשאי שר האוצר, בצו, להתיר על כל טובין ששימשו לייצורם, או על מקצתם, הישבון מן המכס המוטל עליהם ולפרט את התנאים שלפיהם יש ליתן את ההישבון; שיעור ההישבון ייקבע בצו, באחוזים מהמכס ששולם על הטובין ששימשו לייצור כאמור או בדרך אחרת שיקבע שר האוצר.',
+    },
+    '160א': {
+        "ch": 9, "t": 'בוטל',
+        "s": 'Formerly: investment incentive drawback. Repealed 1976.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '160ב': {
+        "ch": 9, "t": 'דין טובין מותרים',
+        "s": 'Director may defer duty payment for drawback goods. Interest at max legal rate if unpaid by deadline.',
+        "f": '(א) נתן שר האוצר צו על טובין כאמור בסעיף 160, רשאי המנהל –\n\n(1)   להרשות הוצאת אותם טובין מפיקוח רשות המכס לפני תשלום המכס המוטל עליהם;\n\n(2)   לדחות את המועד לתשלום המכס על אותם טובין, כולו או מקצתו, בין בערובה ובין ללא ערובה ובתנאים שייראו לו.\n\n(ב)  דחה המנהל את המועד לתשלום מכס כאמור בסעיף קטן (א), והחייב בתשלום המכס לא הוכיח לפני המועד הנדחה כי נתמלאו תנאי ההישבון לגבי אותם טובין, כולם או מקצתם, רשאי המנהל לדרוש את המכס, כולו או מקצתו, בין לפי התעריף שהיה בר תוקף בשעת הדחיה ובין לפי התעריף שהוא בר-תוקף בשעת התשלום, הכל לפי שיקול דעתו של המנהל.\n\n(ג)   דחה המנהל את המועד לתשלום מכס כאמור בסעיף קטן (א) ולא שולם המכס במועד שקבע המנהל, תיווסף עליו, מהיום שבו הוצאו הטובין מפיקוח רשות המכס, ריבית בשיעור החוקי המקסימלי שנקבע על פי חוק הריבית, תשי"ז-1957, אולם המנהל רשאי, אם ראה סיבות מיוחדות, להקטין את הריבית או לוותר עליה; דין הריבית כדין המכס שעליו היא נוספה.',
+    },
+    '160ג': {
+        "ch": 9, "t": 'החלפת טובין',
+        "s": 'Drawback on imported goods substituted with equivalent Israeli goods for manufacturing.',
+        "f": '(א)  המנהל רשאי להתיר הישבון כאמור בסעיף 160, כולו או מקצתו, על טובין שיובאו לישראל, אם בעלם השתמש במקומם בטובין ישראליים מאותו סוג או הגדר לייצור של מוצרים שיוצאו, או שלא יוצאו אבל הם מן הסוג שיבואו פטור ממכס, ובלבד שעל הטובין ששימשו לייצור ניתן צו לפי הסעיפים האמורים.\n\n(ב)  לא יינתן הישבון לפי סעיף קטן (א) בסכום העולה על סכום המכס ששולם או שחייב אדם לשלם על הטובין שיובאו.\n\n(ג)   שר האוצר רשאי לקבוע תנאים וסייגים למתן ההישבון לפי סעיף זה.',
+    },
+    '161': {
+        "ch": 9, "t": 'הגבלת תשלום',
+        "s": "3-month deadline from loading for export; Director's consent required.",
+        "f": '(א)  שום תביעת הישבון לא תשולם אלא בהסכמת המנהל, זולת אם הוגשה לתשלום שלושה חדשים מיום שהטעינו את הטובין לשם יצוא.\n\n(ב)  המנהל רשאי לאסור על תשלומו של הישבון, כולו או מקצתו, אולם לא עד כדי לשלול מאדם את הסעד שהוא זכאי לו לגבי ההישבון.\n\nהכנסת טובין בלא תשלום מכס',
+    },
+    '162': {
+        "ch": 9, "t": 'כניסה זמנית',
+        "s": 'Temporary duty-free admission for: manufacturing for export, packaging, processing, repair, renovation, public display.',
+        "f": '(א)  הממשלה רשאית, בצו, להרשות לטובין מסויימים כניסה זמנית בלא תשלום מכס, אם הטובין מיובאים רק כדי ליצר מהם בישראל מוצרים או מצרכים שיש ליצאם או בעיקר למטרה זו.\n\n(ב)  התנאים לייבוא כאמור יהיו כפי שנקבעו.\n\n(תיקון מס\' 1) תשכ"א-1961\n\n(ג)   המנהל רשאי להרשות לטובין מסויימים כניסה זמנית ללא תשלום מכס בתנאים שייראו לו, אם הוכח להנחת דעתו שהם יובאו כדי להשתמש בהם לאריזת טובי יצוא, או לשם עיבודם, תיקונם, חידושם, הצגתם ברבים או למטרה דומה ושיוצאו מישראל לאחר הטיפול או השימוש כאמור.',
+    },
+    '162א': {
+        "ch": 9, "t": 'סירוב התרה',
+        "s": 'Director may refuse clearance on other goods if deferred duty/interest unpaid.',
+        "f": 'דחה המנהל את המועד לתשלום מכס כאמור בסעיף קטן (א)(2) של סעיף 160ב ולא שולם המכס או הריבית כפי שקבע המנהל כאמור בסעיפים קטנים (ב) ו-(ג) של הסעיף האמור, רשאי המנהל שלא לתת התרה לגבי טובין של החייב שנכללו בהצהרת ייבוא אחרת שהגיש עד לתשלום המכס והריבית.',
+    },
+    '162ב': {
+        "ch": 9, "t": 'תקנות הישבון',
+        "s": 'Finance Minister regulation power for drawback; information/book production requirements.',
+        "f": 'שר האוצר רשאי להתקין תקנות לביצוע הישבון לפי פרק זה ולהבטחת הכנסות המדינה לרבות תקנות המסמיכות פקיד מכס לדרוש מכל אדם הנוגע בדבר למסור לו כל ידיעה הדרושה למנהל, כדי לקבוע אם שולם מכס על הטובין שעליהם הוגשה התביעה או אם נדחה תשלומו וכי יגיש לו פנקסי חשבונות או כל תעודה אחרת בנוגע לאותם טובין.',
+    },
+    '162ג': {
+        "ch": 9, "t": 'עונשים',
+        "s": 'Fine: 1,000 liras or 3× revenue lost, whichever higher, per offense.',
+        "f": 'העובר על תקנה שהותקנה לפי פרק זה, דינו – קנס 1000 לירות על כל עבירה או פי שלושה מסכום ההכנסה שנמנעה או עלולה היתה להימנע מאוצר המדינה כתוצאה מהעבירה, הכל לפי הסכום הגבוה יותר.',
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 10: COASTAL TRADE (סחר החוף)
     # ══════════════════════════════════════════════
 
-    "163": {"ch": 10, "t": "אניות חוף", "s": "Vessel trading between Israeli ports without foreign ports = coasting vessel."},
-    "164": {"ch": 10, "t": "לא תוטען בים", "s": "No at-sea loading/unloading without permission; no deviation unless force majeure."},
-    "165": {"ch": 10, "t": "תסקיר בעל אניה", "s": "Owner may substitute for master in reporting; same obligations/penalties."},
-    "166": {"ch": 10, "t": "פרטי מטען", "s": "Master/owner must provide Collector with cargo details."},
-    "167": {"ch": 10, "t": "הסדר סחר החוף", "s": "Government may regulate coastal trade by order; record-keeping required."},
+    '163': {
+        "ch": 10, "t": 'אניות חוף',
+        "s": 'Vessel trading between Israeli ports without foreign ports = coasting vessel.',
+        "f": 'אניה שהיא סוחרת או משייטת או הולכת מנמל או ממקום שבישראל אל נמל או אל מקום שבישראל, ואינה סוחרת או משייטת או הולכת אל נמל או אל מקום שמחוץ לישראל, יש לראותה כעוסקת בשיוט חופי וכאניית חוף לענין פקודה זו.\n\nאניית חוף לא תוטען בים ולא תסטה מקו מסעה',
+    },
+    '164': {
+        "ch": 10, "t": 'לא תוטען בים',
+        "s": 'No at-sea loading/unloading without permission; no deviation unless force majeure.',
+        "f": 'קברניטה של אניית חוף לא יניח להכניס טובין מאניה אחרת לאנייתו על פני הים או להוציא שם טובין מאנייתו לאניה אחרת, אלא ברשות גובה המכס; וכן לא יניח לאנייתו לסטות ממסעה, אלא אם היה אנוס לעשות זאת בכוח נסיבות שאין למנוע אותן או נסיבות שניתן עליהן בהזדמנות ראשונה הסבר להנחת דעתו של גובה המכס.\n\nבעל אניה רשאי למסור תסקיר',
+    },
+    '165': {
+        "ch": 10, "t": 'תסקיר בעל אניה',
+        "s": 'Owner may substitute for master in reporting; same obligations/penalties.',
+        "f": 'בעל אניה המועסקת בסחר החוף רשאי ברשות גובה המכס למסור תסקיר במקומו של הקברניט על בוא האניה ועל צאתה, ובעל אניה כזאת המוסר תסקיר יהא כפוף לכל הוראה וצפוי לכל עונש הקבועים בפקודה זו לגבי קברניט האניה.\n\nפרטים על המטען',
+    },
+    '166': {
+        "ch": 10, "t": 'פרטי מטען',
+        "s": 'Master/owner must provide Collector with cargo details.',
+        "f": 'קברניט של אניית חוף או בעל האניה ימסור לגובה המכס פרטים על כל מטען הנמצא בה.\n\nהסדר סחר החוף',
+    },
+    '167': {
+        "ch": 10, "t": 'הסדר סחר החוף',
+        "s": 'Government may regulate coastal trade by order; record-keeping required.',
+        "f": '(א)  הממשלה רשאית, בצו, לאסור, להגביל או להסדיר הובלה חופית של טובין או של סוג טובין מסויים, ובכפוף להוראות שבצו כזה, ובין מניעה מצד ההֶקשֵר, יהא כל מקום שהפקודה מדברת ביבוא או ביצוא אסורים, מוגבלים או מוסדרים, כולל את הטובין שהובלתם החופית אסורה, מוגבלת או מוסדרת באותו צו.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ב)  סחר החוף בכלל יוסדר, בכל הנוגע לרשות-המכס, בדרך שנקבעה ולפיה יש לנהל פנקסים, להראות תעודות ולהגיש הצהרות.',
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 11: AGENTS (סוכנים)
     # ══════════════════════════════════════════════
 
-    "168": {
-        "ch": 11, "t": "סוכן מכס",
-        "s": "Owner may act through customs agent. Agent must submit written authorization (כתב הרשאה) signed by owner, "
-             "authenticated as prescribed. Electronic submission via Ch.14A. Traveler may authorize any person for luggage.",
-        "key": "Written authorization with authenticated signature. Electronic submission permitted. "
-               "Governed by Customs Agents Law (חוק סוכני המכס, תשכ\"ה-1964).",
+    '168': {
+        "ch": 11, "t": 'סוכן מכס',
+        "s": 'Owner may act through customs agent. Agent must submit written authorization (כתב הרשאה) signed by owner, authenticated as prescribed. Electronic submission via Ch.14A. Traveler may authorize any person for luggage.',
+        "f": "(א)  בעל טובין רשאי לקיים הוראה מההוראות לפי פקודה זו באמצעות סוכן מכס.\n\n(ב)  סוכן מכס לא יפעל בעבור בעל טובין, כאמור בסעיף קטן (א), אלא אם כן הגיש לרשות המכס כתב הרשאה חתום מאת בעל הטובין, בטופס שקבע המנהל ובאופן שקבע; חתימתו של בעל הטובין על כתב ההרשאה כאמור תאומת בדרך שיקבע המנהל, לרבות בדרך של אימות ידני.\n\n(ג)   כתב הרשאה כאמור בסעיף קטן (ב) יוגש למנהל באמצעות מסר אלקטרוני לפי הוראות פרק ארבעה עשר א'; בהגשת מסר אלקטרוני לפי הוראות פרק ארבעה עשר א'; בהגשת כתב הרשאה לפי הוראות סעיף קטן זה, בידי בעל הטובין, לא יידרש אימות חתימתו כאמור בסעיף קטן (ב).\n\n(ד)  על אף הוראות סעיף קטן (א), נוסע רשאי להסמיך כל אדם לפדות בעבורו טובין שהם מטען-לוואי של הנוסע.",
+        "key": 'Written authorization with authenticated signature. Electronic submission permitted. Governed by Customs Agents Law (חוק סוכני המכס, תשכ"ה-1964).',
     },
-    "169": {
-        "ch": 11, "t": "יש להראות הרשאה",
-        "s": "Customs officer may demand agent produce written authorization. Failure = agency not recognized.",
+    '169': {
+        "ch": 11, "t": 'יש להראות הרשאה',
+        "s": 'Customs officer may demand agent produce written authorization. Failure = agency not recognized.',
+        "f": 'כל פקיד-מכס רשאי לדרוש מסוכן שיראה הרשאה בכתב מן האדם שמטעמו הוא פועל, לפי דבריו, ואם לא הראה הרשאה כזו, רשאי פקיד-המכס שלא להכיר בסוכנותו.\n\n(תיקון מס\' 13)  תשנ"ה-1995',
     },
-    "170": {"ch": 11, "t": "בוטל", "repealed": True, "s": "Formerly: agent personal liability. Repealed 1995."},
-    "171": {"ch": 11, "t": "בוטל", "repealed": True, "s": "Formerly: principal liability for agent acts. Repealed 1995."},
+    '170': {
+        "ch": 11, "t": 'בוטל',
+        "s": 'Formerly: agent personal liability. Repealed 1995.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '171': {
+        "ch": 11, "t": 'בוטל',
+        "s": 'Formerly: principal liability for agent acts. Repealed 1995.',
+        "f": '(א) אדם המייפה כוחו של סוכן לפעול בשמו בענין טובין לכל ענין שבדיני המכס, יהיה אחראי על פעולותיו ועל הצהרותיו של סוכנו ואפשר לתבוע אותו לדין על כל עבירה שעבר סוכנו בענין טובין אלה, כאילו הוא עצמו עבר אותה עבירה; אולם אין להענישו עונש מאסר, אלא אם הסכים למעשה לביצוע העבירה.\n\n(ב) שום דבר האמור בסעיף זה לא ישלול את האפשרות לתבוע את הסוכן לדין.\n\n\nסמכותם של פקידי-מכס לגבי אניה שלא נעצרה לפי הדרישה',
+        "repealed": True,
+    },
 
     # ══════════════════════════════════════════════
-    # CHAPTER 12: POWERS OF CUSTOMS OFFICERS (סמכויות)
+    # CHAPTER 12: POWERS OF CUSTOMS OFFICERS (סמכויותיהם של פקידי-מכס)
     # ══════════════════════════════════════════════
 
-    "172": {"ch": 12, "t": "רדיפת אניה", "s": "Customs vessel may pursue and fire (after warning) at vessel refusing to stop in territorial waters."},
-    "173": {"ch": 12, "t": "עליה לאניה", "s": "May board, search, bring to port; interrogate all aboard; demand documents."},
-    "174": {"ch": 12, "t": "בדיקת טובין", "s": "Open packages, examine, weigh, mark, seal; all costs on owner."},
-    "175": {"ch": 12, "t": "חיפוש באניה", "s": "General boarding and search powers; securing goods."},
-    "176": {"ch": 12, "t": "עליה ושהייה", "s": "Right to remain on vessel; free accommodation and food for stationed officer."},
-    "177": {"ch": 12, "t": "חיפוש", "s": "Comprehensive search of all compartments, packages, drawers."},
-    "178": {"ch": 12, "t": "חסימת טובין", "s": "Closing hatches, locking, sealing, marking, removal to warehouse."},
-    "179": {"ch": 12, "t": "שבירת חותמות", "s": "Forbidden to break customs seals/locks on supervised goods."},
-    "180": {"ch": 12, "t": "חותמות טרנזיט", "s": "Seals on provisions for inter-port transit; master liable for broken seals."},
-    "181": {"ch": 12, "t": "סיור", "s": "Free patrol/traverse rights over all terrain (shore, roads, rail, lands)."},
-    "182": {"ch": 12, "t": "עגינת כלי שיט", "s": "Customs vessels may moor anywhere as needed."},
-    "183": {"ch": 12, "t": "חקירת נוסע", "s": "May question any person about dutiable/prohibited goods in possession."},
-    "184": {"ch": 12, "t": "עיכוב וחיפוש גוף",
-        "s": "Detention and body search with reasonable suspicion (same-sex). Drug Unit: external bodily searches at borders with consent.",
+    '172': {
+        "ch": 12, "t": 'רדיפת אניה',
+        "s": 'Customs vessel may pursue and fire (after warning) at vessel refusing to stop in territorial waters.',
+        "f": 'מפקד של כלי שיט שבשירות המדינה או שבשירות רשות-המכס לאחר שהעלה והניף את הדגל הנכון או דגל רשות-המכס, וכן הקצין הממונה על כלי שיט כאמור, רשאי לרדוף אחר אניה בתוך מימי חופין של ישראל, שלא נעצרה לאחר שנדרשה כדין, באיתות או בדרך אחרת, לעשות זאת, והוא רשאי, לאחר יריה לאות אזהרה, לירות אל האניה או לתוכה כדי להכריחה להיעצר.\n\nפקידי-מכס רשאים לעלות לאניה המשוטטת ליד החוף',
     },
-    "185": {"ch": 12, "t": "חיפוש רכב", "s": "Stop and search vehicle on reasonable suspicion; driver must comply."},
-    "186": {"ch": 12, "t": "סמכויות שוטר", "s": "Full police powers for customs officers; body search only per §184."},
-    "187": {"ch": 12, "t": "חיפוש חצרים", "s": "Warrantless search of non-residential premises; warrant for dwellings; force permitted."},
-    "188": {"ch": 12, "t": "תפיסת אניה/טובין", "s": "Seizure of forfeited/believed-forfeited property; custody to customs warehouse."},
-    "189": {"ch": 12, "t": "דרישת עזרה", "s": "Right to demand public assistance during seizure."},
-    "190": {"ch": 12, "t": "הודעת תפיסה", "s": "Written notice required; 1-month claim period (7 days for specified goods). Perishables: immediate sale/destruction."},
-    "191": {"ch": 12, "t": "החזרת תפוס", "s": "Seized items returned upon surety bond."},
-    "192": {"ch": 12, "t": "הנוהל לאחר תפיסה", "s": "Claimant: 2-month suit deadline. Collector: 3-month action deadline. Otherwise returned."},
-    "193": {"ch": 12, "t": "העשיה בחילוט", "s": "Confiscated items: sold, destroyed, or dealt with per Director's order."},
-    "194": {"ch": 12, "t": "מסירת טובין שנתפסו", "s": "Non-customs-officer seizure: immediate transfer to nearest customs house."},
-    "195": {"ch": 12, "t": "מאסר חשודי הברחה", "s": "Warrantless arrest for smuggling offenses."},
-    "196": {"ch": 12, "t": "הגשת מסמכים בתפיסה", "s": "Document production on demand; 5-year lookback for all books/records."},
-    "197": {"ch": 12, "t": "עיכוב מסמכים", "s": "Collector may retain documents; certified copies admissible in court."},
-    "198": {"ch": 12, "t": "דרישת הוכחות", "s": "Collector may demand proof of ownership and declaration accuracy; refuse delivery until provided."},
-    "199": {"ch": 12, "t": "דוגמאות", "s": "Sampling rights; no compensation."},
-    "200": {"ch": 12, "t": "רשיונות למסחר", "s": "Three types of trading licenses for vessel-related commerce."},
-    "200א": {"ch": 12, "t": "עיכוב טובין מפרים",
-        "s": "IP enforcement: 3 business-day detention (extendable); bank guarantee required; suit within 10 business days. "
-             "Copyright, trademarks, registered designs.",
+    '173': {
+        "ch": 12, "t": 'עליה לאניה',
+        "s": 'May board, search, bring to port; interrogate all aboard; demand documents.',
+        "f": '(א)  קצין כמוגדר בסעיף 172 רשאי לדרוש מאת קברניט של אניה בתוך מימי חופין של ישראל להפליג משם; ובין שדרש להפליג ולא הפליגה מיד ובין שלא דרש רשאי הוא לעלות אליה ולחפש בה, או להביאה אל נמל ולחפש בה שם.\n\n(ב)  גובה המכס רשאי לחקור את כל הנמצאים באניה כאמור ועליהם להשיב על שאלות בדבר האניה, מטענה, צוות עובדיה, הצידה שבה וקו מסעה ולהראות תעודות בנוגע לאניה ולמטענה.\n\nסמכות לבדוק טובין',
     },
-    "200ב": {"ch": 12, "t": "שחרור ערבויות", "s": "Guarantee return after 3 months in various scenarios or per court order."},
-    "200ג": {"ch": 12, "t": "טובין מפרים = אסורים", "s": "Infringing goods treated as prohibited imports/exports."},
-    "200ד": {"ch": 12, "t": "ייבוא אישי", "s": "Personal use exemption from IP enforcement provisions."},
-    "200ה": {"ch": 12, "t": "שמירת דינים", "s": "IP powers supplementary to other legal authorities."},
-    "200ו": {"ch": 12, "t": "עיכוב לבקרת תקינה", "s": "Detention for Standards Superintendent sample inspection. Added 2024."},
-    "200ז": {"ch": 12, "t": "יבואן מפר אמון", "s": "Detention/conditional release for trust-violating importers. Added 2024."},
-    "201": {"ch": 12, "t": "הגנה לפקיד", "s": "Officer immunity for seizures with reasonable cause."},
-    "202": {"ch": 12, "t": "קנס התנהגות", "s": "Director may fine officer up to 3 days' wages for negligence/misconduct."},
+    '174': {
+        "ch": 12, "t": 'בדיקת טובין',
+        "s": 'Open packages, examine, weigh, mark, seal; all costs on owner.',
+        "f": 'פקיד-מכס רשאי, על אחריותו של בעל הטובין, לפתוח אריזות או לדרוש מבעל הטובין שהוא יפתח אותן; ורשאי הוא לבדוק, לשקול, לסמן ולחתום טובין הנתונים לפיקוח המכס, והוצאות הבדיקה, לרבות ההוצאות לסילוק הטובין אל מקום הבדיקה, יחולו על בעל הטובין.\n\nהסמכות לעלות אל אניה ולחפש בה',
+    },
+    '175': {
+        "ch": 12, "t": 'חיפוש באניה',
+        "s": 'General boarding and search powers; securing goods.',
+        "f": 'פקיד-מכס רשאי –\n\n(1)   לעלות אל אניה או לחפש בה;\n\n(2)   להבטיח טובין שבאניה.\n\nעליה אל אניה',
+    },
+    '176': {
+        "ch": 12, "t": 'עליה ושהייה',
+        "s": 'Right to remain on vessel; free accommodation and food for stationed officer.',
+        "f": 'הסמכות הנתונה לפקיד-מכס לעלות אל האניה כוללת את השהיה בה; ורשאי גובה המכס להציב בה פקיד-מכס והקברניט יהיה חייב ליתן לאותו פקיד-מכס חינם מקום לינה מתאים ומזון מתאים ומספיק.\n\nחיפוש',
+    },
+    '177': {
+        "ch": 12, "t": 'חיפוש',
+        "s": 'Comprehensive search of all compartments, packages, drawers.',
+        "f": 'הסמכות של פקיד-מכס לחפש נתונה לו לגבי כל חלק של אניה, כלי הובלה או כלי רכב של מסילת ברזל וכוללת את הסמכות לפתוח כל אריזה, מגרה או מקום ולבדוק כל טובין.\n\nחסימת טובין',
+    },
+    '178': {
+        "ch": 12, "t": 'חסימת טובין',
+        "s": 'Closing hatches, locking, sealing, marking, removal to warehouse.',
+        "f": 'סמכותו של פקיד-המכס להבטיח טובין כוללת גם הגפתם של כַּווֹת ופתחים אחרים המוליכים לבטן האניה, נעילתם של טובין, חיתומם, סימונם וכל דרכי הבטחה אחרים וכן סילוקם למחסן המכס.\n\nאסור לשבור חותמות וכיוצא בהן כשהטובין נתונים לפיקוח רשות-המכס',
+    },
+    '179': {
+        "ch": 12, "t": 'שבירת חותמות',
+        "s": 'Forbidden to break customs seals/locks on supervised goods.',
+        "f": 'כל הֶגֶף, מנעול, סימן או חותמת שנתן פקיד-מכס על טובין או על דלת, כּוה, פַתח או מקום אחר שבתוך אניה או כלי הובלה או כלי רכב של מסילת ברזל, אין לפתחם, לשנותם, לשברם או למחקם אלא על פי רָשות, כל זמן שהטובין שהובטחו או שמתכוונים להבטיחם באחת הדרכים האמורות נתונים לפיקוח רשות-המכס.\n\nאסור לשבור חותמות וכיוצא בהן באניה שבנמל בישראל המיועדת לנמל אחר בה',
+    },
+    '180': {
+        "ch": 12, "t": 'חותמות טרנזיט',
+        "s": 'Seals on provisions for inter-port transit; master liable for broken seals.',
+        "f": 'כל הֶגֶף, מנעול, סימן או חותמת שנתן פקיד-מכס על טובין או על דלת, כַּוָה, פתח או מקום, מתוך כוונה להבטיח צידה של אניה שהגיעה לנמל בישראל מנמל חוץ ופניה מועדות לנמל אחר בישראל – אין לפתחם, לשנותם, לשברם או למחקם אלא על פי רָשות; נכנסה אניה לנמל כשנעשה בה אחת מאלה בניגוד להוראות סעיף זה יהא הקברניט אשם בעבירה על פקודה זו.\n\nפקיד-מכס רשאי לסייר',
+    },
+    '181': {
+        "ch": 12, "t": 'סיור',
+        "s": 'Free patrol/traverse rights over all terrain (shore, roads, rail, lands).',
+        "f": 'פקיד-מכס וכל אדם העוזר על ידו כשהוא ממלא תפקידו רשאים לסייר ולעבור באופן חפשי בכל חלק משפת ים או על פני מסילת ברזל או על פני חופם של נמל, מפרץ, ימה או נהר, או לאורך כביש או מסלול רכבת או על פני קרקעות.\n\nכלי שיט שבשירות מותר לקשור בכל מקום',
+    },
+    '182': {
+        "ch": 12, "t": 'עגינת כלי שיט',
+        "s": 'Customs vessels may moor anywhere as needed.',
+        "f": 'פקיד-המכס הממונה אותה שעה על כלי שיט המועסק בשירות רשות-המכס רשאי לגרור כלי שיט זה על פני כל חלק משפת ים או על פני חופם של נמל, מפרץ, ימה או נהר, ולקשור אותו שם לכל זמן שייראה לו דרוש.\n\nהרשות לחקור נוסע',
+    },
+    '183': {
+        "ch": 12, "t": 'חקירת נוסע',
+        "s": 'May question any person about dutiable/prohibited goods in possession.',
+        "f": 'אדם הנמצא באניה או בכלי הובלה אחר, או שייתכן כי נָחַת או יצא מהם, רשאי פקיד-מכס לשאול אותו, אם יש לו על גופו או בחזקתו או במטענו טובין חבי מכס או טובין שייצואם או ייבּואם נאסר, הובל או הוסדר בדרך אחרת.\n\nעיכוב חשוד וחיפוש על גופו (תיקון מס\' 14) תשנ"ו-1996',
+    },
+    '184': {
+        "ch": 12, "t": 'עיכוב וחיפוש גוף',
+        "s": 'Detention and body search with reasonable suspicion (same-sex). Drug Unit: external bodily searches at borders with consent.',
+        "f": '(א)  היה לשוטר או לפקיד-מכס יסוד סביר לחשוד שאדם נושא שלא כדין טובין הנתונים לפיקוח רשות המכס, או טובין שיבואם או יצואם אסור, מוגבל או מוסדר בדרך אחרת, רשאים הם לעכב את החשוד ולחפש על גופו כאמור בסעיף 22 לפקודת סדר הדין הפלילי (מעצר וחיפוש) [נוסח חדש], תשכ"ט-1969; חיפוש על גופו של חשוד ייעשה בידי בן מינו.\n\n(ב)  היה לפקיד-מכס, הנמנה עם היחידה ללוחמה בסמים ברשות המכס, יסוד סביר לחשוד כי אדם עבר עבירה על פקודת הסמים המסוכנים [נוסח חדש], תשל"ג-1973, רשאי הוא, לאחר שביקש את הסכמתו לכך, לערוך בגופו של החשוד חיפוש חיצוני, אולם לא ייערך חיפוש חיצוני כהגדרתו בפסקאות (2) עד (5) בגופו של מי שלא נתן את הסכמתו לכך בכתב.\n\n(ג)   חיפוש לפי סעיף קטן (ב) ייעשה רק אגב כניסתו של אדם לתחנת גבול, שהייתו בה או יציאתו ממנה; בכפוף להוראות סעיף זה יחולו על חיפוש כאמור הוראות חוק סדר הדין הפלילי (סמכויות אכיפה – חיפוש בגוף החשוד), תשנ"ו-1996.\n\n(ד)  לענין הפעלת הסמכויות לפי סעיף קטן (ב) יהיו לפקיד מכס הנמנה עם היחידה ללוחמה בסמים ברשות המכס הסמכויות הנתונות לשוטר, ולפקיד-מכס בכיר יהיו הסמכויות הנתונות לקצין משטרה כהגדרתו בחוק סדר הדין הפלילי (סמכויות אכיפה – חיפוש בגוף החשוד), תשנ"ו-1996.\n\n(ה)  בסעיף זה –\n\n"חיפוש חיצוני" – כל אחד מאלה:\n\n(1)   בחינה חזותית של גופו העירום של האדם, לרבות צילומו;\n\n(2)   לקיחת חומר מעל הגוף;\n\n(3)   בדיקה על העור;\n\n(4)   מתן דגימת רוק;\n\n(5)   מתן דגימת שתן;\n\n"פקיד-מכס הנמנה עם היחידה ללוחמה בסמים ברשות המכס" – פקיד-מכס שמונה ליחידה האמורה על ידי מנהל המכס בהסכמת שר\n\nהמשטרה, לאחר שקיבל הכשרה מתאימה שקבע מנהל המכס;\n\n"פקיד-מכס בכיר" – פקיד-מכס שהוא אחד מאלה:\n\n(1)   ממונה על יחידת סמים בתחנת גבול;\n\n(2)   ראש היחידה הארצית ללוחמה בסמים וסגניו;\n\n(3)   ראש תחום מבצעים ביחידה הארצית ללוחמה בסמים;\n\n(4)   ראש תחום מודיעין ביחידה הארצית ללוחמה בסמים;\n\n"תחנת גבול" – תחנת גבול שקבע שר הפנים בצו לפי חוק הכניסה לישראל, תשי"ב-1952.',
+    },
+    '185': {
+        "ch": 12, "t": 'חיפוש רכב',
+        "s": 'Stop and search vehicle on reasonable suspicion; driver must comply.',
+        "f": 'פקיד-מכס או שוטר רשאים, על יסוד חשד סביר, לעצור כלי הובלה ולחפש בו, כדי להיווכח אם מצויים בו שלא כדין טובין חבי מכס או טובין שייבואם נאסר, הוגבל או הוסדר בדרך אחרת, ועל הנהג לעצור את כלי ההובלה ולאפשר חיפוש כזה כל אימת שפקיד-מכס או שוטר ידרוש זאת ממנו.\n\nשימוש פקיד-מכס בסמכויות שוטר (תיקון מס\' 14) תשנ"ו-1996',
+    },
+    '186': {
+        "ch": 12, "t": 'סמכויות שוטר',
+        "s": 'Full police powers for customs officers; body search only per §184.',
+        "f": 'לשם מניעת עבירות על דיני המכס או לשם גילוין, רשאי פקיד-מכס להשתמש בסמכויותיו של שוטר, כולן או מקצתן, בין בדרך כלל ובין במקרה מסויים או בסוג מסויים של מקרים; אולם חיפוש בגופו של אדם ייעשה רק לפי סעיף 184.',
+    },
+    '187': {
+        "ch": 12, "t": 'חיפוש חצרים',
+        "s": 'Warrantless search of non-residential premises; warrant for dwellings; force permitted.',
+        "f": '(א)  פקיד-מכס או שוטר רשאי בכל עת, ללא צו, להיכנס לחצרים ולכל מקום אחר ולחפש בהם, אם יש לו יסוד לחשוב שיימצאו בהם טובין מוברחים או אסורים והוא רשאי לתפוס טובין אלה ולהרחיקם משם; אולם הרשות להיכנס ולחפש אין כוחה יפה לגבי בית מגורים, אלא אם נתקבל תחילה צו על כך מאת שופט שלום.\n\n(ב)  במקרה של התנגדות יהא פקיד המכס או השוטר רשאי לפרוץ כל דלת ולסלק בכוח כל מכשול או מפגע העומדים על דרכו בכניסתו, בחיפושו או בתפיסתו.\n\nהרשות לתפוס אניה או טובין שחולטו',
+    },
+    '188': {
+        "ch": 12, "t": 'תפיסת אניה/טובין',
+        "s": 'Seizure of forfeited/believed-forfeited property; custody to customs warehouse.',
+        "f": '(א)  פקיד-מכס שוטר או קצין בצבא-הגנה לישראל רשאי לתפוס בין בים ובין ביבשה כל אניה, כל כלי הובלה וכל טובין שהם מחולטים או שיש לו יסוד סביר לחשוב שהם מחולטים.\n\n(ב)  טובין שנתפסו יובלו למחסן המכס הקרוב ביותר או למקום מבטחים אחר, כפי שיורה גובה המכס.\n\nהרשות לדרוש עזרה',
+    },
+    '189': {
+        "ch": 12, "t": 'דרישת עזרה',
+        "s": 'Right to demand public assistance during seizure.',
+        "f": 'כל התופס כדין לפי דיני המכס רשאי לדרוש מכל אדם הנמצא במקום לעזור לו בכך, והאדם חייב להגיש את העזרה שנדרשה.\n\nיש למסור הודעה על תפיסה (תיקון מס\' 20) תשס"ג-2003',
+    },
+    '190': {
+        "ch": 12, "t": 'הודעת תפיסה',
+        "s": 'Written notice required; 1-month claim period (7 days for specified goods). Perishables: immediate sale/destruction.',
+        "f": '(א)  אניה, כלי הובלה או טובין שנתפסו בתור מחולטים ולא היו הקברניט או הבעל נוכחים בשעת התפיסה, חייב התופס למסור לקברניט או לבעל או לסוכן של התפוס, הודעה בכתב על התפיסה ועל סיבתה, בין במסירה אישית ובין במכתב אליו שנשלח בדואר, או שנמסר, למקום מגוריו או עסקו הידועים לאחרונה; וכל אניה, כלי הובלה או טובין שנתפסו יראו כמוחרמים. אם האדם שמידו נתפסו או בעל התפוס לא מסר לגובה המכס במקום הקרוב ביותר, תוך חודש מיום התפיסה, הודעה בכתב שהוא תובע את התפוס; אולם אם היו הטובין שנתפסו דבר האבד או בעל חיים חי, רשאי גובה המכס למכרם או להשמידם מיד גם אם הם טרם מוחרמים.\n\n(תיקון מס\' 20) תשס"ג-2003\n\n(ב)  על אף הוראות סעיף קטן (א), רשאי המנהל להורות לגבי סוגי טובין מסוימים, כי אם האדם שמידו נתפסו הטובין כאמור בסעיף קטן (א) או בעל התפוס לא ימסור הודעה בכתב בתוך שבעה ימים מיום התפיסה כי הוא תובע את התפוס, יראו את הטובין שנתפסו כמוחרמים.',
+    },
+    '191': {
+        "ch": 12, "t": 'החזרת תפוס',
+        "s": 'Seized items returned upon surety bond.',
+        "f": 'המנהל יכול להרשות שכל אניה, כלי הובלה או טובין שנתפסו יימסרו לידי התובע לאחר שנתן ערובה על תשלום שוויים אם יוחרמו.\n\nהנוהל לאחר תפיסת הטובין',
+    },
+    '192': {
+        "ch": 12, "t": 'הנוהל לאחר תפיסה',
+        "s": 'Claimant: 2-month suit deadline. Collector: 3-month action deadline. Otherwise returned.',
+        "f": '(א)  אניה, כלי הובלה או טובין שנתפסו על ידי פקיד-מכס ומסר בעל התפוס לגובה המכס תביעה עליהם, רשאי גובה המכס להוסיף ולהחזיק בתפוס ולעשות אחד משני אלה –\n\n(1)   לא לנקוט הליכים להחרמת התפוס אלא לדרוש מהתובע, בהודעה חתומה בידו, שיגיש נגדו תובענה להחזרת התפוס, ואם לא עשה זאת התובע תוך חדשיים מיום מתן ההודעה, יראו את התפוס כמוחרם ללא צורך בהליכים נוספים;\n\n(2)   להביא בעצמו לידי הגשת תובענה להחרמת התפוס.\n\n(ב)  אם תוך שלושה חדשים לאחר קבלת התביעה על התפוס לא דרש גובה המכס מהתובע להגיש תובענה כאמור בסעיף קטן (א)(1), אף לא הביא בעצמו לידי הגשת תובענה כאמור בסעיף קטן (א)(2), יימסר התפוס לידי התובע.\n\nהעשיה באניות ובטובין שחולטו (תיקון מס\' 20) תשס"ג-2003',
+    },
+    '193': {
+        "ch": 12, "t": 'העשיה בחילוט',
+        "s": "Confiscated items: sold, destroyed, or dealt with per Director's order.",
+        "f": 'אניה, כלי הובלה או טובין מוחרמים, רשאית רשות המכס למכרם או להשמידם או לעשות בהם כדרך שהורה המנהל או תעשה בהם כדרך שיורה המנהל.',
+    },
+    '194': {
+        "ch": 12, "t": 'מסירת טובין שנתפסו',
+        "s": 'Non-customs-officer seizure: immediate transfer to nearest customs house.',
+        "f": 'נתפסו טובין על ידי אדם שאיננו פקיד-מכס, יש להעבירם מיד לבית המכס הקרוב ביותר ולמסרם שם לידי פקיד-מכס.\n\nמאסר חשודים בהברחה',
+    },
+    '195': {
+        "ch": 12, "t": 'מאסר חשודי הברחה',
+        "s": 'Warrantless arrest for smuggling offenses.',
+        "f": 'פקיד-מכס או שוטר רשאים, ללא צו, לאסור כל אדם שיש להם יסוד סביר להאמין שהוא אשם בהברחה או בהובלה שלא כדין או בהחזקה של טובין מוברחים או בנסיון לעשות אחת העבירות האלה או בהיותו מעורב בעשייתה.\n\nהגשת מסמכים וכו\' במקרה של תפיסה (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '196': {
+        "ch": 12, "t": 'הגשת מסמכים בתפיסה',
+        "s": 'Document production on demand; 5-year lookback for all books/records.',
+        "f": 'הודיעו לגובה המכס שטובין הוברחו, או שהוצהר על ערכם בחֶסֶר, או שהוגשה לגביהם הצהרת ייבוא או הצהרת ייצוא שלא כדין, או שעסקו בהם שלא כדין, או שיש כוונה לעשות בהם אחת מאלה, וכן אם נתפסו טובין או נעצרו – חייב בעל הטובין, מיד לאחר שנדרש לכך על ידי גובה המכס או פקיד-מכס אחר, להגיש ולמסור לו כל הפנקסים והתעודות המתייחסים לאותם טובין, או לטובין אחרים שיִבֵּא או יצא תוך חמש השנים שקדמו בסמוך ליום הדרישה כאמור, וכן להגיש לגובה המכס או לפקיד-מכס אחר לבדיקה כל הפנקסים והתעודות שיש בהם רישום או תזכורת הנוגעים באיזה אופן שהוא לטובין אלה, וליתן להם או למורשיהם לענין זה לעשות העתקים או נסחים מאותם פנקסים או תעודות.',
+    },
+    '197': {
+        "ch": 12, "t": 'עיכוב מסמכים',
+        "s": 'Collector may retain documents; certified copies admissible in court.',
+        "f": 'גובה המכס רשאי לכלוא או לעכב בידו כל מסמך שהוגש לו בענין הצהרה לפי פקודה זו או שיש להגישו לפי פקודה זו, אלא שכל מי שיש לו זכות למסמך זה אלמלא הכליאה או העיכוב, זכאי לקבל העתק ממנו מאושר על ידי גובה המכס כהעתק נכון, והעתק כזה יתקבל לראיה בכל בתי המשפט ותקפו כתקפו של המקור.',
+    },
+    '198': {
+        "ch": 12, "t": 'דרישת הוכחות',
+        "s": 'Collector may demand proof of ownership and declaration accuracy; refuse delivery until provided.',
+        "f": 'רשאי גובה המכס לדרוש מבעל טובין שיוכיח בהצהרה או בהגשת תעודות שהוא בעל הטובין, כטענתו, ושתיאורם או הפרטים שנכללו לגביהם בהצהרת הייבוא או בהצהרת הייצוא הם כהלכה, ורשאי גובה המכס לסרב למסור את הטובין או לתת התרה לגבי הטובין הכלולים בהצהרה כאמור\n\nעד שתובא לפניו הוכחה כאמור.',
+    },
+    '199': {
+        "ch": 12, "t": 'דוגמאות',
+        "s": 'Sampling rights; no compensation.',
+        "f": 'רשאי פקיד-מכס ליטול דוגמאות מן הטובין שבפיקוח רשות-המכס לכל מטרה שיש בה צורך לדעת גובה המכס, ורשאי הוא להסתייע בהן, או לעשות בהן באופן שנקבע ואין לשלם בעד דוגמאות אלה.\n\nהמנהל רשאי ליתן רשיונות לסחור עם אניות',
+    },
+    '200': {
+        "ch": 12, "t": 'רשיונות למסחר',
+        "s": 'Three types of trading licenses for vessel-related commerce.',
+        "f": 'רשאי המנהל ליתן, בתנאים שנקבעו:\n\n(1)  רשיון לאנשים שבחוף לסחור באניה;\n\n(2)  רשיון למכור לאנשים הבאים לבקר באניה שבנמל כל טובין המובלים באניה לשם מכירה לנוסעיה;\n\n(3)  רשיון למכור מן האניה קרח ומזון טרי.\n\nעיכוב טובין מפרים (תיקון מס\' 16) תש"ס-1999 (תיקון מס\' 23) תשס"ח-2007 (תיקון מס\' 27) תשע"ז-2017',
+    },
+    '200א': {
+        "ch": 12, "t": 'עיכוב טובין מפרים',
+        "s": 'IP enforcement: 3 business-day detention (extendable); bank guarantee required; suit within 10 business days. Copyright, trademarks, registered designs.',
+        "f": '(א) מצא המנהל בדרך של קבלת הודעה כאמור בסעיף 65 לחוק זכות יוצרים, התשס"ח-2007 (להלן – חוק זכות יוצרים), או סעיף 69א לפקודת סימני מסחר [נוסח חדש], תשל"ב-1972 (להלן – פקודת סימני מסחר), או בדרך אחרת, ולעניין עיצוב – בדרך של קבלת הודעה כאמור בסעיף 110 לחוק העיצובים, התשע"ז-2017 (בסעיף זה – חוק העיצובים), כי קיימת לכאורה הפרת זכות יוצרים, הפרת זכות בסימן מסחר או הפרת זכות בעיצוב רשום, ינקוט צעדים כדלקמן:\n\n(תיקון מס\' 23) תשס"ח-2007\n\n(1)   יורה לעכב את שחרור העותקים או הטובין, שנטען לגביהם שהם מפרים (להלן – טובין מפרים), ל-3 ימי עבודה; המנהל רשאי, מטעמים מיוחדים, להאריך את העיכוב כאמור לתקופה נוספת שלא תעלה על 3 ימים;\n\n(2)   יודיע בכתב למי שלדעתו הוא בעל הטובין המפרים לכאורה על עיכוב שחרורם בצירוף העתק ההודעה אם ניתנה, והעתק הערבות העצמית;\n\n(תיקון מס\' 18) תשס"ב-2002 (תיקון מס\' 23) תשס"ח-2007 (תיקון מס\' 27) תשע"ז-2017\n\n(3)   יודיע לבעל זכות היוצרים, לבעל העיצוב או לבעל סימן המסחר (להלן – בעל הזכות), שעוכבו הטובין המפרים ויקבע את סכום הערבות הבנקאית שעליו להפקיד לפי סעיף קטן (ג), וזאת נוסף על הערבות העצמית לפי סעיף 65 לחוק זכות יוצרים, סעיף 110 לחוק העיצובים או סעיף 69א לפקודת סימני מסחר, כאשר ניתנה הודעה;\n\n(4)   יודיע לבעל הזכות על עיכוב שחרור הטובין המפרים, וכי העיכוב יבוטל לאחר 3 ימי עבודה מיום העיכוב אם לא יפקיד את הערבות או הערבויות שנדרש להפקיד, ולאחר 10 ימי עבודה מיום מסירת ההודעה על העיכוב אם לא יגיש תובענה לבית המשפט.\n\n(ב)  המנהל רשאי, מטעמים מיוחדים, להאריך את התקופה להגשת התובענה האמורה בסעיף קטן (א)(4) ב-10 ימים נוספים.\n\n(ג)   בתוך 3 ימי עבודה מיום העיכוב יגיש בעל הזכות למנהל ערבות בנקאית בסכום שקבע המנהל לפי סעיף קטן (א)(3), שיש בו כדי לכסות כל הוצאה הקשורה לעיכוב או כדי לפצות על כל נזק שייגרם על ידי העיכוב.\n\n(ד)  עם הפקדת הערבות לפי סעיף קטן (ג), ימסור המנהל לבקשת בעל הזכות דוגמאות מהטובין המפרים המעוכבים כאמור, לצורך בדיקתם וכן את שמו ומענו של יבואן הטובין המפרים; הוצאות הבדיקה, לרבות ההוצאות להעברתן של הדוגמאות אל מקום הבדיקה יחולו על בעל הזכות.\n\n(ה)  המנהל יבטל את עיכוב הטובין המפרים אם עד תום התקופות לפי סעיפים קטנים (א) עד (ג) לא פעל בעל הזכות כאמור בהם.\n\n(ו)   שר האוצר רשאי לקבוע תקנות לביצוע סעיף זה ובכלל זה אגרות שעל המבקש לשלם.',
+    },
+    '200ב': {
+        "ch": 12, "t": 'שחרור ערבויות',
+        "s": 'Guarantee return after 3 months in various scenarios or per court order.',
+        "f": 'המנהל יחזיר למפקיד הערבות את הערבויות שהופקדו על ידו כמפורט להלן ובהתאם לנסיבות:\n\n(1)  אם דחה את הבקשה לעיכוב שפורטה בהודעה כאמור בסעיף 200א(א) – בתום שלושה חודשים ממועד הדחיה אם לא הוגשה תביעה משפטית על ידי היבואן בשל נזק שנגרם לו כתוצאה מהעיכוב עד תום התקופה האמורה;\n\n(2)  אם עוכב שחרור הטובין המפרים כאמור בסעיף 200א ובוטל העיכוב – בתום שלושה חודשים מיום שחרור הטובין המפרים, אם לא הוגשה תביעה משפטית על ידי היבואן בשל הנזק שנגרם לו כתוצאה מהעיכוב עד תום התקופה האמורה;\n\n(3)  אם נדחתה התובענה כאמור בסעיף 200א(א)(4) בידי בית המשפט בפסק דין סופי, והיבואן או מי מטעמו אישר בכתב כי אין לו ולא תהיה לו כל טענה או תביעה בכל הקשור לעיכוב הטובין המפרים, או לנזק שנגרם לו בשל כך – בתום שלושה חודשים מיום דחיית התובענה;\n\n(4)  לפי הוראות בית המשפט.',
+    },
+    '200ג': {
+        "ch": 12, "t": 'טובין מפרים = אסורים',
+        "s": 'Infringing goods treated as prohibited imports/exports.',
+        "f": 'דין טובין מפרים שיובאו לארץ כדין טובין שייבואם וייצואם אסור לפי פקודה זו.',
+    },
+    '200ד': {
+        "ch": 12, "t": 'ייבוא אישי',
+        "s": 'Personal use exemption from IP enforcement provisions.',
+        "f": 'סעיפים 200א עד 200ג לא יחולו על טובין מפרים שיובאו לשימוש עצמי כהגדרתו בסעיף 129.',
+    },
+    '200ה': {
+        "ch": 12, "t": 'שמירת דינים',
+        "s": 'IP powers supplementary to other legal authorities.',
+        "f": 'הוראות סעיפים 200א עד 200ד באות להוסיף על סמכויות המנהל לפי כל דין.',
+    },
+    '200ו': {
+        "ch": 12, "t": 'עיכוב לבקרת תקינה',
+        "s": 'Detention for Standards Superintendent sample inspection. Added 2024.',
+        "f": 'בלי לגרוע מהוראות סעיף 200א, נודע למנהל כי הממונה על התקינה החליט לבצע בדיקה מדגמית של טובין או של תיק מוצר, כאמור בסעיף 2טו(א1) לפקודת היבוא והיצוא, יורה המנהל על עיכוב של שחרור הטובין עד למתן החלטת הממונה על התקינה לפי סעיף 2טו(א2) או (א3) או 2טז1(ג)(2)(ה) לפקודה האמורה; בסעיף זה, "טובין", "הממונה על התקינה" ו"תיק מוצר" – כהגדרתם בסעיף 2א(א) לפקודת היבוא והיצוא.',
+    },
+    '200ז': {
+        "ch": 12, "t": 'יבואן מפר אמון',
+        "s": 'Detention/conditional release for trust-violating importers. Added 2024.',
+        "f": 'בלי לגרוע מהוראות סעיף 200א, הפעיל הממונה על התקינה סמכות מסמכויותיו לפי סעיף 2א(ו) עד (י) לפקודת היבוא והיצוא, כלפי יבואן מפר אמון, יורה המנהל על עיכוב של שחרור הטובין או על שחרורם בתנאים, והכול בהתאם להחלטה שהממונה על התקינה הודיע עליה למנהל, בהתאם לסמכויות הנתונות לממונה על התקינה מכוח הפקודה האמורה; בסעיף זה, "הממונה על התקינה" ו"מפר אמון" – כהגדרתם בסעיף 2א(א) ו-(ו) לפקודת היבוא והיצוא, בהתאמה.',
+    },
+    '201': {
+        "ch": 12, "t": 'הגנה לפקיד',
+        "s": 'Officer immunity for seizures with reasonable cause.',
+        "f": 'לא ישא פקיד-מכס באחריות לתפיסת טובין לפי פקודה זו אם היה טעם סביר לאותה תפיסה; ובמקרה שתובע זוכה להשיב לעצמו אניה, כלי הובלה או טובין שנתפסו או את דמי מכרם, ונמצא שהיה טעם כאמור, ישמש הממצא תריס בפני הליך נגד פקידי-מכס שהיו מעורבים בתפיסה.\n\nקנס בשל התנהגות רעה',
+    },
+    '202': {
+        "ch": 12, "t": 'קנס התנהגות',
+        "s": "Director may fine officer up to 3 days' wages for negligence/misconduct.",
+        "f": "פקיד-מכס שמשכורתו השנתית בלי הקצוּבּוֹת היא פחותה מ-300 לירות, רשאי המנהל להטיל עליו בשל רשלנות, התנהגות רעה, איחור או הפרת משמעת קנס שלא יעלה על שכר שלושה ימים.\n\n\nסימן א': חילוטין\n\nחילוט כלי שיט",
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 13: FORFEITURES AND PENALTIES (חילוטין ועונשין)
     # ══════════════════════════════════════════════
 
-    "203": {"ch": 13, "t": "חילוט כלי שיט",
-        "s": "Vessels ≤250 tons: forfeited for smuggling/6 grounds. >250 tons: fine up to 10× Penal Law or 3× duties. "
-             "Non-vessel vehicles also forfeited.",
+    '203': {
+        "ch": 13, "t": 'חילוט כלי שיט',
+        "s": 'Vessels ≤250 tons: forfeited for smuggling/6 grounds. >250 tons: fine up to 10× Penal Law or 3× duties. Non-vessel vehicles also forfeited.',
+        "f": '(א)  כלי שיט שיחולטו למדינה אם אין הקיבול הרשום שלהם עולה על 250 טונות:\n\n(1)   כלי שיט ששימש בהברחה, או ששימש ביודעין להוביל שלא כדין טובין מוברחים או מחולטים;\n\n(2)   כלי שיט שנמצא במימי חופין של ישראל ולא נעצר כדי לאפשר את העליה אליו לאחר שנדרש כדין לעשות כן;\n\n(3)   כלי שיט השוהה במימי חופין של ישראל ואינו מפליג מיד לאחר שנדרש לכך על ידי מפקד או ממונה על אניה שבשירות המדינה או על ידי פקיד-מכס;\n\n(4)   כלי שיט שממנו הושלכו, או שופכו או הושמדו טובין מתוך כוונה למנוע תפיסתם בידי רשות-המכס;\n\n(5)   כלי שיט שנמצא בתחומו של נמל כשהוא טעון מטען, ואחר כך נמצא שאין בו מטען, או שיש בו נֶטֶל סתם או שמטענו חסר ואין בידי הקברניט להסביר את השינוי הסבר כדין;\n\n(6)   כלי שיט הנמצא במימי חופין של ישראל ויש בו מחיצות מרמה, חרטומי מרמה, דפנות מרמה, תחתיות מרמה או מקומות חשאיים או מוסווים שהוכשרו להעלמת טובין, או שיש בו חור, צינור או כל אמצעי אחר שהוכשרו להנסת טובין.\n\n(תיקון מס\' 20) תשס"ג-2003\n\n(ב)  אניה שהקיבול הרשום שלה עולה על 250 טונות, והיו מחלטים אותה אילו היה הקיבול הרשום שלה 250 טונות או פחות, רשאי המנהל להטיל על בעל האניה קנס בשיעור שלא יעלה על פי עשרה מהקנס האמור בסעיף 61(א)(4) לחוק העונשין, או פי שלושה מסכום מסי היבוא שנחסכו או שאמורים להיחסך, הגבוה מביניהם, ומותר לעצור את האניה עד שישולם הקנס או עד שתינתן ערובּה לשילומו.\n\n(ג)   כלי הובלה שאינו כלי שיט ושימש בהברחה, או שימש ביודעין להוביל שלא כדין טובין מוברחים או מחולטים, יחולט למדינה.',
     },
-    "203א": {"ch": 13, "t": "דרישת קנס",
+    '203א': {
+        "ch": 13, "t": 'דרישת קנס',
         "s": "30-day payment; interest + late charges on arrears. 30-day appeal to Magistrate's Court. Further appeal by leave to District Court.",
+        "f": '(א) קנס ישולם, לפי דרישת המנהל בכתב, בתוך שלושים ימים מיום קבלת הדרישה; הדרישה תוצא לאחר שהודע למי שאליו נועדה על הכוונה להוציאה וניתנה לו הזדמנות לטעון את טענותיו.\n\n(תיקון מס\' 29) תשפ"ד-2023\n\n(ב)  לא שולם הקנס במועד, ייווספו עליו ריבית שקלית ודמי פיגורים, עד לתשלומו, ויחולו הוראות חוק פסיקת ריבית והצמדה, בשינויים המחויבים.\n\n(ג)   (1)   על דרישה לתשלום קנס ניתן לערער לפני בית משפט שלום בתוך שלושים ימים מהיום שהודע על הטלת הקנס;\n\n(2)   אין בהגשת הערעור כדי לעכב את תשלום הקנס, אלא אם כן הורה בית המשפט אחרת;\n\n(תיקון מס\' 29) תשפ"ד-2023\n\n(3)   התקבל הערעור, יוחזר הסכום ששולם בתוספת ריבית שקלית מיום תשלומו עד יום החזרתו ויחולו הוראות חוק פסיקת ריבית והצמדה לעניין ריבית זו, בשינויים המחויבים;\n\n(4)   על החלטת בית משפט השלום בערעור ניתן לערער ברשות לפני בית המשפט המחוזי, שידון בערעור בדן יחיד.',
     },
-    "204": {"ch": 13, "t": "חילוט טובין",
-        "s": "17 categories of forfeitable goods: smuggled, false declarations, concealment, unauthorized movement, "
-             "prohibited goods, deceptive packaging, undeclared dutiable goods.",
+    '204': {
+        "ch": 13, "t": 'חילוט טובין',
+        "s": '17 categories of forfeitable goods: smuggled, false declarations, concealment, unauthorized movement, prohibited goods, deceptive packaging, undeclared dutiable goods.',
+        "f": 'ואלה טובין שיחולטו למדינה:\n\n(1)  טובין מוברחים;\n\n(2)  טובין שיובּאו בהפרת איסור, הגבלה או הסדר; ואולם טובין שיִיבּואם נאסר או הוסדר לפי צו ושנשלחו לשם ייבואם לישראל לפני שנודע לשולח דבר הצו ולפני שעבר זמן סביר כדי שהידיעה תגיע לנמל השליחה, אין לחלטם אלא יש לייצאם בחזרה או לעשות בהם בדרך שיאשרנה המנהל, הכל לפי ראות עיני המנהל;\n\n(3)  טובין שיובּאו בכלי שיט או בכלי הובלה האסורים ביִיבּוא טובין;\n\n(4)  טובין חבי מכס שנמצאו בכלי שיט או בכלי הובלה השוהים באחד המקומות שלא כדין;\n\n(5)  טובין שנמצאו בכלי שיט או בכלי הובלה לאחר שהגיעו לנמל או למקום אחר והטובין לא פורטו, או לא נזכרו, במצהר-כניסה או בהצהרה ואינם מטען-לואי של הצוות או של הנוסעים, ולא ניתן עליהם הסבר להנחת דעתו של גובה המכס;\n\n(6)  טובין שהצוֹבר שלהם פורק שלא כדין;\n\n(7)  טובין שטלטלום או שינו אותם או נגעו בהם שעה שהם נתונים לפיקוח רָשות המכס, זולת אם נעשה הדבר על פי רָשות ולפי פקודה זו;\n\n(8)  טובין שעל פי הוראות פקודה זו יש לסלקם או לטפל בהם באחת הדרכים ולא עשו כן;\n\n(תיקון מס\' 12) תשנ"ה-1995 (תיקון מס\' 28) תשע"ח-2018\n\n(9)  טובין שעליהם נמסרו, נעשו או הוגשו הצהרת ייבוא, הצהרת ייצוא, חשבון מכר, הצהרה, תשובה, אֲמָרָה, מצג או תעודה שהם כוזבים או שהם מטעים במזיד לגבי פרט מסויים;\n\n(10) מטען של כלי שיט המשוטט ליד החוף ואינו מפליג מיד לאחר שנדרש לכך על ידי מפקד או ממונה על כלי שיט שבשירות המדינה או על ידי פקיד-מכס;\n\n(11) טובין שאינם מטען-לואי של נוסעים, ונמצאו באניה לאחר מפדה, ולא פורטו, או לא נזכרו במצהר היציאה ולא ניתן עליהם הסבר להנחת דעתו של גובה המכס;\n\n(12) טובין האסורים ביצוא שהוכנסו לכלי שיט או לכלי הובלה, או שהובאו לרציף או למקום אחר, על מנת לייצאם, וכן טובין שייצואם הוגבל או הוסדר והם הוכנסו לכלי שיט או לכלי הובלה או הובאו לרציף או למקום אחר אגב הפרת הגבלה או הסדר, על מנת לייצאם;\n\n(13) טובין חבי מכס שהוצפנו בכל דרך שהיא כדי להשתמט מתשלום מכס;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(14) אריזה שהצפינו בה טובין שלא פורטו בהצהרת ייבוא או בהצהרת ייצוא או שנארזה בדרך העלולה להטעות את פקיד-המכס;\n\n(15) טובין חבי מכס שנמצאו בהחזקתו או במטען-לואי של אדם שיצא או נחת מכלי שיט, מכלי הובלה, או שנכנס לישראל בדרך אחרת, והוא אמר שאין בהחזקתו טובין חבי מכס בכלל, או לא גילה בתשובה לשאלותיו של פקיד-מכס שכל הטובין האמורים הם בהחזקתו או במטען-לואי שלו;\n\n(16) טובין שהוצעו למכירה בתור טובין אסורים או מוברחים;\n\n(17) טובין שהוחסנו ואחר כך שוטענו או נרשמו לשם יצוא על כלי שיט שהקיבול שלו פחות מששים טונות רשומות או שנרשמו למשלוח בכלי שיט כזה;\n\n(תיקון מס\' 28) תשע"ח-2018\n\nבסעיף זה, "טובין חבי מכס" – לרבות טובין שחלים עליהם מסי ייבוא אחרים.',
     },
-    "205": {"ch": 13, "t": "שומת רכוש", "s": "Sworn official valuation; final for confiscation proceedings."},
-    "206": {"ch": 13, "t": "אריזות וטובין", "s": "Forfeiture includes packaging+contents together; vehicle forfeiture includes owner's goods."},
-    "207": {"ch": 13, "t": "התכנסות להברחה",
-        "s": "Conspiracy to smuggle, prevent seizure, or rescue seized goods: 3 years imprisonment.",
+    '205': {
+        "ch": 13, "t": 'שומת רכוש',
+        "s": 'Sworn official valuation; final for confiscation proceedings.',
+        "f": 'הוגשה תובענה להחרמת כלי שיט, כלי הובלה או טובין שנתפסו לפי דין המכס, יש להגיש אותה שעה שומה של כלי השיט, כלי ההובלה או הטובין התפוסים ערוכה בידי פקיד-המכס, או בידי אדם אחר שהממשלה הסמיכה אותו לכך; השומה תקויים בשבועה ותהא סופית לענין קביעת ערכם של כלי השיט, כלי ההובלה או הטובין לצרכי שיפוט.\n\nאריזות וטובין שהוחרמו',
     },
-    "208": {"ch": 13, "t": "קנוניה, שוחד, חילוץ",
-        "s": "Customs officer collusion, bribery, rescuing seized goods, destroying evidence: 3 years or 500 liras.",
+    '206': {
+        "ch": 13, "t": 'אריזות וטובין',
+        "s": "Forfeiture includes packaging+contents together; vehicle forfeiture includes owner's goods.",
+        "f": "(א)  חילוטם של טובין חל גם על האריזה המכילה את הטובין וחילוטה של אריזה לפי סעיף 205\n[1]\nחל גם על כל הטובין שבה.\n\n(ב)  חילוטו של כלי הובלה חל גם על כל טובין של אותו בעל המובלים באותו כלי הובלה.\n\nסימן ב': עונשין\n\nהתכנסות לשם הברחה",
     },
-    "209": {"ch": 13, "t": "ירי אל כלי שיט",
-        "s": "Shooting at customs vessel/officer or wounding officer: 15 years imprisonment.",
+    '207': {
+        "ch": 13, "t": 'התכנסות להברחה',
+        "s": 'Conspiracy to smuggle, prevent seizure, or rescue seized goods: 3 years imprisonment.',
+        "f": 'שני אנשים או יותר שנתכנסו להבריח טובין או למנוע תפיסתם של טובין מוברחים או לחלצם לאחר שנתפסו, דינם – מאסר שלוש שנים.\n\nתפיסה בקנוניה, שיחוד פקיד-מכס, חילוץ טובין או השמדתם ומניעת תפיסתם',
     },
-    "210": {"ch": 13, "t": "סילוק טובין",
-        "s": "Unauthorized removal from warehouse, destroying bonded goods, assault on officers: 2 years or 500 liras.",
+    '208': {
+        "ch": 13, "t": 'קנוניה, שוחד, חילוץ',
+        "s": 'Customs officer collusion, bribery, rescuing seized goods, destroying evidence: 3 years or 500 liras.',
+        "f": "אלה דינם מאסר שלוש שנים או קנס 500 לירות או שני העונשים כאחד:\n\n(1)   פקיד-מכס או שוטר שתפס בקנוניה כלי שיט, כלי הובלה או טובין הצפויים לחילוט או מסר אותם או עשה סידורים למסרם או להימנע מתפיסתם, או שקשר קשר עם אדם אחר, או שהסכים עמו בשתיקה, לייבא או לייצא טובין במטרה לתפוס כלי שיט, כלי הובלה או טובין ולקבל פרס על אותה תפיסה, או שנמצא מעורב בהברחתם של טובין במטרה כזו;\n\n(2)   הנותן שוחד, פרס או גמול לפקיד-מכס, או מביא לידי נתינתם, וכן המציע או מבטיח לפקיד-מכס לתת לו אחד מאלה או להביא לידי נתינתם, או העושה עמו קנוניה, והכל מתוך כוונה לשדלו בכל דרך שהיא להזנחת תפקידו, וכן המנסה – באיומים בדרישות או בהבטחות – להשפיע על פקיד-מכס במילוי תפקידו;\n\n(3)   המחלץ טובין שנתפסו, והמשפך טובין, משברם או משמידם, והמשמיד תעודות המתייחסות אליהם, בין שעשה כך לפני תפיסת הטובין ובין לאחריה, במטרה למנוע את תפיסתם או הבטחתם או למנוע הוכחת עבירה.\n\nיריה אל כלי שיט של רשות-המכס וכו'",
     },
-    "211": {
-        "ch": 13, "t": "הברחה",
-        "s": "SMUGGLING: 3 years + 2× Penal Law fine + 3× import duties. AGGRAVATED: 5 years + 4× fine + 3× duties. "
-             "Vessel/vehicle owners equally liable. Wartime enhancement.",
-        "key": "3 years / 2× Penal Law fine + 3× import duties. Aggravated: 5 years / 4× fine + 3× duties.",
+    '209': {
+        "ch": 13, "t": 'ירי אל כלי שיט',
+        "s": 'Shooting at customs vessel/officer or wounding officer: 15 years imprisonment.',
+        "f": 'אלה דינם מאסר חמש עשרה שנה:\n\n(1)  היורה אל כלי שיט שבשירות רשות-המכס;\n\n(2)  היורה אל פקיד-מכס בשעת מילוי תפקידו;\n\n(3)  הפוצע פקיד-מכס או מטיל בו מום בשעת מילוי תפקידו.\n\nסילוק טובין חבי מכס או השמדתם',
     },
-    "212": {
-        "ch": 13, "t": "עבירות מכס אחרות",
-        "s": "13 offenses at 2 years/500 liras: duty evasion, false invoices, false declarations, forging documents, "
-             "misleading officers, refusing to answer, unauthorized handling, transferring exempt goods.",
-        "key": "13 specific offenses. Failure to report tax opinions/shelf planning: Penal Law fines.",
+    '210': {
+        "ch": 13, "t": 'סילוק טובין',
+        "s": 'Unauthorized removal from warehouse, destroying bonded goods, assault on officers: 2 years or 500 liras.',
+        "f": '(א)  אלה דינם מאסר שנתיים או קנס 500 לירות:\n\n(1)   המסלק טובין חבי מכס ממחסן בלא רשותו של פקיד-המכס המוסמך או בלא תשלום מכס או בלא ערובה לשילומו;\n\n(2)   המשמיד במזיד טובין שהוחסנו כהלכה;\n\n(3)   התוקף פקיד-מכס, או אדם אחר המועסק כהלכה במניעת הברחה, המתנגד להם או המפריע להם אגב שימוש בכוח או באלימות בשעת מילוי תפקידם.\n\n(ב)  נתחייב פקיד-מכס בדין על עבירה לפי סעיף קטן (א)(2) לא ישולם מכס על אותם טובין והממשלה רשאית לצוות על תשלום פיצויים מתוך הכנסות המדינה.\n\nהברחה (תיקון מס\' 20) תשס"ג-2003',
     },
-    "213": {"ch": 13, "t": "גיבוי קנס", "s": "Fines enforceable as criminal fines; attachment/sale of property."},
-    "214": {"ch": 13, "t": "עונש כללי", "s": "Default penalty for unspecified violations: 6 months or 100 liras."},
-    "215": {"ch": 13, "t": "טובין אסורים מיוחדים", "s": "6 offenses for government-designated prohibited goods; wartime enhancement."},
-    "216": {"ch": 13, "t": "פרסום אסור", "s": "Duty to surrender unsolicited banned publications to police."},
-    "217": {
-        "ch": 13, "t": "אחריות ביחד ולחוד",
-        "s": "Joint and several liability: each person liable for the FULL penalty.",
+    '211': {
+        "ch": 13, "t": 'הברחה',
+        "s": 'SMUGGLING: 3 years + 2× Penal Law fine + 3× import duties. AGGRAVATED: 5 years + 4× fine + 3× duties. Vessel/vehicle owners equally liable. Wartime enhancement.',
+        "f": '(א)  אלה דינם מאסר שלוש שנים או כפל הקנס האמור בסעיף 61(א)(4) לחוק העונשין, ובהחזקת טובין מוברחים אף תשלום פי שלושה מסכום מסי היבוא החלים על אותם טובין:\n\n(1)   המבריח טובין;\n\n(2)   המחזיק טובין מוברחים או טובין שייבואם אסור ולא הוכיח שיש לו הצדק כדי להחזיקם;\n\n(3)   מי שבהחזקתו או במרותו או בפיקוחו טובין שייצואם אותה שעה אסור או מוגבל או מוסדר והוא מתכוון להבריחם או יודע שיש כוונה להבריחם.\n\n(תיקון מס\' 20) תשס"ג-2003\n\n(א1)        נעברה עבירה לפי סעיף קטן (א) בנסיבות מחמירות, דינו – מאסר 5 שנים או קנס בסכום של פי ארבעה מהקנס האמור בסעיף 61(א)(4) לחוק העונשין ובהחזקת טובין מוברחים גם תשלום פי שלושה מסכום מסי היבוא החלים על אותם טובין.\n\n(ב)  קברניט או בעל כלי שיט או כלי הובלה המשתמש, או המניח ביודעין להשתמש, בכלי שיט או בכלי הובלה שלו להברחת טובין, או להובלה שלא כדין של טובין מוברחים או מחולטים, דינו – הענשים שנקבעו בסעיף קטן (א).\n\n(ג)   נעברה העבירה הנזכרת בסעיף קטן (א)(3) במצב מלחמה שמדינת ישראל מעורבת בה, מותר להגדיל את העונש כדי מאסר שנתיים או קנס של 500 לירות.',
+        "key": '3 years / 2× Penal Law fine + 3× import duties. Aggravated: 5 years / 4× fine + 3× duties.',
     },
-    "218": {
-        "ch": 13, "t": "מסייעים ומעודדים",
-        "s": "Aiders, abettors, counselors, procurers treated as PRINCIPALS. Same punishment.",
+    '212': {
+        "ch": 13, "t": 'עבירות מכס אחרות',
+        "s": '13 offenses at 2 years/500 liras: duty evasion, false invoices, false declarations, forging documents, misleading officers, refusing to answer, unauthorized handling, transferring exempt goods.',
+        "f": '(א)  אלה דינם מאסר שנתיים או קנס 500 לירות או שני הענשים כאחד:\n\n(1)   המשתמט מתשלום מכס שיש לשלמו;\n\n(תיקון מס\' 1) תשכ"א-1961\n\n(2)   המשיג הישבון שלא הגיע לו על פי דין;\n\n(3)   המכין, המעביר או המציג תעודה שהיא, כביכול, חשבון-מכר אמיתי ולמעשה איננו כזה;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(4)   המגיש הצהרת ייבוא או הצהרת ייצוא כוזבת או לא נכונה בפרט מסויים;\n\n(5)   המביא לישראל טופס או נייר אחר הנחזה כטופס שאפשר לכתוב תרפו ולהשתמש בו כחשבון-מכר של טובין הבאים מארצות חוץ, או המחזיק טופס או נייר כאמור ולא הוכיח שיש לו הצֶדק כדין להחזיקו;\n\n(6)   המוסר בהצהרה או בתעודה שהוגשו לפקיד-מכס אמרה שאינה נכונה או שאינה מדוייקת בפרט מסויים, או המגיש או המוסר לפקיד-מכס הצהרה או תעודה שיש בהם אמרה כזו;\n\n(7)   המוציא מרשותו טובין שנפטרו ממכס מחמת שיובאו בשביל צבא-הגנה לישראל, או בשביל מוסד או אדם הזכאים לייבא טובין אלה בלא מכס, ומעבירם לכל חברה, פירמה או אדם שאינם זכאים לייבא אותם טובין בלי מכס, ולא הודיע תחילה למנהל על פרטי העברה זו;\n\n(8)   המשנה במרמה תעודה או מסמך או המזייף חותם, חתימת יד, ראשי תיבות או סימנים אחרים של פקיד-מכס, או שפקיד-מכס משתמש בהם, לאימות מסמך או שטר או להבטחת טובין או לכל מטרה אחרת בניהול עניינים הנוגעים לרשות-המכס;\n\n(9)   המטעה פקיד-מכס בפרט מסויים העלול לפגוע במילוי תפקידו;\n\n(10)  המטלטל טובין הנתונים לפיקוח רשות-המכס, המשנה אותם או הנוגע בהם, שלא על פי רשות;\n\n(11)  המסרב להשיב, או נמנע מהשיב, על שאלות, או המסרב להגיש, או נמנע מהגיש תעודות;\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(12)  המוכר טובין, או המציג אותם למכירה, או המחזיק אותם לשם מכירה או לשם מסחר באניה שבנמל, והטובין לא פורטו המצבר לפי סעיף 53;\n\n(13)  המוכר טובין, או המציע אותם למכירה, בתור טובין מוברחים או שייבואם אסור.\n\n(ב)  שום דבר האמור בסעיף זה לא יפגע בזכויותיו של אדם הפועל מכוח רשיון שניתן לו בהתאם לסעיף 200.\n\n(תיקון מס\' 26) תשע"ו-2016\n\n(ג)   לא דיווח אדם על חוות דעת כהגדרתה בסעיף 231ד(א), בניגוד להוראות אותו סעיף, דינו – הקנס הקבוע בסעיף 61(א)(2) לחוק העונשין.\n\n(תיקון מס\' 26) תשע"ו-2016\n\n(ד)  לא הודיע אדם על תכנון מדף כהגדרתו בסעיף 231ד(א), בניגוד להוראות סעיף 231ד(ד), דינו – מאסר שנה או הקנס הקבוע בסעיף 61(א)(2) לחוק העונשין.\n\n(תיקון מס\' 26) תשע"ו-2016\n\n(ה)  לא דיווח אדם על עמדה החייבת בדיווח כהגדרתה בסעיף 231ה(א), בניגוד להוראות אותו סעיף, דינו – הקנס הקבוע בסעיף 61(א)(2) לחוק העונשין.',
+        "key": '13 specific offenses. Failure to report tax opinions/shelf planning: Penal Law fines.',
     },
-    "219": {"ch": 13, "t": "נסיון", "s": "Attempt = completed offense for punishment purposes."},
-    "220": {
-        "ch": 13, "t": "עונש פי שלושה",
-        "s": "Maximum fine: 3× goods value + 3× customs duty when prescribed penalty is lower.",
-        "key": "3× value + 3× duty = maximum fine.",
+    '213': {
+        "ch": 13, "t": 'גיבוי קנס',
+        "s": 'Fines enforceable as criminal fines; attachment/sale of property.',
+        "f": 'כל קנס שהטיל בית משפט באישום מכס, או שהטיל המנהל לפי הוראות סעיף 231, יראוהו כקנס שהוטל במשפט פלילי ויהא ניתן לגיבוי בעיקולם ובמכירתם של מקרקעין או של מטלטלין.\n\nעונש כללי',
     },
-    "221": {"ch": 13, "t": "עונש בנוסף על חילוט", "s": "All penalties are IN ADDITION TO forfeiture, not instead of."},
-    "222": {"ch": 13, "t": "ערך לעונש", "s": "Goods value = best goods of type, duty-paid, at Tel Aviv-Jaffa prices, at offense time."},
-    "223": {"ch": 13, "t": "חיוב קודם",
-        "s": "Prior customs conviction within 5 years: court may impose 2 years imprisonment (in addition to/instead of fine).",
+    '214': {
+        "ch": 13, "t": 'עונש כללי',
+        "s": 'Default penalty for unspecified violations: 6 months or 100 liras.',
+        "f": 'כל העובר על הוראה מהוראות פקודה זו ולא נקבעה לה בפקודה עונש אחר, דינו – מאסר ששה חדשים או קנס 100 לירות או שני הענשים כאחד.\n\nהוראות מיוחדות בענין טובין שייבואם אסור',
+    },
+    '215': {
+        "ch": 13, "t": 'טובין אסורים מיוחדים',
+        "s": '6 offenses for government-designated prohibited goods; wartime enhancement.',
+        "f": '(א)  העושה אחד המעשים המנויים להלן בטובין שייבואם אסור או מוגבל או מוסדר וסעיף זה חל עליהם, אשם בעבירה על פקודה זו:\n\n(1)   המחזיק טובין כאמור באניה ולא הוכיח שיש לו לכך הצדק סביר;\n\n(2)   המבריח, או המנסה להבריח, לישראל טובין כאמור;\n\n(3)   המחזיק טובין כאמור לאחר שהוברחו לישראל ולא הוכיח שיש לו לכך הצדק כדין;\n\n(4)   מסייע, מעודד, מייעץ, או המביא להברחת טובין כאמור לישראל, או שנמצא מעורב ביודעין בהברחה כאמור;\n\n(5)   הנמנע מגלות לפקיד-מכס, לפי דרישתו, ידיעה שיש לו, או שבכוחו להשיג, בנוגע להברחת טובין כאמור לישראל או לכוונת הברחה כזאת;\n\n(6)   המפרסם, המוכר, המציע למכירה, המפיץ או המעתיק פרסום שייבואו נאסר לפי סעיף 40(ב) או נסח מפרסום כזה.\n\n(ב)  סעיף זה יחול על כל טובין שייבואם אסור, מוגבל או מוסדר והממשלה הכריזה בצו שהסעיף יחול עליהם.\n\n(ג)   נעברה עבירה על סעיף זה במצב מלחמה שמדינת ישראל מעורבת בה, יגדל העונש למאסר שנתיים או לקנס 500 לירות.\n\nחובה למסור למשטרה פרסום אסור',
+    },
+    '216': {
+        "ch": 13, "t": 'פרסום אסור',
+        "s": 'Duty to surrender unsolicited banned publications to police.',
+        "f": '(א)  פרסום שייבואו נאסר לפי סעיף 40(ב), או נסח מפרסום כזה, שנשלח לאדם בלי ידיעתו, או בלי שהיה שותף בידיעה, או בתשובה להזמנה שהזמין לפני תחילת תקפו של האיסור על יבוא הפרסום, ימסור האדם את הפרסום או את הנסח לשוטר הממונה על תחנת המשטרה הקרובה ביותר, מיד, אם ידע את תכנו, או מיד לאחר שנודע לו תכנו, ואם הגיע הפרסום או הנסח להחזקתו לפני שניתן צו האוסר על ייבואו, ימסור אותם כאמור מיד לאחר שניתן תוקף לצו כזה; לא עשה האדם כן, אשם בעבירה על פקודה זו.\n\n(ב)  מי שמילא אחרי הוראות סעיף קטן (א) או שנתחייב על עבירה לפיו, אין לחייבו על ייבוא הפרסום או הנסח או על החזקתו.\n\nאחריות לעונש ביחד ולחוד',
+    },
+    '217': {
+        "ch": 13, "t": 'אחריות ביחד ולחוד',
+        "s": 'Joint and several liability: each person liable for the FULL penalty.',
+        "f": 'הוטל עונש על מספר אנשים, שחבו בעונש ביחד ולחוד, יהא כל אחד מהם צפוי לכל העונש.\n\nמסייעים ומעודדים',
+    },
+    '218': {
+        "ch": 13, "t": 'מסייעים ומעודדים',
+        "s": 'Aiders, abettors, counselors, procurers treated as PRINCIPALS. Same punishment.',
+        "f": 'המסייע, המעודד, המייעץ או המביא לביצוע עבירה על פקודה זו, או המעורב בו על ידי מעשה או מחדל, בכל דרך שהיא, אם במישרין ואם בעקיפין, רואים אותו כאילו עבר אותה עבירה ויהא בר-עונשין בהתאם לכך.\n\nנסיון',
+    },
+    '219': {
+        "ch": 13, "t": 'נסיון',
+        "s": 'Attempt = completed offense for punishment purposes.',
+        "f": 'נסיון לעבור עבירה על פקודה זו, ייענש כאילו נעברה העבירה.\n\nעונש פי שלושה מערך הטובין',
+    },
+    '220': {
+        "ch": 13, "t": 'עונש פי שלושה',
+        "s": 'Maximum fine: 3× goods value + 3× customs duty when prescribed penalty is lower.',
+        "f": 'מקום שהעונש שנקבע בפקודה זו הוא פחות מפי שלושה מערך הטובין שנעברה בהם עבירה בצירוף פי שלושה מהמכס החל עליהם, יהיה הקנס המכסימלי פי שלושה מערך הטובין בצירוף פי שלושה מהמכס החל עליהם.\n\nהעונש – בנוסף על חילוט',
+        "key": '3× value + 3× duty = maximum fine.',
+    },
+    '221': {
+        "ch": 13, "t": 'עונש בנוסף על חילוט',
+        "s": 'All penalties are IN ADDITION TO forfeiture, not instead of.',
+        "f": 'כל הענשים הם בנוסף על חילוט.\n\nערך הטובין לענין עונש',
+    },
+    '222': {
+        "ch": 13, "t": 'ערך לעונש',
+        "s": 'Goods value = best goods of type, duty-paid, at Tel Aviv-Jaffa prices, at offense time.',
+        "f": 'בכל אשום מכס או הליך בעניני מכס שהבסיס לחישוב העונש הוא ערך הטובין, יהא הערך שוויים של מיטב הטובין מאותו סוג ששולם המכס עליהם, כפי שהיו נמכרים בתל-אביב-יפו בשעת ביצוע העבירה או בסמוך לה, ואפילו נתחייב העונש במקום אחר שבישראל.\n\nהיה לנאשם חיוב קודם מותר לאסרו',
+    },
+    '223': {
+        "ch": 13, "t": 'חיוב קודם',
+        "s": 'Prior customs conviction within 5 years: court may impose 2 years imprisonment (in addition to/instead of fine).',
+        "f": 'נתחייב אדם בדין על עבירה לפי פקודה זו שדינה עונש ממון אך לא מאסר של שנתיים או יותר, ונתגלה שאדם זה נתחייב בדין לפי אחד מדיני המכס תוך חמש השנים שקדמו לחיוב, רשאי בית המשפט להענישו, בין במקום עונש ממון ובין בנוסף עליו, במאסר שנתיים, עם מתן זכות להשתחרר מן המאסר בתשלום עונש הממון או בלי זכות כזו.\n\n(תיקון מס\' 28) תשע"ח-2018',
     },
 
     # ══════════════════════════════════════════════
-    # CHAPTER 13א: ADMINISTRATIVE ENFORCEMENT (אמצעי אכיפה מינהליים)
+    # CHAPTER 13A: ADMINISTRATIVE ENFORCEMENT (אמצעי אכיפה מינהליים)
     # ══════════════════════════════════════════════
 
-    "223א": {"ch": "13א", "t": "הגדרות",
-        "s": "Defines importer, exporter, non-profit, financial institution, business, personal use for admin enforcement.",
+    '223א': {
+        "ch": '13א', "t": 'הגדרות',
+        "s": 'Defines importer, exporter, non-profit, financial institution, business, personal use for admin enforcement.',
+        "f": 'בפרק זה –\n\n"יבואן" – בעל טובין המיובאים לישראל שהוא אחד מאלה:\n\n(1)   מי שמייבא טובין לצורכי עסק;\n\n(2)   מלכ"ר או מוסד כספי, המייבא טובין לצורך פעילותו;\n\n(3)   מי שמייבא טובין לשימוש עצמי, שמתקיימים לגביו תנאים שקבע שר האוצר, בהסכמת שר המשפטים;\n\n"יצואן" – בעל טובין המבקש לייצאם מישראל, שהוא אחד מאלה:\n\n(1)   מי שמייצא טובין לצורכי עסק;\n\n(2)   מלכ"ר או מוסד כספי, המייצא טובין לצורך פעילותו;\n\n(3)   מי שמייצא טובין לשימוש עצמי, שמתקיימים לגביו תנאים שקבע שר האוצר, בהסכמת שר המשפטים;\n\n"מלכ"ר", "מוסד כספי" ו"עסק" – כהגדרתם בחוק מס ערך מוסף;\n\n"שימוש עצמי" – כהגדרתו בסעיף 129.',
     },
-    "223ב": {
-        "ch": "13א", "t": "עיצום כספי",
-        "s": "Financial sanction schedule: false manifest ₪2,500; importer/exporter incorrect declaration 10% or ₪5,000 (higher); "
-             "agent errors 1% (₪500-₪5,000); minor agent errors ₪150; POA authentication failure ₪400; "
-             "unauthorized authorization ₪5,000; late manifest/warehouse violations ₪25,000.",
-        "key": "₪150 minor agent errors; ₪400 POA; ₪2,500 manifest; ₪5,000 importer/agent; ₪25,000 serious violations.",
+    '223ב': {
+        "ch": '13א', "t": 'עיצום כספי',
+        "s": 'Financial sanction schedule: false manifest ₪2,500; importer/exporter incorrect declaration 10% or ₪5,000 (higher); agent errors 1% (₪500-₪5,000); minor agent errors ₪150; POA authentication failure ₪400; unauthorized authorization ₪5,000; late manifest/warehouse violations ₪25,000.',
+        "f": "(א) מי שהגיש מצהר הכולל פרטים לא נכונים, בניגוד להוראות סעיף 53(א)(1)(א), 53(א)(2), 53(א)(3) או 53(א)(4), רשאי המנהל להטיל עליו עיצום כספי לפי הוראות סימן זה בסכום של 2,500 שקלים חדשים.\n\n(ב)  יבואן או יצואן שהפר הוראה מההוראות לפי פקודה זו, כמפורט להלן, רשאי המנהל להטיל עליו עיצום כספי לפי הוראות סימן זה, בשיעור של 10% מהפרש מסי היבוא שנוצר, או 5,000 שקלים חדשים, לפי הגבוה, אלא אם כן הוכח להנחת דעתו של המנהל כי מסר לסוכן מכס את כל המסמכים והפרטים שנדרש למסור לשם הגשת הצהרה בעבורו:\n\n(1)   יבואן שהגיש, בעצמו או באמצעות סוכן מכס, הצהרת ייבוא הכוללת פרט לא נכון, או שלא צירף להצהרת הייבוא שהגיש כאמור מסמך שהיה עליו לצרף לה, בניגוד להוראות לפי סעיף 62, למעט מסמך כאמור בסעיף 62(ג)(2) שנדרש לפי פקודת הייבוא והייצוא;\n\n(2)   יצואן שהגיש, בעצמו או באמצעות סוכן מכס, הצהרת ייצוא הכוללת פרט לא נכון, או שלא צירף להצהרת הייצוא שהגיש כאמור מסמך שהיה עליו לצרף לה, בניגוד להוראות לפי סעיף 103, למעט מסמך כאמור בסעיף 103(ג)(2) שנדרש לפי פקודת הייבוא והייצוא.\n\n(ג)   סוכן מכס שהפר הוראה מההוראות לפי פקודה זו, כמפורט להלן, רשאי המנהל להטיל עליו עיצום כספי לפי הוראות סימן זה, בגובה 1% מהפרש מסי הייבוא שנוצר, אך לא יותר מ-5,000 שקלים חדשים ולא פחות מ-500 שקלים חדשים, אלא אם כן הוכח להנחת דעתו של המנהל כי הפרט הלא נכון שנכלל בהצהרה נמסר לו על ידי היבואן או היצואן, לפי העניין:\n\n(1)   הגיש הצהרת ייבוא הכוללת פרט לא נכון, או שלא צירף להצהרת הייבוא שהגיש כאמור, מסמך שהיה עליו לצרף לה, בניגוד להוראות לפי סעיף 62;\n\n(2)   הגיש הצהרת ייצוא הכוללת פרט לא נכון, או שלא צירף להצהרת הייצוא שהגיש כאמור, מסמך שהיה עליו לצרף לה, בניגוד להוראות לפי סעיף 103;\n\nואולם, לא נוצר הפרש מסי ייבוא בשל הפרה כאמור בסעיף קטן זה, רשאי המנהל להטיל על המפר עיצום כספי לפי הוראות סימן זה בגובה 500 שקלים חדשים.\n\n(ד)  סוכן מכס שהפר הוראה מהוראות סעיף קטן (ג)(1), וההפרה בוצעה באחת הנסיבות המפורטות להלן, ולא נוצר הפרש מסי ייבוא בשל הפרה כאמור בסעיף העולה על 500 שקלים חדשים להצהרת ייבוא בודדת, רשאי המנהל להטיל עליו כיצום כספי לפי הוראות סימן זה, בסכום של 150 שקלים חדשים בשל כל הצהרת ייבוא:\n\n(1)   סוכן המכס הגיש הצהרת ייבוא הכוללת פרט לא נכון אחד או יותר מבין הפרטים האלה:\n\n(א)   מספר יבואן;\n\n(ב)   סוג מטבע;\n\n(ג)    מקור הטובין;\n\n(ד)    מספר שטר המטען;\n\n(ה)   סיווג הטובין;\n\n(2)   סוכן המכס לא צירף אחד מהמסמכים האלה במקרים שבהם היה עליו לצרפם, והמסמכים היו בידיו בעת הגשת הצהרת הייבוא:\n\n(א)   חשבון מטענים או שטר מטען ימי או שטר מטען אווירי;\n\n(ב)   חשבון הובלה;\n\n(ג)    מסמך העדפה;\n\n(ד)    חשבון מכר.\n\n(ה)  סוכן מכס שלא אימת חתימה של בעל הטובין על כתב ההרשאה בניגוד להוראות סעיף 168(ב), רשאי המנהל להטיל עליו עיצום כספי לפי הוראות סימן זה בגובה 400 שקלים חדשים.\n\n(ו)   סוכן מכס שהגיש לרשות המכס כתב הרשאה בניגוד להוראות סעיף 168(ב), רשאי המנהל להטיל עליו עיצום כספי לפי הוראות סימן זה בגובה של 5,000 שקלים חדשים.\n\n(ז)   מי שהפר הוראה מההוראות לפי פקודה זו, כמפורט להלן, רשאי המנהל להטיל עליו עיצום כספי לפי הוראות סימן זה, בסכום של 25,000 שקלים חדשים:\n\n(1)   מי שלא הגיש מצהר במועד, בניגוד להוראות החלות לגביו, כמפורט להלן, לפי העניין:\n\n(א)   סוכן אנייה, קברניט אנייה, משלח בין-לאומי או חברת ספנות – בניגוד להוראות סעיף 53(א)(1) או (2);\n\n(ב)   חברת תעופה מובילה – בניגוד להוראות סעיף 53(א)(3);\n\n(ג)    סוכן מכס של יבואן – בניגוד להוראות סעיף 53(א)(4);\n\n(2)   בעל רישיון מחסן שפעל בניגוד לתנאי הרישיון, בניגוד להוראות סעיף 68(א);\n\n(3)   בעל רישיון מחסן שאחסן במחסן טובין בלא שניתנה לגביהם התרה, בניגוד להוראות סעיף 68(ב).\n\n(ח)  בעל רישיון מחסן שהפר הוראה מההוראות לפי סעיף 232, כמפורט בטור א' בתוספת, רשאי המנהל להטיל עליו עיצום כספי בסכום הקבוע בטור ב' לצדה.",
+        "key": '₪150 minor agent errors; ₪400 POA; ₪2,500 manifest; ₪5,000 importer/agent; ₪25,000 serious violations.',
     },
-    "223ג": {"ch": "13א", "t": "הודעת כוונה", "s": "Written notice of intent before imposing sanction; specifies violation, amount, rights."},
-    "223ד": {"ch": "13א", "t": "זכות טיעון", "s": "30-day written argument period (extendable to 60 days total)."},
-    "223ה": {"ch": "13א", "t": "החלטה ודרישת תשלום",
-        "s": "Director decides after arguments; written reasoned decision. No arguments filed = intent notice becomes demand.",
+    '223ג': {
+        "ch": '13א', "t": 'הודעת כוונה',
+        "s": 'Written notice of intent before imposing sanction; specifies violation, amount, rights.',
+        "f": '(א)  היה למנהל יסוד סביר להניח כי אדם הפר הוראה מההוראות לפי פקודה זו, כאמור בסעיף 223ב (בפרק זה – המפר), ובכוונתו להטיל עליו עיצום כספי לפי אותו סעיף, ימסור למפר הודעה על הכוונה להטיל עליו עיצום כספי (בפרק זה – הודעה על כוונת חיוב).\n\n(ב)  בהודעה על כוונת חיוב יציין המנהל, בין השאר, את אלה:\n\n(1)   המעשה או המחדל (בפרק זה – המעשה), המהווה את ההפרה;\n\n(2)   סכום העיצום הכספי והתקופה לתשלומו;\n\n(3)   זכותו של המפר לטעון את טענותיו לפני המנהל לפי הוראות סעיף 223ד;\n\n(4)   הסמכות להוסיף על סכום העיצום הכספי בשל הפרה נמשכת או הפרה חוזרת לפי הוראות סעיף 223ו, והמועד שממנו יראו הפרה כהפרה נמשכת לעניין הסעיף האמור.',
     },
-    "223ו": {"ch": "13א", "t": "הפרה נמשכת/חוזרת",
-        "s": "Continuing: +1/50 of amount per day. Repeat within 2 years: DOUBLED.",
+    '223ד': {
+        "ch": '13א', "t": 'זכות טיעון',
+        "s": '30-day written argument period (extendable to 60 days total).',
+        "f": 'מפר שנמסרה לו הודעה על כוונת חיוב לפי הוראות סעיף 223ג רשאי לטעון את טענותיו, בכתב, לפני המנהל, לעניין הכוונה להטיל עליו עיצום כספי ולעניין סכומו, בתוך 30 ימים ממועד מסירת ההודעה, ורשאי המנהל להאריך את התקופה האמורה בתקופה נוספת שלא תעלה על 30 ימים.',
     },
-    "223ז": {"ch": "13א", "t": "סכומים מופחתים", "s": "No reduction below minimums except per ministerial regulations."},
-    "223ח": {"ch": "13א", "t": "עדכון סכומים", "s": "Annual CPI adjustment on January 1; rounded to ₪10; published in Reshumot."},
-    "223ט": {"ch": "13א", "t": "מועד תשלום", "s": "30-day payment deadline after receiving demand."},
-    "223י": {"ch": "13א", "t": "ריבית ופיגורים", "s": "Unpaid sanctions accrue shekel interest + late-payment charges."},
-    "223יא": {"ch": "13א", "t": "גבייה", "s": "Collected for state treasury; Tax Collection Ordinance applies."},
-    "223יב": {"ch": "13א", "t": "התראה מינהלית",
-        "s": "Alternative to sanction: warning per Attorney General-approved guidelines. Warns of future sanctions.",
+    '223ה': {
+        "ch": '13א', "t": 'החלטה ודרישת תשלום',
+        "s": 'Director decides after arguments; written reasoned decision. No arguments filed = intent notice becomes demand.',
+        "f": '(א) המנהל יחליט, לאחר ששקל את הטענות שנטענו לפי סעיף 223ד, אם להטיל על המפר עיצום כספי, ורשאי הוא להפחית את סכום העיצום הכספי לפי הוראות סעיף 223ז.\n\n(ב)  החליט המנהל לפי הוראות סעיף קטן (א) –\n\n(1)   להטיל על המפר עיצום כספי – ימסור לו דרישה, בכתב, לשלם את העיצום הכספי (בפרק זה – דרישת תשלום), שבה יציין, בין השאר, אם סכום העיצום כספי המעודכן ואת התקופה לתשלומו;\n\n(2)   שלא להטיל על המפר עיצום כספי – ימסור לו הודעה על כך, בכתב.\n\n(ג)   בדרישת תשלום או בהודעה, לפי סעיף קטן (ב), יפרט המנהל את נימוקי החלטתו.\n\n(ד)  לא טען המפר את טענותיו לפי הוראות סעיף 223ד, בתוך התקופה האמורה באותו סעיף, יראו את ההודעה על כוונת חיוב, בתום אותה תקופה, כדרישת תשלום שנמסרה למפר במועד האמור.',
     },
-    "223יג": {"ch": "13א", "t": "ביטול התראה", "s": "30-day cancellation request on 2 grounds; written reasoned decision."},
-    "223יד": {"ch": "13א", "t": "הפרה אחרי התראה", "s": "Continuing after warning: payment demand. Repeat within 2 years: doubled."},
-    "223טו": {"ch": "13א", "t": "כפל עיצום", "s": "Single act violating multiple laws: only ONE sanction imposed. No double jeopardy."},
-    "223טז": {"ch": "13א", "t": "ערעור",
+    '223ו': {
+        "ch": '13א', "t": 'הפרה נמשכת/חוזרת',
+        "s": 'Continuing: +1/50 of amount per day. Repeat within 2 years: DOUBLED.',
+        "f": '(א)  בהפרה נמשכת ייווסף על העיצום הכספי הקבוע לאותה הפרה, החלק החמישים שלו לכל יום שבו נמשכת ההפרה.\n\n(ב)  בהפרה חוזרת ייווסף על העיצום הכספי הקבוע לאותה הפרה, סכום השווה לעיצום הכספי כאמור; לעניין זה, "הפרה חוזרת" – הפרת הוראה מההוראות לפי פקודה זו, כאמור בסעיף 223ב, בתוך שנתיים מהפרה קודמת של אותה הוראה שבשלה הוטל על המפר עיצום כספי או שבשלה הורשע.',
+    },
+    '223ז': {
+        "ch": '13א', "t": 'סכומים מופחתים',
+        "s": 'No reduction below minimums except per ministerial regulations.',
+        "f": '(א)  המנהל אינו רשאי להטיל עיצום כספי בסכום הנמוך מהסכומים הקבועים בסימן זה, אלא לפי הוראות סעיף קטן (ב).\n\n(ב)  שר האוצר, בהתייעצות עם שר המשפטים, רשאי לקבוע מקרים, נסיבות ושיקולים שבשלהם יהיה ניתן להטיל עיצום כספי בסכום הנמוך מהסכומים הקבועים בסימן זה או בתוספת, ובשיעורים שיקבע.',
+    },
+    '223ח': {
+        "ch": '13א', "t": 'עדכון סכומים',
+        "s": 'Annual CPI adjustment on January 1; rounded to ₪10; published in Reshumot.',
+        "f": '(א) העיצום הכספי יהיה לפי סכומו המעודכן ביום מסירת דרישת התשלום ולגבי מפר שלא טען את טענותיו לפני המנהל כאמור בסעיף 223ד – ביום מסירת ההודעה על כוונת חיוב; הוגש ערעור לבית משפט לפי סעיף 223טז ועוכב תשלומו של העיצום הכספי בידי המנהל או בית המשפט – יהיה העיצום הכספי לפי סכומו המעודכן ביום ההחלטה בערעור.\n\n(ב)  סכומי העיצום הכספי הקבועים בסעיף 223ב ובתוספת, יתעדכנו ב-1 בינואר בכל שנה (בסעיף קטן זה – יום העדכון), בהתאם לשיעור שינוי המדד הידוע ביום העדכון לעומת המדד שהיה ידוע ב-1 בינואר של השנה הקודמת; הסכום האמור יעוגל לסכום הקרוב שהוא מכפלה של 10 שקלים חדשים; לעניין זה, "מדד" – מדד המחירים לצרכן שמפרסמת הלשכה המרכזית לסטטיסטיקה.\n\n(ג)   המנהל יפרסם ברשומות הודעה על סכומי העיצום הכספי המעודכנים לפי סעיף קטן (ב).',
+    },
+    '223ט': {
+        "ch": '13א', "t": 'מועד תשלום',
+        "s": '30-day payment deadline after receiving demand.',
+        "f": 'המפר ישלם את העיצום הכספי בתוך 30 ימים מיום מסירת דרישת התשלום כאמור בסעיף 223ה.',
+    },
+    '223י': {
+        "ch": '13א', "t": 'ריבית ופיגורים',
+        "s": 'Unpaid sanctions accrue shekel interest + late-payment charges.',
+        "f": '(א)  לא שילם המפר עיצום כספי במועד, ייווספו על העיצום הכספי לתקופת הפיגור, ריבית שקלית ודמי פיגורים, עד לתשלומו, ויחולו הוראות חוק פסיקת ריבית והצמדה, בשינויים המחויבים.\n\n(תיקון מס\' 29) תשפ"ד-2023\n\n(ב)  על אף האמור בסעיף 231א, הוראות סעיף 100 לחוק מס ערך מוסף לא יחולו לעניין ריבית שקלית ודמי פיגורים כאמור בסעיף קטן (א).',
+    },
+    '223יא': {
+        "ch": '13א', "t": 'גבייה',
+        "s": 'Collected for state treasury; Tax Collection Ordinance applies.',
+        "f": 'עיצום כספי ייגבה לאוצר המדינה ועל גבייתו תחול פקודת המסים (גבייה).',
+    },
+    '223יב': {
+        "ch": '13א', "t": 'התראה מינהלית',
+        "s": 'Alternative to sanction: warning per Attorney General-approved guidelines. Warns of future sanctions.',
+        "f": '(א) היה למנהל יסוד סביר להניח כי אדם הפר הוראה מההוראות לפי פקודה זו, כאמור בסעיף 223ב, והתקיימו נסיבות שקבע המנהל, בנהלים, באישור היועץ המשפטי לממשלה, רשאי הוא, במקום להמציא לו הודעה על כוונת חיוב ולהטיל עליו עיצום כספי, לפי הוראות סימן ב\', להמציא לו התראה מינהלית לפי הוראות סימן זה; בסעיף קטן זה, "היועץ המשפטי לממשלה" – לרבות משנה ליועץ המשפטי לממשלה שהיועץ המשפטי לממשלה הסמיכו לעניין זה.\n\n(ב)  בהתראה מינהלית יציין המנהל מהו המעשה המהווה את ההפרה, יודיע למפר כי עליו להפסיק את ההפרה וכי אם ימשיך בהפרה או יחזור עליה יהיה צפוי לעיצום כספי בשל הפרה נמשכת או הפרה חוזרת, לפי העניין, כאמור בסעיף 223יד, וכן יציין את זכותו של המפר לבקש את ביטול ההתראה לפי הוראות סעיף 223יג.',
+    },
+    '223יג': {
+        "ch": '13א', "t": 'ביטול התראה',
+        "s": '30-day cancellation request on 2 grounds; written reasoned decision.',
+        "f": '(א) נמסרה למפר התראה מינהלית כאמור בסעיף 223יב, רשאי הוא לפנות למנהל, בכתב, בתוך 30 ימים, בבקשה לבטל את ההתראה בשל אחד מהטעמים האלה:\n\n(1)   המפר לא ביצע את ההפרה;\n\n(2)   המעשה שביצע, המפורט בהתראה, אינו מהווה הפרה.\n\n(ב)  קיבל המנהל בקשה לביטול התראה מינהלית, לפי הוראות סעיף קטן (א), רשאי הוא לבטל את ההתראה או לדחות את הבקשה ולהותיר את ההתראה על כנה; החלטת המנהל תינתן בכתב ותימסר למפר בצירוף נימוקים.',
+    },
+    '223יד': {
+        "ch": '13א', "t": 'הפרה אחרי התראה',
+        "s": 'Continuing after warning: payment demand. Repeat within 2 years: doubled.',
+        "f": '(א)        נמסרה למפר התראה מינהלית לפי הוראות סימן זה והמפר המשיך להפר את ההוראה שבשלה נמסרה לו ההתראה, ימסור לו הממונה דרישת תשלום בשל הפרה נמשכת כאמור בסעיף 223ו.\n\n(ב)  נמסרה למפר התראה מינהלית לפי הוראות סימן זה והמפר חזר והפר את ההוראה שבשלה נשלחה לו ההתראה, בתוך שנתיים מיום מסירת ההתראה, יראו את ההפרה הנוספת כאמור כהפרה חוזרת לעניין סעיף 223ו(ב), והמנהל ימסור למפר הודעה על כוונת חיוב לפי הוראות סעיף 223ג בשל ההפרה החוזרת.',
+    },
+    '223טו': {
+        "ch": '13א', "t": 'כפל עיצום',
+        "s": 'Single act violating multiple laws: only ONE sanction imposed. No double jeopardy.',
+        "f": 'על מעשה אחד המהווה הפרה של הוראה מההוראות לפי פקודה זו המנויות בסעיף 223ב ושל הוראה מההוראות לפי חוק אחר, לא יוטל יותר מעיצום כספי אחד.',
+    },
+    '223טז': {
+        "ch": '13א', "t": 'ערעור',
         "s": "Appeal to Magistrate's Court within 30 days. No automatic stay. Successful appeal: refund with interest.",
+        "f": '(א) על החלטה סופית של המנהל לפי פרק זה ניתן לערער לבית משפט השלום שבו יושב נשיא בית משפט השלום; ערעור כאמור יוגש בתוך 30 ימים מהיום שבו נמסרה למפר הודעה על ההחלטה.\n\n(ב)  אין בהגשת ערעור לפי סעיף קטן (א) כדי לעכב את תשלום העיצום הכספי, אלא אם כן הסכים לכך המנהל או אם בית המשפט הורה על כך.\n\n(תיקון מס\' 29) תשפ"ד-2023\n\n(ג)   החליט בית המשפט לקבל ערעור שהוגש לפי סעיף קטן (א), לאחר ששולם העיצום הכספי והורה על החזרת סכום העיצום הכספי ששולם או על הפחתת העיצום הכספי, יוחזר הסכום ששולם או כל חלק ממנו שהופחת, בתוספת ריבית שקלית, מיום תשלומו עד יום החזרתו, ויחולו הוראות חוק פסיקת ריבית והצמדה לעניין ריבית זו, בשינויים המחויבים.',
     },
-    "223יז": {"ch": "13א", "t": "פרסום",
-        "s": "Published on Tax Authority website: 4 years for corporations, 2 years for individuals. No personal identification.",
+    '223יז': {
+        "ch": '13א', "t": 'פרסום',
+        "s": 'Published on Tax Authority website: 4 years for corporations, 2 years for individuals. No personal identification.',
+        "f": '(א) הטיל המנהל עיצום כספי לפי פרק זה, יפרסם באתר האינטרנט של רשות המסים את הפרטים שלהלן, בדרך שתבטיח שקיפות לגבי הפעלת שיקול דעתו בקבלת ההחלטה להטיל עיצום כספי:\n\n(1)   דבר הטלת העיצום הכספי;\n\n(2)   מהות ההפרה שבשלה הוטל העיצום הכספי ונסיבות ההפרה;\n\n(3)   סכום העיצום הכספי שהוטל;\n\n(4)   אם הופחת העיצום הכספי – הנסיבות שבשלהן הופחת סכום העיצום ושיעור ההפחתה;\n\n(5)   פרטים על המפר, הנוגעים לעניין, למעט פרטים שיש בהם כדי לזהותו.\n\n(ב)  הוגש ערעור לפי סעיף 223טז, יפרסם המנהל, בפרסום לפי סעיף קטן (א), גם את דבר הגשת הערעור ואת תוצאותיו.\n\n(ג)   על אף האמור בסעיף זה, לא יפרסם המנהל פרטים שהם בגדר מידע שרשות ציבורית מנועה מלמסור לפי סעיף 9(א) לחוק חופש המידע, התשנ"ח-1998, וכן רשאי הוא שלא לפרסם פרטים לפי סעיף זה שהם בגדר מידע שרשות ציבורית אינה חייבת למסור לפי סעיף 9(ב) לחוק האמור.\n\n(ד)  פרסום לפי סעיף זה בעניין עיצום כספי שהוטל על תאגיד יהיה לתקופה שלא ארבע שנים, ובעניין עיצום כספי שהוטל על יחיד – לתקופה של שנתיים.\n\n(ה)  שר האוצר, באישור ועדת הכספים של הכנסת, רשאי לקבוע דרכים נוספות לפרסום הפרטים האמורים בסעיף זה.',
     },
-    "223יח": {"ch": "13א", "t": "שמירת אחריות פלילית",
-        "s": "Admin penalties do NOT prevent criminal prosecution. No indictment after admin enforcement absent new facts. "
-             "Sanction refunded if later indicted on new facts.",
+    '223יח': {
+        "ch": '13א', "t": 'שמירת אחריות פלילית',
+        "s": 'Admin penalties do NOT prevent criminal prosecution. No indictment after admin enforcement absent new facts. Sanction refunded if later indicted on new facts.',
+        "f": '(א) תשלום עיצום כספי או המצאת התראה מינהלית, לפי פרק זה, לא יגרעו מאחריותו הפלילית של אדם בשל הפרת הוראה מההוראות לפי פקודה זו המנויות בסעיף 223ב, המהווה עבירה.\n\n(ב)  שלח המנהל למפר הודעה על כוונת חיוב או המציא לו התראה מינהלית, בשל הפרה המהווה עבירה כאמור בסעיף קטן (א), לא יוגש נגדו כתב אישום בשל אותה הפרה, אלא אם כן התגלו עובדות חדשות, המצדיקות זאת.\n\n(תיקון מס\' 29) תשפ"ד-2023\n\n(ג)   הוגש נגד אדם כתב אישום בשל הפרה המהווה עבירה כאמור בסעיף קטן (א), לא ינקוט נגדו המנהל הליכים לפי פרק זה בשל אותה הפרה, ואם הוגש כתב אישום בנסיבות האמורות בסעיף קטן (ב) לאחר שהמפר שילם עיצום כספי – יוחזר לו הסכום, בתוספת ריבית שקלית מיום תשלום הכספי עד יום החזרתו, ויחולו הוראות חוק פסיקת ריבית והצמדה לעניין ריבית זו, בשינויים המחויבים.',
     },
 
     # ══════════════════════════════════════════════
     # CHAPTER 14: CUSTOMS PROSECUTIONS (אישומי מכס)
     # ══════════════════════════════════════════════
 
-    "224": {"ch": 14, "t": "הגדרה", "s": "Customs prosecutions: offenses under Ordinance + recovery of duty/penalties/confiscation."},
-    "225": {"ch": 14, "t": "הגשת אישום", "s": "Filed in name of AG or Director; criminal appeal rules; deposit requirement."},
-    "226": {"ch": 14, "t": "בוטל", "repealed": True, "s": "Formerly: 5-year limitation. Repealed 2018."},
-    "227": {"ch": 14, "t": "חסינות עדים", "s": "Informant privilege; confidential report privilege for customs officers."},
-    "228": {"ch": 14, "t": "הוכחת תקנות", "s": "Official gazette or certified copy = prima facie evidence of regulation validity."},
-    "229": {"ch": 14, "t": "חובת הראיה",
-        "s": "BURDEN OF PROOF on defendant/claimant that duty was paid or goods lawfully imported/exported.",
-        "key": "Burden of proof on defendant for lawful dealing.",
+    '224': {
+        "ch": 14, "t": 'הגדרה',
+        "s": 'Customs prosecutions: offenses under Ordinance + recovery of duty/penalties/confiscation.',
+        "f": 'אישומים על עבירות לפי פקודה זו, וכל הליך לשם גיבוי מכס או ענשים, או לשם החרמה או חילוט של כלי שיט, כלי הובלה או טובין נקראים להלן "אישומי מכס".\n\nכיצד מגישים אישום',
     },
-    "230": {"ch": 14, "t": "הרשעה = החרמה", "s": "Conviction = automatic confiscation where offense triggers forfeiture."},
+    '225': {
+        "ch": 14, "t": 'הגשת אישום',
+        "s": 'Filed in name of AG or Director; criminal appeal rules; deposit requirement.',
+        "f": '(א)  אישומי מכס ניתנים להגשה בשם היועץ המשפטי של הממשלה או בשם המנהל, בצורת תובענה, כתב אישום או הליך מתאים אחר, בבית המשפט שיש לו שיפוט באותו ענין.\n\n(ב)  זכות הערעור תהיה לפי התקנות בדבר ערעורים במשפטים פליליים.\n\n(ג)   היתה ההחלטה שמערערים עליה מתייחסת למכס או לקנס שניתן להטיל על כלי שיט, כלי הובלה או טובין, חייב המערער להפקיד בבית המשפט, עד לבירור הערעור, את הסכום שיש לשלמו לפי ההחלטה; אלא שאם היה הסכום עולה על 500 לירות, יכול בית המשפט המוסמך לדון בערעור להרשות את הגשת הערעור בהפקדת סכום קטן מהסכום המשתלם לפי ההחלטה.\n\n(תיקון מס\' 28) תשע"ח-2018',
+    },
+    '226': {
+        "ch": 14, "t": 'בוטל',
+        "s": 'Formerly: 5-year limitation. Repealed 2018.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '227': {
+        "ch": 14, "t": 'חסינות עדים',
+        "s": 'Informant privilege; confidential report privilege for customs officers.',
+        "f": "עד מטעם היועץ המשפטי לממשלה או מטעם המנהל באישום מכס, אין כופים אותו לגלות את העובדה שקיבל ידיעה או את טיבה של הידיעה או את שמו של מוסר הידיעה, ופקיד-מכס המעיד אין כופים אותו להמציא תסקירים שהכין או שקיבל בסוד בתוקף תפקידו הרשמי או שיש בהם ידיעות סודיות.\n\nהוכחת תקנות וכו'",
+    },
+    '228': {
+        "ch": 14, "t": 'הוכחת תקנות',
+        "s": 'Official gazette or certified copy = prima facie evidence of regulation validity.',
+        "f": 'הגשת "רשומות" שיש בו צו או תקנה הנחזים כנתונים על פי פקודה זו, או הגשת מסמך שאושר על ידי גובה המכס כהעתק או כנסח נכון של צו או תקנה שניתנו על פי פקודה זו, תהא ראיה לכאורה שהצו או התקנה ניתנו ושהם בני-תוקף.\n\nחובת הראיה',
+    },
+    '229': {
+        "ch": 14, "t": 'חובת הראיה',
+        "s": 'BURDEN OF PROOF on defendant/claimant that duty was paid or goods lawfully imported/exported.',
+        "f": 'נתעוררה שאלה באישום מכס, או בהליך לפי סעיף 192 להחזרת אניה, כלי הובלה או טובין שנתפסו על ידי פקיד-מכס, אם המכס על טובין שולם או לא, או אם טובין יובאו לישראל, או יוצאו ממנה, או הובלו לאורך החוף, או נפרקו או הוטענו, כדין, חובת הראיה שהמכס שולם או שהעשיה בטובין היתה כדין, תחול באישום מכס על הנאשם ובהליך כאמור על התובע.\n\nכוחה של הרשעה ככוחה של החרמה',
+        "key": 'Burden of proof on defendant for lawful dealing.',
+    },
+    '230': {
+        "ch": 14, "t": 'הרשעה = החרמה',
+        "s": 'Conviction = automatic confiscation where offense triggers forfeiture.',
+        "f": 'מקום שעשיית העבירה גוררת אחריה חילוט אניה, כלי הובלה או טובין, ההרשעה על עבירה זו או פסק הדין או ההחלטה של בית המשפט לגבות כל חלק של קנס הכרוך בעשיית אותה עבירה, יפעלו כהחרמת האניה, כלי ההובלה או הטובין שבהם נעברה העבירה.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n\nיום 12.3.2018',
+    },
 
     # ══════════════════════════════════════════════
-    # CHAPTER 14א: ELECTRONIC REPORTING (דיווח אלקטרוני)
+    # CHAPTER 14A: ELECTRONIC REPORTING (דיווח אלקטרוני)
     # ══════════════════════════════════════════════
 
-    "230א": {"ch": "14א", "t": "הגדרות", "s": "Electronic reporting = submission via certified electronic signature, storable and outputtable."},
-    "230ב": {"ch": "14א", "t": "חובת דיווח אלקטרוני",
-        "s": "Mandatory electronic submission: import/export declarations, manifests, authorizations. Director may add more.",
+    '230א': {
+        "ch": '14א', "t": 'הגדרות',
+        "s": 'Electronic reporting = submission via certified electronic signature, storable and outputtable.',
+        "f": 'בפרק זה –\n\n"דיווח אלקטרוני" – הגשת מסמך באמצעות מסר אלקטרוני החתום בחתימה אלקטרונית מאושרת וניתן לשמירה אלקטרונית ולהפקה כפלט;\n\n"חתימה אלקטרונית מאושרת" – כהגדרתה בחוק חתימה אלקטרונית.',
     },
-    "230ג": {"ch": "14א", "t": "שמירת מסמך", "s": "Retention obligation for electronically submitted documents per Director's rules."},
-    "230ד": {"ch": "14א", "t": "המצאה אלקטרונית", "s": "Customs authority may send documents electronically per Director's rules."},
-    "230ה": {"ch": "14א", "t": "חזקת מסירה",
-        "s": "Electronic message presumed delivered after 3 business days. Login notification + software log required. Rebuttable.",
+    '230ב': {
+        "ch": '14א', "t": 'חובת דיווח אלקטרוני',
+        "s": 'Mandatory electronic submission: import/export declarations, manifests, authorizations. Director may add more.',
+        "f": '(א) הצהרת ייבוא, הצהרת ייצוא, מצהר וכתב הרשאה חתום יוגשו לרשות המכס באמצעות מסר אלקטרוני החתום בידי המגיש בחתימה אלקטרונית מאושרת (בפרק זה – מסר אלקטרוני מאושר), בהתאם להוראות לפי פרק זה.\n\n(ב)  המנהל רשאי לקבוע בכללים מסמכים נוספים על המסמכים המנויים בסעיף קטן (א), שיוגשו לרשות המכס באמצעות מסר אלקטרוני מאושר.',
     },
-    "230ו": {"ch": "14א", "t": "כללים", "s": "Director sets rules: connection conditions, procedures, hardware/software, form structure."},
-    "230ז": {"ch": "14א", "t": "מרשם תוכנות", "s": "Software registry on Tax Authority website; mandatory registration."},
-    "230ח": {"ch": "14א", "t": "תקלת מערכת", "s": "System outage: Director sets non-electronic fallback procedures; published on website."},
+    '230ג': {
+        "ch": '14א', "t": 'שמירת מסמך',
+        "s": "Retention obligation for electronically submitted documents per Director's rules.",
+        "f": 'בעל טובין שחייב בהגשת מסמך באמצעות מסר אלקטרוני, ישמור את המסמך, לרבות כל מסמך שצורף לו, בדרך שיקבע המנהל בכללים.',
+    },
+    '230ד': {
+        "ch": '14א', "t": 'המצאה אלקטרונית',
+        "s": "Customs authority may send documents electronically per Director's rules.",
+        "f": 'הודעה, דרישה או כל מסמך אחר שהמנהל או עובד רשות המכס שהמנהל הסמיכו לכך רשאים להמציא לפי פקודה זו לנמען, יכול שייערכו כמסר אלקטרוני ויומצאו לנמען בדרך שיקבע המנהל בכללים.',
+    },
+    '230ה': {
+        "ch": '14א', "t": 'חזקת מסירה',
+        "s": 'Electronic message presumed delivered after 3 business days. Login notification + software log required. Rebuttable.',
+        "f": '(א) מסר אלקטרוני כאמור בסעיף 230ד, שנשלח לנמען באמצעות מערכת ממוכנת של רשות המכס, חזקה כי הומצא לנמען בתום שלושה ימי עסקים ממועד שליחתו, ובלבד שמתקיימים שני אלה:\n\n(1)   בכל כניסה של הנמען למערכת שאליה נשלח המסר (בסעיף זה – המערכת הקולטת), יוצג באופן בולט חיווי על כך שהתקבל מסר אלקטרוני חדש שלא נקרא בידי הנמען;\n\n(2)   המערכת הקולטת מאפשרת לנמען להפיק רשומת תוכנה (\nlog\n) המעידה על מועדי כניסתו למערכת.\n\n(ב)  חזקה כאמור בסעיף קטן (א) ניתנת לסתירה בידי הנמען, בין השאר, על ידי המצאת רשומת תוכנה כאמור בפסקה (2) של אותו סעיף קטן שלפיה נמנע מהנמען להתחבר למערכת הקולטת בתקופה שלאחר תום התקופה כאמור בסעיף קטן (א) רישה בשל תקלה באותה מערכת.',
+    },
+    '230ו': {
+        "ch": '14א', "t": 'כללים',
+        "s": 'Director sets rules: connection conditions, procedures, hardware/software, form structure.',
+        "f": 'המנהל רשאי לקבוע בכללים הוראות בעניינים אלה:\n\n(1)  התנאים והליכי האישור לשם חיבור למערכת הממוכנת של רשות המכס לשם דיווח אלקטרוני לרשות המכס;\n\n(2)  אופן הדיווח האלקטרוני;\n\n(3)  דרישות מזעריות למערכות חומרה ותוכנה המשמשות לשם דיווח אלקטרוני;\n\n(4)  מבנה הטפסים שיש להשתמש בהם לשם דיווח אלקטרוני ומתכונתם.',
+    },
+    '230ז': {
+        "ch": '14א', "t": 'מרשם תוכנות',
+        "s": 'Software registry on Tax Authority website; mandatory registration.',
+        "f": '(א)  לשם אבטחת הדיווח האלקטרוני כאמור בפרק זה ינהל המנהל מרשם של תוכנות שמתקיימות לגביהן הדרישות שנקבעו לפי סעיף 230ו(3) (בסעיף זה – מרשם תוכנות); מרשם התוכנות יפורסם באתר האינטרנט של רשות המסים.\n\n(ב)  לא יעשה אדם שימוש בתוכנה לשם ביצוע הוראות לפי פקודה זו, אלא אם כן היא רשומה במרשם התוכנות.',
+    },
+    '230ח': {
+        "ch": '14א', "t": 'תקלת מערכת',
+        "s": 'System outage: Director sets non-electronic fallback procedures; published on website.',
+        "f": 'היתה תקלה או השבתה במערכת חומרה או תוכנה המשמשת את רשות המכס לקליטה או לשליחה של מסר אלקטרוני לפי הוראות פקודה זו, רשאי המנהל לקבוע בכללים הוראות לעניין קליטה או שליחה שלא באמצעות מסר אלקטרוני, שיחולו בתנאים ולתקופה שיקבע; הודעה על קביעת הוראות כאמור תפורסם באתר האינטרנט של רשות המסים.',
+    },
 
     # ══════════════════════════════════════════════
     # CHAPTER 15: MISCELLANEOUS PROVISIONS (הוראות שונות)
     # ══════════════════════════════════════════════
 
-    "231": {"ch": 15, "t": "כפרה על עבירות",
-        "s": "Director may compound offenses by accepting payment up to max fine. Forfeiture still possible. Precludes further proceedings.",
+    '231': {
+        "ch": 15, "t": 'כפרה על עבירות',
+        "s": 'Director may compound offenses by accepting payment up to max fine. Forfeiture still possible. Precludes further proceedings.',
+        "f": '(א)  עבירה או כל מעשה שנעשו, או שיש חשד שנעשו, בידי אדם נגד הוראות פקודה זו, המנהל וכל פקיד-מכס אחר שהממשלה הסמיכה אותו לכך בצו, רשאי לכפר עליהם על ידי שיקבל מאותו אדם תשלום כסף שלא יעלה על עונש הממון המכסימלי שהוא עשוי להתחייב בו על פי פקודה זו בשל אותה עבירה או בשל אותו מעשה.\n\n(ב)  היו כלי שיט, כלי הובלה או טובין או דברים אחרים צפויים לחילוט על פי פקודה זו בשל עבירה או מעשה שנעשו בהם, וכופר על העבירה או על המעשה כאמור, המנהל או פקיד-המכס המוסמך רשאים לחלטם.\n\n(ג)   שולם הכופר האמור למנהל או לפקיד-המכס המוסמך, אין לנקוט עוד כל הליך בנוגע לאותה עבירה או לאותו מעשה כנגד האדם שכופר לו, ואם הוא במשמורת יש לשחרר אותו.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ד)  הוראות סעיף זה לא יחולו על עבירה לפי פסקאות (4) או (6) של סעיף 212(א), אלא אם כן נעברה בידי מי שאינו יבואן או יצואן כהגדרתם בסעיף 223א, וכן אם נעברה בקשר למסמך כאמור בסעיפים 62(ג)(2) או 103(ג)(2), לפי העניין, שנדרש לפי פקודת הייבוא והייצוא.',
     },
-    "231א": {"ch": 15, "t": "תחולת חוק מע\"מ", "s": "VAT Law sections 1a(a), 100, 102a, 103, 106, 106b, 108, 135, 141 apply to customs."},
-    "231א1": {"ch": 15, "t": "דרכי גביה", "s": "Tax Collection Ordinance + civil suit for recovery; VAT Law ss.102(b), 102b applicable."},
-    "231א2": {"ch": 15, "t": "חובת סודיות",
-        "s": "Strict confidentiality. 5 exceptions (Minister permission, enforcement, standards, court, NII). "
-             "Unauthorized disclosure: 1 year or ₪19,300.",
-        "key": "1 year imprisonment or ₪19,300 fine for unauthorized disclosure.",
+    '231א': {
+        "ch": 15, "t": 'תחולת חוק מע"מ',
+        "s": 'VAT Law sections 1a(a), 100, 102a, 103, 106, 106b, 108, 135, 141 apply to customs.',
+        "f": 'הוראות סעיפים 1א(א), 100, 102א, 103, 106, 106ב, 108, 135 ו-141 לחוק מס ערך מוסף, תשל"ו-1975, יחולו, בשינויים המחוייבים לפי הענין, לענין מכס על פי פקודה זו.',
     },
-    "231ב": {"ch": 15, "t": "בוטל", "repealed": True, "s": "Formerly: appeal procedures. Repealed 1985."},
-    "231ג": {"ch": 15, "t": "קנס מינהלי דואר",
-        "s": "Postal goods with false declarations: double duty up to ₪1,000 (alternative to forfeiture). Requires consent.",
+    '231א1': {
+        "ch": 15, "t": 'דרכי גביה',
+        "s": 'Tax Collection Ordinance + civil suit for recovery; VAT Law ss.102(b), 102b applicable.',
+        "f": '(א) פקודת המסים (גביה), תחול על גביית מס ואגרה המוטלים לפי פקודה זו, וכל סכום המוטל לפי סעיפים 83, 84, 203(ב), 203א(ב) ו-231ג, וניתן גם לגבותם בדרך של תובענה אזרחית.\n\n(תיקון מס\' 24) תשע"ד-2014 (תיקון מס\' 25) תשע"ד-2014\n\n(ב)  הוראות סעיפים 102(ב) ו-102ב לחוק מס ערך מוסף, התשל"ו-1975, יחולו על גבייה כאמור בסעיף קטן (א), בשינויים המחויבים.',
     },
-    "231ד": {"ch": 15, "t": "דיווח חוות דעת",
-        "s": "Tax opinion reporting within 60 days. Shelf planning = same opinion to 3+ persons. "
-             "Fee-contingent opinions reportable. Exemptions for small businesses (<₪3M turnover).",
+    '231א2': {
+        "ch": 15, "t": 'חובת סודיות',
+        "s": 'Strict confidentiality. 5 exceptions (Minister permission, enforcement, standards, court, NII). Unauthorized disclosure: 1 year or ₪19,300.',
+        "f": '(א) לא יגלה אדם ידיעה שהגיעה אליו אגב ביצוע פקודה זו, אלא בהתקיים אחד מאלה:\n\n(1)   שר האוצר התיר לגלותה\n[2]\n;\n\n(2)   המידע נדרש לרשות המכס או לרשות מוסמכת לשם ביצוע פקודה זו או ביצועו של חוק אחר המסדיר ייבוא או ייצוא של טובין או פיקוח על טובין מיובאים או מיוצאים, או התקנות לפיהם, במקרה ובמידה שנדרש; בפסקה זו, "רשות מוסמכת" – כהגדרתה בסעיף 2ב(א) לפקודת הייבוא והייצוא;\n\n(תיקון מס\' 30) תשפ"ד-2024\n\n(2א) המידע נדרש לממונה על התקינה לשם הפעלת סמכויותיו לפי פקודת היבוא והיצוא או כדי להקל את ביצועה, באופן שוטף, בהתאם להוראות לפי סעיף 2יב1 לפקודה האמורה;\n\n(3)   נדרש לגלותה בהליך משפטי לפי פקודה זו או חוק מסים כמשמעותו בחוק לתיקון דיני מסים (חילופי ידיעות בין רשויות המס), התשכ"ז-1967;\n\n(4)   המידע הוא כמפורט בסעיף 384א לחוק הביטוח הלאומי [נוסח משולב], התשנ"ה-1995, או בתקנות לפיו, ובלבד שמידע כאמור יימסר למוסד לביטוח לאומי ושמידע זה נדרש לתכליות האמורות באותו סעיף, ובמידה שנדרש.\n\n(ב)  לעניין סעיף קטן (א)(1), רשאי שר האוצר לתת היתר לגילוי סוגי מידע, ובלבד שהיתר כאמור יינתן לבעלי תפקידים שצוינו בו לצורך מילוי תפקידם כדין, ומנימוקים שיירשמו.\n\n(ג)   הגיעה לאדם ידיעה לפי הוראות סעיף קטן (א), יראוהו כמי שקיבל אותה אגב ביצוע פקודה זו.\n\n(ד)  גילה אדם ידיעה שהגיעה אליו אגב ביצוע פקודה זו, בניגוד להוראות לפי סעיף זה, דינו – מאסר שנה או קנס 19,300 שקלים חדשים.',
+        "key": '1 year imprisonment or ₪19,300 fine for unauthorized disclosure.',
     },
-    "231ה": {"ch": 15, "t": "עמדה חייבת בדיווח",
-        "s": "Reportable position: contradicts published Tax Authority position AND benefit >₪2M/year or >₪5M/4 years. "
-             "Max 25 positions/year published. 60-day reporting.",
+    '231ב': {
+        "ch": 15, "t": 'בוטל',
+        "s": 'Formerly: appeal procedures. Repealed 1985.',
+        "f": '(בוטל).',
+        "repealed": True,
     },
-    "232": {"ch": 15, "t": "תקנות",
-        "s": "Finance Minister broad regulation power: transit, fees, storage, foreign agreements, temporary admission, rewards.",
+    '231ג': {
+        "ch": 15, "t": 'קנס מינהלי דואר',
+        "s": 'Postal goods with false declarations: double duty up to ₪1,000 (alternative to forfeiture). Requires consent.',
+        "f": '(א)  יובאו טובין באריזה בדואר ונתקיימו בהם, לדעת המנהל, התנאים שבסעיפים 39(ב) או 204(9), רשאי המנהל לקבל מהנמען, בהסכמתו, בנוסף למכס החל על הטובין – כפל המכס, אך לא יותר מ-1,000 שקלים חדשים, במקום לחלטם.\n\n(תיקון מס\' 22) תשס"ו-2006\n\n(ב)  (בוטל).\n\n(ג)   שילם אדם כפל מכס כאמור בסעיף זה, יחולו הוראות סעיף 231(ג) כאילו שולם כופר ולא יראו בכך הרשעה לשום דבר וענין.',
     },
-    "232א": {"ch": 15, "t": "תיקון תוספת", "s": "Schedule amendment by order (Justice Minister consent); max ₪50,000 per violation."},
-    "233": {"ch": 15, "t": "אניות שליחות", "s": "Government vessel manifest obligation for non-provision cargo."},
-    "234": {"ch": 15, "t": "חיפוש אניות שליחות", "s": "Government vessels: boarding, search, removal to customs warehouse."},
-    "235": {"ch": 15, "t": "פרס עצירה", "s": "Reward up to 25 liras per arrested/convicted smuggler."},
-    "236": {"ch": 15, "t": "בוטל", "repealed": True, "s": "Formerly: disposal of seized property. Repealed 2003."},
-    "237": {"ch": 15, "t": "החזרת תפוס", "s": "Government may return seized items, waive proceedings, or mitigate penalties."},
-    "238": {"ch": 15, "t": "מחסנים קיימים", "s": "Transitional: agreement-based warehouses deemed licensed."},
-    "238א": {"ch": 15, "t": "הקלות לגורמים מאושרים",
+    '231ד': {
+        "ch": 15, "t": 'דיווח חוות דעת',
+        "s": 'Tax opinion reporting within 60 days. Shelf planning = same opinion to 3+ persons. Fee-contingent opinions reportable. Exemptions for small businesses (<₪3M turnover).',
+        "f": '(א) בסעיף זה –\n\n"חוות דעת" – חוות דעת בכתב, חתומה על ידי נותן חוות הדעת, שניתנה, במישרין או בעקיפין, לאדם ומאפשרת או נועדה לאפשר יתרון מס, ובלבד שהתקיים לגביה אחד מאלה:\n\n(1)   שכר הטרחה בגין חוות הדעת, כולו או חלקו, תלוי בסכום יתרון המס שייווצר למקבל חוות הדעת;\n\n(2)   היא תכנון מדף;\n\n"יתרון מס" – לרבות כל אחד מאלה:\n\n(1)   הנחה או הקלה מהמס, דחיית אירוע המס, הפחתה של סכום המס, או הימנעות ממס;\n\n(2)   החזר של מס;\n\n(3)   דחייה של מועד תשלום המס;\n\n"מס" – מסי ייבוא;\n\n"שכר טרחה" – סכום של 100,00 שקלים חדשים לפחות, שהוסכם בין הצדדים כי ישולם בעד חוות הדעת בגין חיסכון המס המרבי הכולל שייווצר למקבל חוות הדעת;\n\n"תכנון מדף" – אחד מאלה:\n\n(1)   חוות דעת הכוללת בעיקרה תוכן אחיד באותו נושא, שניתנה במישרין או בעקיפין, על ידי נותן חוות הדעת, לשלושה חייבים במס לפחות, בתוך תקופה של שנתיים, בכפוף להוראות סעיף קטן (ה), שאינם קרובים, והיא אינה תלויה בעיקרה בנסיבותיו המיוחדות של כל חייב במס; לעניין זה, "קרוב" – כהגדרתו בפסקאות (1) או (2) בסעיף 88 לפקודת מס הכנסה;\n\n(2)   חוות דעת שנותן חוות הדעת הוא שהציע אותה למקבל מיוזמתו, והמקבל חויב בחובת סודיות לגבי תוכנה, כולו או חלקו.\n\n(ב)  (1)   מי שקיבל חוות דעת ידווח על כך בטופס שיקבע המנהל, בתוך 60 ימים מתום שנת המס שבה התקבל יתרון המס בגין חוות הדעת, ובלבד שלא תידרש מסירתה של חוות הדעת לרשות המסים; בדיווח כאמור יפורטו כל אלה בלבד:\n\n(א)   עצם קבלת חוות הדעת;\n\n(ב)   הפעולה או הנכס הנדונים בחוות הדעת;\n\n(ג)    סוג סוגיית המיסוי המושפעת מחוות הדעת, כפי שקבע המנהל;\n\n(2)   קיבל אדם חוות דעת לאחר תום שנת המס, ידווח עליה בטופס כאמור בפסקה (1), בתוך 60 ימים מיום שקיבל אותה.\n\n(ג)   על אף האמור בסעיף קטן (ב), לא יהיה אדם חב בדיווח –\n\n(1)   בשל תכנון מדף כאמור בפסקה (1) בלבד להגדרה "תכנון מדף" שלא ניתנה לגביו הודעה לפי סעיף קטן (ד);\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(2)\nבשל חוות דעת שניתנה לו לגבי סוגיות שנדונו בהליכים בקשר לדרישת תשלום חסר כהגדרתו בחוק מסים עקיפים (מס ששולם ביתר או בחסר), התשכ"ח-1968, ובלבד שחוות הדעת ניתנה בתקופה שבה מתקיימים הליכים כאמור ולגבי אותה הצהרת ייבוא.\n\n(ד)  מי שנתן חוות דעת שהיא תכנון מדף לפי פסקה (1) להגדרה "תכנון מדף", יודיע על כך למי שקיבל אותה, ובלבד שהוא האדם השלישי ואילך שלו ניתנה חוות הדעת.\n\n(ה)  הוראות סעיף זה לא יחולו על מוסד ציבורי כמשמעותו בסעיף 9(2) לפקודת מס הכנסה, על חבר בני אדם כאמור בפסקה (2) להגדרה מלכ"ר בחוק מס ערך מוסף, התשל"ו-1975, על עוסק שמחזור עסקאותיו אינו עולה על 3 מיליון שקלים חדשים, ועל טובין שיובאו לשימוש עצמי כהגדרתו בסעיף 129.',
+    },
+    '231ה': {
+        "ch": 15, "t": 'עמדה חייבת בדיווח',
+        "s": 'Reportable position: contradicts published Tax Authority position AND benefit >₪2M/year or >₪5M/4 years. Max 25 positions/year published. 60-day reporting.',
+        "f": '(א) בסעיף זה –\n\n"מס" ו"יתרון מס" – כהגדרתם בסעיף 231ד;\n\n"עמדה חייבת בדיווח" – עמדה שמתקיימים בה כל אלה:\n\n(1)   היא עומדת בניגוד לעמדה שפרסמה רשות המסים עד תום שנת המס החולפת;\n\n(2)   יתרון המס הנובע ממנה עולה על 2 מיליון שקלים חדשים בשנה או על 5 מיליון שקלים חדשים במהלך ארבע שנים לכל היותר.\n\n(ב)  (1)   עמדת רשות המסים כאמור בפסקה (1) להגדרה "עמדה חייבת בדיווח" תפורסם במקום נפרד באתר האינטרנט של רשות המסים, לאחר שניתנה ללשכת עורכי הדין, ללשכת רואי חשבון בישראל, ללשכה כהגדרתה בחוק הסדרת העיסוק בייצוג על ידי יועצי מס, התשס"ה-2005, ולגוף המייצג סוכני מכס, כהגדרתם בחוק סוכני המכס, התשכ"ה-1964, הזדמנות סבירה לטעון את טענותיהם לגביה טרם פרסומה;\n\n(2)   עמדת רשות המסים תנוסח בלשון ברורה ומובנת;\n\n(3)   (א)   מספר העמדות שתפרסם רשות המסים לא יעלה על 25 בשנה; ביקשה רשות המסים לפרסם עמדות נוספות באותה שנה, יגיש שר האוצר לאישור ועדת הכספים של הכנסת את מספר העמדות הנוסף המבוקש כאמור;\n\n(ב)   על אף האמור בפסקת משנה (א), בשנים 2016 ו-2017 רשות המסים תהיה רשאית לפרסם 50 עמדות בכל שנה.\n\n(ג)   אדם הנוקט עמדה חייבת בדיווח ידווח על כך בטופס שיקבע המנהל, בתוך 60 ימים מתום שנת המס שבה נקט עמדה חייבת בדיווח כאמור.\n\n(ד)  הוראות סעיף זה לא יחולו על מוסד ציבורי כמשמעותו בסעיף 9(2) לפקודת מס הכנסה, על חבר בני אדם כאמור בפסקה (2) להגדרה מלכ"ר בחוק מס ערך מוסף, התשל"ו-1975, ועל עוסק שמחזור עסקאותיו אינו עולה על 3 מיליון שקלים חדשים.',
+    },
+    '232': {
+        "ch": 15, "t": 'תקנות',
+        "s": 'Finance Minister broad regulation power: transit, fees, storage, foreign agreements, temporary admission, rewards.',
+        "f": 'שר האוצר רשאי להתקין תקנות בכל דבר שפקודה זו מחייבת או מתירה לקבוע ובכל הנוגע לביצוע פקודה זו או לניהול כל ענין הנוגע לרשות המכס, ובמיוחד תקנות הקובעות:\n\n(1)  התנאים שלפיהם מותר מעבר טובין דרך ישראל;\n\n(תיקון מס\' 21) תשס"ד-2004\n\n(2)  האגרות שיש לשלם בעד בדיקת טובין, רשיון, תעודה או טופס שהוצאו על פי פקודה זו ובדרך כלל;\n\n(3)  ההיטל שיש להטיל בעד החסנת טובין במקום שהוא בפיקוח רשות-המכס;\n\n(4)  התנאים שלפיהם אפשר להביא לישראל או להוציא ממנה טובין שיש עליהם הסכם עם ממשלת ארץ אחרת;\n\n(5)  השיטה שלפיה יש להרשות כניסה זמנית של טובין ללא תשלום מכס;\n\n(6)  הפרס שיש ליתן למי שמוסר ידיעה על עבירות מכס או למי שתופס טובין מוברחים;\n\n(7)  השיעורים המכסימליים שמותר להטיל בעד סבלות של טובין במקום שהוא בפיקוח רשות-המכס.',
+    },
+    '232א': {
+        "ch": 15, "t": 'תיקון תוספת',
+        "s": 'Schedule amendment by order (Justice Minister consent); max ₪50,000 per violation.',
+        "f": "שר האוצר רשאי, בצו, בהסכמת שר המשפטים, לתקן את התוספת, ובלבד שסכום העיצום הכספי שייקבע בשל הפרה של הוראה מההוראות לפי סעיף 232, כמפורט בטור ב' בתוספת, לא יעלה על 50,000 שקלים חדשים.",
+    },
+    '233': {
+        "ch": 15, "t": 'אניות שליחות',
+        "s": 'Government vessel manifest obligation for non-provision cargo.',
+        "f": 'אדם שבידו הפיקוד על אניה שבשליחות מדינת ישראל או בשליחות מדינה זרה ויש באניה טובין שהוטענו בחוץ לארץ ואינם צידת האניה, חייב לפי דרישת המנהל או פקיד-מכס שהוסמך על ידיו –\n\n(1)  למסור בכתב מיפרט של כמות הטובין האלה, סימניהם ומספריהם, שמות שוגריהם ונשגריהם והצהרה על אמיתות הדברים;\n\n(2)  להשיב על שאלות ביחס לטובין אלה.',
+    },
+    '234': {
+        "ch": 15, "t": 'חיפוש אניות שליחות',
+        "s": 'Government vessels: boarding, search, removal to customs warehouse.',
+        "f": 'אניות שבשליחות מדינת ישראל או בשליחות מדינה זרה ויש בהן טובין שהוטענו בחוץ לארץ ואינם צידת האניה, רשאי פקיד-מכס שהוסמך לכך במיוחד לעלות אליה ולחפש בה כמו בכל אניה אחרת, ורשאי להביא את הטובין אל החוף ולהניח אותם במחסן מכס.\n\nפרס בעד עצירת מבריחים',
+    },
+    '235': {
+        "ch": 15, "t": 'פרס עצירה',
+        "s": 'Reward up to 25 liras per arrested/convicted smuggler.',
+        "f": 'פקיד-מכס או אדם אחר העוצר אדם הצפוי למעצר לפי כל דין מדיני המכס והעצור הורשע בדין, רשאית הממשלה להעניק לעוצר פרס שייראה לה, ובלבד שלא יעלה על 25 לירות בעד כל אדם שנעצר כך.\n\n(תיקון מס\' 20) תשס"ג-2003',
+    },
+    '236': {
+        "ch": 15, "t": 'בוטל',
+        "s": 'Formerly: disposal of seized property. Repealed 2003.',
+        "f": '(בוטל).',
+        "repealed": True,
+    },
+    '237': {
+        "ch": 15, "t": 'החזרת תפוס',
+        "s": 'Government may return seized items, waive proceedings, or mitigate penalties.',
+        "f": 'מקום שנתפס דבר או שחל או הוטל קנס או עונש אחר, רשאית הממשלה להורות על החזרת התפוס, בין שכבר הוחרם ובין אם לאו, או לוותר על הליכים או להמתיק את הקנס או את העונש או למחול עליו.\n\nמחסנים קיימים לפי הסכם',
+    },
+    '238': {
+        "ch": 15, "t": 'מחסנים קיימים',
+        "s": 'Transitional: agreement-based warehouses deemed licensed.',
+        "f": 'כל מחסן שהיה לו רשיון ביום תחילתה של פקודה זו עקב הסכם שריר עם מדינת ישראל, וכל מחסן שנוסד וקיבל רשיון לאחר תחילתה של פקודה זו עקב הסכם כאמור, יראוהו רשוי לפי פקודה זו לכל תקופת אותו רשיון ויהא חייב בתשלום אגרה בהתאם לתנאים שבהסכם כאמור.\n\nהקלות בהליכי ייבוא לגורמים מאושרים (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '238א': {
+        "ch": 15, "t": 'הקלות לגורמים מאושרים',
         "s": "Authorized Economic Operator (AEO) facilitations in import procedures. Director's discretion. Added 2018.",
+        "f": 'לשם הקלה על תהליכי סחר החוץ, אבטחת שרשרת האספקה העולמית וחיזוק אמצעי הביטחון בתהליכים אלה, רשאי המנהל לתת לגורמים שיאשר הקלות בהליכי ייבוא לפי פקודה זו; המנהל יורה על סוגי ההקלות כאמור שיינתנו ועל התנאים שלפיהם יינתנו ההקלות.',
     },
-    "239": {"ch": 15, "t": "טפסים", "s": "Director prescribes forms for bonds, certificates, documents."},
-    "239א": {"ch": 15, "t": "חובת הראיה", "s": "Burden on claimant for payment/filing/clearance in non-§229 proceedings."},
-    "239ב": {"ch": 15, "t": "פטור מחתימה", "s": "No manual signature required on customs-issued documents bearing issuer name."},
-    "240": {"ch": 15, "t": "דרישות טפסים", "s": "Form instructions binding; extra copies may be required; old forms transitionally usable."},
-    "241": {"ch": 15, "t": "מכירת טובין", "s": "Customs authority sale per prescribed conditions."},
+    '239': {
+        "ch": 15, "t": 'טפסים',
+        "s": 'Director prescribes forms for bonds, certificates, documents.',
+        "f": 'המנהל רשאי, בצו, לקבוע צורתם של שטרי התחייבות, תעודות וכתבים הדרושים לביצוע פקודה זו, ורשאי לעשות בטפסים אלה שינויים והוספות.\n\nחובת הראיה (תיקון מס\' 12) תשנ"ה-1995 (תיקון מס\' 28) תשע"ח-2018',
+    },
+    '239א': {
+        "ch": 15, "t": 'חובת הראיה',
+        "s": 'Burden on claimant for payment/filing/clearance in non-§229 proceedings.',
+        "f": 'בהליכים שסעיף 229 לא חל עליהם, הטוען ששילם את המכס המגיע או שהגיש הצהרה כדין או שניתנה לגבי טובין שנכללו בהצהרה התרה כדין, עליו הראיה.',
+    },
+    '239ב': {
+        "ch": 15, "t": 'פטור מחתימה',
+        "s": 'No manual signature required on customs-issued documents bearing issuer name.',
+        "f": '(א) כל מסמך שמוציאה רשות המכס לפי הוראות פקודה זו, ששמו או תוארו של המוציא מצוינים בו, אינו טעון חתימת ידו.\n\n(תיקון מס\' 28) תשע"ח-2018\n\n(ב)\n(בוטל).',
+    },
+    '240': {
+        "ch": 15, "t": 'דרישות טפסים',
+        "s": 'Form instructions binding; extra copies may be required; old forms transitionally usable.',
+        "f": '(א)  היה טופס שנקבע מכיל, בדרך הערה או בדרך אחרת, הוראה ברורה או רימוז בדבר דרישותיה של רשות-המכס בנוגע לאחד הענינים האמורים להלן, יש לראות אותן דרישות כאילו נקבעו, ואלה הענינים:\n\n(1)   צבע הטופס או מידתו;\n\n(2)   מספר ההעתקים של התעודות שיש להגיש;\n\n(3)   טיבן או צורתן של ידיעות שיש להמציא לרשות-המכס;\n\n(4)   פעולה שהנוגע בדבר או מורשהו חייב לעשות בעסקה שבה משמשת התעודה;\n\n(5)   קבלות שפקידי אניה, פקידי רכבת או בני אדם אחרים צריכים לחתום עליהן לשם הוכחה שהטובין המתוארים בטופס נתקבלו להובלה או למטרה אחרת.\n\n(ב)  המנהל רשאי לדרוש העתקים מטופס שנקבע, בנוסף על מספר ההעתקים הנקוב בטופס.\n\n(ג)   נקבעו טפסים שהם שונים מן הטפסים הקיימים, רשאי המנהל להתיר לזמן שייראה לו את המשך השימוש בטפסים הקיימים.\n\nמכירת טובין',
+    },
+    '241': {
+        "ch": 15, "t": 'מכירת טובין',
+        "s": 'Customs authority sale per prescribed conditions.',
+        "f": 'מכירת טובין על ידי רשות-המכס תיעשה לפי התנאים שנקבעו, ובדמי המכס יש לעשות בדרך שנקבעה.\n\n(תיקון מס\' 28) תשע"ח-2018\n\nתוספת\n\n(סעיף 223ב(ח))',
+    },
 }
 
 

@@ -1032,6 +1032,9 @@ class ToolExecutor:
                                 "title_he": art.get("t", ""),
                                 "summary_en": art.get("s", ""),
                             }
+                            # Full Hebrew text (truncated to 3000 chars for payload safety)
+                            if art.get("f"):
+                                result["full_text_he"] = art["f"][:3000]
                             if art.get("definitions"):
                                 result["definitions"] = dict(list(art["definitions"].items())[:15])
                             if art.get("methods"):
@@ -1119,20 +1122,37 @@ class ToolExecutor:
 
             # ── Case C: Keyword search across all 311 ordinance articles ──
             if _ord_available:
-                query_words = [w for w in re.split(r'[\s,;:?.!]+', query.lower()) if len(w) >= 3]
+                raw_words = [w for w in re.split(r'[\s,;:?.!]+', query.lower()) if len(w) >= 3]
+                # Expand with Hebrew prefix-stripped variants (ל,ב,ה,ש,מ,כ,ו,וה,של)
+                _HE_PREFIXES = ('וה', 'של', 'ל', 'ב', 'ה', 'ש', 'מ', 'כ', 'ו')
+                query_words = set(raw_words)
+                for w in raw_words:
+                    for pfx in _HE_PREFIXES:
+                        if w.startswith(pfx) and len(w) - len(pfx) >= 2:
+                            query_words.add(w[len(pfx):])
+                query_words = list(query_words)
                 if query_words:
                     scored = []
                     for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
-                        searchable = f"{art.get('t', '')} {art.get('s', '')}".lower()
-                        hits = sum(1 for w in query_words if w in searchable)
-                        if hits >= 2:
-                            scored.append((hits, art_id, art))
+                        # Search title + summary (high weight) + full Hebrew text (lower weight)
+                        ts_text = f"{art.get('t', '')} {art.get('s', '')}".lower()
+                        ts_hits = sum(1 for w in query_words if w in ts_text)
+                        f_text = art.get("f", "").lower()
+                        f_hits = sum(1 for w in query_words if w in f_text) if f_text else 0
+                        # Title/summary hits count double; require at least 1 match somewhere
+                        score = ts_hits * 2 + f_hits
+                        if score >= 2:
+                            scored.append((score, art_id, art))
                     scored.sort(key=lambda x: -x[0])
-                    ord_matches = [
-                        {"article_id": aid, "chapter": a.get("ch", ""),
-                         "title_he": a.get("t", ""), "summary_en": a.get("s", "")}
-                        for _, aid, a in scored[:15]
-                    ]
+                    ord_matches = []
+                    for _, aid, a in scored[:15]:
+                        entry = {"article_id": aid, "chapter": a.get("ch", ""),
+                                 "title_he": a.get("t", ""), "summary_en": a.get("s", "")}
+                        # Include a snippet from full text if available
+                        ft = a.get("f", "")
+                        if ft:
+                            entry["text_snippet"] = ft[:500]
+                        ord_matches.append(entry)
                 if ord_matches:
                     return {
                         "found": True, "type": "ordinance_article_search",

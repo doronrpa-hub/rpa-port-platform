@@ -1013,6 +1013,9 @@ def _extract_legal_context(result, context_parts):
             parts.append(f"סעיף {result.get('article_id', '?')}: {result['title_he']}")
         if result.get("summary_en"):
             parts.append(result["summary_en"][:500])
+        # Full Hebrew text from the ordinance (primary source for AI to quote)
+        if result.get("full_text_he"):
+            parts.append(f"נוסח הסעיף:\n{result['full_text_he'][:2000]}")
         if result.get("definitions"):
             defs = result["definitions"]
             for k, v in (defs.items() if isinstance(defs, dict) else []):
@@ -1050,7 +1053,12 @@ def _extract_legal_context(result, context_parts):
     # Case C: Keyword search across ordinance articles
     if rtype == "ordinance_article_search":
         for art in (result.get("articles") or [])[:8]:
-            context_parts.append(f"סעיף {art.get('article_id', '?')} (פרק {art.get('chapter', '?')}): {art.get('title_he', '')} — {art.get('summary_en', '')[:200]}")
+            line = f"סעיף {art.get('article_id', '?')} (פרק {art.get('chapter', '?')}): {art.get('title_he', '')} — {art.get('summary_en', '')[:200]}"
+            context_parts.append(line)
+            # Include text snippet for top results (first 3 only to keep context manageable)
+            snippet = art.get("text_snippet", "")
+            if snippet and len(context_parts) <= 6:
+                context_parts.append(f"  נוסח: {snippet[:300]}")
         return
 
     # Case 1: Firestore ordinance chapter (chapter summary with text field)
@@ -1136,9 +1144,20 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         except Exception as e:
             logger.warning(f"check_regulatory error: {e}")
 
+    # Search legal knowledge (ordinance articles, legal docs)
+    body_text = _get_body_text(msg)
+    legal_query = body_text[:200] if body_text else (product_desc or f"HS code {hs_code}" if hs_code else "")
+    if legal_query:
+        try:
+            result = executor.execute("search_legal_knowledge", {"query": legal_query})
+            if result and isinstance(result, dict) and result.get("found"):
+                _extract_legal_context(result, context_parts)
+                sources.append("legal_knowledge")
+        except Exception as e:
+            logger.warning(f"search_legal_knowledge error: {e}")
+
     # Lookup FTA if origin country detected in entities or question
     origin = entities.get('origin_country', '')
-    body_text = _get_body_text(msg)
     if hs_code or origin or product_desc:
         try:
             result = executor.execute("lookup_fta", {
