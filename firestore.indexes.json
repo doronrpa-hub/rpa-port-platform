@@ -50,20 +50,6 @@
       ]
     },
     {
-      "collectionGroup": "free_import_order",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {"fieldPath": "hs_10", "order": "ASCENDING"}
-      ]
-    },
-    {
-      "collectionGroup": "free_export_order",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {"fieldPath": "hs_10", "order": "ASCENDING"}
-      ]
-    },
-    {
       "collectionGroup": "tracker_deals",
       "queryScope": "COLLECTION",
       "fields": [
