@@ -403,7 +403,7 @@ def process_task(db, bucket, task_id, task_data):
                     time.sleep(1)
     
     # Update task status
-    db.collection('agent_tasks').document(task_id).update({
+    db.collection('pc_agent_tasks').document(task_id).update({
         'status': 'completed' if results else 'failed',
         'results': json.dumps(results, default=str)[:50000],
         'completed_at': firestore.SERVER_TIMESTAMP,
@@ -446,7 +446,7 @@ def main():
     try:
         while True:
             # Query for pending tasks (simple filter, no composite index needed)
-            tasks = db.collection('agent_tasks') \
+            tasks = db.collection('pc_agent_tasks') \
                       .where(filter=firestore.FieldFilter('status', '==', 'pending')) \
                       .limit(5) \
                       .get()
@@ -455,7 +455,7 @@ def main():
                 task_data = task.to_dict()
                 
                 # Mark as processing
-                db.collection('agent_tasks').document(task.id).update({
+                db.collection('pc_agent_tasks').document(task.id).update({
                     'status': 'processing',
                     'processing_started': firestore.SERVER_TIMESTAMP
                 })
@@ -464,7 +464,7 @@ def main():
                     process_task(db, bucket, task.id, task_data)
                 except Exception as e:
                     print(f"  ❌ Task error: {e}")
-                    db.collection('agent_tasks').document(task.id).update({
+                    db.collection('pc_agent_tasks').document(task.id).update({
                         'status': 'error',
                         'error': str(e),
                         'error_at': firestore.SERVER_TIMESTAMP
