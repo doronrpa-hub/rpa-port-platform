@@ -1119,17 +1119,20 @@ class ToolExecutor:
 
             # ── Case C: Keyword search across all 311 ordinance articles ──
             if _ord_available:
-                query_lower = query.lower()
-                ord_matches = []
-                for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
-                    searchable = f"{art.get('t', '')} {art.get('s', '')}".lower()
-                    if query_lower in searchable:
-                        ord_matches.append({
-                            "article_id": art_id,
-                            "chapter": art.get("ch", ""),
-                            "title_he": art.get("t", ""),
-                            "summary_en": art.get("s", ""),
-                        })
+                query_words = [w for w in re.split(r'[\s,;:?.!]+', query.lower()) if len(w) >= 3]
+                if query_words:
+                    scored = []
+                    for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
+                        searchable = f"{art.get('t', '')} {art.get('s', '')}".lower()
+                        hits = sum(1 for w in query_words if w in searchable)
+                        if hits >= 2:
+                            scored.append((hits, art_id, art))
+                    scored.sort(key=lambda x: -x[0])
+                    ord_matches = [
+                        {"article_id": aid, "chapter": a.get("ch", ""),
+                         "title_he": a.get("t", ""), "summary_en": a.get("s", "")}
+                        for _, aid, a in scored[:15]
+                    ]
                 if ord_matches:
                     return {
                         "found": True, "type": "ordinance_article_search",
