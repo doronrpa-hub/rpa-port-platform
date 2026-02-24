@@ -3055,6 +3055,26 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
     except ImportError:
         from rcb_helpers import helper_graph_reply as _graph_reply, clean_email_subject as _clean_subject
 
+    # Session 57: Intelligence Gate — Phase 1 (HS validation, loop breaker, banned phrases)
+    _INTELLIGENCE_GATE_AVAILABLE = False
+    try:
+        from lib.intelligence_gate import (
+            run_all_gates as _run_intelligence_gates,
+            record_classification_codes as _record_cls_codes,
+            build_escalation_email_html as _build_escalation_html,
+        )
+        _INTELLIGENCE_GATE_AVAILABLE = True
+    except ImportError:
+        try:
+            from intelligence_gate import (
+                run_all_gates as _run_intelligence_gates,
+                record_classification_codes as _record_cls_codes,
+                build_escalation_email_html as _build_escalation_html,
+            )
+            _INTELLIGENCE_GATE_AVAILABLE = True
+        except ImportError:
+            pass
+
     def _send_threaded(recipient, subj, html, attachments_data=None):
         """Send email threaded to original message. Try reply first, fall back to send."""
         clean_subj = _clean_subject(subj)
@@ -3134,7 +3154,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 '</ul>'
                 '</div></div>'
                 '<div style="background:#f8faff;padding:16px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'
-                '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. | RCB — rcb@rpa-port.co.il</p>'
+                '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">RCB — Robot Customs Broker | R.P.A.PORT LTD | rcb@rpa-port.co.il</p>'
                 '</div></div>'
             )
             if not _suppress_reply:
@@ -3172,6 +3192,32 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         except Exception:
             pass
 
+        # ── SESSION 57: LOOP BREAKER — check before classification starts ──
+        if _INTELLIGENCE_GATE_AVAILABLE:
+            try:
+                from lib.intelligence_gate import check_classification_loop as _check_loop
+            except ImportError:
+                from intelligence_gate import check_classification_loop as _check_loop
+            try:
+                _loop_result = _check_loop(db, msg_id, subject, doc_text)
+                if not _loop_result.get("allowed"):
+                    print(f"  🛑 LOOP BREAKER: blocked — {_loop_result.get('attempt_number', '?')} attempts")
+                    if not _suppress_reply:
+                        try:
+                            _esc_html = _build_escalation_html(
+                                subject, _loop_result.get("prior_codes", []),
+                                _loop_result.get("attempt_number", 0))
+                            from lib.intelligence_gate import _ESCALATION_EMAIL
+                            helper_graph_send(access_token, rcb_email, _ESCALATION_EMAIL,
+                                              f"RCB | הסלמה — סיווג חוזר | {subject[:60]}",
+                                              _esc_html, db=db)
+                            print(f"  📧 Escalation sent to {_ESCALATION_EMAIL}")
+                        except Exception as esc_err:
+                            print(f"  ⚠️ Escalation email error: {esc_err}")
+                    return False
+            except Exception as loop_err:
+                print(f"  ⚠️ Loop breaker error (fail-open): {loop_err}")
+
         # ── TOOL-CALLING ENGINE: Single AI call with tools ──
         if not results and TOOL_CALLING_AVAILABLE:
             try:
@@ -3205,7 +3251,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                 '</ul>'
                 '</div></div>'
                 '<div style="background:#f8faff;padding:16px 30px;border-top:1px solid #e0e0e0;border-radius:0 0 12px 12px;border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0">'
-                '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">⚠️ המלצה ראשונית בלבד. יש לאמת עם עמיל מכס מוסמך. | RCB — rcb@rpa-port.co.il</p>'
+                '<p style="font-size:10px;color:#aaa;margin:0;line-height:1.5">RCB — Robot Customs Broker | R.P.A.PORT LTD | rcb@rpa-port.co.il</p>'
                 '</div></div>'
             )
             if not _suppress_reply:
@@ -3546,6 +3592,35 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
                     'contentBytes': att.get('contentBytes')
                 })
 
+        # ── SESSION 57: INTELLIGENCE GATES — run before sending ──
+        _gate_thread_key = ""
+        if _INTELLIGENCE_GATE_AVAILABLE:
+            try:
+                _classifications = results.get("agents", {}).get("classification", {}).get("classifications", [])
+                _gate_result = _run_intelligence_gates(
+                    db, _classifications, final_html,
+                    msg_id=msg_id, email_subject=subject, email_body=doc_text)
+                final_html = _gate_result.get("html_body", final_html)
+                _gate_thread_key = (_gate_result.get("loop_check") or {}).get("thread_key", "")
+
+                if not _gate_result.get("approved"):
+                    print(f"  🛑 Intelligence Gate BLOCKED: {_gate_result.get('block_reason', 'unknown')}")
+                    # Send escalation to Doron instead
+                    if not _suppress_reply:
+                        try:
+                            _prior = (_gate_result.get("loop_check") or {}).get("prior_codes", [])
+                            _att_num = (_gate_result.get("loop_check") or {}).get("attempt_number", 0)
+                            _esc_html = _build_escalation_html(subject, _prior, _att_num)
+                            from lib.intelligence_gate import _ESCALATION_EMAIL
+                            helper_graph_send(access_token, rcb_email, _ESCALATION_EMAIL,
+                                              f"RCB | הסלמה — סיווג חוזר | {subject[:60]}",
+                                              _esc_html, db=db)
+                        except Exception:
+                            pass
+                    return False
+            except Exception as gate_err:
+                print(f"  ⚠️ Intelligence Gate error (fail-open): {gate_err}")
+
         print("  📤 Sending consolidated email...")
         _email_sent = False
         if _suppress_reply:
@@ -3555,6 +3630,17 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             print(f"  ✅ Sent to {to_email}")
             _email_sent = True
         if _email_sent:
+
+            # Session 57: Record HS codes for loop breaker
+            if _INTELLIGENCE_GATE_AVAILABLE and _gate_thread_key:
+                try:
+                    _sent_codes = [c.get("hs_code", "") for c in
+                                   results.get("agents", {}).get("classification", {}).get("classifications", [])
+                                   if c.get("hs_code")]
+                    if _sent_codes:
+                        _record_cls_codes(db, _gate_thread_key, _sent_codes)
+                except Exception:
+                    pass
 
             # Save to Firestore
             save_data = {

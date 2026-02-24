@@ -549,6 +549,12 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    "classification_attempts": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["thread_key", "msg_id"],
+        "hs_fields": ["hs_codes"],
+        "doc_type": "record",
+    },
 }
 
 # Document type by file extension
