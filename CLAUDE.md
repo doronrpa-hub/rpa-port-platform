@@ -1,6 +1,7 @@
 # RPA-PORT-PLATFORM — Claude Code Session Notes
 
 ## CRITICAL RULES
+- **READ `docs/RCB_INTELLIGENCE_ROUTING_SPEC.md` BEFORE any work on classification or email handling** — mandatory intelligence routing spec
 - **TaskYam is ALWAYS primary and 100% authoritative** when it shows data
 - **Do NOT change or destroy existing code** — only ADD and IMPROVE
 - **No guessing, no blind coding, no fairy tales** — verify everything
