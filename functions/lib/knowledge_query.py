@@ -24,6 +24,8 @@ import time
 import base64
 import hashlib
 import logging
+import random
+import string
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Tuple, Any
 
@@ -718,18 +720,19 @@ def generate_reply(msg: dict, parsed: dict, knowledge: dict,
 </tr></table>
 </div>'''
 
-    # Build a meaningful subject — avoid generic "Re: " that quality gate blocks
+    # Build RCB-branded subject with tracking code
+    tracking_code = f"RCB-Q-{datetime.now().strftime('%Y%m%d')}-{''.join(random.choices(string.ascii_uppercase + string.digits, k=5))}"
     _re_fwd = re.compile(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+')
     stripped_subj = _re_fwd.sub('', original_subject).strip()
     if stripped_subj and len(stripped_subj) >= 3:
-        reply_subject = f"Re: {stripped_subj}"
+        reply_subject = f"RCB | {tracking_code} | {stripped_subj[:50]}"
     else:
         # Original subject is empty/generic — build from question text
         q_text = parsed.get("question_text", "").strip()
-        q_preview = q_text[:60].rstrip() if q_text else "שאלת מכס"
-        if len(q_text) > 60:
+        q_preview = q_text[:50].rstrip() if q_text else "שאלת מכס"
+        if len(q_text) > 50:
             q_preview += "..."
-        reply_subject = f"RCB | {q_preview}"
+        reply_subject = f"RCB | {tracking_code} | {q_preview}"
 
     return {
         "subject": reply_subject,
