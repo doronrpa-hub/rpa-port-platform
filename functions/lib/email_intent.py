@@ -618,7 +618,8 @@ def _wrap_html_rtl(text, subject=""):
 
 def _send_reply_safe(body_html, msg, access_token, rcb_email):
     """Send reply ONLY to @rpa-port.co.il addresses. Strip external recipients.
-    Also blocks replies when rcb@ is only CC'd (not a direct TO recipient)."""
+    Also blocks replies when rcb@ is only CC'd (not a direct TO recipient).
+    Applies banned phrase filter to ALL outgoing replies (intelligence gate)."""
     from_email = _get_sender_address(msg)
     if not from_email.lower().endswith(f"@{TEAM_DOMAIN}"):
         return False  # NEVER reply to external
@@ -631,6 +632,17 @@ def _send_reply_safe(body_html, msg, access_token, rcb_email):
     if not is_direct_recipient(msg, rcb_email):
         print(f"  📭 Reply suppressed — rcb@ was CC'd, not TO recipient (from={from_email})")
         return False
+
+    # Intelligence Gate: filter banned phrases from ALL outgoing replies
+    try:
+        from lib.intelligence_gate import filter_banned_phrases
+        bp_result = filter_banned_phrases(body_html)
+        if bp_result["was_modified"]:
+            body_html = bp_result["cleaned_html"]
+            print(f"  🧹 Intent reply: removed {len(bp_result['phrases_found'])} banned phrases: "
+                  f"{', '.join(bp_result['phrases_found'][:3])}")
+    except Exception as e:
+        print(f"  ⚠️ Banned phrase filter error (fail-open): {e}")
 
     msg_id = msg.get('id', '')
     try:
@@ -1127,8 +1139,65 @@ def _extract_legal_context(result, context_parts):
             break
 
 
+# ═══════════════════════════════════════════
+#  DOMAIN DETECTION HELPERS
+# ═══════════════════════════════════════════
+
+def _detect_domains_safe(text):
+    """Detect customs domains from text. Fail-open: returns [] on error."""
+    try:
+        from lib.intelligence_gate import detect_customs_domain
+    except ImportError:
+        try:
+            from intelligence_gate import detect_customs_domain
+        except ImportError:
+            return []
+    try:
+        return detect_customs_domain(text)
+    except Exception as e:
+        logger.warning(f"Domain detection error (fail-open): {e}")
+        return []
+
+
+def _fetch_domain_articles(detected_domains):
+    """Fetch targeted ordinance articles for all detected domains.
+    Returns combined list of articles, capped at 20 to avoid context bloat."""
+    if not detected_domains:
+        return []
+    try:
+        from lib.intelligence_gate import get_articles_by_domain
+    except ImportError:
+        try:
+            from intelligence_gate import get_articles_by_domain
+        except ImportError:
+            return []
+    articles = []
+    seen_ids = set()
+    for domain in detected_domains:
+        if not domain.get("source_articles"):
+            continue
+        try:
+            domain_arts = get_articles_by_domain(domain)
+            for art in domain_arts:
+                aid = art.get("article_id")
+                if aid and aid not in seen_ids:
+                    seen_ids.add(aid)
+                    articles.append(art)
+        except Exception as e:
+            logger.warning(f"Article fetch error for {domain.get('domain')}: {e}")
+    # Cap to 20 articles to prevent context overflow
+    return articles[:20]
+
+
 def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_secret_func):
-    """Handle CUSTOMS_QUESTION — use Firestore tools first, AI for composition."""
+    """Handle CUSTOMS_QUESTION — domain-aware routing + Firestore tools + AI composition.
+
+    Phase 2 from Intelligence Routing Spec:
+    1. Detect customs domain (VALUATION, IP, FTA, etc.)
+    2. Fetch targeted articles by domain (not flat keyword search)
+    3. Supplement with Firestore tools (tariff, regulatory, FTA)
+    4. Compose reply with domain-specific context
+    """
     try:
         from lib.tool_executors import ToolExecutor
     except ImportError:
@@ -1140,7 +1209,29 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     sources = []
     cost = 0.0
 
-    # Search based on entities
+    # ──── DOMAIN DETECTION ────
+    body_text = _get_body_text(msg)
+    subject = msg.get('subject', '') or ''
+    full_text = f"{subject} {body_text}".strip()
+    detected_domains = _detect_domains_safe(full_text)
+    domain_names = [d["domain"] for d in detected_domains]
+
+    # ──── TARGETED ARTICLE RETRIEVAL (by domain) ────
+    # Instead of flat keyword search, go directly to the right articles
+    domain_articles = _fetch_domain_articles(detected_domains)
+    if domain_articles:
+        for art in domain_articles:
+            parts = [f"סעיף {art['article_id']}: {art['title_he']}"]
+            if art.get("summary_en"):
+                parts.append(art["summary_en"][:300])
+            if art.get("full_text_he"):
+                parts.append(f"נוסח הסעיף:\n{art['full_text_he'][:2000]}")
+            context_parts.extend(parts)
+        sources.append("ordinance_targeted")
+        print(f"  🎯 Domain routing: {domain_names} → {len(domain_articles)} targeted articles")
+
+    # ──── SUPPLEMENTAL SEARCHES ────
+    # Search based on entities (tariff, regulatory)
     hs_code = entities.get('hs_code')
     product_desc = entities.get('product_description', '')
 
@@ -1171,21 +1262,21 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         except Exception as e:
             logger.warning(f"check_regulatory error: {e}")
 
-    # Search legal knowledge (ordinance articles, legal docs)
-    body_text = _get_body_text(msg)
-    legal_query = body_text[:200] if body_text else (product_desc or f"HS code {hs_code}" if hs_code else "")
-    if legal_query:
-        try:
-            result = executor.execute("search_legal_knowledge", {"query": legal_query})
-            if result and isinstance(result, dict) and result.get("found"):
-                _extract_legal_context(result, context_parts)
-                sources.append("legal_knowledge")
-        except Exception as e:
-            logger.warning(f"search_legal_knowledge error: {e}")
+    # Fallback: flat keyword search ONLY if domain detection found no articles
+    if not domain_articles:
+        legal_query = body_text[:200] if body_text else (product_desc or f"HS code {hs_code}" if hs_code else "")
+        if legal_query:
+            try:
+                result = executor.execute("search_legal_knowledge", {"query": legal_query})
+                if result and isinstance(result, dict) and result.get("found"):
+                    _extract_legal_context(result, context_parts)
+                    sources.append("legal_knowledge")
+            except Exception as e:
+                logger.warning(f"search_legal_knowledge error: {e}")
 
-    # Lookup FTA if origin country detected in entities or question
+    # Lookup FTA if origin country detected or FTA_ORIGIN domain matched
     origin = entities.get('origin_country', '')
-    if hs_code or origin or product_desc:
+    if hs_code or origin or product_desc or "FTA_ORIGIN" in domain_names:
         try:
             result = executor.execute("lookup_fta", {
                 "hs_code": hs_code or "",
@@ -1231,18 +1322,26 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         "answer_html": reply_html,
         "answer_sources": sources,
         "compose_model": model,
+        "detected_domains": domain_names,
     }
 
 
 def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, firestore_module):
-    """Handle KNOWLEDGE_QUERY — Firestore tools + AI composition."""
+    """Handle KNOWLEDGE_QUERY — domain-aware routing + Firestore tools + AI composition.
+
+    Phase 2 from Intelligence Routing Spec:
+    1. Detect customs domain first
+    2. Fetch targeted articles for detected domain
+    3. Supplement with Firestore tools relevant to the domain
+    4. Only fall back to flat keyword search if domain detection found nothing
+    """
     try:
         from lib.tool_executors import ToolExecutor
     except ImportError:
         from tool_executors import ToolExecutor
 
     body_text = _get_body_text(msg)
-    subject = msg.get('subject', '')
+    subject = msg.get('subject', '') or ''
     question = f"{subject} {body_text}".strip()
 
     # Gather knowledge using Firestore tools (FREE)
@@ -1250,80 +1349,109 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     context_parts = []
     sources = []
 
-    # Search tariff
-    try:
-        result = executor.execute("search_tariff", {"item_description": question[:200]})
-        if result.get('candidates'):
-            for c in result['candidates'][:3]:
-                context_parts.append(f"HS {c.get('hs_code', '?')}: {c.get('description_he', '')}")
-            sources.append("tariff")
-    except Exception:
-        pass
+    # ──── DOMAIN DETECTION ────
+    detected_domains = _detect_domains_safe(question)
+    domain_names = [d["domain"] for d in detected_domains]
 
-    # Search legal knowledge
-    try:
-        result = executor.execute("search_legal_knowledge", {"query": question[:200]})
-        if result and isinstance(result, dict) and result.get("found"):
-            _extract_legal_context(result, context_parts)
-            sources.append("legal_knowledge")
-    except Exception:
-        pass
+    # ──── TARGETED ARTICLE RETRIEVAL (by domain) ────
+    domain_articles = _fetch_domain_articles(detected_domains)
+    if domain_articles:
+        for art in domain_articles:
+            parts = [f"סעיף {art['article_id']}: {art['title_he']}"]
+            if art.get("summary_en"):
+                parts.append(art["summary_en"][:300])
+            if art.get("full_text_he"):
+                parts.append(f"נוסח הסעיף:\n{art['full_text_he'][:2000]}")
+            context_parts.extend(parts)
+        sources.append("ordinance_targeted")
+        print(f"  🎯 Domain routing: {domain_names} → {len(domain_articles)} targeted articles")
 
-    # Search classification directives
-    try:
-        result = executor.execute("search_classification_directives", {"query": question[:200]})
-        if result and isinstance(result, dict) and result.get('results'):
-            for r in result['results'][:2]:
-                context_parts.append(f"הנחיית סיווג: {r.get('title', '')} — {r.get('content', '')[:200]}")
-            sources.append("classification_directives")
-    except Exception:
-        pass
+    # ──── DOMAIN-AWARE SUPPLEMENTAL SEARCHES ────
+    # Only search tools relevant to detected domains
+    should_search_tariff = "CLASSIFICATION" in domain_names or not detected_domains
+    should_search_fta = "FTA_ORIGIN" in domain_names or not detected_domains
+    should_search_directives = "CLASSIFICATION" in domain_names or not detected_domains
+    should_search_framework = "FTA_ORIGIN" in domain_names or "PROCEDURES" in domain_names or not detected_domains
 
-    # Lookup FTA agreements (origin country detection from question text)
-    try:
-        result = executor.execute("lookup_fta", {
-            "hs_code": "",
-            "origin_country": question[:200],
-        })
-        if result and isinstance(result, dict) and result.get('eligible'):
-            parts = []
-            if result.get('agreement_name'):
-                parts.append(f"הסכם: {result.get('agreement_name_he', result['agreement_name'])}")
-            if result.get('origin_proof'):
-                parts.append(f"תעודת מקור: {result['origin_proof']}")
-            if result.get('origin_proof_alt'):
-                parts.append(f"חלופה: {result['origin_proof_alt']}")
-            if result.get('preferential_rate'):
-                parts.append(f"שיעור העדפה: {result['preferential_rate']}")
-            fw_clause = result.get('framework_order_clause', {})
-            if fw_clause.get('clause_text'):
-                parts.append(f"צו מסגרת: {fw_clause['clause_text'][:400]}")
-            if parts:
-                context_parts.append("FTA: " + " | ".join(parts))
-                sources.append("fta_agreements")
-    except Exception:
-        pass
+    # Search tariff (for CLASSIFICATION domain or fallback)
+    if should_search_tariff:
+        try:
+            result = executor.execute("search_tariff", {"item_description": question[:200]})
+            if result.get('candidates'):
+                for c in result['candidates'][:3]:
+                    context_parts.append(f"HS {c.get('hs_code', '?')}: {c.get('description_he', '')}")
+                sources.append("tariff")
+        except Exception:
+            pass
 
-    # Search framework order (definitions, FTA clauses, legal text)
-    try:
-        result = executor.execute("lookup_framework_order", {"query": question[:200]})
-        if result and isinstance(result, dict):
-            fw_results = result.get('results', [])
-            if isinstance(fw_results, list):
-                for r in fw_results[:2]:
-                    text = r.get('clause_text', r.get('definition', r.get('text', '')))
-                    if text:
-                        context_parts.append(f"צו מסגרת: {str(text)[:400]}")
-                if fw_results:
+    # Fallback: flat keyword legal search ONLY if domain detection found no articles
+    if not domain_articles:
+        try:
+            result = executor.execute("search_legal_knowledge", {"query": question[:200]})
+            if result and isinstance(result, dict) and result.get("found"):
+                _extract_legal_context(result, context_parts)
+                sources.append("legal_knowledge")
+        except Exception:
+            pass
+
+    # Search classification directives (for CLASSIFICATION or fallback)
+    if should_search_directives:
+        try:
+            result = executor.execute("search_classification_directives", {"query": question[:200]})
+            if result and isinstance(result, dict) and result.get('results'):
+                for r in result['results'][:2]:
+                    context_parts.append(f"הנחיית סיווג: {r.get('title', '')} — {r.get('content', '')[:200]}")
+                sources.append("classification_directives")
+        except Exception:
+            pass
+
+    # Lookup FTA agreements (for FTA_ORIGIN domain or fallback)
+    if should_search_fta:
+        try:
+            result = executor.execute("lookup_fta", {
+                "hs_code": "",
+                "origin_country": question[:200],
+            })
+            if result and isinstance(result, dict) and result.get('eligible'):
+                parts = []
+                if result.get('agreement_name'):
+                    parts.append(f"הסכם: {result.get('agreement_name_he', result['agreement_name'])}")
+                if result.get('origin_proof'):
+                    parts.append(f"תעודת מקור: {result['origin_proof']}")
+                if result.get('origin_proof_alt'):
+                    parts.append(f"חלופה: {result['origin_proof_alt']}")
+                if result.get('preferential_rate'):
+                    parts.append(f"שיעור העדפה: {result['preferential_rate']}")
+                fw_clause = result.get('framework_order_clause', {})
+                if fw_clause.get('clause_text'):
+                    parts.append(f"צו מסגרת: {fw_clause['clause_text'][:400]}")
+                if parts:
+                    context_parts.append("FTA: " + " | ".join(parts))
+                    sources.append("fta_agreements")
+        except Exception:
+            pass
+
+    # Search framework order (for FTA_ORIGIN, PROCEDURES, or fallback)
+    if should_search_framework:
+        try:
+            result = executor.execute("lookup_framework_order", {"query": question[:200]})
+            if result and isinstance(result, dict):
+                fw_results = result.get('results', [])
+                if isinstance(fw_results, list):
+                    for r in fw_results[:2]:
+                        text = r.get('clause_text', r.get('definition', r.get('text', '')))
+                        if text:
+                            context_parts.append(f"צו מסגרת: {str(text)[:400]}")
+                    if fw_results:
+                        sources.append("framework_order")
+                elif result.get('clause_text'):
+                    context_parts.append(f"צו מסגרת: {result['clause_text'][:400]}")
                     sources.append("framework_order")
-            elif result.get('clause_text'):
-                context_parts.append(f"צו מסגרת: {result['clause_text'][:400]}")
-                sources.append("framework_order")
-            elif result.get('definition'):
-                context_parts.append(f"הגדרה (צו מסגרת): {result['definition'][:400]}")
-                sources.append("framework_order")
-    except Exception:
-        pass
+                elif result.get('definition'):
+                    context_parts.append(f"הגדרה (צו מסגרת): {result['definition'][:400]}")
+                    sources.append("framework_order")
+        except Exception:
+            pass
 
     context = "\n".join(context_parts) if context_parts else ""
     cost = 0.0
@@ -1346,6 +1474,7 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
                 "cost_usd": 0.01,  # Claude fallback
                 "compose_model": "claude",
                 "answer_sources": ["knowledge_query_handler"],
+                "detected_domains": domain_names,
             }
         except Exception as e:
             logger.warning(f"knowledge_query fallback error: {e}")
@@ -1363,6 +1492,7 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
         "answer_html": reply_html,
         "answer_sources": sources,
         "compose_model": model,
+        "detected_domains": domain_names,
     }
 
 

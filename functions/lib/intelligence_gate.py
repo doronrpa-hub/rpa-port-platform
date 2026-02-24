@@ -529,3 +529,211 @@ def _format_il(hs_code):
     elif len(clean) >= 4:
         return f"{clean[:2]}.{clean[2:4]}"
     return clean
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PHASE 2: DOMAIN DETECTION
+# ═══════════════════════════════════════════════════════════════════════
+# Pure Python keyword matching — no AI call needed.
+# Detects which customs domain(s) a question belongs to, enabling
+# targeted article retrieval instead of flat keyword search.
+
+CUSTOMS_DOMAINS = {
+    "CLASSIFICATION": {
+        "keywords_he": ["סיווג", "פרט מכס", "תעריף", "פרק", "HS", "קוד"],
+        "keywords_en": ["classify", "classification", "hs code", "tariff", "heading"],
+        "product_indicators": True,
+        "source_articles": [],  # Uses tariff DB, not ordinance articles
+        "source_tools": ["search_tariff", "get_chapter_notes", "run_elimination"],
+    },
+    "VALUATION": {
+        "keywords_he": ["הערכה", "ערך עסקה", "שווי", "מחיר ששולם", "תשלום",
+                         "שיטות הערכה", "ערך", "מחיר העסקה", "עסקת יבוא",
+                         "חישוב מכס", "שער חליפין", "הפחתה", "ניכוי"],
+        "keywords_en": ["valuation", "transaction value", "customs value", "price paid",
+                         "deductive", "computed value"],
+        "source_articles": ["130", "131", "132", "132א", "133", "133א", "133ב",
+                            "133ג", "133ד", "133ה", "133ו", "133ז", "133ח", "133ט",
+                            "134", "134א", "135", "136"],
+        "source_tools": ["search_legal_knowledge"],
+    },
+    "IP_ENFORCEMENT": {
+        "keywords_he": ["זיוף", "מזויף", "קניין רוחני", "סימן מסחר", "עיכוב",
+                         "חשד", "מותג", "העתק", "פיראטיות", "זכויות יוצרים",
+                         "טובין מפרים", "בעל זכות", "עיכוב טובין"],
+        "keywords_en": ["counterfeit", "fake", "ip", "intellectual property",
+                         "trademark", "brand", "piracy", "detained", "seized",
+                         "infringing goods"],
+        "source_articles": ["200א", "200ב", "200ג", "200ד", "200ה", "200ו", "200ז",
+                            "200ח", "200ט", "200י", "200יא", "200יב", "200יג", "200יד"],
+        "source_tools": ["search_legal_knowledge"],
+    },
+    "FTA_ORIGIN": {
+        "keywords_he": ["הסכם סחר", "מקור", "תעודת מקור", "העדפה", "הנחה",
+                         "אזור סחר", "כללי מקור", "צבירה", "יצואן מאושר",
+                         "חשבון הצהרה"],
+        "keywords_en": ["fta", "free trade", "origin", "preferential", "eur.1",
+                         "certificate of origin", "cumulation"],
+        "source_articles": [],  # Uses framework_order collection
+        "source_tools": ["lookup_fta", "lookup_framework_order"],
+    },
+    "IMPORT_EXPORT_REQUIREMENTS": {
+        "keywords_he": ["רישיון", "היתר", "אישור", "צו יבוא", "צו יצוא",
+                         "תוספת", "דרישה", "הגבלה", "תקן", "בדיקה",
+                         "מכון התקנים"],
+        "keywords_en": ["license", "permit", "approval", "import order",
+                         "export order", "restricted", "prohibited",
+                         "requirement", "standard"],
+        "source_articles": [],  # Uses free_import_order/free_export_order
+        "source_tools": ["check_regulatory"],
+    },
+    "PROCEDURES": {
+        "keywords_he": ["נוהל", "תש\"ר", "מצהר", "הצהרה", "שחרור", "עמיל",
+                         "רשימון", "מכס", "הליך", "מכסה", "החסנה"],
+        "keywords_en": ["procedure", "declaration", "clearance", "broker",
+                         "filing", "manifest", "warehousing"],
+        "source_articles": ["40", "41", "42", "43", "44", "45", "46", "47",
+                            "48", "49", "50", "51", "52", "53", "54", "55",
+                            "56", "57", "58", "59", "60", "61", "62", "63",
+                            "64", "65", "65א"],
+        "source_tools": ["search_legal_knowledge"],
+    },
+    "FORFEITURE_PENALTIES": {
+        "keywords_he": ["חילוט", "קנס", "עבירה", "עונש", "תפיסה", "הברחה",
+                         "עבירת מכס", "עיצום כספי", "אכיפה"],
+        "keywords_en": ["forfeiture", "seizure", "penalty", "fine", "offense",
+                         "smuggling", "confiscation"],
+        "source_articles": ["190", "191", "192", "193", "194", "195", "196",
+                            "197", "198", "199", "200", "203", "203א", "204",
+                            "205", "206", "207", "208", "209", "210", "211",
+                            "212", "213", "214", "215", "216", "217", "218",
+                            "219", "220", "221", "222", "223",
+                            "223א", "223ב", "223ג", "223ד", "223ה", "223ו",
+                            "223ז", "223ח", "223ט", "223י", "223יא", "223יב",
+                            "223יג", "223יד", "223טו", "223טז", "223יז", "223יח"],
+        "source_tools": ["search_legal_knowledge"],
+    },
+    "TRACKING": {
+        "keywords_he": ["מעקב", "אונייה", "מכולה", "הגעה", "נמל", "מטען", "שילוח"],
+        "keywords_en": ["tracking", "vessel", "container", "arrival", "port",
+                         "cargo", "shipment", "eta"],
+        "source_articles": [],
+        "source_tools": [],
+    },
+}
+
+# Product indicator words — if any appear, CLASSIFICATION domain is added
+_PRODUCT_INDICATORS_HE = {
+    "טובין", "מוצר", "סחורה", "פריט", "חומר", "מכשיר", "רכיב",
+    "בד", "פלסטיק", "מתכת", "עץ", "גומי", "זכוכית", "נייר",
+}
+_PRODUCT_INDICATORS_EN = {
+    "goods", "product", "item", "material", "device", "component",
+    "machine", "equipment", "chemical", "textile", "fabric",
+}
+
+
+def detect_customs_domain(text):
+    """
+    Detect which customs domain(s) an email/question belongs to.
+
+    Pure Python — no AI call. Returns sorted list of matching domains.
+    Multiple domains can match (e.g., Nike counterfeit = IP + CLASSIFICATION).
+
+    Returns:
+        list of dict: [{"domain": str, "score": int, "source_articles": list,
+                        "source_tools": list}, ...]
+        Sorted by score descending. Empty list → GENERAL fallback.
+    """
+    if not text:
+        return []
+
+    text_lower = text.lower()
+
+    detected = []
+    for domain_id, domain in CUSTOMS_DOMAINS.items():
+        score = 0
+        for kw in domain.get("keywords_he", []):
+            if kw in text:  # Hebrew: case-sensitive (no uppercase in Hebrew)
+                score += 10
+        for kw in domain.get("keywords_en", []):
+            if kw in text_lower:
+                score += 10
+
+        # Product description bonus for CLASSIFICATION
+        if domain.get("product_indicators"):
+            for pw in _PRODUCT_INDICATORS_HE:
+                if pw in text:
+                    score += 5
+                    break
+            for pw in _PRODUCT_INDICATORS_EN:
+                if pw in text_lower:
+                    score += 5
+                    break
+
+        if score > 0:
+            detected.append({
+                "domain": domain_id,
+                "score": score,
+                "source_articles": domain.get("source_articles", []),
+                "source_tools": domain.get("source_tools", []),
+            })
+
+    detected.sort(key=lambda x: x["score"], reverse=True)
+    return detected
+
+
+def get_articles_by_domain(domain_result):
+    """
+    Given a domain detection result, fetch ALL relevant ordinance articles
+    by ID from _ordinance_data.py. Returns them as structured context.
+
+    This replaces flat keyword search — we go directly to the right articles.
+
+    Args:
+        domain_result: single dict from detect_customs_domain() output
+
+    Returns:
+        list of dict: [{"article_id": str, "title_he": str, "summary_en": str,
+                        "full_text_he": str, "chapter": int}, ...]
+    """
+    article_ids = domain_result.get("source_articles", [])
+    if not article_ids:
+        return []
+
+    try:
+        from lib._ordinance_data import ORDINANCE_ARTICLES
+    except ImportError:
+        try:
+            from _ordinance_data import ORDINANCE_ARTICLES
+        except ImportError:
+            return []
+
+    articles = []
+    for art_id in article_ids:
+        art = ORDINANCE_ARTICLES.get(art_id)
+        if art:
+            articles.append({
+                "article_id": art_id,
+                "title_he": art.get("t", ""),
+                "summary_en": art.get("s", ""),
+                "full_text_he": art.get("f", "")[:3000],  # Cap per article
+                "chapter": art.get("ch", 0),
+            })
+    return articles
+
+
+def get_articles_by_ids(article_ids):
+    """
+    Fetch specific ordinance articles by their IDs from _ordinance_data.py.
+    Utility for targeted retrieval — no keyword search, direct lookup.
+
+    Args:
+        article_ids: list of str, e.g. ["200א", "200ב", "200ג"]
+
+    Returns:
+        list of dict with article_id, title_he, summary_en, full_text_he, chapter
+    """
+    if not article_ids:
+        return []
+    return get_articles_by_domain({"source_articles": article_ids})
