@@ -35,4 +35,5 @@ node_modules/
 
 # Downloaded data (too large for git — stays local + Cloud Storage)
 data_c3/
+downloads/
 nul
