@@ -544,6 +544,7 @@ CUSTOMS_DOMAINS = {
         "keywords_en": ["classify", "classification", "hs code", "tariff", "heading"],
         "product_indicators": True,
         "source_articles": [],  # Uses tariff DB, not ordinance articles
+        "source_fw_articles": ["03", "04", "05"],  # GIR rules from צו מסגרת
         "source_tools": ["search_tariff", "get_chapter_notes", "run_elimination"],
     },
     "VALUATION": {
@@ -571,10 +572,16 @@ CUSTOMS_DOMAINS = {
     "FTA_ORIGIN": {
         "keywords_he": ["הסכם סחר", "מקור", "תעודת מקור", "העדפה", "הנחה",
                          "אזור סחר", "כללי מקור", "צבירה", "יצואן מאושר",
-                         "חשבון הצהרה"],
+                         "חשבון הצהרה", "צו מסגרת", "תוספת ראשונה", "תוספת שניה"],
         "keywords_en": ["fta", "free trade", "origin", "preferential", "eur.1",
-                         "certificate of origin", "cumulation"],
-        "source_articles": [],  # Uses framework_order collection
+                         "certificate of origin", "cumulation", "framework order"],
+        "source_articles": [],  # Ordinance articles — none for FTA
+        "source_fw_articles": [  # Framework Order (צו מסגרת) articles
+            "01", "02", "03", "04", "05", "06", "06א", "07", "08", "09",
+            "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
+            "20", "21", "22", "23", "23א", "23ב", "23ג", "23ד", "23ה",
+            "23ו", "23ז", "24", "25",
+        ],
         "source_tools": ["lookup_fta", "lookup_framework_order"],
     },
     "IMPORT_EXPORT_REQUIREMENTS": {
@@ -676,6 +683,7 @@ def detect_customs_domain(text):
                 "domain": domain_id,
                 "score": score,
                 "source_articles": domain.get("source_articles", []),
+                "source_fw_articles": domain.get("source_fw_articles", []),
                 "source_tools": domain.get("source_tools", []),
             })
 
@@ -685,8 +693,8 @@ def detect_customs_domain(text):
 
 def get_articles_by_domain(domain_result):
     """
-    Given a domain detection result, fetch ALL relevant ordinance articles
-    by ID from _ordinance_data.py. Returns them as structured context.
+    Given a domain detection result, fetch ALL relevant articles
+    from _ordinance_data.py AND _framework_order_data.py.
 
     This replaces flat keyword search — we go directly to the right articles.
 
@@ -695,31 +703,56 @@ def get_articles_by_domain(domain_result):
 
     Returns:
         list of dict: [{"article_id": str, "title_he": str, "summary_en": str,
-                        "full_text_he": str, "chapter": int}, ...]
+                        "full_text_he": str, "chapter": int, "source": str}, ...]
     """
-    article_ids = domain_result.get("source_articles", [])
-    if not article_ids:
-        return []
-
-    try:
-        from lib._ordinance_data import ORDINANCE_ARTICLES
-    except ImportError:
-        try:
-            from _ordinance_data import ORDINANCE_ARTICLES
-        except ImportError:
-            return []
-
     articles = []
-    for art_id in article_ids:
-        art = ORDINANCE_ARTICLES.get(art_id)
-        if art:
-            articles.append({
-                "article_id": art_id,
-                "title_he": art.get("t", ""),
-                "summary_en": art.get("s", ""),
-                "full_text_he": art.get("f", "")[:3000],  # Cap per article
-                "chapter": art.get("ch", 0),
-            })
+
+    # ── Ordinance articles (פקודת המכס) ──
+    ordinance_ids = domain_result.get("source_articles", [])
+    if ordinance_ids:
+        try:
+            from lib._ordinance_data import ORDINANCE_ARTICLES
+        except ImportError:
+            try:
+                from _ordinance_data import ORDINANCE_ARTICLES
+            except ImportError:
+                ORDINANCE_ARTICLES = {}
+
+        for art_id in ordinance_ids:
+            art = ORDINANCE_ARTICLES.get(art_id)
+            if art:
+                articles.append({
+                    "article_id": art_id,
+                    "title_he": art.get("t", ""),
+                    "summary_en": art.get("s", ""),
+                    "full_text_he": art.get("f", "")[:3000],
+                    "chapter": art.get("ch", 0),
+                    "source": "ordinance",
+                })
+
+    # ── Framework Order articles (צו מסגרת) ──
+    fw_ids = domain_result.get("source_fw_articles", [])
+    if fw_ids:
+        try:
+            from lib._framework_order_data import FRAMEWORK_ORDER_ARTICLES
+        except ImportError:
+            try:
+                from _framework_order_data import FRAMEWORK_ORDER_ARTICLES
+            except ImportError:
+                FRAMEWORK_ORDER_ARTICLES = {}
+
+        for art_id in fw_ids:
+            art = FRAMEWORK_ORDER_ARTICLES.get(art_id)
+            if art:
+                articles.append({
+                    "article_id": f"fw_{art_id}",
+                    "title_he": art.get("t", ""),
+                    "summary_en": art.get("s", ""),
+                    "full_text_he": art.get("f", "")[:3000],
+                    "chapter": 0,
+                    "source": "framework_order",
+                })
+
     return articles
 
 
@@ -730,10 +763,17 @@ def get_articles_by_ids(article_ids):
 
     Args:
         article_ids: list of str, e.g. ["200א", "200ב", "200ג"]
+                     Prefix with "fw_" for framework order articles.
 
     Returns:
         list of dict with article_id, title_he, summary_en, full_text_he, chapter
     """
     if not article_ids:
         return []
-    return get_articles_by_domain({"source_articles": article_ids})
+    # Separate ordinance vs framework order IDs
+    ord_ids = [a for a in article_ids if not a.startswith("fw_")]
+    fw_ids = [a[3:] for a in article_ids if a.startswith("fw_")]
+    return get_articles_by_domain({
+        "source_articles": ord_ids,
+        "source_fw_articles": fw_ids,
+    })
