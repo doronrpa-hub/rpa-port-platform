@@ -762,8 +762,9 @@ class ToolExecutor:
 
     def _lookup_framework_order(self, inp):
         """Look up Framework Order (צו מסגרת) data: legal definitions, FTA clauses,
-        classification rules, and addition rules.
-        C5: Reads from cached framework_order collection (85 docs, loaded once per request)."""
+        classification rules, addition rules, and full article text.
+        C5: Reads from cached framework_order collection (85 docs, loaded once per request).
+        Session 56: Also returns full Hebrew text from in-memory _framework_order_data."""
         query = str(inp.get("query", "")).strip()
         if not query:
             return {"found": False, "error": "No query provided"}
@@ -771,7 +772,42 @@ class ToolExecutor:
         query_lower = query.lower()
         all_docs = self._get_framework_order()
 
+        # Lazy import of full article text (in-memory, zero Firestore cost)
         try:
+            from lib._framework_order_data import FRAMEWORK_ORDER_ARTICLES
+            _fw_articles_available = True
+        except ImportError:
+            try:
+                from _framework_order_data import FRAMEWORK_ORDER_ARTICLES
+                _fw_articles_available = True
+            except ImportError:
+                _fw_articles_available = False
+
+        try:
+            # Case 0: Article number lookup (סעיף 14, article 17, צו מסגרת 23ד)
+            if _fw_articles_available:
+                fw_art_match = re.search(
+                    r'(?:article|סעיף|צו\s*מסגרת)\s*(\d{1,2}[א-ת]*)',
+                    query, re.IGNORECASE,
+                )
+                if fw_art_match:
+                    fw_art_id = fw_art_match.group(1).strip()
+                    fw_art = FRAMEWORK_ORDER_ARTICLES.get(fw_art_id)
+                    if fw_art:
+                        result = {
+                            "found": True, "type": "framework_order_article",
+                            "article_id": fw_art_id,
+                            "title_he": fw_art.get("t", ""),
+                            "summary_en": fw_art.get("s", ""),
+                        }
+                        if fw_art.get("f"):
+                            result["full_text_he"] = fw_art["f"][:3000]
+                        if fw_art.get("fta"):
+                            result["fta_country"] = fw_art["fta"]
+                        if fw_art.get("repealed"):
+                            result["repealed"] = True
+                        return result
+
             # Case 1: "definitions" — return all legal definitions
             if query_lower in ("definitions", "הגדרות", "all_definitions"):
                 defs = []
@@ -995,7 +1031,8 @@ class ToolExecutor:
 
     def _search_legal_knowledge(self, inp):
         """Search legal knowledge: 311 Customs Ordinance articles (in-memory),
-        Firestore chapter summaries, customs agents law, EU/US standards reforms.
+        33 Framework Order articles (in-memory), Firestore chapter summaries,
+        customs agents law, EU/US standards reforms.
         Uses word-boundary regex for English keywords to prevent false positives."""
         query = str(inp.get("query", "")).strip()
         if not query:
@@ -1120,17 +1157,18 @@ class ToolExecutor:
                             if k not in ("source", "seeded_at")
                         }}
 
+            # ── Precompute keyword set for Cases C and E ──
+            raw_words = [w for w in re.split(r'[\s,;:?.!]+', query.lower()) if len(w) >= 3]
+            _HE_PREFIXES = ('וה', 'של', 'ל', 'ב', 'ה', 'ש', 'מ', 'כ', 'ו')
+            query_words = set(raw_words)
+            for w in raw_words:
+                for pfx in _HE_PREFIXES:
+                    if w.startswith(pfx) and len(w) - len(pfx) >= 2:
+                        query_words.add(w[len(pfx):])
+            query_words = list(query_words)
+
             # ── Case C: Keyword search across all 311 ordinance articles ──
             if _ord_available:
-                raw_words = [w for w in re.split(r'[\s,;:?.!]+', query.lower()) if len(w) >= 3]
-                # Expand with Hebrew prefix-stripped variants (ל,ב,ה,ש,מ,כ,ו,וה,של)
-                _HE_PREFIXES = ('וה', 'של', 'ל', 'ב', 'ה', 'ש', 'מ', 'כ', 'ו')
-                query_words = set(raw_words)
-                for w in raw_words:
-                    for pfx in _HE_PREFIXES:
-                        if w.startswith(pfx) and len(w) - len(pfx) >= 2:
-                            query_words.add(w[len(pfx):])
-                query_words = list(query_words)
                 if query_words:
                     scored = []
                     for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
@@ -1160,6 +1198,71 @@ class ToolExecutor:
                         "count": len(ord_matches),
                         "articles": ord_matches[:15],
                     }
+
+            # ── Case D: Framework Order article lookup (צו מסגרת סעיף 17) ──
+            try:
+                from lib._framework_order_data import FRAMEWORK_ORDER_ARTICLES as _FW_ARTS
+                _fw_avail = True
+            except ImportError:
+                try:
+                    from _framework_order_data import FRAMEWORK_ORDER_ARTICLES as _FW_ARTS
+                    _fw_avail = True
+                except ImportError:
+                    _fw_avail = False
+
+            if _fw_avail:
+                # Check for framework order article reference
+                fw_match = re.search(
+                    r'(?:צו\s*מסגרת|framework\s*order)\s*(?:סעיף|article)?\s*(\d{1,2}[א-ת]*)',
+                    query, re.IGNORECASE,
+                )
+                if fw_match:
+                    fw_id = fw_match.group(1).strip()
+                    fw_art = _FW_ARTS.get(fw_id)
+                    if fw_art:
+                        result = {
+                            "found": True, "type": "framework_order_article",
+                            "article_id": fw_id,
+                            "title_he": fw_art.get("t", ""),
+                            "summary_en": fw_art.get("s", ""),
+                        }
+                        if fw_art.get("f"):
+                            result["full_text_he"] = fw_art["f"][:3000]
+                        if fw_art.get("fta"):
+                            result["fta_country"] = fw_art["fta"]
+                        if fw_art.get("repealed"):
+                            result["repealed"] = True
+                        return result
+
+            # ── Case E: Keyword search across 33 Framework Order articles ──
+            if _fw_avail and query_words:
+                    fw_scored = []
+                    for art_id, art in _FW_ARTS.items():
+                        ts_text = f"{art.get('t', '')} {art.get('s', '')}".lower()
+                        ts_hits = sum(1 for w in query_words if w in ts_text)
+                        f_text = art.get("f", "").lower()
+                        f_hits = sum(1 for w in query_words if w in f_text) if f_text else 0
+                        score = ts_hits * 2 + f_hits
+                        if score >= 2:
+                            fw_scored.append((score, art_id, art))
+                    fw_scored.sort(key=lambda x: -x[0])
+                    fw_matches = []
+                    for _, aid, a in fw_scored[:10]:
+                        entry = {"article_id": aid, "title_he": a.get("t", ""),
+                                 "summary_en": a.get("s", "")}
+                        if a.get("fta"):
+                            entry["fta_country"] = a["fta"]
+                        ft = a.get("f", "")
+                        if ft:
+                            entry["text_snippet"] = ft[:500]
+                        fw_matches.append(entry)
+                    if fw_matches:
+                        return {
+                            "found": True, "type": "framework_order_search",
+                            "query": query,
+                            "count": len(fw_matches),
+                            "articles": fw_matches[:10],
+                        }
 
             # Case 5: General keyword search across cached Firestore docs
             query_lower = query.lower()

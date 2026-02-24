@@ -262,10 +262,11 @@ CLAUDE_TOOLS = [
         "name": "search_legal_knowledge",
         "description": (
             "Search Israeli customs legal knowledge: 311 individual Customs Ordinance articles (סעיפי פקודת המכס), "
+            "33 Framework Order articles (צו מסגרת — FTA clauses, definitions, classification rules), "
             "chapter summaries, Customs Agents Law (חוק סוכני המכס), "
             "EU standards reform, US standards reform. "
-            "Query by article number ('סעיף 130', 'article 62'), chapter articles ('פרק 8'), "
-            "chapter number (1-15), keyword across 311 articles, or topic."
+            "Query by article number ('סעיף 130', 'article 62'), framework order article ('צו מסגרת 17'), "
+            "chapter articles ('פרק 8'), chapter number (1-15), keyword across 311+33 articles, or topic."
         ),
         "input_schema": {
             "type": "object",

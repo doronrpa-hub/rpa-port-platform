@@ -1061,6 +1061,33 @@ def _extract_legal_context(result, context_parts):
                 context_parts.append(f"  נוסח: {snippet[:300]}")
         return
 
+    # Case D: Single Framework Order article (צו מסגרת סעיף 17)
+    if rtype == "framework_order_article":
+        parts = []
+        if result.get("title_he"):
+            parts.append(f"צו מסגרת סעיף {result.get('article_id', '?')}: {result['title_he']}")
+        if result.get("summary_en"):
+            parts.append(result["summary_en"][:500])
+        if result.get("fta_country"):
+            parts.append(f"הסכם סחר: {result['fta_country']}")
+        if result.get("full_text_he"):
+            parts.append(f"נוסח הסעיף:\n{result['full_text_he'][:2000]}")
+        if result.get("repealed"):
+            parts.append("(סעיף זה בוטל)")
+        context_parts.extend(parts)
+        return
+
+    # Case E: Keyword search across Framework Order articles
+    if rtype == "framework_order_search":
+        for art in (result.get("articles") or [])[:8]:
+            fta = f" [FTA: {art['fta_country']}]" if art.get("fta_country") else ""
+            line = f"צו מסגרת סעיף {art.get('article_id', '?')}: {art.get('title_he', '')}{fta} — {art.get('summary_en', '')[:200]}"
+            context_parts.append(line)
+            snippet = art.get("text_snippet", "")
+            if snippet and len(context_parts) <= 6:
+                context_parts.append(f"  נוסח: {snippet[:300]}")
+        return
+
     # Case 1: Firestore ordinance chapter (chapter summary with text field)
     if rtype == "ordinance_chapter":
         if result.get("title_he"):

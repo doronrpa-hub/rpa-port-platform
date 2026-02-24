@@ -168,74 +168,92 @@ def _find_article_boundaries(text):
     """Find all article start positions in the text.
     Returns list of (position, article_id, raw_title) sorted by position.
 
-    Strategy: Only accept matches where:
-    1. The article_id is in our known _ARTICLE_TITLES dict, AND
-    2. The raw title contains at least 2 Hebrew word characters
-       (filters out footnote refs like "( 10 )" and numbered sub-items)
-    3. For known articles, prefer the match whose raw_title best matches
-       the known title (handles dedup between real articles and false hits)
+    Strategy: Title-anchored search — for each known article, search for its
+    specific title string followed by its 2-digit number. This avoids false
+    positives from footnote references like "( 10 )" at the end of the document.
+
+    Text format:
+      Main articles:  ( TITLE NUMBER     e.g., ( הגדרות 01
+      Sub-articles:   SUFFIX( TITLE NUMBER  e.g., א( מיחזור ... 06
+      Special case:   ז( 23  (article 23ז has no title in text)
     """
-    matches = list(_RE_ARTICLE.finditer(text))
+    # Title anchors — first significant Hebrew word(s) for each article
+    # These are unique enough to avoid false positives in the definitions section
+    _TITLE_ANCHORS = {
+        "01":   "הגדרות",
+        "02":   "מהות התוספות",
+        "03":   "סיווג טובין",
+        "04":   "הוראה נוספת",
+        "05":   "חלוקת פרט",
+        "06":   "פרט מותנה",
+        "06א":  "מיחזור",
+        "07":   "המחיר הסיטוני בייצור",
+        "08":   "המחיר הסיטוני לסיגריות",
+        "09":   "טובין הממועטים",
+        "10":   "קביעת פעולת",
+        "11":   "שיעור המכס",
+        "12":   "תיאום סכומי מס",
+        "13":   "תיאום סכומי הפחתות",
+        "14":   "הסכמי סחר",
+        "15":   "מכסות חקלאיות",
+        "16":   "הפחתת מכס לענין הסכמי הסחר עם",
+        "17":   "הפחתת המכס לעניין הסכם הסחר עם האיחוד",
+        "18":   "הפחתת מכס לענין ארצות אפט",
+        "19":   "הפחתת מכס לעניין הסכם הסחר עם קנדה",
+        "20":   "הפחתת מכס לענין הסכם הסחר עם ירדן",
+        "21":   "הפחתת מכס לענין הסכם הסחר עם טורקיה",
+        "22":   "הפחתת מכס לענין סחר עם מקסיקו",
+        "23":   "הפחתת מכס לעניין ארצות מרקוסור",
+        "23א":  "הפחתת מכס לעניין הסכם הסחר עם פנמה",
+        "23ב":  "הפחתת מכס לעניין הסכם הסחר עם קולומביה",
+        "23ג":  "הפחתת מכס לעניין הסכם הסחר עם אוקראינה",
+        "23ד":  "הפחתת מכס לענין הסכם הסחר עם הממלכה",
+        "23ה":  "הפחתת מכס לעניין הסכם הסחר עם הרפובליקה",
+        "23ו":  "הפחתת מכס לענין הסכם הסחר עם איחוד האמירויות",
+        "23ז":  "",  # no title in text — appears as just "ז( 23"
+        "24":   "בטל",
+        "25":   "ביטול",
+    }
 
-    # Collect ALL candidate matches per article_id
-    candidates = {}  # article_id -> list of (pos, raw_title, match)
-    for m in matches:
-        suffix = m.group(1) or ""
-        raw_title = m.group(2).strip()
-        num = m.group(3)
-        article_id = f"{num}{suffix}"
-
-        # Only accept known article IDs
-        if article_id not in _ARTICLE_TITLES:
-            continue
-
-        # Title must contain actual Hebrew text (at least 2 Hebrew chars)
-        # Exception: articles with very short titles ("בטל") or no title in text
-        # (23ז appears as just "ז( 23" with no title between suffix and number)
-        hebrew_chars = len(re.findall(r'[\u0590-\u05FF]', raw_title))
-        if hebrew_chars < 2 and article_id not in ("24", "23ז"):
-            continue
-
-        if article_id not in candidates:
-            candidates[article_id] = []
-        candidates[article_id].append((m.start(), raw_title))
-
-    # For each article, pick the BEST match:
-    # Strategy: score each candidate by title match quality.
-    # The REAL article boundary has the actual title in its text.
-    # Footnote refs like "(  10 )" have no meaningful title.
     boundaries = []
-    for article_id, cands in candidates.items():
-        known_title = _ARTICLE_TITLES.get(article_id, "")
-        # Extract first 2 significant Hebrew words from known title
-        known_words = [w for w in known_title.split()
-                       if len(w) > 1 and re.search(r'[\u0590-\u05FF]', w)]
 
-        best_pos = None
-        best_score = -1
-        best_raw = ""
-        for pos, raw_title in cands:
-            # Score: count matching words from known title
-            score = 0
-            for word in known_words:
-                if word in raw_title:
-                    score += 10 * len(word)
+    for article_id, anchor in _TITLE_ANCHORS.items():
+        num = re.match(r'(\d+)', article_id).group(1).zfill(2)
+        # Extract Hebrew letter suffix (e.g., "23א" -> "א", "06" -> "")
+        suffix = re.sub(r'^\d+', '', article_id)
 
-            # Hebrew content bonus — real articles have Hebrew in title
-            hebrew_in_title = len(re.findall(r'[\u0590-\u05FF]', raw_title))
-            score += hebrew_in_title
+        if suffix:
+            # Sub-article: search for SUFFIX( TITLE... NUMBER
+            if anchor:
+                first_word = anchor.split()[0]
+                pattern = re.compile(
+                    re.escape(suffix) + r'\(?\s*' + re.escape(first_word)
+                    + r'.{0,100}?\s+' + num + r'\b'
+                )
+            else:
+                # 23ז has no title — just "ז( 23"
+                pattern = re.compile(
+                    re.escape(suffix) + r'\(\s*' + num + r'\b'
+                )
+        else:
+            # Main article: search for ( TITLE... NUMBER
+            first_word = anchor.split()[0]
+            pattern = re.compile(
+                r'\(\s*' + re.escape(first_word)
+                + r'.{0,100}?\s+' + num + r'\b'
+            )
 
-            # Penalty for very short raw titles (likely false positive)
-            if len(raw_title.strip()) < 3 and article_id not in ("24", "23ז"):
-                score -= 50
+        found = list(pattern.finditer(text))
 
-            if score > best_score:
-                best_score = score
-                best_pos = pos
-                best_raw = raw_title
+        # For articles > 01, skip matches in definitions section (< pos 6000)
+        if found and article_id != "01":
+            after_defs = [m for m in found if m.start() > 6000]
+            if after_defs:
+                found = after_defs
 
-        if best_pos is not None:
-            boundaries.append((best_pos, article_id, best_raw))
+        if found:
+            m = found[0]
+            boundaries.append((m.start(), article_id, anchor))
 
     boundaries.sort(key=lambda x: x[0])
     return boundaries
@@ -256,8 +274,9 @@ def _extract_articles(text, boundaries):
 
         # Clean up: remove the article header pattern from the start
         # The header is "SUFFIX( TITLE NUMBER" — remove it
+        # Allow parens in title (e.g., "הוראה נוספת )ישראלית(")
         header_match = re.match(
-            r'[א-ת]?\(\s*[^()]{0,120}?\s+\d{2}\s*', article_text
+            r'[א-ת]?\(?\s*.{0,120}?\s+\d{2}\s*', article_text
         )
         if header_match:
             article_text = article_text[header_match.end():].strip()
@@ -326,28 +345,13 @@ def _generate_python_module(articles):
         fta = data.get("fta")
         repealed = data.get("repealed", False)
 
-        # Escape for Python string
-        title_esc = title.replace("\\", "\\\\").replace('"', '\\"')
-        summary_esc = summary.replace("\\", "\\\\").replace('"', '\\"')
-        full_esc = full_text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-
-        lines.append(f'    "{article_id}": {{')
-        lines.append(f'        "t": "{title_esc}",')
-        lines.append(f'        "s": "{summary_esc}",')
-
-        # Split long full text into multiple lines for readability
-        if len(full_esc) > 200:
-            lines.append(f'        "f": (')
-            # Chunk into ~120 char segments
-            chunks = [full_esc[i:i+120] for i in range(0, len(full_esc), 120)]
-            for chunk in chunks:
-                lines.append(f'            "{chunk}"')
-            lines.append(f'        ),')
-        else:
-            lines.append(f'        "f": "{full_esc}",')
+        lines.append(f'    {article_id!r}: {{')
+        lines.append(f'        "t": {title!r},')
+        lines.append(f'        "s": {summary!r},')
+        lines.append(f'        "f": {full_text!r},')
 
         if fta:
-            lines.append(f'        "fta": "{fta}",')
+            lines.append(f'        "fta": {fta!r},')
         if repealed:
             lines.append(f'        "repealed": True,')
 

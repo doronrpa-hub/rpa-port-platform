@@ -774,7 +774,7 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html,
         return False
 
 
-def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None, subject=None, db=None, deal_id=None, alert_type=None):
+def helper_graph_reply(access_token, user_email, message_id, body_html, to_email=None, cc_emails=None, subject=None, db=None, deal_id=None, alert_type=None, attachments_data=None):
     """Reply to an existing email via Graph API (threads correctly in Outlook).
 
     Args:
@@ -783,6 +783,7 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
         db: Optional Firestore client for security_log logging.
         deal_id: Optional deal ID for dedup checks via email_quality_gate.
         alert_type: Optional alert type for dedup checks via email_quality_gate.
+        attachments_data: Optional list of attachment dicts with name, contentType, contentBytes.
     """
     # ── HARD BLOCK: Never reply to external recipients ──
     if not to_email:
@@ -841,6 +842,15 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
         if cc_emails:
             payload['message']['ccRecipients'] = [
                 {'emailAddress': {'address': e}} for e in cc_emails if e
+            ]
+        if attachments_data:
+            payload['message']['attachments'] = [
+                {
+                    '@odata.type': '#microsoft.graph.fileAttachment',
+                    'name': a.get('name', 'file'),
+                    'contentType': a.get('contentType', 'application/octet-stream'),
+                    'contentBytes': a.get('contentBytes')
+                } for a in attachments_data if a.get('contentBytes')
             ]
         response = requests.post(
             url,

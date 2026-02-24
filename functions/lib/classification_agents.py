@@ -3043,11 +3043,35 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
     """Main: Extract, classify, validate, send ONE consolidated email.
 
     Sends a single email containing: ack + classification report + clarification (if needed).
-    Uses internet_message_id for proper Outlook/Gmail threading.
+    Session 56: Uses helper_graph_reply() for proper Outlook threading via Graph /reply endpoint.
+    Falls back to helper_graph_send() if reply fails (e.g., msg_id expired).
 
     Session 47: to_email may be None for external senders with no @rpa-port.co.il in chain.
     In that case, classification runs normally but NO reply email is sent.
     """
+    # Session 56: Import helper_graph_reply for proper threading
+    try:
+        from lib.rcb_helpers import helper_graph_reply as _graph_reply, clean_email_subject as _clean_subject
+    except ImportError:
+        from rcb_helpers import helper_graph_reply as _graph_reply, clean_email_subject as _clean_subject
+
+    def _send_threaded(recipient, subj, html, attachments_data=None):
+        """Send email threaded to original message. Try reply first, fall back to send."""
+        clean_subj = _clean_subject(subj)
+        # Try proper Graph API reply (threads in Outlook)
+        if msg_id:
+            try:
+                if _graph_reply(access_token, rcb_email, msg_id, html,
+                                to_email=recipient, subject=clean_subj,
+                                db=db, attachments_data=attachments_data):
+                    return True
+            except Exception:
+                pass
+        # Fallback: send as new message with clean subject
+        return helper_graph_send(access_token, rcb_email, recipient, clean_subj, html,
+                                 reply_to_id=msg_id, attachments_data=attachments_data,
+                                 db=db)
+
     # Session 47: Reply suppression for external senders without team address
     _suppress_reply = not to_email
     if _suppress_reply:
@@ -3115,8 +3139,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             )
             if not _suppress_reply:
                 try:
-                    helper_graph_send(access_token, rcb_email, to_email, subject,
-                                      _fail_html, msg_id, internet_message_id=internet_message_id)
+                    _send_threaded(to_email, subject, _fail_html)
                 except Exception:
                     pass
             try:
@@ -3187,8 +3210,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
             )
             if not _suppress_reply:
                 try:
-                    helper_graph_send(access_token, rcb_email, to_email, subject,
-                                      _err_html, msg_id, internet_message_id=internet_message_id)
+                    _send_threaded(to_email, subject, _err_html)
                 except Exception:
                     pass
             try:
@@ -3529,7 +3551,7 @@ def process_and_send_report(access_token, rcb_email, to_email, subject, sender_n
         if _suppress_reply:
             print("  📬 Reply suppressed (external sender, no team address)")
             _email_sent = True  # Treat as "sent" for Firestore save flow
-        elif helper_graph_send(access_token, rcb_email, to_email, subject_line, final_html, msg_id, attachments, internet_message_id=internet_message_id):
+        elif _send_threaded(to_email, subject_line, final_html, attachments_data=attachments):
             print(f"  ✅ Sent to {to_email}")
             _email_sent = True
         if _email_sent:
