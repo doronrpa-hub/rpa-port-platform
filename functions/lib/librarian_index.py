@@ -99,6 +99,12 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    "xml_documents": {
+        "title_fields": ["title_he", "file_name"],
+        "keyword_fields": ["category", "subcategory", "source"],
+        "hs_fields": [],
+        "doc_type": "document",
+    },
     "licensing_knowledge": {
         "title_fields": ["content", "title"],
         "keyword_fields": ["type"],
