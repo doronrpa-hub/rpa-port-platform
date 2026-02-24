@@ -16,6 +16,8 @@ HARD RULES:
 import re
 import hashlib
 import logging
+import random
+import string
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
@@ -33,7 +35,12 @@ REPLY_SYSTEM_PROMPT = (
     "אתה עוזר מקצועי בתחום סיווג מכס וסחר בינלאומי בישראל. "
     "ענה בעברית, בקצרה ובבהירות. השתמש במידע המערכת שסופק. "
     "אם אין מספיק מידע, ציין זאת בכנות. חתום כ-RCB. "
-    "מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס."
+    "מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס.\n\n"
+    "כללים חשובים:\n"
+    "1. כאשר יש לך נוסח סעיף מפקודת המכס — חובה לצטט אותו מילה במילה בגוף התשובה. "
+    "השתמש בפורמט: «סעיף X: [ציטוט מלא]». אל תסכם — צטט את הנוסח המקורי.\n"
+    "2. אם מספר סעיפים רלוונטיים, צטט את העיקריים (עד 3) ותמצת את השאר.\n"
+    "3. לאחר הציטוט, הוסף הסבר קצר בשפה פשוטה."
 )
 
 RCB_SIGNATURE = "RCB - מערכת מידע מכס"
@@ -43,6 +50,14 @@ CACHE_TTL_SECONDS = 86400
 
 # Rate limit: 1 reply per sender per hour
 RATE_LIMIT_SECONDS = 3600
+
+
+def _generate_query_tracking_code():
+    """Generate unique query tracking code: RCB-Q-YYYYMMDD-XXXXX"""
+    date_part = datetime.now().strftime("%Y%m%d")
+    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+    return f"RCB-Q-{date_part}-{random_part}"
+
 
 # ═══════════════════════════════════════════
 #  REGEX PATTERN SETS
@@ -616,10 +631,15 @@ def _wrap_html_rtl(text, subject=""):
 #  REPLY SENDING — HARD RULE: only @rpa-port.co.il
 # ═══════════════════════════════════════════
 
-def _send_reply_safe(body_html, msg, access_token, rcb_email):
+def _send_reply_safe(body_html, msg, access_token, rcb_email, subject_override=None):
     """Send reply ONLY to @rpa-port.co.il addresses. Strip external recipients.
     Also blocks replies when rcb@ is only CC'd (not a direct TO recipient).
-    Applies banned phrase filter to ALL outgoing replies (intelligence gate)."""
+    Applies banned phrase filter to ALL outgoing replies (intelligence gate).
+
+    Args:
+        subject_override: If provided, used as the reply subject instead of
+                          deriving from original. Use for RCB-branded subjects.
+    """
     from_email = _get_sender_address(msg)
     if not from_email.lower().endswith(f"@{TEAM_DOMAIN}"):
         return False  # NEVER reply to external
@@ -650,13 +670,16 @@ def _send_reply_safe(body_html, msg, access_token, rcb_email):
     except ImportError:
         from rcb_helpers import helper_graph_reply, helper_graph_send, _RE_FWD_PATTERN
 
-    # Build a safe subject — original if present, fallback to 'RCB' minimum
-    orig_subject = (msg.get('subject', '') or '').strip()
-    orig_subject = _RE_FWD_PATTERN.sub('', orig_subject).strip() if orig_subject else ''
-    if not orig_subject:
-        subject = 'RCB'
+    # Build subject: caller override > RCB-branded > Re: original > RCB minimum
+    if subject_override:
+        subject = subject_override
     else:
-        subject = f"Re: {orig_subject}"
+        orig_subject = (msg.get('subject', '') or '').strip()
+        orig_subject = _RE_FWD_PATTERN.sub('', orig_subject).strip() if orig_subject else ''
+        if not orig_subject:
+            subject = 'RCB'
+        else:
+            subject = f"Re: {orig_subject}"
 
     # Try threaded reply first, fallback to send
     sent = helper_graph_reply(access_token, rcb_email, msg_id, body_html,
@@ -1312,12 +1335,23 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         model = "template"
 
     reply_html = _wrap_html_rtl(reply_text)
-    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+
+    # Build RCB-branded subject with tracking code
+    tracking_code = _generate_query_tracking_code()
+    topic_preview = (body_text or subject or question or "שאלה")[:40].strip()
+    if domain_names:
+        domain_label = domain_names[0].replace("_", " ").title()
+        reply_subject = f"RCB | {tracking_code} | {domain_label} | {topic_preview}"
+    else:
+        reply_subject = f"RCB | {tracking_code} | {topic_preview}"
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email,
+                            subject_override=reply_subject)
 
     return {
         "status": "replied" if sent else "send_failed",
         "intent": "CUSTOMS_QUESTION",
         "cost_usd": cost,
+        "tracking_code": tracking_code,
         "answer_text": reply_text,
         "answer_html": reply_html,
         "answer_sources": sources,
@@ -1482,12 +1516,23 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
             model = "template"
 
     reply_html = _wrap_html_rtl(reply_text)
-    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email)
+
+    # Build RCB-branded subject with tracking code
+    tracking_code = _generate_query_tracking_code()
+    topic_preview = (body_text or subject or "שאלה")[:40].strip()
+    if domain_names:
+        domain_label = domain_names[0].replace("_", " ").title()
+        reply_subject = f"RCB | {tracking_code} | {domain_label} | {topic_preview}"
+    else:
+        reply_subject = f"RCB | {tracking_code} | {topic_preview}"
+    sent = _send_reply_safe(reply_html, msg, access_token, rcb_email,
+                            subject_override=reply_subject)
 
     return {
         "status": "replied" if sent else "send_failed",
         "intent": "KNOWLEDGE_QUERY",
         "cost_usd": cost,
+        "tracking_code": tracking_code,
         "answer_text": reply_text,
         "answer_html": reply_html,
         "answer_sources": sources,
