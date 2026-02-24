@@ -595,6 +595,63 @@ def select_attachments(knowledge: dict) -> Tuple[list, int]:
 
 
 # ---------------------------------------------------------------------------
+# Reply validation — detect AI ignoring provided context
+# ---------------------------------------------------------------------------
+
+def _validate_reply_uses_context(reply_text, context):
+    """Validate that the AI reply actually uses the provided legal context.
+
+    If context contains articles 200א+ (IP enforcement) but the reply doesn't
+    mention "200", the AI ignored the context and answered from training data.
+    Returns the reply text, possibly corrected.
+    """
+    if not context or not reply_text:
+        return reply_text
+    # Check if context contains articles 200א-200יד (IP enforcement articles)
+    has_ip_articles = bool(re.search(r'200[אבגדהוזחטייכלמנ]', context) or
+                          re.search(r'סעיף 200', context))
+    if has_ip_articles:
+        reply_mentions_200 = '200' in reply_text
+        if not reply_mentions_200:
+            logger.warning("AI-IGNORED-CONTEXT: Context contains articles 200א+ "
+                           "but reply does not mention them. Correcting.")
+            # Check for contradictory statements
+            contradiction_patterns = [
+                'אינו עוסק',
+                'אינה עוסקת',
+                'לא עוסק',
+                'לא עוסקת',
+                'אין התייחסות',
+                'אין סעיף',
+            ]
+            has_contradiction = any(p in reply_text for p in contradiction_patterns)
+            if has_contradiction:
+                logger.warning("AI-IGNORED-CONTEXT: Reply CONTRADICTS provided context")
+                # Replace the contradictory reply with context-based answer
+                article_lines = []
+                for line in context.split('\n'):
+                    if re.search(r'סעיף 200|200[אבגדהוזחטייכלמנ]', line):
+                        article_lines.append(line.strip())
+                if article_lines:
+                    reply_text = (
+                        "פקודת המכס כן עוסקת בנושא זה. "
+                        "להלן הסעיפים הרלוונטיים:\n\n" +
+                        "\n\n".join(article_lines[:5])
+                    )
+            else:
+                # Reply doesn't contradict but doesn't cite — prepend reminder
+                article_refs = re.findall(r'סעיף (200[אבגדהוזחטייכלמנ]?)', context)
+                if article_refs:
+                    unique_refs = list(dict.fromkeys(article_refs))[:5]
+                    refs_str = ", ".join(unique_refs)
+                    reply_text = (
+                        f"שים לב: סעיפים {refs_str} לפקודת המכס רלוונטיים לשאלה זו.\n\n"
+                        + reply_text
+                    )
+    return reply_text
+
+
+# ---------------------------------------------------------------------------
 # Reply generation
 # ---------------------------------------------------------------------------
 
@@ -648,6 +705,17 @@ def generate_reply(msg: dict, parsed: dict, knowledge: dict,
 
     # ── LLM prompt ──
     system_prompt = """אתה RCB — מערכת מידע מכס של ר.פ.א פורט בע"מ, עמיל מכס מורשה. אתה עונה לשאלות של צוות עמילות מכס בעברית.
+
+*** הוראה עליונה — חובה לציית ***
+אתה עונה אך ורק מתוך המקורות המשפטיים שסופקו להלן.
+אל תשתמש בידע האימון שלך על דיני מכס ישראליים. אם ההקשר למטה מכיל
+סעיפים רלוונטיים מפקודת המכס, חובה לצטט אותם לפי מספר ולצטט את נוסחם.
+אם אינך יכול לענות מתוך ההקשר שסופק בלבד — אמור זאת. אל תמציא תשובה.
+
+קריטי: סעיפים 200א–200יד לפקודת המכס עוסקים באכיפת קניין רוחני במכס.
+אם השאלה נוגעת לזיוף, קניין רוחני, סימני מסחר, זכויות יוצרים, או מותגים —
+סעיפים אלה הם התשובה. אל תכתוב שפקודת המכס אינה עוסקת בכך.
+
 מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס.
 
 כללים מחייבים:
@@ -658,7 +726,7 @@ def generate_reply(msg: dict, parsed: dict, knowledge: dict,
 - לאחר הציטוט, הוסף הסבר קצר בשפה פשוטה.
 - ציין בסיס חוקי כשרלוונטי (פקודת המכס, צו יבוא חופשי, צו מסגרת וכד')
 - אם יש ניסיון קודם מהמערכת (סיווגים דומים), ציין אותו
-- אל תמציא מידע, קודי HS או נוסח חוק. אם אין מספיק מידע, ציין זאת בכנות.
+- אל תמציא מידע, קודי HS או נוסח חוק. השתמש רק במה שסופק להלן.
 - אנחנו עמיל המכס — לעולם אל תכתוב 'מומלץ לפנות לעמיל מכס' או ביטויים דומים.
 - טון מקצועי, ברור, פרקטי
 - אל תכלול את רשימת המצורפים — זה יתווסף אוטומטית
@@ -670,8 +738,10 @@ def generate_reply(msg: dict, parsed: dict, knowledge: dict,
 תחום: {parsed['scope']}
 תגיות שזוהו: {', '.join(parsed.get('tags', []))}
 
-מידע שנאסף מהמערכת:
-{knowledge_context}"""
+=== מקורות משפטיים מוסמכים (ענה רק מתוכם) ===
+{knowledge_context}
+=== סוף מקורות ===
+ענה רק על בסיס המקורות למעלה. אם יש סעיפים — צטט אותם."""
 
     # call_claude: same function used by classification_agents.py
     reply_body = call_claude(api_key, system_prompt, user_prompt, max_tokens=2000)
@@ -680,6 +750,9 @@ def generate_reply(msg: dict, parsed: dict, knowledge: dict,
             "לצערי לא הצלחתי לייצר תשובה אוטומטית. "
             "מצורפים מסמכים רלוונטיים שמצאתי במערכת."
         )
+
+    # Validate AI didn't ignore provided legal context
+    reply_body = _validate_reply_uses_context(reply_body, knowledge_context)
 
     # ── Assemble full reply ──
     parts = [f"שלום {sender_name},", "", reply_body]

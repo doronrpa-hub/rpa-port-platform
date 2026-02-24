@@ -32,10 +32,15 @@ ADMIN_EMAIL = "doron@rpa-port.co.il"
 TEAM_DOMAIN = "rpa-port.co.il"
 
 REPLY_SYSTEM_PROMPT = (
-    "אתה RCB — מערכת מידע מכס של ר.פ.א פורט בע\"מ, עמיל מכס מורשה. "
-    "ענה בעברית מקצועית, תמציתית ומדויקת. השתמש אך ורק במידע המערכת שסופק. "
-    "אם אין מספיק מידע, ציין זאת בכנות. "
-    "מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס.\n\n"
+    "אתה RCB — מערכת מידע מכס של ר.פ.א פורט בע\"מ, עמיל מכס מורשה.\n\n"
+    "*** הוראה עליונה — חובה לציית ***\n"
+    "אתה עונה אך ורק מתוך המקורות המשפטיים שסופקו להלן.\n"
+    "אל תשתמש בידע האימון שלך על דיני מכס ישראליים. אם ההקשר למטה מכיל\n"
+    "סעיפים רלוונטיים מפקודת המכס, חובה לצטט אותם לפי מספר ולצטט את נוסחם.\n"
+    "אם אינך יכול לענות מתוך ההקשר שסופק בלבד — אמור זאת. אל תמציא תשובה.\n\n"
+    "קריטי: סעיפים 200א–200יד לפקודת המכס עוסקים באכיפת קניין רוחני במכס.\n"
+    "אם השאלה נוגעת לזיוף, קניין רוחני, סימני מסחר, זכויות יוצרים, או מותגים —\n"
+    "סעיפים אלה הם התשובה. אל תכתוב שפקודת המכס אינה עוסקת בכך.\n\n"
     "כללים מחייבים — חובה לציית:\n"
     "1. כאשר יש לך נוסח סעיף מפקודת המכס או מצו המסגרת — חובה לצטט אותו מילה במילה "
     "בעברית בגוף התשובה. השתמש בפורמט:\n"
@@ -45,7 +50,9 @@ REPLY_SYSTEM_PROMPT = (
     "2. אם מספר סעיפים רלוונטיים, צטט את העיקריים (עד 3) ותמצת את השאר.\n"
     "3. לאחר הציטוט, הוסף הסבר קצר בשפה פשוטה.\n"
     "4. אנחנו עמיל המכס — לעולם אל תכתוב 'מומלץ לפנות לעמיל מכס' או ביטויים דומים.\n"
-    "5. לעולם אל תמציא מידע, קודי HS או נוסח חוק. השתמש רק במה שסופק."
+    "5. לעולם אל תמציא מידע, קודי HS או נוסח חוק. השתמש רק במה שסופק.\n"
+    "6. ענה בעברית מקצועית, תמציתית ומדויקת.\n"
+    "מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס."
 )
 
 RCB_SIGNATURE = "RCB - מערכת מידע מכס"
@@ -573,7 +580,12 @@ def _call_chatgpt(api_key, context, question, max_tokens=1500):
                 "model": "gpt-4o-mini",
                 "messages": [
                     {"role": "system", "content": REPLY_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"שאלה: {question}\n\nמידע מהמערכת:\n{context}"},
+                    {"role": "user", "content": (
+                        f"שאלה: {question}\n\n"
+                        "=== מקורות משפטיים מוסמכים (ענה רק מתוכם) ===\n"
+                        f"{context}\n"
+                        "=== סוף מקורות ===\n"
+                        "ענה רק על בסיס המקורות למעלה. אם יש סעיפים — צטט אותם.")},
                 ],
                 "max_tokens": max_tokens,
                 "temperature": 0.3,
@@ -590,7 +602,14 @@ def _call_chatgpt(api_key, context, question, max_tokens=1500):
 def _call_gemini_flash(gemini_key, context, question):
     """Call Gemini Flash for reply composition. ~$0.001/call."""
     import requests as _requests
-    prompt = f"{REPLY_SYSTEM_PROMPT}\n\nשאלה: {question}\n\nמידע מהמערכת:\n{context}"
+    prompt = (
+        f"{REPLY_SYSTEM_PROMPT}\n\n"
+        f"שאלה: {question}\n\n"
+        "=== מקורות משפטיים מוסמכים (ענה רק מתוכם) ===\n"
+        f"{context}\n"
+        "=== סוף מקורות ===\n"
+        "ענה רק על בסיס המקורות למעלה. אם יש סעיפים — צטט אותם."
+    )
     try:
         resp = _requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
@@ -614,6 +633,60 @@ def _template_reply(context):
     # Trim context to reasonable length
     ctx = context[:800] if len(context) > 800 else context
     return f"להלן המידע שנמצא במערכת:\n\n{ctx}\n\nלפרטים נוספים, אנא פנה לצוות."
+
+
+def _validate_reply_uses_context(reply_text, context):
+    """Validate that the AI reply actually uses the provided legal context.
+
+    If context contains articles 200א+ (IP enforcement) but the reply doesn't
+    mention "200", the AI ignored the context and answered from training data.
+    Returns the reply text, possibly with a warning prepended.
+    """
+    if not context or not reply_text:
+        return reply_text
+    # Check if context contains articles 200א-200יד (IP enforcement articles)
+    has_ip_articles = bool(re.search(r'200[אבגדהוזחטייכלמנ]', context) or
+                          re.search(r'סעיף 200', context))
+    if has_ip_articles:
+        reply_mentions_200 = '200' in reply_text
+        if not reply_mentions_200:
+            logger.warning("AI-IGNORED-CONTEXT: Context contains articles 200א+ "
+                           "but reply does not mention them. Prepending correction.")
+            # Check for contradictory statements
+            contradiction_patterns = [
+                'אינו עוסק',
+                'אינה עוסקת',
+                'לא עוסק',
+                'לא עוסקת',
+                'אין התייחסות',
+                'אין סעיף',
+            ]
+            has_contradiction = any(p in reply_text for p in contradiction_patterns)
+            if has_contradiction:
+                logger.warning("AI-IGNORED-CONTEXT: Reply CONTRADICTS provided context "
+                               "(claims law doesn't cover the topic)")
+                # Replace the contradictory reply entirely with context-based answer
+                article_lines = []
+                for line in context.split('\n'):
+                    if re.search(r'סעיף 200|200[אבגדהוזחטייכלמנ]', line):
+                        article_lines.append(line.strip())
+                if article_lines:
+                    reply_text = (
+                        "פקודת המכס כן עוסקת בנושא זה. "
+                        "להלן הסעיפים הרלוונטיים:\n\n" +
+                        "\n\n".join(article_lines[:5])
+                    )
+            else:
+                # Reply doesn't contradict but also doesn't cite — prepend reminder
+                article_refs = re.findall(r'סעיף (200[אבגדהוזחטייכלמנ]?)', context)
+                if article_refs:
+                    unique_refs = list(dict.fromkeys(article_refs))[:5]
+                    refs_str = ", ".join(unique_refs)
+                    reply_text = (
+                        f"שים לב: סעיפים {refs_str} לפקודת המכס רלוונטיים לשאלה זו.\n\n"
+                        + reply_text
+                    )
+    return reply_text
 
 
 def _wrap_html_rtl(text, subject=""):
@@ -1334,6 +1407,7 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     if context:
         # Compose reply using AI (cost ladder)
         reply_text, model = _compose_reply(context, question, get_secret_func)
+        reply_text = _validate_reply_uses_context(reply_text, context)
         cost = 0.005 if model == "chatgpt" else (0.001 if model == "gemini_flash" else 0.0)
     else:
         reply_text = f"לא נמצא מידע על {question} במערכת. אנא פנה לצוות סיווג המכס."
@@ -1497,6 +1571,7 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
 
     if context:
         reply_text, model = _compose_reply(context, question, get_secret_func)
+        reply_text = _validate_reply_uses_context(reply_text, context)
         cost = 0.005 if model == "chatgpt" else (0.001 if model == "gemini_flash" else 0.0)
     else:
         # No Firestore results — delegate to existing knowledge_query handler
