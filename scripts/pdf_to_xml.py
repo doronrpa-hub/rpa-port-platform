@@ -42,16 +42,36 @@ for _cp in range(0x0B68, 0x0B83):  # Mapping 2: Oriya block → Hebrew (offset -
         _GARBLED_TO_HEBREW[chr(_cp)] = chr(_dst)
 _GARBLED_TRANS = str.maketrans(_GARBLED_TO_HEBREW)
 
+# Control characters used as punctuation/spacing in garbled PDF fonts.
+# These are CID-mapped chars that don't go through ToUnicode properly.
+# Verified by comparing known text against raw PDF output.
+_CTRL_CHAR_MAP = {
+    '\x03': ' ',    # ETX → space (word separator, 891 occurrences in ExemptCustomsItems)
+    '\x05': '״',    # ENQ → gershayim (Hebrew double-quote for abbreviations like תשי"ז)
+    '\x0b': '(',    # VT  → open parenthesis
+    '\x0c': ')',    # FF  → close parenthesis
+    '\x0f': ',',    # SI  → comma
+    '\x10': '-',    # DLE → hyphen/dash
+    '\x11': ')',    # DC1 → close parenthesis (alternate)
+    '\x1d': ':',    # GS  → colon
+    '\x1e': ';',    # RS  → semicolon
+}
+_CTRL_TRANS = str.maketrans(_CTRL_CHAR_MAP)
+
 
 def fix_garbled_hebrew(text):
     """Fix garbled Hebrew caused by broken ToUnicode CMap in PDF fonts.
 
-    Also reverses Hebrew words from visual (LTR) to logical (RTL) order,
-    since garbled-font PDFs store text in visual order.
+    Three-step process:
+    1. Translate garbled Unicode chars (Modifier Letters / Oriya) to Hebrew
+    2. Replace control characters with their intended punctuation/spaces
+    3. Reverse Hebrew words from visual (LTR) to logical (RTL) order
     """
     fixed = text.translate(_GARBLED_TRANS)
     if fixed == text:
         return text  # No garbled chars found, return as-is
+    # Replace control chars with punctuation/spaces
+    fixed = fixed.translate(_CTRL_TRANS)
     # Text was garbled → it's in visual LTR order. Reverse Hebrew words.
     return _fix_rtl_visual_order(fixed)
 
