@@ -50,9 +50,11 @@ _CTRL_CHAR_MAP = {
     '\x05': '״',    # ENQ → gershayim (Hebrew double-quote for abbreviations like תשי"ז)
     '\x0b': '(',    # VT  → open parenthesis
     '\x0c': ')',    # FF  → close parenthesis
+    '\x0e': '\n',   # SO  → newline (line separator between table cells)
     '\x0f': ',',    # SI  → comma
     '\x10': '-',    # DLE → hyphen/dash
     '\x11': ')',    # DC1 → close parenthesis (alternate)
+    '\x12': '.',    # DC2 → period (separator before letter suffix, e.g. "3.א")
     '\x1d': ':',    # GS  → colon
     '\x1e': ';',    # RS  → semicolon
 }
@@ -66,14 +68,22 @@ def fix_garbled_hebrew(text):
     1. Translate garbled Unicode chars (Modifier Letters / Oriya) to Hebrew
     2. Replace control characters with their intended punctuation/spaces
     3. Reverse Hebrew words from visual (LTR) to logical (RTL) order
+
+    Control chars are ALWAYS translated (even in non-garbled text) because
+    iTextSharp fonts use them as CID-mapped punctuation regardless of whether
+    the Hebrew chars are garbled.
     """
-    fixed = text.translate(_GARBLED_TRANS)
+    garbled_fixed = text.translate(_GARBLED_TRANS)
+    had_garbled = (garbled_fixed != text)
+    # Always translate control chars — they appear in both garbled and
+    # non-garbled text blocks from iTextSharp PDFs
+    fixed = garbled_fixed.translate(_CTRL_TRANS)
     if fixed == text:
-        return text  # No garbled chars found, return as-is
-    # Replace control chars with punctuation/spaces
-    fixed = fixed.translate(_CTRL_TRANS)
-    # Text was garbled → it's in visual LTR order. Reverse Hebrew words.
-    return _fix_rtl_visual_order(fixed)
+        return text  # Nothing changed, return as-is
+    if had_garbled:
+        # Text had garbled chars → it's in visual LTR order. Reverse Hebrew words.
+        return _fix_rtl_visual_order(fixed)
+    return fixed
 
 
 def _fix_rtl_visual_order(text):
@@ -460,8 +470,40 @@ def convert_pdf_to_xml(pdf_path, doc_name=None):
 #  Output                                                              #
 # ------------------------------------------------------------------ #
 
+def _sanitize_xml_text(text):
+    """Remove characters illegal in XML 1.0.
+
+    Legal XML 1.0 chars: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD]
+    Everything else (control chars 0x00-0x08, 0x0B-0x0C, 0x0E-0x1F except mapped)
+    must be stripped to produce valid XML.
+    """
+    if not text:
+        return text
+    return _RE_XML_ILLEGAL.sub('', text)
+
+_RE_XML_ILLEGAL = re.compile(
+    '[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f'
+    '\ud800-\udfff\ufdd0-\ufdef\ufffe\uffff]'
+)
+
+
+def _sanitize_tree(element):
+    """Recursively sanitize all text in an XML tree."""
+    if element.text:
+        element.text = _sanitize_xml_text(element.text)
+    if element.tail:
+        element.tail = _sanitize_xml_text(element.tail)
+    for attr_name, attr_val in list(element.attrib.items()):
+        sanitized = _sanitize_xml_text(attr_val)
+        if sanitized != attr_val:
+            element.set(attr_name, sanitized)
+    for child in element:
+        _sanitize_tree(child)
+
+
 def xml_to_string(root):
     """Pretty-print XML to UTF-8 string."""
+    _sanitize_tree(root)
     indent(root, space='  ')
     body = tostring(root, encoding='unicode', xml_declaration=False)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + body
