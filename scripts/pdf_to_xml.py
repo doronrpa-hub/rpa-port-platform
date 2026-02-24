@@ -163,9 +163,15 @@ RE_SUPPLEMENT = re.compile(
     r'שביעית|שמינית|תשיעית|עשירית|\d+)'
 )
 
-# Definition: ""TERM"" followed by dash — RTL format in the צו מסגרת
-# The term appears in double-quotes, bold
-RE_DEFINITION_TERM = re.compile(r'""([^"]{1,80})""')
+# Definition: ""TERM at end of text block — RTL format in the צו מסגרת
+# In the PDF text (which is visual RTL), the pattern is:
+#   ;definition body text ""TERM
+# where "" is two ASCII double-quotes (U+0022) immediately followed by
+# the Hebrew term text. The term may include spaces, quotes, and punctuation.
+# Terms can contain single " for abbreviations (e.g., ארה"ב, מע"מ, אל"י)
+# so we only stop at "" (next definition start) or end of text.
+# Examples: '""דולר', '""הסכם סחר', '""ארה"ב', '""מערכת חלקים'
+RE_DEFINITION_TERM = re.compile(r'""([א-ת](?:(?!""").){0,79})')
 
 # HS code pattern: XX.XX.XXXXXX (6-10 digit with dots)
 RE_HS_CODE = re.compile(r'\b\d{2}\.\d{2}\.\d{4,6}\b')
