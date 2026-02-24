@@ -28,6 +28,92 @@ except ImportError:
 
 
 # ------------------------------------------------------------------ #
+#  Garbled Hebrew fix (broken ToUnicode CMap in embedded fonts)        #
+#  Session 62 discovery: two character substitution mappings fix ALL   #
+#  garbled Hebrew from shaarolami PDFs (supplements 3-19, etc.)       #
+# ------------------------------------------------------------------ #
+
+_GARBLED_TO_HEBREW = {}
+for _i in range(27):  # Mapping 1: Modifier Letters U+02A0..U+02BA → Hebrew U+05D0..U+05EA
+    _GARBLED_TO_HEBREW[chr(0x02A0 + _i)] = chr(0x05D0 + _i)
+for _cp in range(0x0B68, 0x0B83):  # Mapping 2: Oriya block → Hebrew (offset -0x0598)
+    _dst = _cp - 0x0598              # Verified: U+0B68→א(U+05D0), U+0B82→ת(U+05EA)
+    if 0x05D0 <= _dst <= 0x05EA:
+        _GARBLED_TO_HEBREW[chr(_cp)] = chr(_dst)
+_GARBLED_TRANS = str.maketrans(_GARBLED_TO_HEBREW)
+
+
+def fix_garbled_hebrew(text):
+    """Fix garbled Hebrew caused by broken ToUnicode CMap in PDF fonts.
+
+    Also reverses Hebrew words from visual (LTR) to logical (RTL) order,
+    since garbled-font PDFs store text in visual order.
+    """
+    fixed = text.translate(_GARBLED_TRANS)
+    if fixed == text:
+        return text  # No garbled chars found, return as-is
+    # Text was garbled → it's in visual LTR order. Reverse Hebrew words.
+    return _fix_rtl_visual_order(fixed)
+
+
+def _fix_rtl_visual_order(text):
+    """Reverse Hebrew character runs from visual to logical order.
+
+    In visual-order PDFs, the Hebrew word "שלום" is stored as "םולש".
+    This function reverses contiguous runs of Hebrew characters while
+    preserving non-Hebrew characters (digits, punctuation, Latin) in place.
+    """
+    # Process each line independently
+    result_lines = []
+    for line in text.split('\n'):
+        result_lines.append(_reverse_hebrew_runs(line))
+    return '\n'.join(result_lines)
+
+
+def _reverse_hebrew_runs(line):
+    """Reverse Hebrew character runs within a single line."""
+    # Split line into segments: Hebrew runs and non-Hebrew runs
+    segments = []
+    current = []
+    current_is_hebrew = False
+
+    for ch in line:
+        is_heb = '\u05D0' <= ch <= '\u05EA'
+        if current and is_heb != current_is_hebrew:
+            segments.append((''.join(current), current_is_hebrew))
+            current = []
+        current.append(ch)
+        current_is_hebrew = is_heb
+
+    if current:
+        segments.append((''.join(current), current_is_hebrew))
+
+    # Reverse Hebrew segments and reverse the overall order of segments
+    # that form a Hebrew-dominant line
+    hebrew_count = sum(len(s) for s, h in segments if h)
+    total_count = sum(len(s) for s, _ in segments)
+
+    if hebrew_count > total_count * 0.3:
+        # Hebrew-dominant line: reverse segment order and reverse Hebrew runs
+        parts = []
+        for seg_text, is_heb in reversed(segments):
+            if is_heb:
+                parts.append(seg_text[::-1])
+            else:
+                parts.append(seg_text)
+        return ''.join(parts)
+    else:
+        # Non-Hebrew-dominant line: just reverse Hebrew runs in place
+        parts = []
+        for seg_text, is_heb in segments:
+            if is_heb:
+                parts.append(seg_text[::-1])
+            else:
+                parts.append(seg_text)
+        return ''.join(parts)
+
+
+# ------------------------------------------------------------------ #
 #  Hebrew document structure patterns                                  #
 # ------------------------------------------------------------------ #
 
@@ -95,7 +181,9 @@ class PDFBlock:
 def extract_page_blocks(doc, page_idx):
     """Extract text blocks from one PDF page."""
     page = doc[page_idx]
-    raw = page.get_text('dict', flags=fitz.TEXT_PRESERVE_WHITESPACE)
+    # NOTE: Do NOT use fitz.TEXT_PRESERVE_WHITESPACE — it causes PyMuPDF to
+    # return U+FFFD for garbled Hebrew fonts instead of the mappable Oriya chars
+    raw = page.get_text('dict')
     out = []
     for blk in raw['blocks']:
         if blk['type'] != 0:
@@ -107,7 +195,7 @@ def extract_page_blocks(doc, page_idx):
         for line in blk['lines']:
             lt = ''
             for span in line['spans']:
-                lt += span['text']
+                lt += fix_garbled_hebrew(span['text'])
                 fonts.add(span['font'])
                 sizes.add(span['size'])
                 if 'Bold' in span['font'] or 'bold' in span['font'].lower():
