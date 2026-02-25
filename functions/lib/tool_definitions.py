@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 33 tools available to the AI during classification.
+Defines the 34 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -739,6 +739,44 @@ CLAUDE_TOOLS = [
             "required": ["seller_name"],
         },
     },
+    # Tool #34 (Session 68): XML document search — FTA agreements, tariff sections, procedures
+    {
+        "name": "search_xml_documents",
+        "description": (
+            "Search 231 converted XML documents covering Israeli customs law full text: "
+            "22 tariff sections (I-XXII from shaarolami), 11 trade agreements (הסכמי סחר), "
+            "146 FTA protocol documents (16 countries: EU, UK, USA, Turkey, Korea, Colombia, "
+            "EFTA, Guatemala, Jordan, Mercosur, Mexico, Panama, UAE, Ukraine, Vietnam, Canada), "
+            "46 Free Import Order amendments (צו יבוא חופשי), 1 Free Export Order (צו יצוא חופשי), "
+            "framework order, supplements, and exempt items. "
+            "Use for: FTA origin rules, trade agreement text, tariff section full text, "
+            "import/export order amendments. Returns page-level content with citations."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Search query. Can be: country name for FTA ('EU', 'korea', 'turkey'), "
+                        "tariff section ('section XI', 'חלק XV'), "
+                        "trade agreement number ('agreement 109'), "
+                        "topic keyword ('origin rules', 'כללי מקור', 'EUR.1', 'cumulation'), "
+                        "or document category ('fta', 'fio', 'tariff_section')."
+                    ),
+                },
+                "category": {
+                    "type": "string",
+                    "description": (
+                        "Optional filter: 'fta' (FTA protocols), 'tariff_section' (sections I-XXII), "
+                        "'trade_agreement' (numbered agreements), 'fio' (import order amendments), "
+                        "'feo' (export order), 'framework_order', 'supplement', 'exempt_items'."
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -843,6 +881,7 @@ WORKFLOW:
 31. Call check_opensanctions for EVERY shipper and consignee name — compliance requirement, flag sanctions hits.
 32. Call get_israel_vat_rates to complete the total import cost picture (duty + purchase tax + VAT).
 33. Call fetch_seller_website when seller is identified — check their product catalogue to confirm/enrich classification. Especially useful when item descriptions are vague or incomplete. FREE and cached.
+34. Call search_xml_documents for FTA full text (origin rules, EUR.1, approved exporter), tariff section text, trade agreement protocols, or import/export order amendments. Covers 16 countries' FTA documents. Use when answering FTA questions or looking up origin protocols.
 
 TOOL PRIORITY STRATEGY — use this decision tree for common cases:
 A) New product, no HS code known:

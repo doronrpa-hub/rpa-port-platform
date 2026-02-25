@@ -247,6 +247,7 @@ class ToolExecutor:
             "check_opensanctions": self._check_opensanctions,
             "get_israel_vat_rates": self._get_israel_vat_rates,
             "fetch_seller_website": self._fetch_seller_website,
+            "search_xml_documents": self._search_xml_documents,
         }.get(tool_name)
 
         if not handler:
@@ -1287,6 +1288,262 @@ class ToolExecutor:
                 return {"found": True, "type": "search", "results": matches[:10], "count": len(matches)}
 
             return {"found": False, "query": query, "message": "No matching legal knowledge found"}
+        except Exception as e:
+            return {"found": False, "error": str(e)}
+
+    # ── Per-request cache for xml_documents ──
+    _xml_docs_cache = None
+
+    def _get_xml_documents(self):
+        """Lazy-load xml_documents collection (per-request cache)."""
+        if self._xml_docs_cache is not None:
+            return self._xml_docs_cache
+        try:
+            docs = self._db.collection("xml_documents").stream()
+            self._xml_docs_cache = [(doc.id, doc.to_dict()) for doc in docs]
+        except Exception:
+            self._xml_docs_cache = []
+        return self._xml_docs_cache
+
+    def _search_xml_documents(self, inp):
+        """Search 231 XML documents: FTA agreements, tariff sections, trade agreements,
+        FIO/FEO amendments, framework order, supplements.
+
+        Strategy:
+          Case 1: Category filter + country subcategory (FTA by country)
+          Case 2: Tariff section by Roman numeral or number
+          Case 3: Trade agreement by number
+          Case 4: Keyword search across titles and categories
+        """
+        query = str(inp.get("query", "")).strip()
+        category_filter = str(inp.get("category", "")).strip().lower() if inp.get("category") else None
+        if not query:
+            return {"found": False, "error": "No query provided"}
+
+        query_lower = query.lower()
+
+        try:
+            all_docs = self._get_xml_documents()
+            if not all_docs:
+                return {"found": False, "error": "xml_documents collection not loaded"}
+
+            results = []
+
+            # ── Case 1: FTA by country ──
+            _COUNTRY_ALIASES = {
+                "eu": "eu", "europe": "eu", "european": "eu", "אירופה": "eu", "אירופי": "eu",
+                "uk": "uk", "britain": "uk", "בריטניה": "uk", "אנגליה": "uk",
+                "usa": "usa", "united states": "usa", "ארצות הברית": "usa", "ארה\"ב": "usa", "אמריקה": "usa",
+                "turkey": "turkey", "türkiye": "turkey", "טורקיה": "turkey",
+                "korea": "korea", "south korea": "korea", "קוריאה": "korea",
+                "colombia": "colombia", "קולומביה": "colombia",
+                "efta": "efta", "שוויץ": "efta", "נורווגיה": "efta", "איסלנד": "efta",
+                "guatemala": "guatemala", "גואטמלה": "guatemala",
+                "jordan": "jordan", "ירדן": "jordan",
+                "mercosur": "mercosur", "מרקוסור": "mercosur", "ברזיל": "mercosur", "ארגנטינה": "mercosur",
+                "mexico": "mexico", "מקסיקו": "mexico",
+                "panama": "panama", "פנמה": "panama",
+                "uae": "uae", "emirates": "uae", "איחוד האמירויות": "uae", "אמירויות": "uae", "דובאי": "uae",
+                "ukraine": "ukraine", "אוקראינה": "ukraine",
+                "vietnam": "vietnam", "וייטנאם": "vietnam",
+                "canada": "canada", "קנדה": "canada",
+            }
+
+            # Try to extract country from query
+            matched_country = None
+            for alias, country_code in _COUNTRY_ALIASES.items():
+                if alias in query_lower:
+                    matched_country = country_code
+                    break
+
+            if matched_country or category_filter == "fta":
+                for doc_id, data in all_docs:
+                    if data.get("category") != "fta":
+                        continue
+                    subcat = (data.get("subcategory") or "").lower()
+                    if matched_country and subcat != matched_country:
+                        continue
+                    title = data.get("title_he") or data.get("file_name") or doc_id
+                    entry = {
+                        "doc_id": doc_id,
+                        "title": title[:200],
+                        "country": subcat,
+                        "language": data.get("language", ""),
+                        "page_count": data.get("page_count", 0),
+                        "has_hebrew": data.get("has_hebrew", False),
+                    }
+                    # Include content excerpt if available and not chunked
+                    if not data.get("is_chunked") and data.get("xml_content"):
+                        # Extract text content from XML (strip tags for readability)
+                        raw_text = re.sub(r'<[^>]+>', ' ', data["xml_content"])
+                        raw_text = re.sub(r'\s+', ' ', raw_text).strip()
+                        entry["text_excerpt"] = raw_text[:2000]
+                    results.append(entry)
+
+                if results:
+                    return {
+                        "found": True, "type": "fta_documents",
+                        "country": matched_country or "all",
+                        "count": len(results),
+                        "documents": results[:15],
+                    }
+
+            # ── Case 2: Tariff section by Roman numeral or number ──
+            _ROMAN = {
+                "1": "I", "2": "II", "3": "III", "4": "IV", "5": "V",
+                "6": "VI", "7": "VII", "8": "VIII", "9": "IX", "10": "X",
+                "11": "XI", "12": "XII", "13": "XIII", "14": "XIV", "15": "XV",
+                "16": "XVI", "17": "XVII", "18": "XVIII", "19": "XIX", "20": "XX",
+                "21": "XXI", "22": "XXII",
+            }
+            sec_match = re.search(
+                r'(?:section|חלק)\s+([IVXLC]+|\d{1,2})', query, re.IGNORECASE,
+            )
+            if sec_match or category_filter == "tariff_section":
+                target_numeral = None
+                if sec_match:
+                    raw = sec_match.group(1).strip()
+                    target_numeral = _ROMAN.get(raw, raw.upper())
+
+                for doc_id, data in all_docs:
+                    if data.get("category") != "tariff_section":
+                        continue
+                    subcat = data.get("subcategory", "")
+                    if target_numeral and subcat != target_numeral:
+                        continue
+                    title = data.get("title_he") or data.get("file_name") or doc_id
+                    entry = {
+                        "doc_id": doc_id,
+                        "title": title[:200],
+                        "section": subcat,
+                        "page_count": data.get("page_count", 0),
+                    }
+                    if not data.get("is_chunked") and data.get("xml_content"):
+                        raw_text = re.sub(r'<[^>]+>', ' ', data["xml_content"])
+                        raw_text = re.sub(r'\s+', ' ', raw_text).strip()
+                        entry["text_excerpt"] = raw_text[:2000]
+                    results.append(entry)
+
+                if results:
+                    return {
+                        "found": True, "type": "tariff_sections",
+                        "section": target_numeral or "all",
+                        "count": len(results),
+                        "documents": results[:5],
+                    }
+
+            # ── Case 3: Trade agreement by number ──
+            ta_match = re.search(r'(?:agreement|הסכם)\s*(\d+)', query, re.IGNORECASE)
+            if ta_match or category_filter == "trade_agreement":
+                target_num = ta_match.group(1) if ta_match else None
+                for doc_id, data in all_docs:
+                    if data.get("category") != "trade_agreement":
+                        continue
+                    subcat = data.get("subcategory", "")
+                    if target_num and subcat != target_num:
+                        continue
+                    title = data.get("title_he") or data.get("file_name") or doc_id
+                    entry = {
+                        "doc_id": doc_id,
+                        "title": title[:200],
+                        "agreement_number": subcat,
+                        "page_count": data.get("page_count", 0),
+                    }
+                    if not data.get("is_chunked") and data.get("xml_content"):
+                        raw_text = re.sub(r'<[^>]+>', ' ', data["xml_content"])
+                        raw_text = re.sub(r'\s+', ' ', raw_text).strip()
+                        entry["text_excerpt"] = raw_text[:2000]
+                    results.append(entry)
+
+                if results:
+                    return {
+                        "found": True, "type": "trade_agreements",
+                        "count": len(results),
+                        "documents": results[:10],
+                    }
+
+            # ── Case 4: Category-only filter (fio, feo, supplement, etc.) ──
+            if category_filter and category_filter in ("fio", "feo", "supplement", "exempt_items", "framework_order"):
+                for doc_id, data in all_docs:
+                    if data.get("category") != category_filter:
+                        continue
+                    title = data.get("title_he") or data.get("file_name") or doc_id
+                    results.append({
+                        "doc_id": doc_id,
+                        "title": title[:200],
+                        "page_count": data.get("page_count", 0),
+                        "language": data.get("language", ""),
+                    })
+                if results:
+                    return {
+                        "found": True, "type": f"{category_filter}_documents",
+                        "count": len(results),
+                        "documents": results[:20],
+                    }
+
+            # ── Case 5: Keyword search across all xml_documents ──
+            query_words = [w for w in re.split(r'[\s,;:?.!]+', query_lower) if len(w) >= 3]
+            # Hebrew prefix stripping
+            _HE_PREFIXES = ('וה', 'של', 'ל', 'ב', 'ה', 'ש', 'מ', 'כ', 'ו')
+            expanded = set(query_words)
+            for w in query_words:
+                for pfx in _HE_PREFIXES:
+                    if w.startswith(pfx) and len(w) - len(pfx) >= 2:
+                        expanded.add(w[len(pfx):])
+            query_words = list(expanded)
+
+            if query_words:
+                scored = []
+                for doc_id, data in all_docs:
+                    if category_filter and data.get("category") != category_filter:
+                        continue
+                    searchable = " ".join([
+                        data.get("title_he") or "",
+                        data.get("file_name") or "",
+                        data.get("category") or "",
+                        data.get("subcategory") or "",
+                        doc_id,
+                    ]).lower()
+                    # Also search in content for non-chunked docs
+                    content_text = ""
+                    if not data.get("is_chunked") and data.get("xml_content"):
+                        content_text = re.sub(r'<[^>]+>', ' ', data["xml_content"][:10000]).lower()
+                    hits = sum(1 for w in query_words if w in searchable) * 3
+                    hits += sum(1 for w in query_words if w in content_text)
+                    if hits > 0:
+                        scored.append((hits, doc_id, data))
+                scored.sort(key=lambda x: -x[0])
+
+                for _, doc_id, data in scored[:10]:
+                    title = data.get("title_he") or data.get("file_name") or doc_id
+                    entry = {
+                        "doc_id": doc_id,
+                        "title": title[:200],
+                        "category": data.get("category", ""),
+                        "subcategory": data.get("subcategory") or "",
+                        "page_count": data.get("page_count", 0),
+                        "language": data.get("language", ""),
+                    }
+                    if not data.get("is_chunked") and data.get("xml_content"):
+                        raw_text = re.sub(r'<[^>]+>', ' ', data["xml_content"])
+                        raw_text = re.sub(r'\s+', ' ', raw_text).strip()
+                        entry["text_excerpt"] = raw_text[:2000]
+                    results.append(entry)
+
+                if results:
+                    return {
+                        "found": True, "type": "keyword_search",
+                        "query": query,
+                        "count": len(results),
+                        "documents": results[:10],
+                        "suggestion": "Narrow results with category filter: fta, tariff_section, trade_agreement, fio, feo",
+                    }
+
+            return {
+                "found": False, "query": query,
+                "message": "No XML documents matched. Try: country name (eu, korea, turkey), "
+                           "tariff section (section XI), or category filter (fta, fio).",
+            }
         except Exception as e:
             return {"found": False, "error": str(e)}
 

@@ -1400,6 +1400,27 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         except Exception:
             pass
 
+    # ──── XML DOCUMENTS: FTA protocol text, tariff sections, amendments ────
+    # Search xml_documents when FTA or import/export requirements detected
+    if "FTA_ORIGIN" in domain_names or "IMPORT_EXPORT_REQUIREMENTS" in domain_names:
+        xml_query = origin or product_desc or body_text[:200]
+        xml_category = "fta" if "FTA_ORIGIN" in domain_names else None
+        if xml_query:
+            try:
+                xml_inp = {"query": xml_query}
+                if xml_category:
+                    xml_inp["category"] = xml_category
+                result = executor.execute("search_xml_documents", xml_inp)
+                if result and isinstance(result, dict) and result.get("found"):
+                    for doc in (result.get("documents") or [])[:3]:
+                        parts = [f"מסמך: {doc.get('title', doc.get('doc_id', ''))}"]
+                        if doc.get("text_excerpt"):
+                            parts.append(doc["text_excerpt"][:1000])
+                        context_parts.extend(parts)
+                    sources.append("xml_documents")
+            except Exception as e:
+                logger.warning(f"search_xml_documents error: {e}")
+
     # Build question text
     question = entities.get('product_description', '') or f"HS code {hs_code}" if hs_code else "customs question"
     context = "\n".join(context_parts) if context_parts else ""
@@ -1563,6 +1584,23 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
                 elif result.get('definition'):
                     context_parts.append(f"הגדרה (צו מסגרת): {result['definition'][:400]}")
                     sources.append("framework_order")
+        except Exception:
+            pass
+
+    # ──── XML DOCUMENTS: FTA protocol text, tariff sections ────
+    if should_search_fta or "IMPORT_EXPORT_REQUIREMENTS" in domain_names:
+        try:
+            xml_inp = {"query": question[:200]}
+            if should_search_fta:
+                xml_inp["category"] = "fta"
+            result = executor.execute("search_xml_documents", xml_inp)
+            if result and isinstance(result, dict) and result.get("found"):
+                for doc in (result.get("documents") or [])[:3]:
+                    parts = [f"מסמך: {doc.get('title', doc.get('doc_id', ''))}"]
+                    if doc.get("text_excerpt"):
+                        parts.append(doc["text_excerpt"][:1000])
+                    context_parts.extend(parts)
+                sources.append("xml_documents")
         except Exception:
             pass
 
