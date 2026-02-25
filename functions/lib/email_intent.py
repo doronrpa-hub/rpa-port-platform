@@ -1327,6 +1327,43 @@ def _fetch_domain_articles(detected_domains):
     return articles[:20]
 
 
+def _build_candidates_table_html(candidates, product_desc=""):
+    """Build an HTML table of tariff candidates for CUSTOMS_QUESTION replies.
+
+    Returns HTML string with table + clarification prompts, or empty string if no candidates.
+    """
+    if not candidates:
+        return ""
+
+    rows = []
+    for i, c in enumerate(candidates[:5], 1):
+        hs = c.get('hs_code', '?')
+        desc = c.get('description_he', c.get('description_en', ''))
+        duty = c.get('duty_rate', c.get('mfn_rate', '—'))
+        rows.append(
+            f'<tr><td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center">{i}</td>'
+            f'<td style="padding:6px 8px;border:1px solid #dee2e6;direction:ltr;font-family:monospace">{hs}</td>'
+            f'<td style="padding:6px 8px;border:1px solid #dee2e6">{desc[:120]}</td>'
+            f'<td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center">{duty}</td></tr>'
+        )
+
+    product_note = f'<p style="margin:0 0 8px 0;color:#495057">עבור: <strong>{product_desc[:80]}</strong></p>' if product_desc else ''
+
+    return f'''<div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;padding:12px;margin:10px 0;direction:rtl">
+    {product_note}
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="background:#e9ecef">
+            <th style="padding:6px 8px;border:1px solid #dee2e6">#</th>
+            <th style="padding:6px 8px;border:1px solid #dee2e6">פרט מכס</th>
+            <th style="padding:6px 8px;border:1px solid #dee2e6">תיאור מתעריף</th>
+            <th style="padding:6px 8px;border:1px solid #dee2e6">שיעור מכס</th>
+        </tr>
+        {"".join(rows)}
+    </table>
+    <p style="margin:8px 0 0 0;font-size:12px;color:#6c757d">לסיווג סופי, נא לספק: חומר גלם, שימוש מיועד, הרכב, ומדינת מקור.</p>
+</div>'''
+
+
 def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_secret_func):
     """Handle CUSTOMS_QUESTION — domain-aware routing + Firestore tools + AI composition.
 
@@ -1372,6 +1409,7 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     # Search based on entities (tariff, regulatory)
     hs_code = entities.get('hs_code')
     product_desc = entities.get('product_description', '')
+    tariff_candidates = []
 
     if product_desc or hs_code:
         try:
@@ -1379,7 +1417,8 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
                 "item_description": product_desc or hs_code or "",
             })
             if result.get('candidates'):
-                for c in result['candidates'][:3]:
+                tariff_candidates = result['candidates'][:5]
+                for c in tariff_candidates[:3]:
                     ctx = f"HS {c.get('hs_code', '?')}: {c.get('description_he', c.get('description_en', ''))}"
                     context_parts.append(ctx)
                 sources.append("tariff")
@@ -1473,6 +1512,11 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
 
     reply_html = _wrap_html_rtl(reply_text)
 
+    # Append structured candidates table if tariff results found
+    candidates_html = _build_candidates_table_html(tariff_candidates, product_desc)
+    if candidates_html:
+        reply_html = reply_html + candidates_html
+
     # Build RCB-branded subject with tracking code
     tracking_code = _generate_query_tracking_code()
     topic_preview = (body_text or subject or question or "שאלה")[:40].strip()
@@ -1483,6 +1527,8 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         reply_subject = f"RCB | {tracking_code} | {topic_preview}"
     sent = _send_reply_safe(reply_html, msg, access_token, rcb_email,
                             subject_override=reply_subject)
+    if not sent:
+        logger.warning(f"CUSTOMS_QUESTION reply send failed for {msg.get('from', {}).get('emailAddress', {}).get('address', '?')} — subject: {reply_subject}")
 
     return {
         "status": "replied" if sent else "send_failed",
@@ -1721,6 +1767,8 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
         reply_subject = f"RCB | {tracking_code} | {topic_preview}"
     sent = _send_reply_safe(reply_html, msg, access_token, rcb_email,
                             subject_override=reply_subject)
+    if not sent:
+        logger.warning(f"KNOWLEDGE_QUERY reply send failed for {msg.get('from', {}).get('emailAddress', {}).get('address', '?')} — subject: {reply_subject}")
 
     return {
         "status": "replied" if sent else "send_failed",

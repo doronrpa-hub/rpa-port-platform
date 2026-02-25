@@ -1710,12 +1710,12 @@ def _build_unclassified_banner(items):
                 item_list += f"<li>{desc[:100]}</li>"
     items_html = f"<ul>{item_list}</ul>" if item_list else ""
 
-    return f'''<div style="background:#f8d7da;border:2px solid #dc3545;border-radius:5px;padding:20px;margin-bottom:20px">
-        <h3 style="color:#721c24;margin:0">⚠️ לא הצלחנו לסווג את הפריטים</h3>
-        <p style="color:#721c24;margin:10px 0 0 0">המערכת לא הצליחה לקבוע קודי HS עבור הפריטים שלהלן.
-        יש לספק תיאור מפורט יותר של המוצרים, כולל: חומר גלם, שימוש מיועד, הרכב.</p>
+    return f'''<div style="background:#fff3cd;border:2px solid #ffc107;border-radius:5px;padding:20px;margin-bottom:20px">
+        <h3 style="color:#856404;margin:0">⚠️ נדרש מידע נוסף לסיווג מדויק</h3>
+        <p style="color:#856404;margin:10px 0 0 0">כדי לסווג את הפריטים, נא לספק תיאור מפורט הכולל:
+        חומר גלם, שימוש מיועד, הרכב, ומשקל/נפח.</p>
         {items_html}
-        <p style="color:#721c24;margin:10px 0 0 0"><strong>אנא השיבו עם מידע נוסף ונחזור עם סיווג.</strong></p>
+        <p style="color:#856404;margin:10px 0 0 0"><strong>נא להשיב למייל זה עם המידע הנוסף ונחזור עם סיווג מלא.</strong></p>
     </div>'''
 
 

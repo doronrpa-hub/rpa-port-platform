@@ -990,14 +990,22 @@ def _rcb_check_email_inner(event) -> None:
                 intent_result = process_email_intent(
                     msg, get_db(), firestore, access_token, rcb_email, get_secret
                 )
-                if intent_result.get('status') in ('replied', 'cache_hit', 'clarification_sent'):
-                    print(f"  🧠 Email intent handled: {intent_result.get('intent')}")
+                _intent_name = intent_result.get('intent', 'NONE')
+                _intent_status = intent_result.get('status', '')
+                # If a real intent was detected AND it's not a classify instruction, NEVER fall through
+                if _intent_name not in ('NONE', '') and not (
+                    _intent_name == 'INSTRUCTION' and intent_result.get('action') == 'classify'
+                ):
+                    if _intent_status in ('replied', 'cache_hit', 'clarification_sent'):
+                        print(f"  🧠 Email intent handled: {_intent_name} (status={_intent_status})")
+                    else:
+                        print(f"  🧠 Email intent detected: {_intent_name} but status={_intent_status} — skipping classification")
                     helper_graph_mark_read(access_token, rcb_email, msg_id)
                     get_db().collection("rcb_processed").document(safe_id).set({
                         "processed_at": firestore.SERVER_TIMESTAMP,
                         "subject": subject,
                         "from": from_email,
-                        "type": f"intent_{intent_result.get('intent', 'unknown')}",
+                        "type": f"intent_{_intent_name}",
                     })
                     continue
                 # INSTRUCTION intent with action='classify' → fall through to classification

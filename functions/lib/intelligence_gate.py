@@ -387,6 +387,12 @@ BANNED_PHRASES = [
     "unclassifiable",
     "לא ניתן לסווג",
     "לא ניתן לקבוע",
+    "לא הצלחנו לסווג",
+    "לא הצלחנו לקבוע",
+    "אין מספיק מידע",
+    "פנה ליועץ מכס",
+    "פנו ליועץ מכס",
+    "consult a customs agent",
     # The existing footer disclaimer that contradicts our identity
     "יש לאמת עם עמיל מכס מוסמך",
 ]
