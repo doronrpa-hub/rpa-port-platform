@@ -60,12 +60,12 @@ class TestDetectCustomsDomain:
         assert "IP_ENFORCEMENT" in domains
 
     def test_ip_returns_articles_200(self):
-        """IP detection should include articles 200א-200יד."""
+        """IP detection should include articles 200א-200ה (actual IP chapter)."""
         result = detect_customs_domain("זיוף סימן מסחר")
         ip_domain = [d for d in result if d["domain"] == "IP_ENFORCEMENT"][0]
         assert "200א" in ip_domain["source_articles"]
-        assert "200יד" in ip_domain["source_articles"]
-        assert len(ip_domain["source_articles"]) == 14
+        assert "200ה" in ip_domain["source_articles"]
+        assert len(ip_domain["source_articles"]) == 5
 
     # ── VALUATION ──
 
@@ -311,19 +311,18 @@ class TestDomainDetectionEndToEnd:
     """End-to-end: text → domain → articles → context."""
 
     def test_nike_counterfeit_gets_ip_articles(self):
-        """The spec's example: Nike counterfeit detained → articles 200א-200יד."""
+        """The spec's example: Nike counterfeit detained → articles 200א-200ה."""
         text = "יש לי יבואן שהביא מכולה ובה בגדים של Nike, במכס עיכבו בטענה שמדובר בזיוף"
         domains = detect_customs_domain(text)
         ip_domains = [d for d in domains if d["domain"] == "IP_ENFORCEMENT"]
         assert len(ip_domains) == 1
 
         articles = get_articles_by_domain(ip_domains[0])
-        assert len(articles) >= 7  # Should get most/all IP articles
+        assert len(articles) == 5  # 200א-200ה (actual IP chapter)
         art_ids = [a["article_id"] for a in articles]
-        # The key articles that answer the question:
-        assert "200ב" in art_ids  # Request by rights holder
-        assert "200ג" in art_ids  # Customs authority to detain
-        assert "200ו" in art_ids  # Release if no action
+        assert "200א" in art_ids  # Main IP detention power (3-day detention, bank guarantee, 10-day suit)
+        assert "200ב" in art_ids  # Guarantee release procedures
+        assert "200ג" in art_ids  # Infringing goods = prohibited imports
 
     def test_valuation_question_gets_130_136(self):
         """Valuation question → articles 130-136."""

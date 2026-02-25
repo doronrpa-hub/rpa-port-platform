@@ -169,6 +169,7 @@ class ToolExecutor:
         self._wikipedia_cache = {}         # query_key -> wikipedia result (per-request)
         self._ext_cache = {}               # shared cache for tools #15-20 (per-request)
         self._overnight_mode = False       # set True by overnight_brain for Comtrade access
+        self._xml_docs_cache = None        # per-request cache for xml_documents (231 docs)
         # Stats
         self._stats = {}
 
@@ -1291,15 +1292,12 @@ class ToolExecutor:
         except Exception as e:
             return {"found": False, "error": str(e)}
 
-    # ── Per-request cache for xml_documents ──
-    _xml_docs_cache = None
-
     def _get_xml_documents(self):
         """Lazy-load xml_documents collection (per-request cache)."""
         if self._xml_docs_cache is not None:
             return self._xml_docs_cache
         try:
-            docs = self._db.collection("xml_documents").stream()
+            docs = self.db.collection("xml_documents").stream()
             self._xml_docs_cache = [(doc.id, doc.to_dict()) for doc in docs]
         except Exception:
             self._xml_docs_cache = []
