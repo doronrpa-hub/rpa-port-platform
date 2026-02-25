@@ -32,26 +32,25 @@ ADMIN_EMAIL = "doron@rpa-port.co.il"
 TEAM_DOMAIN = "rpa-port.co.il"
 
 REPLY_SYSTEM_PROMPT = (
-    "אתה RCB — מערכת מידע מכס של ר.פ.א פורט בע\"מ, עמיל מכס מורשה.\n\n"
-    "*** הוראה עליונה — חובה לציית ***\n"
-    "אתה עונה אך ורק מתוך המקורות המשפטיים שסופקו להלן.\n"
-    "אל תשתמש בידע האימון שלך על דיני מכס ישראליים. אם ההקשר למטה מכיל\n"
-    "סעיפים רלוונטיים מפקודת המכס, חובה לצטט אותם לפי מספר ולצטט את נוסחם.\n"
-    "אם אינך יכול לענות מתוך ההקשר שסופק בלבד — אמור זאת. אל תמציא תשובה.\n\n"
-    "קריטי: סעיפים 200א–200יד לפקודת המכס עוסקים באכיפת קניין רוחני במכס.\n"
-    "אם השאלה נוגעת לזיוף, קניין רוחני, סימני מסחר, זכויות יוצרים, או מותגים —\n"
-    "סעיפים אלה הם התשובה. אל תכתוב שפקודת המכס אינה עוסקת בכך.\n\n"
-    "כללים מחייבים — חובה לציית:\n"
-    "1. כאשר יש לך נוסח סעיף מפקודת המכס או מצו המסגרת — חובה לצטט אותו מילה במילה "
-    "בעברית בגוף התשובה. השתמש בפורמט:\n"
+    "אתה RCB — מערכת מידע מכס של ר.פ.א פורט בע\"מ, עמיל מכס מורשה.\n"
+    "אנחנו עמיל המכס. לעולם אל תכתוב 'מומלץ לפנות לעמיל מכס'.\n\n"
+    "*** מבנה התשובה — חובה לעקוב ***\n"
+    "כל תשובה חייבת להיות בדיוק במבנה הזה:\n\n"
+    "1. תשובה ישירה (2-3 משפטים בעברית — ענה על השאלה ישירות)\n"
+    "2. ציטוט מהחוק (צטט מילה במילה את הסעיפים הרלוונטיים מהמקורות שסופקו):\n"
     "   «סעיף X לפקודת המכס: [ציטוט מלא בעברית]»\n"
-    "   «סעיף X לצו המסגרת: [ציטוט מלא בעברית]»\n"
-    "   אל תסכם, אל תפרפרז — צטט את הנוסח המקורי כמו שהוא.\n"
-    "2. אם מספר סעיפים רלוונטיים, צטט את העיקריים (עד 3) ותמצת את השאר.\n"
-    "3. לאחר הציטוט, הוסף הסבר קצר בשפה פשוטה.\n"
-    "4. אנחנו עמיל המכס — לעולם אל תכתוב 'מומלץ לפנות לעמיל מכס' או ביטויים דומים.\n"
-    "5. לעולם אל תמציא מידע, קודי HS או נוסח חוק. השתמש רק במה שסופק.\n"
-    "6. ענה בעברית מקצועית, תמציתית ומדויקת.\n"
+    "   אם יש מספר סעיפים רלוונטיים — צטט את כולם (עד 5). אל תדלג.\n"
+    "3. הסבר בעברית פשוטה (הסבר מה הסעיף אומר בפועל, כמו שמסבירים ללקוח)\n"
+    "4. מידע נוסף (לוחות זמנים, שיעורי מכס, דרישות, צעדים מעשיים — אם רלוונטי)\n"
+    "5. English Summary (תרגום קצר לאנגלית, 3-5 משפטים, מופרד בקו)\n\n"
+    "*** כללים מחייבים ***\n"
+    "- ענה בעברית RTL. אנגלית רק בסעיף 5 בתחתית.\n"
+    "- השתמש אך ורק במקורות שסופקו. אל תמציא מידע, קודי HS או נוסח חוק.\n"
+    "- אם סעיפים סופקו בהקשר — חובה לצטט אותם. לעולם אל תתעלם מהמקורות.\n"
+    "- אם ההקשר מכיל סעיפי IP (200א-200ה) — אלה עוסקים באכיפת קניין רוחני.\n"
+    "  אל תכתוב שפקודת המכס אינה עוסקת בכך.\n"
+    "- אם אין מקור חוקי ספציפי — ציין: 'לא נמצא מקור חוקי ספציפי במערכת'\n"
+    "- כתוב בשפה פשוטה ומקצועית. לא ז'רגון משפטי יבש.\n"
     "מונחים: עמיל מכס / סוכן מכס — לעולם לא מתווך מכס."
 )
 
@@ -585,7 +584,9 @@ def _call_chatgpt(api_key, context, question, max_tokens=1500):
                         "=== מקורות משפטיים מוסמכים (ענה רק מתוכם) ===\n"
                         f"{context}\n"
                         "=== סוף מקורות ===\n"
-                        "ענה רק על בסיס המקורות למעלה. אם יש סעיפים — צטט אותם.")},
+                        "עקוב אחרי מבנה התשובה: 1) תשובה ישירה 2) ציטוט מילה במילה מהסעיפים "
+                        "3) הסבר בעברית פשוטה 4) מידע נוסף 5) English Summary.\n"
+                        "צטט את כל הסעיפים הרלוונטיים מהמקורות, לא רק אחד.")},
                 ],
                 "max_tokens": max_tokens,
                 "temperature": 0.3,
@@ -608,7 +609,9 @@ def _call_gemini_flash(gemini_key, context, question):
         "=== מקורות משפטיים מוסמכים (ענה רק מתוכם) ===\n"
         f"{context}\n"
         "=== סוף מקורות ===\n"
-        "ענה רק על בסיס המקורות למעלה. אם יש סעיפים — צטט אותם."
+        "עקוב אחרי מבנה התשובה: 1) תשובה ישירה 2) ציטוט מילה במילה מהסעיפים "
+        "3) הסבר בעברית פשוטה 4) מידע נוסף 5) English Summary.\n"
+        "צטט את כל הסעיפים הרלוונטיים מהמקורות, לא רק אחד."
     )
     try:
         resp = _requests.post(
@@ -627,12 +630,46 @@ def _call_gemini_flash(gemini_key, context, question):
 
 
 def _template_reply(context):
-    """Template-based reply when no AI is available."""
+    """Template-based reply when no AI is available.
+
+    Structures the raw context into a readable Hebrew reply following
+    the 5-section format: answer, citation, explanation, additional info, English.
+    """
     if not context:
-        return "לא נמצא מידע רלוונטי במערכת. אנא פנה לצוות המכס לסיוע נוסף."
-    # Trim context to reasonable length
-    ctx = context[:800] if len(context) > 800 else context
-    return f"להלן המידע שנמצא במערכת:\n\n{ctx}\n\nלפרטים נוספים, אנא פנה לצוות."
+        return "לא נמצא מידע רלוונטי במערכת לשאלה זו."
+    # Extract article sections from context
+    lines = context.split('\n')
+    article_blocks = []
+    other_lines = []
+    current_block = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if current_block:
+                article_blocks.append('\n'.join(current_block))
+                current_block = []
+            continue
+        if re.search(r'^סעיף \d', stripped) or stripped.startswith('נוסח הסעיף'):
+            current_block.append(stripped)
+        elif current_block:
+            current_block.append(stripped)
+        else:
+            other_lines.append(stripped)
+    if current_block:
+        article_blocks.append('\n'.join(current_block))
+
+    parts = []
+    if article_blocks:
+        parts.append("להלן הסעיפים הרלוונטיים מפקודת המכס:\n")
+        for block in article_blocks:
+            # Cap each article at 1500 chars to fit multiple articles
+            parts.append(block[:1500])
+            parts.append("")  # blank line separator
+    if other_lines:
+        parts.append("מידע נוסף:")
+        for line in other_lines[:10]:
+            parts.append(f"• {line[:300]}")
+    return '\n'.join(parts)
 
 
 def _validate_reply_uses_context(reply_text, context):
@@ -1490,13 +1527,17 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     # ──── TARGETED ARTICLE RETRIEVAL (by domain) ────
     domain_articles = _fetch_domain_articles(detected_domains)
     if domain_articles:
+        # Budget: distribute text space across all articles
+        n_articles = len(domain_articles)
+        chars_per_article = max(500, 6000 // max(n_articles, 1))
         for art in domain_articles:
             parts = [f"סעיף {art['article_id']}: {art['title_he']}"]
             if art.get("summary_en"):
-                parts.append(art["summary_en"][:300])
+                parts.append(art["summary_en"][:200])
             if art.get("full_text_he"):
-                parts.append(f"נוסח הסעיף:\n{art['full_text_he'][:2000]}")
+                parts.append(f"נוסח הסעיף:\n{art['full_text_he'][:chars_per_article]}")
             context_parts.extend(parts)
+            context_parts.append("")  # blank line separator between articles
         sources.append("ordinance_targeted")
         print(f"  🎯 Domain routing: {domain_names} → {len(domain_articles)} targeted articles")
 
@@ -1506,6 +1547,7 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     should_search_fta = "FTA_ORIGIN" in domain_names or not detected_domains
     should_search_directives = "CLASSIFICATION" in domain_names or not detected_domains
     should_search_framework = "FTA_ORIGIN" in domain_names or "PROCEDURES" in domain_names or not detected_domains
+    should_search_regulatory = "IMPORT_EXPORT_REQUIREMENTS" in domain_names or "CLASSIFICATION" in domain_names
 
     # Search tariff (for CLASSIFICATION domain or fallback)
     if should_search_tariff:
@@ -1587,20 +1629,54 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
         except Exception:
             pass
 
-    # ──── XML DOCUMENTS: FTA protocol text, tariff sections ────
-    if should_search_fta or "IMPORT_EXPORT_REQUIREMENTS" in domain_names:
+    # Search regulatory (for IMPORT_EXPORT_REQUIREMENTS or CLASSIFICATION)
+    if should_search_regulatory:
         try:
-            xml_inp = {"query": question[:200]}
-            if should_search_fta:
-                xml_inp["category"] = "fta"
+            # Try to extract an HS code from tariff results or question
+            hs_match = re.search(r'\b(\d{4})[.\s]?(\d{2})', question)
+            if hs_match:
+                hs_code = hs_match.group(1) + hs_match.group(2)
+                result = executor.execute("check_regulatory", {"hs_code": hs_code})
+                if result and isinstance(result, dict):
+                    reqs = result.get('requirements', [])
+                    if reqs:
+                        context_parts.append(f"דרישות יבוא עבור {hs_code}:")
+                        for req in reqs[:5]:
+                            context_parts.append(f"  • {req.get('authority', '')} — {req.get('requirement', '')}")
+                        sources.append("free_import_order")
+        except Exception:
+            pass
+
+    # ──── XML DOCUMENTS: search for all domains ────
+    # Map domains to xml_documents categories where applicable
+    _xml_category_map = {
+        "FTA_ORIGIN": "fta",
+        "CLASSIFICATION": "tariff",
+        "VALUATION": "legal",
+        "PROCEDURES": "legal",
+        "IP_ENFORCEMENT": "legal",
+        "IMPORT_EXPORT_REQUIREMENTS": "regulatory",
+        "FORFEITURE_PENALTIES": "legal",
+    }
+    xml_categories = set()
+    for dn in domain_names:
+        cat = _xml_category_map.get(dn)
+        if cat:
+            xml_categories.add(cat)
+    if not xml_categories and not domain_articles:
+        xml_categories.add("legal")  # fallback
+    for cat in xml_categories:
+        try:
+            xml_inp = {"query": question[:200], "category": cat}
             result = executor.execute("search_xml_documents", xml_inp)
             if result and isinstance(result, dict) and result.get("found"):
-                for doc in (result.get("documents") or [])[:3]:
+                for doc in (result.get("documents") or [])[:2]:
                     parts = [f"מסמך: {doc.get('title', doc.get('doc_id', ''))}"]
                     if doc.get("text_excerpt"):
-                        parts.append(doc["text_excerpt"][:1000])
+                        parts.append(doc["text_excerpt"][:800])
                     context_parts.extend(parts)
-                sources.append("xml_documents")
+                if "xml_documents" not in sources:
+                    sources.append("xml_documents")
         except Exception:
             pass
 

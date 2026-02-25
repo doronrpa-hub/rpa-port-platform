@@ -572,9 +572,12 @@ CUSTOMS_DOMAINS = {
     "FTA_ORIGIN": {
         "keywords_he": ["הסכם סחר", "מקור", "תעודת מקור", "העדפה", "הנחה",
                          "אזור סחר", "כללי מקור", "צבירה", "יצואן מאושר",
-                         "חשבון הצהרה", "צו מסגרת", "תוספת ראשונה", "תוספת שניה"],
+                         "חשבון הצהרה", "צו מסגרת", "תוספת ראשונה", "תוספת שניה",
+                         "האיחוד האירופי", "אירופי", "שיעור המכס", "שיעור מכס",
+                         "מכס מופחת", "פטור ממכס", "הסכם"],
         "keywords_en": ["fta", "free trade", "origin", "preferential", "eur.1",
-                         "certificate of origin", "cumulation", "framework order"],
+                         "certificate of origin", "cumulation", "framework order",
+                         "eu", "european union", "duty rate"],
         "source_articles": [],  # Ordinance articles — none for FTA
         "source_fw_articles": [  # Framework Order (צו מסגרת) articles
             "01", "02", "03", "04", "05", "06", "06א", "07", "08", "09",
@@ -587,7 +590,8 @@ CUSTOMS_DOMAINS = {
     "IMPORT_EXPORT_REQUIREMENTS": {
         "keywords_he": ["רישיון", "היתר", "אישור", "צו יבוא", "צו יצוא",
                          "תוספת", "דרישה", "הגבלה", "תקן", "בדיקה",
-                         "מכון התקנים"],
+                         "מכון התקנים", "לייבא", "ייבוא", "לייצא", "ייצוא",
+                         "מה צריך", "מה נדרש"],
         "keywords_en": ["license", "permit", "approval", "import order",
                          "export order", "restricted", "prohibited",
                          "requirement", "standard"],
