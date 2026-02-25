@@ -134,6 +134,13 @@ CUSTOMS_Q_PATTERNS = [
         r'(?:how\s*(?:much|to)\s*(?:duty|import|clear))',
         r'(?:כמה\s*מכס|איך\s*(?:ליבא|לשחרר|לסווג))',
         r'\b\d{4}\.\d{2}(?:\.\d{2,4})?\b',
+        # Product-specific customs patterns
+        r'(?:פרט\s*(?:ה?מכס|מכסי)|שיעור\s*(?:ה?מכס|מכסי))',
+        r'(?:מה\s*(?:פרט|שיעור)\s*(?:ה?מכס|מכסי))',
+        r'(?:מה\s*(?:צריך|נדרש)\s*(?:כדי\s*)?(?:ליבא|לייבא|ליצא|לייצא))',
+        r'(?:(?:ליבא|לייבא|ליצא|לייצא)\s+.{3,}?\s*(?:ל?ישראל|\?))',
+        r'(?:יבוא\s+.{3,}\s*(?:מ|מה|ל?ישראל))',
+        r'(?:מכס\s+על\s+(?:יבוא|ייבוא|יצוא|ייצוא))',
     ]
 ]
 
@@ -382,10 +389,43 @@ def _extract_customs_entities(text):
     hs_match = re.search(r'\b(\d{4}\.\d{2}(?:\.\d{2,4})?)\b', text)
     if hs_match:
         entities['hs_code'] = hs_match.group(1)
-    # Product description — text after "for" or "של" or "עבור"
-    desc_match = re.search(r'(?:for|של|עבור|on)\s+(.{5,80}?)(?:\?|$|\.)', text, re.IGNORECASE)
-    if desc_match:
-        entities['product_description'] = desc_match.group(1).strip()
+    # Product description — text after common prepositions/patterns (Hebrew + English)
+    # Priority order: most specific patterns first
+    desc_patterns = [
+        # "פרט המכס ל..." / "מכס על..."
+        r'(?:פרט\s*(?:ה?מכס|מכסי)\s*(?:ל|של|על)\s*)(.{3,80}?)(?:\?|$|\.)',
+        # "שיעור המכס על יבוא..."
+        r'(?:שיעור\s*(?:ה?מכס|מכסי)\s*(?:על|ל)\s*(?:יבוא|ייבוא)?\s*)(.{3,80}?)(?:\?|$|\.)',
+        # "לייבא/ליצא X"
+        r'(?:ליבא|לייבא|ליצא|לייצא)\s+(.{3,80}?)(?:\s*(?:ל?ישראל|מ\S+)?\s*(?:\?|$|\.))',
+        # "יבוא X מ..."
+        r'(?:יבוא|ייבוא|יצוא|ייצוא)\s+(.{3,60}?)(?:\s*(?:מ|ל)\S*\s*(?:\?|$|\.))',
+        # "מכס על יבוא X"
+        r'(?:מכס\s+על\s+(?:יבוא|ייבוא)?\s*)(.{3,60}?)(?:\s*(?:מ|ל)\S*\s*(?:\?|$|\.))',
+        # "של X" / "עבור X" / "for X" / "on X"
+        r'(?:for|של|עבור|on)\s+(.{5,80}?)(?:\?|$|\.)',
+        # "סיווג X" / "לסווג X"
+        r'(?:סיווג|לסווג|הסיווג\s+(?:של|ל))\s+(.{3,80}?)(?:\?|$|\.)',
+    ]
+    for pat in desc_patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            desc = m.group(1).strip().rstrip('?.,! ')
+            # Skip if it's just a country name (< 3 words, common country pattern)
+            if desc and len(desc) > 2:
+                entities['product_description'] = desc
+                break
+
+    # Fallback: extract product from "יבוא/מכס" context in the full text
+    if not entities.get('product_description'):
+        # Try extracting the core product noun from the question
+        fb_match = re.search(
+            r'(?:מה\s+(?:צריך|נדרש)\s+(?:כדי\s+)?(?:ליבא|לייבא)\s+)(.{3,60}?)(?:\s*(?:ל|מ)\S*\s*)?(?:\?|$|\.)',
+            text, re.IGNORECASE
+        )
+        if fb_match:
+            entities['product_description'] = fb_match.group(1).strip().rstrip('?.,! ')
+
     return entities
 
 
@@ -1349,18 +1389,141 @@ def _build_candidates_table_html(candidates, product_desc=""):
 
     product_note = f'<p style="margin:0 0 8px 0;color:#495057">עבור: <strong>{product_desc[:80]}</strong></p>' if product_desc else ''
 
+    # Product-specific clarification questions
+    clarification = _build_clarification_html(product_desc)
+
     return f'''<div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;padding:12px;margin:10px 0;direction:rtl">
+    <p style="margin:0 0 8px 0;font-weight:bold;color:#1B4F72">פרטי מכס אפשריים:</p>
     {product_note}
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <tr style="background:#e9ecef">
-            <th style="padding:6px 8px;border:1px solid #dee2e6">#</th>
-            <th style="padding:6px 8px;border:1px solid #dee2e6">פרט מכס</th>
-            <th style="padding:6px 8px;border:1px solid #dee2e6">תיאור מתעריף</th>
-            <th style="padding:6px 8px;border:1px solid #dee2e6">שיעור מכס</th>
+    <table dir="rtl" style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="background:#1B4F72;color:white">
+            <th style="padding:8px;border:1px solid #ddd">#</th>
+            <th style="padding:8px;border:1px solid #ddd">פרט מכס</th>
+            <th style="padding:8px;border:1px solid #ddd">תיאור מתעריף</th>
+            <th style="padding:8px;border:1px solid #ddd">שיעור מכס</th>
         </tr>
         {"".join(rows)}
     </table>
-    <p style="margin:8px 0 0 0;font-size:12px;color:#6c757d">לסיווג סופי, נא לספק: חומר גלם, שימוש מיועד, הרכב, ומדינת מקור.</p>
+    {clarification}
+</div>'''
+
+
+def _build_clarification_html(product_desc=""):
+    """Build product-specific clarification questions HTML."""
+    pd = (product_desc or "").lower()
+
+    # Default questions
+    questions = [
+        "חומר גלם (פלסטיק/מתכת/עץ/בד/אחר)",
+        "שימוש מיועד",
+        "מדינת מקור",
+    ]
+
+    # Product-specific questions
+    if any(w in pd for w in ["קפה", "coffee", "אספרסו", "espresso"]):
+        questions = [
+            "סוג המכונה — אספרסו/פילטר/קפסולות?",
+            "ביתית או מסחרית/תעשייתית?",
+            "עם מטחנה מובנית?",
+            "מדינת מקור",
+        ]
+    elif any(w in pd for w in ["צעצוע", "toy", "משחק", "בובה", "game"]):
+        questions = [
+            "סוג הצעצוע — בובה/משחק לוח/אלקטרוני/פלסטיק?",
+            "חומר — פלסטיק/עץ/מתכת/בד?",
+            "גיל יעד",
+            "מדינת מקור",
+        ]
+    elif any(w in pd for w in ["גבינה", "cheese", "חלב", "milk", "dairy"]):
+        questions = [
+            "סוג הגבינה — קשה/רכה/מעובדת/טרייה?",
+            "אחוז שומן",
+            "מדינת מקור (לבדיקת הסכם סחר)",
+            "האם יש תעודת מקור EUR.1 או חשבון הצהרה?",
+        ]
+    elif any(w in pd for w in ["רכב", "car", "vehicle", "מכונית"]):
+        questions = [
+            "סוג — נוסעים/מסחרי/חשמלי?",
+            "נפח מנוע (סמ\"ק)",
+            "חדש או משומש?",
+            "מדינת ייצור",
+        ]
+    elif any(w in pd for w in ["בגד", "cloth", "textile", "בד", "shirt", "חולצה"]):
+        questions = [
+            "סוג הבגד",
+            "חומר — כותנה/פוליאסטר/צמר/תערובת?",
+            "לגברים/נשים/ילדים?",
+            "סרוג או ארוג?",
+        ]
+
+    q_lines = "".join(f"<br>{i}. {q}" for i, q in enumerate(questions, 1))
+
+    return f'''<div dir="rtl" style="background:#FFF3CD;padding:10px;border-radius:5px;margin:10px 0 0 0;font-size:13px">
+    <strong>לסיווג מדויק, אנא פרט:</strong>{q_lines}
+</div>'''
+
+
+def _build_fta_info_html(fta_result, tariff_candidates=None, product_desc=""):
+    """Build FTA info HTML section for questions about preferential rates.
+
+    Shows: agreement name, origin proof, preferential rate, and origin requirement note.
+    """
+    if not fta_result or not isinstance(fta_result, dict) or not fta_result.get('eligible'):
+        return ""
+
+    rows = []
+    agreement = fta_result.get('agreement_name_he', fta_result.get('agreement_name', ''))
+    pref_rate = fta_result.get('preferential_rate', '—')
+    origin_proof = fta_result.get('origin_proof', '')
+    origin_proof_alt = fta_result.get('origin_proof_alt', '')
+
+    # Build rate comparison row if we have tariff candidates with duty rates
+    rate_rows = ""
+    if tariff_candidates:
+        for c in tariff_candidates[:3]:
+            hs = c.get('hs_code', '?')
+            desc = c.get('description_he', c.get('description_en', ''))[:80]
+            mfn = c.get('duty_rate', c.get('mfn_rate', '—'))
+            rate_rows += (
+                f'<tr>'
+                f'<td style="padding:6px 8px;border:1px solid #ddd;font-family:monospace;direction:ltr">{hs}</td>'
+                f'<td style="padding:6px 8px;border:1px solid #ddd">{desc}</td>'
+                f'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center">{mfn}</td>'
+                f'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;color:#155724;font-weight:bold">{pref_rate}</td>'
+                f'</tr>'
+            )
+
+    rate_table = ""
+    if rate_rows:
+        rate_table = f'''<table dir="rtl" style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">
+        <tr style="background:#1B4F72;color:white">
+            <th style="padding:8px;border:1px solid #ddd">פרט מכס</th>
+            <th style="padding:8px;border:1px solid #ddd">תיאור</th>
+            <th style="padding:8px;border:1px solid #ddd">מכס רגיל (MFN)</th>
+            <th style="padding:8px;border:1px solid #ddd">מכס {agreement or "העדפה"}</th>
+        </tr>
+        {rate_rows}
+    </table>'''
+
+    # Origin proof requirement
+    origin_note = ""
+    if origin_proof:
+        origin_note = f'<p style="margin:4px 0;font-size:13px">📄 <strong>תעודת מקור:</strong> {origin_proof}'
+        if origin_proof_alt:
+            origin_note += f' או {origin_proof_alt}'
+        origin_note += '</p>'
+
+    fw_clause = fta_result.get('framework_order_clause', {})
+    fw_text = ""
+    if fw_clause.get('clause_text'):
+        fw_text = f'<p style="margin:4px 0;font-size:12px;color:#495057">צו מסגרת: {fw_clause["clause_text"][:300]}</p>'
+
+    return f'''<div dir="rtl" style="background:#D4EDDA;border:1px solid #C3E6CB;border-radius:4px;padding:12px;margin:10px 0">
+    <p style="margin:0 0 8px 0;font-weight:bold;color:#155724">🌐 הסכם סחר חופשי: {agreement}</p>
+    {rate_table}
+    {origin_note}
+    <p style="margin:4px 0;font-size:13px">⚠️ <strong>תנאי:</strong> השיעור המופחת מותנה בהצגת תעודת מקור / חשבון הצהרה בעת השחרור</p>
+    {fw_text}
 </div>'''
 
 
@@ -1411,10 +1574,12 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     product_desc = entities.get('product_description', '')
     tariff_candidates = []
 
-    if product_desc or hs_code:
+    # ALWAYS search tariff — use product_desc, hs_code, or body text as fallback
+    tariff_query = product_desc or hs_code or body_text[:200]
+    if tariff_query:
         try:
             result = executor.execute("search_tariff", {
-                "item_description": product_desc or hs_code or "",
+                "item_description": tariff_query,
             })
             if result.get('candidates'):
                 tariff_candidates = result['candidates'][:5]
@@ -1453,6 +1618,7 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
 
     # Lookup FTA if origin country detected or FTA_ORIGIN domain matched
     origin = entities.get('origin_country', '')
+    fta_result = None
     if hs_code or origin or product_desc or "FTA_ORIGIN" in domain_names:
         try:
             result = executor.execute("lookup_fta", {
@@ -1460,6 +1626,7 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
                 "origin_country": origin or product_desc or body_text[:200],
             })
             if result and isinstance(result, dict) and result.get('eligible'):
+                fta_result = result
                 parts = []
                 if result.get('origin_proof'):
                     parts.append(f"תעודת מקור: {result['origin_proof']}")
@@ -1516,6 +1683,11 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     candidates_html = _build_candidates_table_html(tariff_candidates, product_desc)
     if candidates_html:
         reply_html = reply_html + candidates_html
+
+    # Append FTA info section if FTA result found
+    fta_html = _build_fta_info_html(fta_result, tariff_candidates, product_desc)
+    if fta_html:
+        reply_html = reply_html + fta_html
 
     # Build RCB-branded subject with tracking code
     tracking_code = _generate_query_tracking_code()
@@ -1596,11 +1768,15 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     should_search_regulatory = "IMPORT_EXPORT_REQUIREMENTS" in domain_names or "CLASSIFICATION" in domain_names
 
     # Search tariff (for CLASSIFICATION domain or fallback)
+    # ALWAYS search tariff for IMPORT_EXPORT_REQUIREMENTS too (need HS codes for permit lookup)
+    should_search_tariff = should_search_tariff or "IMPORT_EXPORT_REQUIREMENTS" in domain_names
+    tariff_candidates = []
     if should_search_tariff:
         try:
             result = executor.execute("search_tariff", {"item_description": question[:200]})
             if result.get('candidates'):
-                for c in result['candidates'][:3]:
+                tariff_candidates = result['candidates'][:5]
+                for c in tariff_candidates[:3]:
                     context_parts.append(f"HS {c.get('hs_code', '?')}: {c.get('description_he', '')}")
                 sources.append("tariff")
         except Exception:
@@ -1628,6 +1804,7 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
             pass
 
     # Lookup FTA agreements (for FTA_ORIGIN domain or fallback)
+    fta_result = None
     if should_search_fta:
         try:
             result = executor.execute("lookup_fta", {
@@ -1635,6 +1812,7 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
                 "origin_country": question[:200],
             })
             if result and isinstance(result, dict) and result.get('eligible'):
+                fta_result = result
                 parts = []
                 if result.get('agreement_name'):
                     parts.append(f"הסכם: {result.get('agreement_name_he', result['agreement_name'])}")
@@ -1756,6 +1934,24 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
             model = "template"
 
     reply_html = _wrap_html_rtl(reply_text)
+
+    # Append structured candidates table if tariff results found
+    # Extract product desc from question text for clarification context
+    _kq_product_desc = ""
+    _kq_pd_match = re.search(
+        r'(?:ליבא|לייבא|ליצא|לייצא|יבוא|סיווג|מכס\s+(?:על|ל))\s+(.{3,60}?)(?:\s*(?:ל|מ)\S*\s*)?(?:\?|$|\.)',
+        question, re.IGNORECASE
+    )
+    if _kq_pd_match:
+        _kq_product_desc = _kq_pd_match.group(1).strip().rstrip('?.,! ')
+    candidates_html = _build_candidates_table_html(tariff_candidates, _kq_product_desc)
+    if candidates_html:
+        reply_html = reply_html + candidates_html
+
+    # Append FTA info section if FTA result found
+    fta_html = _build_fta_info_html(fta_result, tariff_candidates, _kq_product_desc)
+    if fta_html:
+        reply_html = reply_html + fta_html
 
     # Build RCB-branded subject with tracking code
     tracking_code = _generate_query_tracking_code()

@@ -1,0 +1,122 @@
+[
+  {
+    "doc_id": "CiQIldwRk5idzHItjML0",
+    "timestamp": "2026-02-24T16:13:41.956472+00:00",
+    "approved": true,
+    "reason": "approved",
+    "recipient": "doron@rpa-port.co.il",
+    "subject": "RCB-Q-20260224-KD1O3 | SEA | CLARIFICATION"
+  },
+  {
+    "doc_id": "subj_6lJXF5X07lOQs57beorg_8561b660",
+    "timestamp": "2026-02-23T06:38:39.288055+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "",
+    "subject": "RCB | MEDUKE538112-MS | Export SEA LCL | 0/4 Sailed | Galina | YM WITNESS\nVOY"
+  },
+  {
+    "doc_id": "ed7mn9w2LDejVlo10OeK",
+    "timestamp": "2026-02-23T06:38:39.288055+00:00",
+    "approved": true,
+    "reason": "approved",
+    "recipient": "galina@rpa-port.co.il",
+    "subject": "RCB | MEDUKE538112-MS | Export SEA LCL | 0/4 Sailed | Galina | YM WITNESS\nVOY"
+  },
+  {
+    "doc_id": "dedup_6lJXF5X07lOQs57beorg_tracker_update",
+    "timestamp": "2026-02-23T06:38:39.288055+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "galina@rpa-port.co.il",
+    "subject": ""
+  },
+  {
+    "doc_id": "subj_bhsSfSEM0d1qEKsVf3ma_fe931015",
+    "timestamp": "2026-02-23T00:16:50.907598+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "",
+    "subject": "Import SEA FCL |"
+  },
+  {
+    "doc_id": "dedup_bhsSfSEM0d1qEKsVf3ma_tracker_update",
+    "timestamp": "2026-02-23T00:16:50.907598+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "DoNotReply@rpa-port.co.il",
+    "subject": ""
+  },
+  {
+    "doc_id": "ckWHsWmV82AGxo9v2nMu",
+    "timestamp": "2026-02-23T00:16:50.907598+00:00",
+    "approved": true,
+    "reason": "approved",
+    "recipient": "DoNotReply@rpa-port.co.il",
+    "subject": "Import SEA FCL |"
+  },
+  {
+    "doc_id": "ZWD71A4bBzJ7bKKZi9JP",
+    "timestamp": "2026-02-19T14:45:09.220525+00:00",
+    "approved": false,
+    "reason": "dedup_4h",
+    "recipient": "lubna@rpa-port.co.il",
+    "subject": "RCB | NO-REF | 0/0 Sailed | RMS MEL VOYAGE"
+  },
+  {
+    "doc_id": "rXz1mwEEdXWcDomHCUNv",
+    "timestamp": "2026-02-19T14:45:08.968887+00:00",
+    "approved": false,
+    "reason": "dedup_4h",
+    "recipient": "lubna@rpa-port.co.il",
+    "subject": "RCB | NO-REF | 0/0 Sailed | RMS MEL VOYAGE"
+  },
+  {
+    "doc_id": "subj_zTwOiyXrqEykNpDt0Ary_f4abfa18",
+    "timestamp": "2026-02-19T14:12:29.583807+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "",
+    "subject": "RCB | MEDURS100986 | 0/1 Released | MSC GRETA III"
+  },
+  {
+    "doc_id": "mjqwTVX84wm7HeUdagbe",
+    "timestamp": "2026-02-19T14:12:29.583807+00:00",
+    "approved": true,
+    "reason": "approved",
+    "recipient": "doron@rpa-port.co.il",
+    "subject": "RCB | MEDURS100986 | 0/1 Released | MSC GRETA III"
+  },
+  {
+    "doc_id": "dedup_zTwOiyXrqEykNpDt0Ary_tracker_update",
+    "timestamp": "2026-02-19T14:12:29.583807+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "doron@rpa-port.co.il",
+    "subject": ""
+  },
+  {
+    "doc_id": "uvXCFWmuJNLWnWkV71aB",
+    "timestamp": "2026-02-19T14:10:17.159655+00:00",
+    "approved": true,
+    "reason": "approved",
+    "recipient": "lubna@rpa-port.co.il",
+    "subject": "RCB | NO-REF | 0/0 Sailed | RMS MEL VOYAGE"
+  },
+  {
+    "doc_id": "subj_KBvezUWWCkbwlJ4xl2A9_b07e04e4",
+    "timestamp": "2026-02-19T14:10:17.159655+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "",
+    "subject": "RCB | NO-REF | 0/0 Sailed | RMS MEL VOYAGE"
+  },
+  {
+    "doc_id": "dedup_KBvezUWWCkbwlJ4xl2A9_tracker_update",
+    "timestamp": "2026-02-19T14:10:17.159655+00:00",
+    "approved": null,
+    "reason": "",
+    "recipient": "lubna@rpa-port.co.il",
+    "subject": ""
+  }
+]

@@ -1,0 +1,181 @@
+2026-02-23 09:15:05.507  🤖 RCB checking email via Graph API...
+2026-02-23 09:15:08.068  DEBUG:  from=doron@rpa-port.co.il is_direct=True
+2026-02-23 09:15:08.068  📬 Found 50 messages in last 2 days
+2026-02-23 09:15:08.189  📧 Processing:  from doron@rpa-port.co.il
+2026-02-23 09:15:08.523  📎 0 attachments
+2026-02-23 09:15:08.649  /workspace/lib/email_intent.py:512: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+2026-02-23 09:15:08.782  Rate limit check error: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/rpa-port-customs/firestore/indexes?create_composite=ClZwcm9qZWN0cy9ycGEtcG9ydC1jdXN0b21zL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9xdWVzdGlvbnNfbG9nL2luZGV4ZXMvXxABGg4KCmZyb21fZW1haWwQARoOCgpjcmVhdGVkX2F0EAEaDAoIX19uYW1lX18QAQ
+2026-02-23 09:15:08.899  🧠 INTELLIGENCE: Pre-classifying 'תוכל לספר לי על רפורמת מה שטוב לאירופה טוב לישראל ולהביא לי ' from ''
+2026-02-23 09:15:12.311  [TOOL] search_tariff completed in 3.4s
+2026-02-23 09:15:12.311  🧠 INTELLIGENCE: Top candidate HS 2204 (80% confidence, source: keyword_rule)
+2026-02-23 09:15:12.623  [TOOL] search_legal_knowledge completed in 0.3s
+2026-02-23 09:15:13.171  [TOOL] search_classification_directives completed in 0.5s
+2026-02-23 09:15:17.555  📧 Email BLOCKED by quality gate: generic_subject | to=doron@rpa-port.co.il subj=Re:
+2026-02-23 09:15:17.555  📧 Reply BLOCKED by quality gate: empty_subject | to=doron@rpa-port.co.il
+2026-02-23 09:15:17.697  🧠 Email intent handled: KNOWLEDGE_QUERY
+2026-02-23 09:15:18.298  DEBUG: ADMIRAL - EXPORT REEFER SCHEDU from=evgeny@carmelship.co.il is_direct=False
+2026-02-23 09:15:18.416  👁️ CC observation: ADMIRAL - EXPORT REEFER SCHEDULE 23/02/26   from evgeny@carmelship.co.il
+2026-02-23 09:15:18.532  🎓 PUPIL observing: ADMIRAL - EXPORT REEFER SCHEDULE 23/02/26   from evgeny@carmelship.co.il
+2026-02-23 09:15:18.890  📚 LIBRARIAN: Starting comprehensive search...
+2026-02-23 09:15:18.891  Searching product_index...
+2026-02-23 09:15:18.891  📚 Keywords: ['export', '23/02/26', 'נכבד', 'לוח', 'admiral']...
+2026-02-23 09:15:19.081  Searching tariff_chapters...
+2026-02-23 09:15:19.449  🔍 Searching tariff...
+2026-02-23 09:15:20.044  🔍 Searching hs_code_index...
+2026-02-23 09:15:20.336  🔍 Searching ministry_index...
+2026-02-23 09:15:20.502  🔍 Searching regulatory...
+2026-02-23 09:15:20.620  🔍 Searching regulatory_approvals...
+2026-02-23 09:15:20.748  🔍 Searching regulatory_certificates...
+2026-02-23 09:15:20.867  🔍 Searching licensing_knowledge...
+2026-02-23 09:15:22.434  🔍 Searching procedures...
+2026-02-23 09:15:22.904  🔍 Searching classification_rules...
+2026-02-23 09:15:23.057  🔍 Searching classification_knowledge...
+2026-02-23 09:15:23.346  🔍 Searching knowledge...
+2026-02-23 09:15:23.822  🔍 Searching knowledge_base...
+2026-02-23 09:15:24.481  🔍 Searching legal_references...
+2026-02-23 09:15:24.622  🔍 Searching legal_documents...
+2026-02-23 09:15:25.695  📚 Found 5 similar past classifications
+2026-02-23 09:15:25.848  📚 LIBRARIAN: Found 40 docs, confidence: medium
+2026-02-23 09:15:25.996  🎓 PUPIL: Stored observation obs_54d66cfea4d561bc84f42120b7ee5617 — 0 gaps found
+2026-02-23 09:15:26.631  🖼️ OCR on image: image002.png
+2026-02-23 09:15:28.351  🖼️ OCR on image: logonew_2279340b-d062-4b8f-93c4-b55e4cedea3f.jpg
+2026-02-23 09:15:28.507  📄 Extracting text from: לוח הפלגות יומי למכולות קירור אדמירל.pdf
+2026-02-23 09:15:29.158  ✅ pdfplumber extracted 1028 chars (quality: ok)
+2026-02-23 09:15:29.162  📊 Extraction summary: 3 files, 1935 total chars
+2026-02-23 09:15:29.163  📎 Tracker: extracted text from 3 attachments (1939 chars)
+2026-02-23 09:15:29.163  === לוח הפלגות יומי למכולות קירור אדמירל.pdf === (1149 chars) -> [DOCUMENT_ANALYSIS] [DATES_FOUND: 23/02/26, 02/03/26, 02/03/26, 25/02/26, 26/02/26] [BL_NUMBER: E] [...
+2026-02-23 09:15:29.163  === logonew_2279340b-d062-4b8f-93c4-b55e4cedea3f.jpg === (195 chars) -> [DOCUMENT_ANALYSIS] [BL_NUMBER: e] [/DOCUMENT_ANALYSIS]  כרמל שרותי ספנות בינלאומית (1992) בע"מ כנטג...
+2026-02-23 09:15:29.163  === image002.png === (464 chars) -> [DOCUMENT_ANALYSIS] [DATES_FOUND: 23/02/26, 02/03/26, 02/03/26, 25/02/26, 26/02/26] [/DOCUMENT_ANALY...
+2026-02-23 09:15:29.407  📊 Tracker: 3 table(s) from לוח הפלגות יומי למכולות קירור אדמירל.pdf
+2026-02-23 09:15:29.534  🧠 SelfLearning: Level 0 EXACT match for evgeny@carmelship.co.il
+2026-02-23 09:15:29.547  🧠 Tracker: brain EXACT match for evgeny@carmelship.co.il
+2026-02-23 09:15:29.905  ⚡ Gemini 429 quota exhausted — skipping Gemini for 60s
+2026-02-23 09:15:29.909  🏢 Tracker: agent=Carmel International → carrier=ADMIRAL
+2026-02-23 09:15:30.053  ❌ Tracker error: 400 Property extractions contains an invalid nested entity.
+2026-02-23 09:15:30.105  Traceback (most recent call last):
+2026-02-23 09:15:30.106  
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  grpc._channel._InactiveRpcError: <_InactiveRpcError of RPC that terminated with:
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/grpc/_channel.py", line 990, in _end_unary_response_blocking
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/grpc/_channel.py", line 1173, in with_call
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/grpc/_interceptor.py", line 314, in continuation
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/grpc/_channel.py", line 438, in result
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/grpc/_interceptor.py", line 331, in _with_call
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/grpc/_interceptor.py", line 276, in __call__
+2026-02-23 09:15:30.107  
+2026-02-23 09:15:30.107  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 55, in error_remapped_callable
+2026-02-23 09:15:30.108  
+2026-02-23 09:15:30.108  Traceback (most recent call last):
+2026-02-23 09:15:30.108  
+2026-02-23 09:15:30.108  
+2026-02-23 09:15:30.109  
+2026-02-23 09:15:30.109  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/gapic_v1/method.py", line 128, in __call__
+2026-02-23 09:15:30.109  
+2026-02-23 09:15:30.109  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/cloud/firestore_v1/services/firestore/client.py", line 1450, in commit
+2026-02-23 09:15:30.109  
+2026-02-23 09:15:30.109  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/cloud/firestore_v1/batch.py", line 61, in commit
+2026-02-23 09:15:30.109  
+2026-02-23 09:15:30.109  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/cloud/firestore_v1/document.py", line 167, in set
+2026-02-23 09:15:30.109  
+2026-02-23 09:15:30.109  File "/workspace/lib/tracker.py", line 516, in tracker_process_email
+2026-02-23 09:15:30.110  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/retry/retry_base.py", line 216, in _retry_error_helper
+2026-02-23 09:15:30.110  
+2026-02-23 09:15:30.110  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+2026-02-23 09:15:30.110  
+2026-02-23 09:15:30.110  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+2026-02-23 09:15:30.111  
+2026-02-23 09:15:30.111  google.api_core.exceptions.InvalidArgument: 400 Property extractions contains an invalid nested entity.
+2026-02-23 09:15:30.111  
+2026-02-23 09:15:30.111  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/grpc_helpers.py", line 57, in error_remapped_callable
+2026-02-23 09:15:30.111  
+2026-02-23 09:15:30.111  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+2026-02-23 09:15:30.111  
+2026-02-23 09:15:30.111  File "/layers/google.python.pip/pip/lib/python3.12/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+2026-02-23 09:15:30.111  
+2026-02-23 09:15:30.244  DEBUG: RE: MEDUWJ562349-MEDUWJ668260 from=ISR-import.cs@msc.com is_direct=False
+2026-02-23 09:15:30.363  👁️ CC observation: RE: MEDUWJ562349-MEDUWJ668260 from ISR-import.cs@msc.com
+2026-02-23 09:15:30.475  🎓 PUPIL observing: RE: MEDUWJ562349-MEDUWJ668260 from ISR-import.cs@msc.com
+2026-02-23 09:15:31.177  Searching product_index...
+2026-02-23 09:15:31.177  📚 Keywords: ['meduwj562349-meduwj668260', '&nbsp;', 'meduwj668260', 're:', 'טלקס']...
+2026-02-23 09:15:31.177  📚 LIBRARIAN: Starting comprehensive search...
+2026-02-23 09:15:31.365  Searching tariff_chapters...
+2026-02-23 09:15:31.986  🔍 Searching tariff...
+2026-02-23 09:15:32.648  🔍 Searching hs_code_index...
+2026-02-23 09:15:32.949  🔍 Searching ministry_index...
+2026-02-23 09:15:33.149  🔍 Searching regulatory...
+2026-02-23 09:15:33.268  🔍 Searching regulatory_approvals...
+2026-02-23 09:15:33.396  🔍 Searching regulatory_certificates...
+2026-02-23 09:15:33.522  🔍 Searching licensing_knowledge...
+2026-02-23 09:15:35.010  🔍 Searching procedures...
+2026-02-23 09:15:35.445  🔍 Searching classification_rules...
+2026-02-23 09:15:35.588  🔍 Searching classification_knowledge...
+2026-02-23 09:15:35.842  🔍 Searching knowledge...
+2026-02-23 09:15:36.234  🔍 Searching knowledge_base...
+2026-02-23 09:15:36.849  🔍 Searching legal_references...
+2026-02-23 09:15:36.970  🔍 Searching legal_documents...
+2026-02-23 09:15:37.854  📚 Found 5 similar past classifications
+2026-02-23 09:15:37.977  📚 LIBRARIAN: Found 22 docs, confidence: medium
+2026-02-23 09:15:38.114  🎓 PUPIL: Stored observation obs_85a8d5ee3f5cadf53d5ca3a42ef16466 — 0 gaps found
+2026-02-23 09:15:38.351  🧠 SelfLearning: Level 0 EXACT match for isr-import.cs@msc.com
+2026-02-23 09:15:38.359  🧠 Tracker: brain EXACT match for ISR-import.cs@msc.com
+2026-02-23 09:15:38.618  /workspace/lib/tracker.py:1011: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+2026-02-23 09:15:38.618  🚢 Tracker: logistics email from ISR-import.cs@msc.com: 0 containers, 7 BOLs, ['MSC', 'ONE']
+2026-02-23 09:15:38.730  /workspace/lib/tracker.py:1097: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+2026-02-23 09:15:39.226  📦 Tracker: updated deal hSNgPrSw2Q0eaHV3FijU with 1 new fields
+2026-02-23 09:15:40.907  🔗 IdentityGraph: linked 1 identifiers from email to deal hSNgPrSw2Q0eaHV3FijU
+2026-02-23 09:15:41.144  🧠 SelfLearning: learned contact isr-import.cs@msc.com → unknown
+2026-02-23 09:15:41.269  🧠 SelfLearning: learned pattern unknown from isr-import.cs@msc.com
+2026-02-23 09:15:42.303  DEBUG: התקבלה בקשה חדשה שמספרה 100964 from=gov@notify.gov.il is_direct=False
+2026-02-23 09:15:42.416  DEBUG: MEDUWJ562349-MEDUWJ668260 from=galina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:42.526  DEBUG: RE: RPA16670 // 1x40HC // E.S  from=denis@rpa-port.co.il is_direct=False
+2026-02-23 09:15:42.636  DEBUG: RE: Masdar Company  - White Ce from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:42.746  DEBUG: Masdar Company  - White Cement from=jmusleh@masdar.ps is_direct=False
+2026-02-23 09:15:42.856  DEBUG: הזמנת המכלה 23/2/2026 from=Import@enoteca.co.il is_direct=False
+2026-02-23 09:15:42.969  DEBUG: MEDUWJ668260-MEDUWJ562349-MSC  from=galina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.082  DEBUG: RE: BL-MEDURS100986- CNTR - MS from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.208  DEBUG: RE: סטטוס משלוחים צפויים from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.322  DEBUG: FINAL DOC- MIRATRADE SHIPMENT  from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.433  DEBUG: RE: NEW ETA: 14/03 / RPA34107  from=denis@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.544  DEBUG: ZIMUSAV9099457-ZIMUSAV9099461- from=galina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.655  DEBUG: FREIGHT FPRWARDING AT YOUR DOO from=celestine.ijeh@efkworld.com is_direct=False
+2026-02-23 09:15:43.775  DEBUG: RE: סטטוס משלוחים צפויים from=galina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:43.890  DEBUG: RE: NEW ETA: 14/03 / RPA34107  from=roman@drkorman.com is_direct=False
+2026-02-23 09:15:44.000  DEBUG: Re: סטטוס משלוחים צפויים from=cars@yedidia.co.il is_direct=False
+2026-02-23 09:15:44.112  DEBUG: RE: [External]RE: RPA34181 //  from=denis@rpa-port.co.il is_direct=False
+2026-02-23 09:15:44.223  DEBUG: RE: [External]RE: RPA34181 //  from=denis@rpa-port.co.il is_direct=False
+2026-02-23 09:15:44.333  DEBUG: Re: MEDUWJ668260 // EBKG155091 from=cars@yedidia.co.il is_direct=False
+2026-02-23 09:15:44.449  DEBUG: DELIVERY ORDER TRANSMITTED EVE from=DoNotReply@rpa-port.co.il is_direct=False
+2026-02-23 09:15:44.562  DEBUG: Re: ZIMUSAV9099461 // CAAU6850 from=cars@yedidia.co.il is_direct=False
+2026-02-23 09:15:44.675  DEBUG: Re: ZIMUSAV9099457 // CAAU8009 from=cars@yedidia.co.il is_direct=False
+2026-02-23 09:15:44.789  DEBUG: RE: MEDUWJ352527 from=IL089-cashier.haifa@msc.com is_direct=False
+2026-02-23 09:15:44.900  DEBUG: FREIGHT FPRWARDING AT YOUR DOO from=celestine.ijeh@efkworld.com is_direct=False
+2026-02-23 09:15:45.011  DEBUG: RE: RPA16667 // 6015701 // PER from=denis@rpa-port.co.il is_direct=False
+2026-02-23 09:15:45.122  DEBUG: RE: שטר מטען TLLASH25C19228 from=Sofia@aviram.co.il is_direct=False
+2026-02-23 09:15:45.237  DEBUG: RE: שטר מטען ILASH000506 from=nitzahh@total-cargo.com is_direct=False
+2026-02-23 09:15:45.352  DEBUG: שטר מטען ILASH000506 from=rina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:45.464  DEBUG: RE: BL-MEDURS100986- CNTR - MS from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:45.573  DEBUG: RE: RPA16667 // 6015701 // PER from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:45.683  DEBUG: שטר מטען TLLASH25C19228 from=rina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:45.793  DEBUG: RE: סטטוס משלוחים צפויים from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:45.907  DEBUG: RE: RPA16666 / 6015697 / DARBO from=denis@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.022  DEBUG: RE: משלוח צפי 19/02/2026 from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.135  DEBUG: FW: MEDUWJ352527 from=galina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.248  DEBUG: RE: Invitation to Become an Or from=mittal@orextrade.com is_direct=False
+2026-02-23 09:15:46.360  DEBUG: דוח תנועות לפי מטבעות - Our re from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.470  DEBUG: FW: מסאלחה מען  from=rina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.581  DEBUG: FW: Original Invoice from MSC  from=alloffices1@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.695  DEBUG: FW: Original Invoice from MSC  from=alloffices1@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.810  DEBUG: FW: Original Invoice from MSC  from=alloffices1@rpa-port.co.il is_direct=False
+2026-02-23 09:15:46.920  DEBUG: Original Invoice from MSC MEDU from=IL089-mscil.mscautomail@msc.com is_direct=False
+2026-02-23 09:15:47.029  DEBUG: Original Invoice from MSC MEDU from=IL089-mscil.mscautomail@msc.com is_direct=False
+2026-02-23 09:15:47.142  DEBUG: Original Invoice from MSC MEDU from=IL089-mscil.mscautomail@msc.com is_direct=False
+2026-02-23 09:15:47.262  DEBUG: RE: E-1262 from=lubna@rpa-port.co.il is_direct=False
+2026-02-23 09:15:47.376  DEBUG: RE: ZIMUMTL939396-ZIMUORF11330 from=galina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:47.489  DEBUG: FW: טפסים ליפוי כוח  4016633 from=rina@rpa-port.co.il is_direct=False
+2026-02-23 09:15:47.602  ✅ RCB check complete
