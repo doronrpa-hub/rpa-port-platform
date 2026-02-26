@@ -826,6 +826,23 @@ def _rcb_check_email_inner(event) -> None:
         if '[RCB-SELFTEST]' in subject:
             continue
 
+        # Session 73: Skip auto-replies / out-of-office (prevents reply loops)
+        _subj_lower = subject.lower()
+        if any(s in _subj_lower for s in ('אני לא נמצא', 'automatic reply', 'out of office', 'שליחה אוטומטית')):
+            helper_graph_mark_read(access_token, rcb_email, msg_id)
+            continue
+        # Check X-Auto-Response-Suppress header (Graph exposes as internetMessageHeaders)
+        _msg_headers = msg.get('internetMessageHeaders') or []
+        if any(h.get('name', '').lower() == 'x-auto-response-suppress' for h in _msg_headers):
+            helper_graph_mark_read(access_token, rcb_email, msg_id)
+            continue
+        # OOO from doron@ with "אשוב" in body
+        if from_email.lower() == 'doron@rpa-port.co.il':
+            _body_preview = (msg.get('bodyPreview') or msg.get('body', {}).get('content', '') or '')[:500]
+            if 'אשוב' in _body_preview:
+                helper_graph_mark_read(access_token, rcb_email, msg_id)
+                continue
+
         # ── Block A2: Customs declarations forwarded from airpaport@gmail ──
         if '[DECL]' in subject.upper():
             import hashlib as _hl_decl
