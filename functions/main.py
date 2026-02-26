@@ -992,22 +992,39 @@ def _rcb_check_email_inner(event) -> None:
                 )
                 _intent_name = intent_result.get('intent', 'NONE')
                 _intent_status = intent_result.get('status', '')
-                # If a real intent was detected AND it's not a classify instruction, NEVER fall through
+                # If a real intent was detected AND it's not a classify instruction
                 if _intent_name not in ('NONE', '') and not (
                     _intent_name == 'INSTRUCTION' and intent_result.get('action') == 'classify'
                 ):
+                    # BUG #2 FIX: Only consume email if send actually succeeded.
+                    # If send_failed → do NOT mark as read, do NOT continue.
+                    # Let email fall through to knowledge_query / classification.
                     if _intent_status in ('replied', 'cache_hit', 'clarification_sent'):
                         print(f"  🧠 Email intent handled: {_intent_name} (status={_intent_status})")
+                        helper_graph_mark_read(access_token, rcb_email, msg_id)
+                        get_db().collection("rcb_processed").document(safe_id).set({
+                            "processed_at": firestore.SERVER_TIMESTAMP,
+                            "subject": subject,
+                            "from": from_email,
+                            "type": f"intent_{_intent_name}",
+                        })
+                        continue
                     else:
-                        print(f"  🧠 Email intent detected: {_intent_name} but status={_intent_status} — skipping classification")
-                    helper_graph_mark_read(access_token, rcb_email, msg_id)
-                    get_db().collection("rcb_processed").document(safe_id).set({
-                        "processed_at": firestore.SERVER_TIMESTAMP,
-                        "subject": subject,
-                        "from": from_email,
-                        "type": f"intent_{_intent_name}",
-                    })
-                    continue
+                        # send_failed or other non-success status — log to debug, fall through
+                        print(f"  ⚠️ Email intent detected: {_intent_name} but status={_intent_status} — NOT consuming email, falling through")
+                        try:
+                            get_db().collection("rcb_debug").add({
+                                "timestamp": firestore.SERVER_TIMESTAMP,
+                                "event": "intent_send_failed",
+                                "intent": _intent_name,
+                                "status": _intent_status,
+                                "subject": subject,
+                                "from": from_email,
+                                "msg_id": msg_id,
+                                "failure_reason": intent_result.get('failure_reason', _intent_status),
+                            })
+                        except Exception:
+                            pass
                 # INSTRUCTION intent with action='classify' → fall through to classification
             except Exception as ei_err:
                 print(f"  ⚠️ Email intent error (non-fatal): {ei_err}")
