@@ -71,6 +71,14 @@ except ImportError as e:
     print(f"Email Intent not available: {e}")
     EMAIL_INTENT_AVAILABLE = False
 
+try:
+    from lib.email_triage import triage_email
+    from lib.casual_handler import handle_casual
+    EMAIL_TRIAGE_AVAILABLE = True
+except ImportError as e:
+    print(f"Email Triage not available: {e}")
+    EMAIL_TRIAGE_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -1000,6 +1008,80 @@ def _rcb_check_email_inner(event) -> None:
                     continue
             except Exception as bc_err:
                 print(f"    ⚠️ Brain Commander error (continuing normally): {bc_err}")
+
+        # ── Three-Layer Email Triage (Session 74) ──
+        # Sits ON TOP of legacy flow. If triage handles it → continue.
+        # If not → legacy flow runs exactly as before.
+        _triage_handled = False
+        if EMAIL_TRIAGE_AVAILABLE:
+            try:
+                triage_result = triage_email(msg, rcb_email, db=get_db(), get_secret_func=get_secret)
+
+                # Log triage decision to rcb_debug
+                try:
+                    get_db().collection("rcb_debug").add({
+                        "type": "triage",
+                        "category": triage_result.category,
+                        "confidence": triage_result.confidence,
+                        "source": triage_result.source,
+                        "skip_reason": triage_result.skip_reason,
+                        "subject": subject,
+                        "sender": from_email,
+                        "timestamp": firestore.SERVER_TIMESTAMP,
+                    })
+                except Exception:
+                    pass  # debug logging should never break flow
+
+                if triage_result.category == "SKIP":
+                    print(f"    ⏭️ Triage SKIP: {triage_result.skip_reason} | {subject[:40]}")
+                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                    get_db().collection("rcb_processed").document(safe_id).set({
+                        "processed_at": firestore.SERVER_TIMESTAMP,
+                        "subject": subject,
+                        "from": from_email,
+                        "type": f"triage_skip_{triage_result.skip_reason or 'generic'}",
+                    })
+                    _triage_handled = True
+
+                elif triage_result.category == "CASUAL":
+                    print(f"    💬 Triage CASUAL ({triage_result.confidence:.2f} via {triage_result.source})")
+                    casual_result = handle_casual(msg, access_token, rcb_email, get_secret, db=get_db())
+                    if casual_result.get("status", "").startswith("replied"):
+                        helper_graph_mark_read(access_token, rcb_email, msg_id)
+                        get_db().collection("rcb_processed").document(safe_id).set({
+                            "processed_at": firestore.SERVER_TIMESTAMP,
+                            "subject": subject,
+                            "from": from_email,
+                            "type": "triage_casual",
+                            "tracking_code": casual_result.get("tracking_code", ""),
+                        })
+                        _triage_handled = True
+
+                elif triage_result.category == "REPLY_THREAD":
+                    pass  # Session 75: thread_manager will handle this — falls through to legacy
+
+                elif triage_result.category == "LIVE_SHIPMENT":
+                    pass  # Session 75: shipment_handler will handle this — falls through to legacy
+
+                elif triage_result.category == "CONSULTATION":
+                    pass  # Session 75: consultation_handler with SIF will handle this — falls through to legacy
+
+            except Exception as triage_err:
+                # Log error but NEVER break email processing
+                print(f"    ⚠️ Triage error (non-fatal): {triage_err}")
+                try:
+                    get_db().collection("rcb_debug").add({
+                        "type": "triage_error",
+                        "error": str(triage_err),
+                        "subject": subject,
+                        "sender": from_email,
+                        "timestamp": firestore.SERVER_TIMESTAMP,
+                    })
+                except Exception:
+                    pass
+
+        if _triage_handled:
+            continue
 
         # ── Email Intent: smart routing for direct emails ──
         if EMAIL_INTENT_AVAILABLE:
