@@ -119,16 +119,23 @@ _SHIPMENT_PATTERNS = [
     re.compile(r'\b(?:container|מכולה)\b', re.IGNORECASE),
 ]
 
+# Hebrew prefix-aware patterns: ה,ב,ל,מ can prefix any word.
+# Use (?:^|[\s...]) anchors instead of \b for Hebrew words.
+_HEB_WB_L = r'(?:^|[\s"\'\(\[,;:])'   # left word boundary for Hebrew
+_HEB_WB_R = r'(?:[\s"\'\)\].,;:?!]|$)'  # right word boundary for Hebrew
+
 _CONSULTATION_PATTERNS = [
     re.compile(r'\d{4}\.\d{2}\.\d{2}'),                               # HS code format
-    re.compile(r'\b(?:tariff|תעריף)\b', re.IGNORECASE),
-    re.compile(r'\b(?:customs|מכס)\b', re.IGNORECASE),
-    re.compile(r'\b(?:ordinance|פקודה|פקודת)\b', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?תעריף|tariff){_HEB_WB_R}', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?מכס|customs){_HEB_WB_R}', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?פקודה|ה?פקודת|ordinance){_HEB_WB_R}', re.IGNORECASE),
     re.compile(r'\b(?:fta|הסכם\s*סחר)\b', re.IGNORECASE),
-    re.compile(r'\b(?:classification|סיווג)\b', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?סיווג|classification){_HEB_WB_R}', re.IGNORECASE),
     re.compile(r'\b(?:import\s*order|צו\s*יבוא)\b', re.IGNORECASE),
     re.compile(r'\b(?:duty|מס\s*מכס|אגרה)\b', re.IGNORECASE),
-    re.compile(r'\b(?:regulation|תקנה|תקנות)\b', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?תקנה|ה?תקנות|regulation){_HEB_WB_R}', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?פריט|פרט){_HEB_WB_R}', re.IGNORECASE),  # tariff item
+    re.compile(r'\b(?:hs\s*code|קוד\s*מכס)\b', re.IGNORECASE),
 ]
 
 _CASUAL_PATTERNS = [
@@ -165,6 +172,11 @@ def _regex_pre_classify(subject, body):
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     best_cat, best_score = ranked[0]
     _, second_score = ranked[1]
+
+    # CONSULTATION always wins over CASUAL when both match.
+    # A customs broker mailbox treats customs content as priority — greetings are incidental.
+    if scores.get("CONSULTATION", 0) > 0 and scores.get("CASUAL", 0) > 0:
+        return TriageResult("CONSULTATION", scores["CONSULTATION"], "regex")
 
     # Require: score >= 0.3 AND dominant (1.5x the runner-up)
     if best_score >= 0.3 and (second_score == 0 or best_score > second_score * 1.5):

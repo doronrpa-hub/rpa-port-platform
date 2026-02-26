@@ -220,6 +220,27 @@ class TestRegexPreClassify:
         assert result is not None
         assert result.category == "LIVE_SHIPMENT"
 
+    def test_consultation_wins_over_casual(self):
+        """When BOTH casual and consultation patterns match, CONSULTATION wins.
+        This is the Doron test case: greeting + customs question in one email."""
+        from lib.email_triage import _regex_pre_classify
+        result = _regex_pre_classify(
+            "",
+            "שלום מה שלומך היום? מה פריט המכס למכונת קפה ביתית?"
+        )
+        assert result is not None
+        assert result.category == "CONSULTATION"
+
+    def test_greeting_plus_tariff_question(self):
+        """Greeting with tariff question → CONSULTATION."""
+        from lib.email_triage import _regex_pre_classify
+        result = _regex_pre_classify(
+            "",
+            "היי תודה רבה! מה התעריף מכס על סיווג מוצרים?"
+        )
+        assert result is not None
+        assert result.category == "CONSULTATION"
+
     def test_tariff_hebrew(self):
         from lib.email_triage import _regex_pre_classify
         result = _regex_pre_classify("", "מה התעריף מכס על סיווג לפי צו יבוא ופקודת המכס ותקנות?")

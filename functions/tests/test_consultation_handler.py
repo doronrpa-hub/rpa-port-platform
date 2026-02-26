@@ -285,7 +285,10 @@ class TestSubIntentDelegation(unittest.TestCase):
         self.assertIn("CORRECTION", _DELEGATE_INTENTS)
         self.assertIn("INSTRUCTION", _DELEGATE_INTENTS)
         self.assertIn("STATUS_REQUEST", _DELEGATE_INTENTS)
-        self.assertIn("NON_WORK", _DELEGATE_INTENTS)
+
+    def test_non_work_not_delegated(self):
+        """NON_WORK must NOT be delegated — triage already filtered non-work."""
+        self.assertNotIn("NON_WORK", _DELEGATE_INTENTS)
 
     def test_customs_question_not_delegated(self):
         """CUSTOMS_QUESTION should NOT be delegated."""
@@ -293,11 +296,11 @@ class TestSubIntentDelegation(unittest.TestCase):
         self.assertNotIn("KNOWLEDGE_QUERY", _DELEGATE_INTENTS)
 
     @patch('lib.consultation_handler.detect_email_intent',
-           return_value={"intent": "ADMIN_INSTRUCTION"})
+           return_value={"intent": "ADMIN_INSTRUCTION", "confidence": 0.9})
     @patch('lib.consultation_handler._delegate_to_legacy',
            return_value={"status": "delegated", "sub_intent": "ADMIN_INSTRUCTION"})
     def test_admin_delegates(self, mock_delegate, mock_detect):
-        """ADMIN_INSTRUCTION sub-intent delegates to legacy."""
+        """ADMIN_INSTRUCTION sub-intent with high confidence delegates to legacy."""
         from lib.consultation_handler import handle_consultation
 
         result = handle_consultation(
@@ -308,11 +311,11 @@ class TestSubIntentDelegation(unittest.TestCase):
         self.assertEqual(result["sub_intent"], "ADMIN_INSTRUCTION")
 
     @patch('lib.consultation_handler.detect_email_intent',
-           return_value={"intent": "STATUS_REQUEST"})
+           return_value={"intent": "STATUS_REQUEST", "confidence": 0.8})
     @patch('lib.consultation_handler._delegate_to_legacy',
            return_value={"status": "delegated", "sub_intent": "STATUS_REQUEST"})
     def test_status_delegates(self, mock_delegate, mock_detect):
-        """STATUS_REQUEST sub-intent delegates to legacy."""
+        """STATUS_REQUEST sub-intent with high confidence delegates to legacy."""
         from lib.consultation_handler import handle_consultation
 
         result = handle_consultation(
@@ -395,7 +398,7 @@ class TestConstants(unittest.TestCase):
         self.assertIn("general", _DOMAIN_LABELS)
 
     def test_delegate_intents_count(self):
-        self.assertEqual(len(_DELEGATE_INTENTS), 5)
+        self.assertEqual(len(_DELEGATE_INTENTS), 4)
 
 
 # ═══════════════════════════════════════════

@@ -83,10 +83,12 @@ _DOMAIN_LABELS = {
     "general": "מכס כללי",
 }
 
-# Sub-intents that should delegate to legacy email_intent handlers
+# Sub-intents that should delegate to legacy email_intent handlers.
+# NON_WORK is NOT here — triage already filtered casual/non-work via CASUAL/SKIP.
+# If triage said CONSULTATION, we trust triage over sub-intent re-classification.
 _DELEGATE_INTENTS = {
     "ADMIN_INSTRUCTION", "CORRECTION", "INSTRUCTION",
-    "STATUS_REQUEST", "NON_WORK",
+    "STATUS_REQUEST",
 }
 
 
@@ -417,11 +419,14 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                                              privilege=privilege,
                                              get_secret_func=get_secret_func)
             sub_intent = sub_result.get("intent", "NONE")
+            sub_confidence = sub_result.get("confidence", 0)
 
-            if sub_intent in _DELEGATE_INTENTS:
-                print(f"    ↪️  Sub-intent {sub_intent} → delegating to legacy")
+            if sub_intent in _DELEGATE_INTENTS and sub_confidence >= 0.6:
+                print(f"    ↪️  Sub-intent {sub_intent} (conf={sub_confidence:.2f}) → delegating to legacy")
                 return _delegate_to_legacy(msg, sub_intent, db, firestore_module,
                                            access_token, rcb_email, get_secret_func)
+            elif sub_intent in _DELEGATE_INTENTS:
+                print(f"    ⚠️  Sub-intent {sub_intent} low confidence ({sub_confidence:.2f}) → treating as consultation")
         except Exception as e:
             logger.warning(f"Sub-intent detection error: {e}")
 
@@ -430,6 +435,11 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
         return {"status": "error", "handler": "consultation", "error": "SIF unavailable"}
 
     context_package = prepare_context_package(subject, body_text, db, get_secret_func)
+    print(f"    📦 SIF: domain={context_package.domain}, lang={context_package.detected_language}, "
+          f"confidence={context_package.confidence:.2f}, "
+          f"tariff={len(context_package.tariff_results)}, "
+          f"ordinance={len(context_package.ordinance_articles)}, "
+          f"xml={len(context_package.xml_results)}")
 
     # 3. LEVEL 1: Gemini Flash
     print(f"    🟢 Level 1: Gemini Flash")
