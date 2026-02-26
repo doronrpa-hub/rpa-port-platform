@@ -534,6 +534,31 @@ def gather_knowledge(db, parsed: dict) -> dict:
         except Exception as e:
             print(f"    ⚠️ get_all_locations error: {e}")
 
+    # ── Step F2: XML documents (FTA protocols, tariff sections, amendments) ──
+    # 231 docs in xml_documents collection — covers 16 countries' FTA,
+    # tariff sections, trade agreement protocols, procedures
+    if question:
+        try:
+            from .tool_executors import ToolExecutor
+        except ImportError:
+            from tool_executors import ToolExecutor
+        try:
+            executor = ToolExecutor(db, api_key=None, gemini_key=None)
+            xml_result = executor.execute("search_xml_documents", {"query": question[:200]})
+            if xml_result and isinstance(xml_result, dict) and xml_result.get("found"):
+                xml_docs = xml_result.get("documents") or []
+                for doc in xml_docs[:3]:
+                    entry = {
+                        "id": doc.get("doc_id", ""),
+                        "title": doc.get("title", doc.get("doc_id", "")),
+                        "description": (doc.get("text_excerpt") or "")[:500],
+                        "tags": [doc.get("category", "xml")],
+                    }
+                    knowledge["librarian_results"].append(entry)
+                print(f"    📄 search_xml_documents: {len(xml_docs)} results")
+        except Exception as e:
+            print(f"    ⚠️ search_xml_documents error: {e}")
+
     # ── Step G: Process reference attachments (using rcb_helpers) ──
     ref_attachments = parsed.get("reference_attachments", [])
     for att in ref_attachments:
