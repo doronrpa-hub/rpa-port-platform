@@ -1,0 +1,10 @@
+# Ignore local virtualenv — Cloud Functions installs from requirements.txt
+venv/
+.venv/
+__pycache__/
+*.pyc
+tests/
+content_samples/
+*.bak*
+*.backup*
+node_modules/
