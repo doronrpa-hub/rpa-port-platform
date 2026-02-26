@@ -342,8 +342,8 @@ class TestTriageIntegration:
         from lib.email_triage import triage_email, TriageResult
         mock_gemini.return_value = TriageResult("CASUAL", 0.85, "gemini")
         msg = _make_msg(
-            subject="Hi",
-            body="Just wanted to say thanks for everything you do, great work"
+            subject="",
+            body="I have a question about something that happened yesterday at the office"
         )
         mock_secret = MagicMock(return_value="fake-key")
         result = triage_email(msg, RCB_EMAIL, get_secret_func=mock_secret)

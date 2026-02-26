@@ -36,6 +36,7 @@ class ContextPackage:
     xml_results: list = field(default_factory=list)
     regulatory_results: list = field(default_factory=list)
     framework_articles: list = field(default_factory=list)
+    wikipedia_results: list = field(default_factory=list)
     cached_answer: Optional[dict] = None
     context_summary: str = ""
     confidence: float = 0.0
@@ -171,6 +172,23 @@ def _detect_domain(entities, subject, body):
 
     if any(p in combined for p in ['צו יבוא', 'רישיון', 'import order', 'restricted',
                                     'היתר', 'אישור ליבוא']):
+        return "regulatory"
+
+    # Import reform / economic policy patterns — these ARE customs-related
+    if any(p in combined for p in [
+        'רפורמ',              # רפורמה, רפורמת, רפורמות
+        'מה שטוב לאירופה',
+        'מה שטוב לארצות הברית',
+        'ce marking', 'סימון ce',
+        'קוד 65',             # customs code 65 — reform clearance route
+        'מסמכי מוכר',         # seller documents
+        'פטור isi', 'פטור מת"י', 'פטור מכון התקנים',
+        'דירקטיבה אירופית', 'דירקטיבות',
+        'עץ מוצר',            # product tree (tariff classification tool)
+        'תקנים אירופיים',
+        'import reform',
+        'eu reform',
+    ]):
         return "regulatory"
 
     return "general"
@@ -417,6 +435,71 @@ def _search_framework_order(entities, body, search_log):
     return articles[:5]
 
 
+def _search_wikipedia(pkg, db, search_log):
+    """Search Wikipedia via tool executor for general knowledge context.
+    Fires when we have few customs results — provides knowledge to answer warmly."""
+    customs_data_count = (len(pkg.tariff_results) + len(pkg.ordinance_articles)
+                          + len(pkg.regulatory_results) + len(pkg.framework_articles))
+    # Only search Wikipedia when we don't have enough customs context
+    if customs_data_count >= 3:
+        return []
+    if not db:
+        return []
+
+    # Build search terms from body — extract noun phrases / proper nouns
+    combined = f"{pkg.original_subject} {pkg.original_body}"
+    # Skip very short text
+    if len(combined.strip()) < 10:
+        return []
+
+    try:
+        from lib.tool_executors import ToolExecutor
+    except ImportError:
+        try:
+            from tool_executors import ToolExecutor
+        except ImportError:
+            search_log.append({"search": "wikipedia", "status": "import_error"})
+            return []
+
+    results = []
+    try:
+        executor = ToolExecutor(db, api_key=None, gemini_key=None)
+
+        # Extract meaningful search terms (skip stop words)
+        _STOP = {'מה', 'של', 'את', 'על', 'עם', 'לא', 'כל', 'או', 'גם', 'אם',
+                 'אני', 'הוא', 'היא', 'זה', 'יש', 'אין', 'היה', 'היו',
+                 'שלך', 'שלי', 'שלום', 'היום', 'איזה', 'איזו', 'טובה',
+                 'the', 'is', 'are', 'and', 'or', 'for', 'how', 'what',
+                 'you', 'your', 'have', 'can', 'do', 'does'}
+        words = re.findall(r'[\u0590-\u05FF]{3,}|[a-zA-Z]{4,}', combined)
+        terms = [w for w in words if w.lower() not in _STOP]
+
+        # Search for the most distinctive terms (up to 2 queries)
+        searched = set()
+        for term in terms[:5]:
+            if term in searched:
+                continue
+            searched.add(term)
+            try:
+                r = executor.execute("search_wikipedia", {"query": term})
+                if r and r.get("found"):
+                    results.append({
+                        "query": term,
+                        "title": r.get("title", ""),
+                        "extract": (r.get("extract") or "")[:1500],
+                    })
+                    if len(results) >= 2:
+                        break
+            except Exception:
+                pass
+
+        search_log.append({"search": "wikipedia", "status": "ok", "count": len(results)})
+    except Exception as e:
+        search_log.append({"search": "wikipedia_init", "status": f"error:{e}"})
+
+    return results
+
+
 def _check_cache(subject, body, db, search_log):
     """Check questions_log for cached answer."""
     if not db:
@@ -506,6 +589,12 @@ def _build_context_summary(pkg):
             if full:
                 parts.append(f"נוסח: {full}")
 
+    # Wikipedia results
+    if pkg.wikipedia_results:
+        parts.append("\n--- ידע כללי (ויקיפדיה) ---")
+        for w in pkg.wikipedia_results:
+            parts.append(f"\n{w.get('title', w.get('query', ''))}: {w.get('extract', '')[:800]}")
+
     # Cached answer
     if pkg.cached_answer:
         parts.append("\n--- תשובה קודמת דומה ---")
@@ -528,6 +617,8 @@ def _calculate_confidence(pkg):
         score += 0.1
     if pkg.framework_articles:
         score += 0.1
+    if pkg.wikipedia_results:
+        score += 0.15
     if pkg.cached_answer:
         score += 0.3
     if pkg.entities.get("keywords"):
@@ -606,6 +697,14 @@ def prepare_context_package(subject, body, db, get_secret_func=None):
             pkg.entities, body_plain, search_log)
     except Exception as e:
         search_log.append({"search": "framework", "status": f"crash:{e}"})
+
+    # 8b. Wikipedia search for general knowledge questions
+    #     If we found no customs data and there are product names or keywords,
+    #     search Wikipedia to provide useful context (never refuse a question)
+    try:
+        pkg.wikipedia_results = _search_wikipedia(pkg, db, search_log)
+    except Exception as e:
+        search_log.append({"search": "wikipedia", "status": f"crash:{e}"})
 
     # 9. Build summary and confidence
     pkg.context_summary = _build_context_summary(pkg)

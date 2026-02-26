@@ -170,6 +170,13 @@ def categorize_file(filepath: Path) -> dict | None:
             "subcategory": None,
             "doc_id": doc_id,
         }
+    if name.startswith("EU_Reform"):
+        doc_id = f"govil__{name}"
+        return {
+            "source": source, "category": "reform",
+            "subcategory": "eu_reform",
+            "doc_id": doc_id,
+        }
     # Unknown govil file
     return {
         "source": source, "category": "other",

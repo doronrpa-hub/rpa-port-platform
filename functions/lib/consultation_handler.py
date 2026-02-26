@@ -98,13 +98,18 @@ _DELEGATE_INTENTS = {
 
 _LEVEL1_SYSTEM = (
     "אתה RCB — סוכן מכס מורשה של R.P.A. PORT LTD, חיפה.\n"
-    "המערכת חיפשה ומצאה את המידע הבא. השתמש אך ורק במידע זה לתשובתך.\n"
+    "המערכת חיפשה ומצאה את המידע הבא. השתמש במידע זה לתשובתך.\n"
     "אל תמציא מידע. אם המידע לא מספיק — אמור מה חסר ומה צריך לבדוק.\n"
     "אנחנו עמיל המכס. לעולם אל תכתוב 'מומלץ לפנות לעמיל מכס'.\n\n"
+    "כלל חשוב — לעולם אל תסרב לענות על שאלה:\n"
+    "• אם השאלה כוללת ידע כללי (היסטוריה, מדע, כלכלה) — ענה בחום ובקצרה מהמידע שסופק, "
+    "ואז הוסף: 'במה שקשור לתחום שלנו — מכס וייבוא...' וקשר לתחום המכס.\n"
+    "• אם יש גם שאלת מכס וגם שאלה כללית — ענה על שתיהן.\n"
+    "• לעולם אל תכתוב 'השאלה אינה קשורה למכס' או 'אינה בסמכותנו'.\n\n"
     "ענה בפורמט הבא בדיוק:\n"
     "## תשובה ישירה\n[תשובה קצרה וישירה בשורה אחת או שתיים]\n\n"
     "## ציטוט מהחוק\n[ציטוט מילה במילה מהמקור — סעיף, פקודה, צו — עם מספר סעיף מדויק. "
-    "אם אין מקור — כתוב 'לא נמצא מקור ישיר']\n\n"
+    "אם אין מקור חוקי רלוונטי — כתוב 'לא נמצא מקור ישיר']\n\n"
     "## הסבר\n[הסבר מקצועי קצר]\n\n"
     "## מידע נוסף\n[פרטים רלוונטיים נוספים]\n\n"
     "## English Summary\n[2-3 sentence summary in English]"
@@ -125,13 +130,15 @@ _LEVEL2_SYSTEM = (
 _LEVEL3_SYSTEM = (
     "אתה הסוכן הבכיר ביותר — שופט ומסכם סופי.\n"
     "אנחנו עמיל המכס. לעולם אל תכתוב 'מומלץ לפנות לעמיל מכס'.\n"
-    "שני סוכנים כתבו תשובות שונות לשאלת מכס. המערכת סיפקה נתונים.\n\n"
+    "שני סוכנים כתבו תשובות שונות. המערכת סיפקה נתונים.\n\n"
     "המשימה שלך:\n"
     "1. קבע מי צודק — או שניהם, או אף אחד\n"
     "2. כתוב את התשובה הסופית והמדויקת ביותר\n"
-    "3. חובה להשתמש אך ורק בנתוני המערכת שסופקו\n"
+    "3. חובה להשתמש בנתוני המערכת שסופקו\n"
     "4. אם שניהם טועים — אמור זאת בפירוש ותן את התשובה הנכונה\n"
-    "5. פורמט: אותו פורמט 5 חלקים (תשובה ישירה / ציטוט / הסבר / מידע נוסף / English Summary)"
+    "5. פורמט: אותו פורמט 5 חלקים (תשובה ישירה / ציטוט / הסבר / מידע נוסף / English Summary)\n\n"
+    "כלל חשוב: לעולם אל תסרב לענות. אם השאלה כוללת ידע כללי — ענה בחום מהנתונים "
+    "שסופקו (ויקיפדיה וכו') ואז קשר בטבעיות למכס."
 )
 
 
@@ -249,7 +256,9 @@ def _evaluate_draft(draft, context_package):
             pass
 
     # Context fidelity: if we found ordinance articles, draft should reference at least one
-    if context_package.ordinance_articles:
+    # (skip this check if wikipedia data is present — general knowledge questions don't need ordinance refs)
+    has_wikipedia = hasattr(context_package, 'wikipedia_results') and context_package.wikipedia_results
+    if context_package.ordinance_articles and not has_wikipedia:
         article_ids = [a["article_id"] for a in context_package.ordinance_articles]
         if not any(aid in draft for aid in article_ids):
             # Check if ANY article number appears
@@ -257,7 +266,7 @@ def _evaluate_draft(draft, context_package):
                 return False
 
     # If we found tariff results, draft should mention at least one HS code
-    if context_package.tariff_results:
+    if context_package.tariff_results and not has_wikipedia:
         hs_codes = [c.get("hs_code", "") for c in context_package.tariff_results if c.get("hs_code")]
         if hs_codes and not any(code[:4] in draft for code in hs_codes):
             if not re.search(r'\d{4}\.\d{2}', draft):

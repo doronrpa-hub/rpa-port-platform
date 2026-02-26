@@ -136,6 +136,9 @@ _CONSULTATION_PATTERNS = [
     re.compile(f'{_HEB_WB_L}(?:ה?תקנה|ה?תקנות|regulation){_HEB_WB_R}', re.IGNORECASE),
     re.compile(f'{_HEB_WB_L}(?:ה?פריט|פרט){_HEB_WB_R}', re.IGNORECASE),  # tariff item
     re.compile(r'\b(?:hs\s*code|קוד\s*מכס)\b', re.IGNORECASE),
+    re.compile(f'{_HEB_WB_L}(?:ה?רפורמ|reform){_HEB_WB_R}', re.IGNORECASE),  # import reform
+    re.compile(r'(?:מה\s*שטוב\s*לאירופה|מה\s*שטוב\s*לארצות)', re.IGNORECASE),  # EU/US reform
+    re.compile(f'{_HEB_WB_L}(?:עץ\\s*מוצר|product\\s*tree){_HEB_WB_R}', re.IGNORECASE),
 ]
 
 _CASUAL_PATTERNS = [
@@ -178,8 +181,8 @@ def _regex_pre_classify(subject, body):
     if scores.get("CONSULTATION", 0) > 0 and scores.get("CASUAL", 0) > 0:
         return TriageResult("CONSULTATION", scores["CONSULTATION"], "regex")
 
-    # Require: score >= 0.3 AND dominant (1.5x the runner-up)
-    if best_score >= 0.3 and (second_score == 0 or best_score > second_score * 1.5):
+    # Require: score >= 0.2 AND dominant (1.5x the runner-up)
+    if best_score >= 0.2 and (second_score == 0 or best_score > second_score * 1.5):
         return TriageResult(best_cat, best_score, "regex")
 
     return None
