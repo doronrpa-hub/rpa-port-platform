@@ -369,6 +369,13 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "record",
     },
+    # Debug logging for every email processed (intent, send status, failure reason)
+    "rcb_debug": {
+        "title_fields": ["event", "intent"],
+        "keyword_fields": ["status", "from", "send_status"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
     # C2: Section-level notes from tariff (distinct from chapter_notes)
     "section_notes": {
         "title_fields": ["section_title_he", "section_title_en", "notes_he"],

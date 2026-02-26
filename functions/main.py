@@ -1008,6 +1008,24 @@ def _rcb_check_email_inner(event) -> None:
                             "from": from_email,
                             "type": f"intent_{_intent_name}",
                         })
+                        # Debug logging for every processed intent
+                        try:
+                            get_db().collection("rcb_debug").add({
+                                "timestamp": firestore.SERVER_TIMESTAMP,
+                                "event": "email_processed",
+                                "intent": _intent_name,
+                                "status": _intent_status,
+                                "subject": subject,
+                                "from": from_email,
+                                "msg_id": msg_id,
+                                "product_description": intent_result.get("entities", {}).get("product_description", "") if isinstance(intent_result.get("entities"), dict) else "",
+                                "tariff_results": str(intent_result.get("answer_sources", []))[:500],
+                                "html_composed": bool(intent_result.get("answer_html")),
+                                "send_status": _intent_status,
+                                "failure_reason": None,
+                            })
+                        except Exception:
+                            pass
                         continue
                     else:
                         # send_failed or other non-success status — log to debug, fall through
@@ -1021,6 +1039,10 @@ def _rcb_check_email_inner(event) -> None:
                                 "subject": subject,
                                 "from": from_email,
                                 "msg_id": msg_id,
+                                "product_description": intent_result.get("entities", {}).get("product_description", "") if isinstance(intent_result.get("entities"), dict) else "",
+                                "tariff_results": str(intent_result.get("answer_sources", []))[:500],
+                                "html_composed": bool(intent_result.get("answer_html")),
+                                "send_status": _intent_status,
                                 "failure_reason": intent_result.get('failure_reason', _intent_status),
                             })
                         except Exception:
