@@ -1011,11 +1011,13 @@ def email_quality_gate(recipient, subject, html_body,
                                deal_id, alert_type, None)
             return False, "self_send"
 
-        # ── Rule 1: body empty or under 200 characters ──
-        if not html_body or len(html_body) < 200:
-            _log_email_quality(db, False, "body_under_200", recipient, subject,
+        # ── Rule 1: body empty or under 50 characters ──
+        # Was 200 chars which rejected short but correct intent replies (BUG #3).
+        # Lowered to 50 — any real HTML reply with RTL wrapper exceeds 50 chars.
+        if not html_body or len(html_body) < 50:
+            _log_email_quality(db, False, "body_too_short", recipient, subject,
                                deal_id, alert_type, None)
-            return False, "body_under_200"
+            return False, "body_too_short"
 
         # ── Rule 2a: subject empty or generic ──
         if not subject or not subject.strip():

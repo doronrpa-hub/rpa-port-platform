@@ -90,36 +90,43 @@ def _make_firestore_doc(data, exists=True):
 
 
 # ============================================================
-# Rule 1: Body empty or under 200 characters
+# Rule 1: Body empty or under 50 characters (was 200 — BUG #3 fix)
 # ============================================================
 
 class TestRule1BodyTooShort:
     def test_empty_body(self):
         ok, reason = email_quality_gate("user@test.com", "RCB | Deal", "")
         assert not ok
-        assert reason == "body_under_200"
+        assert reason == "body_too_short"
 
     def test_none_body(self):
         ok, reason = email_quality_gate("user@test.com", "RCB | Deal", None)
         assert not ok
-        assert reason == "body_under_200"
+        assert reason == "body_too_short"
 
-    def test_short_body(self):
+    def test_very_short_body(self):
         ok, reason = email_quality_gate("user@test.com", "RCB | Deal", "<p>Hi</p>")
         assert not ok
-        assert reason == "body_under_200"
+        assert reason == "body_too_short"
 
-    def test_exactly_200_chars(self):
-        body = "x" * 200
+    def test_50_chars_approved(self):
+        body = "x" * 50
         ok, reason = email_quality_gate("user@test.com", "RCB | Deal", body)
         assert ok
         assert reason == "approved"
 
-    def test_199_chars_rejected(self):
-        body = "x" * 199
+    def test_49_chars_rejected(self):
+        body = "x" * 49
         ok, reason = email_quality_gate("user@test.com", "RCB | Deal", body)
         assert not ok
-        assert reason == "body_under_200"
+        assert reason == "body_too_short"
+
+    def test_short_intent_reply_approved(self):
+        """Short but valid intent reply (e.g. 80 chars) should pass."""
+        body = '<div dir="rtl">' + "שלום, קוד מכס למכונת קפה: 8516.71" + '</div>'
+        ok, reason = email_quality_gate("user@test.com", "RCB | Q-123 | קפה", body)
+        assert ok
+        assert reason == "approved"
 
 
 # ============================================================
