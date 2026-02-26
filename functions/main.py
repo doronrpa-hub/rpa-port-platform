@@ -79,6 +79,13 @@ except ImportError as e:
     print(f"Email Triage not available: {e}")
     EMAIL_TRIAGE_AVAILABLE = False
 
+try:
+    from lib.consultation_handler import handle_consultation
+    CONSULTATION_HANDLER_AVAILABLE = True
+except ImportError as e:
+    print(f"Consultation Handler not available: {e}")
+    CONSULTATION_HANDLER_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -1064,7 +1071,34 @@ def _rcb_check_email_inner(event) -> None:
                     pass  # Session 75: shipment_handler will handle this — falls through to legacy
 
                 elif triage_result.category == "CONSULTATION":
-                    pass  # Session 75: consultation_handler with SIF will handle this — falls through to legacy
+                    if CONSULTATION_HANDLER_AVAILABLE:
+                        try:
+                            cons_result = handle_consultation(
+                                msg, get_db(), firestore, access_token, rcb_email,
+                                get_secret, triage_result=triage_result)
+                            if cons_result.get("status") in ("replied", "delegated"):
+                                helper_graph_mark_read(access_token, rcb_email, msg_id)
+                                get_db().collection("rcb_processed").document(safe_id).set({
+                                    "processed_at": firestore.SERVER_TIMESTAMP,
+                                    "subject": subject,
+                                    "from": from_email,
+                                    "type": "triage_consultation",
+                                    "level": cons_result.get("level", 0),
+                                    "model": cons_result.get("model", ""),
+                                })
+                                _triage_handled = True
+                        except Exception as cons_err:
+                            print(f"    ⚠️ Consultation handler error (falling through): {cons_err}")
+                            try:
+                                get_db().collection("rcb_debug").add({
+                                    "type": "consultation_error",
+                                    "error": str(cons_err),
+                                    "subject": subject,
+                                    "timestamp": firestore.SERVER_TIMESTAMP,
+                                })
+                            except Exception:
+                                pass
+                    # If not available or failed, falls through to legacy flow
 
             except Exception as triage_err:
                 # Log error but NEVER break email processing
