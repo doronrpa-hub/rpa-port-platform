@@ -52,6 +52,18 @@ try:
 except ImportError:
     _INTEL_OK = False
 
+try:
+    from lib.elimination_engine import eliminate, make_product_info
+    _ELIMINATION_OK = True
+except ImportError:
+    _ELIMINATION_OK = False
+
+try:
+    from lib.verification_engine import run_verification_engine
+    _VERIFICATION_ENGINE_OK = True
+except ImportError:
+    _VERIFICATION_ENGINE_OK = False
+
 from lib.librarian import validate_and_correct_classifications
 from lib.verification_loop import verify_all_classifications, learn_from_verification
 
@@ -444,6 +456,119 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
     except Exception as e:
         print(f"  [TOOL ENGINE] Verification error: {e}")
 
+    # 7d-elim: Deterministic elimination engine (Session 79 — was MISSING from this path)
+    # Uses tariff candidates from Step 4a as input, narrows before cross-reference
+    elimination_results = {}
+    if _ELIMINATION_OK and tariff_context:
+        try:
+            print("  [TOOL ENGINE] Elimination engine: walking tariff tree...")
+            for c in validated:
+                if not isinstance(c, dict):
+                    continue
+                desc = c.get("item_description", "") or c.get("item", "")
+                desc_key = desc[:50]
+                hs_code = c.get("hs_code", "")
+                # Get candidates from tariff pre-search (Step 4a)
+                raw_candidates = tariff_context.get(desc_key, [])
+                if len(raw_candidates) < 2:
+                    continue  # Need >=2 candidates to eliminate
+                # Ensure the AI-chosen HS is in candidates list
+                ai_in_list = any(
+                    (rc.get("hs_code", "").replace(".", "").replace("/", "")[:6]
+                     == hs_code.replace(".", "").replace("/", "")[:6])
+                    for rc in raw_candidates
+                )
+                if hs_code and not ai_in_list:
+                    raw_candidates = raw_candidates[:4] + [{
+                        "hs_code": hs_code, "confidence": 80,
+                        "source": "ai_classification", "description": desc,
+                    }]
+                # Convert to elimination engine format
+                elim_candidates = []
+                for rc in raw_candidates[:8]:
+                    rc_hs = (rc.get("hs_code", "") or "").replace(".", "").replace("/", "").replace(" ", "")
+                    if not rc_hs or len(rc_hs) < 4:
+                        continue
+                    elim_candidates.append({
+                        "hs_code": rc_hs,
+                        "section": "",
+                        "chapter": int(rc_hs[:2]) if rc_hs[:2].isdigit() else 0,
+                        "heading": rc_hs[:4],
+                        "subheading": rc_hs[:6] if len(rc_hs) >= 6 else rc_hs[:4],
+                        "confidence": rc.get("confidence", 0),
+                        "source": rc.get("source", "tariff_search"),
+                        "description": rc.get("description", ""),
+                        "description_en": rc.get("description_en", ""),
+                        "duty_rate": rc.get("duty_rate", ""),
+                        "alive": True,
+                        "elimination_reason": "",
+                        "eliminated_at_level": "",
+                    })
+                if len(elim_candidates) < 2:
+                    continue
+                # Build product info from classification + invoice item
+                item_match = next(
+                    (i for i in items if isinstance(i, dict)
+                     and (i.get("description", "") or "")[:50] == desc_key),
+                    items[0] if items else {},
+                )
+                if not isinstance(item_match, dict):
+                    item_match = {}
+                product_info = make_product_info(item_match)
+                elim_result = eliminate(
+                    db, product_info, elim_candidates,
+                    api_key=api_key, gemini_key=gemini_key,
+                )
+                elimination_results[desc_key] = elim_result
+                surv = elim_result.get("survivor_count", 0)
+                total_c = elim_result.get("input_count", 0)
+                needs_ai = elim_result.get("needs_ai", False)
+                print(f"    {desc_key[:30]}: {total_c} → {surv} survivors"
+                      f"{' (needs_ai)' if needs_ai else ''}")
+                # If AI's chosen code was eliminated, flag it
+                if hs_code:
+                    hs_clean = hs_code.replace(".", "").replace("/", "").replace(" ", "")
+                    survivors = elim_result.get("survivors", [])
+                    survivor_codes = {s.get("hs_code", "")[:6] for s in survivors}
+                    if hs_clean[:6] not in survivor_codes and survivors:
+                        # AI chose an eliminated code — flag conflict
+                        c["elimination_conflict"] = True
+                        best_survivor = survivors[0]
+                        c["elimination_suggested"] = best_survivor.get("hs_code", "")
+                        print(f"    ⚠️ ELIMINATION CONFLICT: AI chose {hs_code} but "
+                              f"engine suggests {best_survivor.get('hs_code', '')}")
+        except Exception as elim_err:
+            print(f"  [TOOL ENGINE] Elimination engine error (non-fatal): {elim_err}")
+
+    # 7d-ve: Verification engine — Phase 4 bilingual + Phase 5 knowledge + Flagging
+    # (Session 79 — was MISSING from this path)
+    ve_results = {}
+    if _VERIFICATION_ENGINE_OK:
+        try:
+            ve_results = run_verification_engine(
+                db, validated,
+                elimination_results=elimination_results,
+                free_import_results=free_import_results,
+                api_key=api_key, gemini_key=gemini_key,
+            )
+            # Apply confidence adjustments from Phase 5
+            for c in validated:
+                hs = c.get("hs_code", "")
+                ve = ve_results.get(hs, {})
+                adj = ve.get("phase5", {}).get("confidence_adjustment", 0)
+                if adj and isinstance(adj, (int, float)):
+                    # Use same Hebrew confidence adjustment as 6-agent path
+                    try:
+                        from lib.classification_agents import _apply_confidence_adjustment
+                        _apply_confidence_adjustment(c, adj)
+                    except ImportError:
+                        pass  # Adjustment not critical
+            ve_summary = ve_results.get("summary", {})
+            print(f"  [TOOL ENGINE] Verification engine: {ve_summary.get('verified', 0)} verified, "
+                  f"{ve_summary.get('flagged', 0)} flagged, {ve_summary.get('conflicts', 0)} conflicts")
+        except Exception as ve_err:
+            print(f"  [TOOL ENGINE] Verification engine error (non-fatal): {ve_err}")
+
     # 7d2: Cross-reference pipeline (EU TARIC + US HTS confidence adjustment)
     cross_ref_results = {}
     try:
@@ -599,6 +724,8 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
         "ambiguity": ambiguity_info,
         "tracker": tracker_info,
         "audit": audit,
+        "elimination": elimination_results if elimination_results else None,
+        "verification_engine": ve_results if ve_results else None,
         "cross_reference": cross_ref_results if cross_ref_results else None,
         "pre_enrichment": enrichment if enrichment else None,
         "_engine": "tool_calling",
