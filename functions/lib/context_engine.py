@@ -649,7 +649,15 @@ def _detect_all_domains(entities, subject, body):
 # ═══════════════════════════════════════════
 
 def _search_ordinance(entities, subject, body, search_log):
-    """Search ordinance articles by article number and keyword."""
+    """Search ordinance articles by topic map, article number, and keyword.
+
+    Search order:
+      0. Topic map (deterministic, instant) — best for topical questions
+      1. Direct article lookup by number
+      2. Keyword scoring (fallback, only if < 5 results)
+
+    Returns (articles_list, topic_xml_terms_list).
+    """
     try:
         from lib._ordinance_data import ORDINANCE_ARTICLES
     except ImportError:
@@ -657,12 +665,77 @@ def _search_ordinance(entities, subject, body, search_log):
             from _ordinance_data import ORDINANCE_ARTICLES
         except ImportError:
             search_log.append({"search": "ordinance", "status": "import_error"})
-            return []
+            return [], []
+
+    # Try topic map import (graceful degradation)
+    _search_topic = None
+    try:
+        from lib._ordinance_topic_map import search_ordinance_by_topic
+        _search_topic = search_ordinance_by_topic
+    except ImportError:
+        try:
+            from _ordinance_topic_map import search_ordinance_by_topic
+            _search_topic = search_ordinance_by_topic
+        except ImportError:
+            pass
 
     articles = []
     seen = set()
+    topic_notes = []
+    topic_xml_terms = []
 
-    # Direct article lookup
+    # Step 0: Topic map search (deterministic, instant)
+    if _search_topic:
+        combined_text = f"{subject} {body}"
+        topic_matches = _search_topic(combined_text)
+        for tm in topic_matches:
+            source = tm.get("source", "ordinance")
+            topic_data = tm.get("topic_data", {})
+
+            # Collect topic notes for context summary
+            notes = topic_data.get("notes", "")
+            if notes:
+                topic_notes.append(notes)
+
+            # Collect XML search terms
+            for term in topic_data.get("xml_search_terms", []):
+                if term not in topic_xml_terms:
+                    topic_xml_terms.append(term)
+
+            if source == "regulations":
+                # Regulation-sourced topic: use topic notes as content,
+                # NOT ordinance articles (article numbers collide)
+                reg_content = topic_data.get("regulation_content", "")
+                reg_name = topic_data.get("regulation_name", "")
+                articles.append({
+                    "article_id": f"[{tm['topic_key']}]",
+                    "title_he": reg_name or tm["topic_key"],
+                    "summary_en": topic_data.get("notes", ""),
+                    "full_text_he": reg_content or notes,
+                    "chapter": topic_data.get("chapter", 0),
+                    "source": "regulations",
+                    "_topic_match": True,
+                })
+                seen.add(f"_topic_{tm['topic_key']}")
+            else:
+                # Ordinance-sourced topic: pull full text from ORDINANCE_ARTICLES
+                for art_id in tm.get("articles", [])[:8]:
+                    if art_id in seen:
+                        continue
+                    art = ORDINANCE_ARTICLES.get(art_id)
+                    if art:
+                        articles.append({
+                            "article_id": art_id,
+                            "title_he": art.get("t", ""),
+                            "summary_en": art.get("s", ""),
+                            "full_text_he": (art.get("f") or "")[:3000],
+                            "chapter": art.get("ch", 0),
+                            "source": "ordinance",
+                            "_topic_match": True,
+                        })
+                        seen.add(art_id)
+
+    # Step 1: Direct article lookup
     for art_id in (entities.get("article_numbers") or []):
         art = ORDINANCE_ARTICLES.get(art_id)
         if art and art_id not in seen:
@@ -676,15 +749,13 @@ def _search_ordinance(entities, subject, body, search_log):
             })
             seen.add(art_id)
 
-    # Keyword search against titles and summaries
+    # Step 2: Keyword search (fallback, only if < 5 results)
     if len(articles) < 5:
         combined = f"{subject} {body}".lower()
-        # Strip Hebrew prefixes for matching
         words = set()
         for w in re.findall(r'[\u0590-\u05FF]{3,}', combined):
             words.add(w)
-            # Strip common prefixes
-            for prefix in ['ב', 'ל', 'ה', 'ו', 'מ', 'כ', 'ש']:
+            for prefix in ['\u05d1', '\u05dc', '\u05d4', '\u05d5', '\u05de', '\u05db', '\u05e9']:
                 if w.startswith(prefix) and len(w) > 3:
                     words.add(w[1:])
         for w in re.findall(r'[a-zA-Z]{4,}', combined):
@@ -709,14 +780,23 @@ def _search_ordinance(entities, subject, body, search_log):
                 })
                 seen.add(art_id)
 
-        # Sort keyword matches by score, keep best
         scored = [a for a in articles if "_match_score" in a]
         scored.sort(key=lambda a: a["_match_score"], reverse=True)
         for a in scored:
             a.pop("_match_score", None)
 
-    search_log.append({"search": "ordinance", "status": "ok", "count": len(articles)})
-    return articles[:5]
+    # Clean internal markers before returning
+    for a in articles:
+        a.pop("_topic_match", None)
+
+    search_log.append({
+        "search": "ordinance",
+        "status": "ok",
+        "count": len(articles),
+        "topic_matches": len(topic_notes),
+        "topic_notes": topic_notes[:3],
+    })
+    return articles[:8], topic_xml_terms
 
 
 def _search_framework_order(entities, body, search_log):
@@ -893,10 +973,15 @@ def _build_tool_params(tool_name, pkg):
 
     if tool_name == "search_xml_documents":
         terms = []
+        # Topic XML terms get priority (from topic map)
+        for term in (ents.get("topic_xml_terms") or [])[:3]:
+            terms.append(term)
         for name in (ents.get("product_names") or [])[:1]:
-            terms.append(name)
+            if name not in terms:
+                terms.append(name)
         for kw in (ents.get("keywords") or [])[:3]:
-            terms.append(kw)
+            if kw not in terms:
+                terms.append(kw)
         if not terms:
             terms = [pkg.domain] if pkg.domain != "general" else []
         if not terms:
@@ -1411,6 +1496,17 @@ def _build_context_summary(pkg):
             duty = c.get("duty_rate", "")
             parts.append(f"  {hs}: {desc}" + (f" (מכס: {duty})" if duty else ""))
 
+    # Topic notes (from topic map — high-level guidance before raw articles)
+    _topic_notes_from_log = []
+    for entry in (pkg.search_log or []):
+        if entry.get("search") == "ordinance" and entry.get("topic_notes"):
+            _topic_notes_from_log = entry["topic_notes"]
+            break
+    if _topic_notes_from_log:
+        parts.append("\n--- הנחיות נושאיות ---")
+        for note in _topic_notes_from_log:
+            parts.append(note)
+
     # Ordinance articles
     if pkg.ordinance_articles:
         parts.append("\n--- מאמרי פקודת המכס ---")
@@ -1418,7 +1514,11 @@ def _build_context_summary(pkg):
             art_id = a.get("article_id", "")
             title = a.get("title_he", "")
             full = a.get("full_text_he", "")
-            parts.append(f"\nסעיף {art_id}: {title}")
+            source = a.get("source", "ordinance")
+            if source == "regulations":
+                parts.append(f"\n[{title}]")
+            else:
+                parts.append(f"\nסעיף {art_id}: {title}")
             if full:
                 parts.append(f"נוסח הסעיף: {full}")
 
@@ -1573,8 +1673,9 @@ def prepare_context_package(subject, body, db, get_secret_func=None):
         search_log.append({"search": "cache", "status": f"crash:{e}"})
 
     # 4. Local searches — ALWAYS run (free, in-memory)
+    topic_xml_terms = []
     try:
-        pkg.ordinance_articles = _search_ordinance(
+        pkg.ordinance_articles, topic_xml_terms = _search_ordinance(
             pkg.entities, subject or "", body_plain, search_log)
     except Exception as e:
         search_log.append({"search": "ordinance", "status": f"crash:{e}"})
@@ -1585,9 +1686,19 @@ def prepare_context_package(subject, body, db, get_secret_func=None):
     except Exception as e:
         search_log.append({"search": "framework", "status": f"crash:{e}"})
 
+    # 4b. Store topic XML terms for tool router
+    if topic_xml_terms:
+        pkg.entities["topic_xml_terms"] = topic_xml_terms
+
     # 5. Tool Router — plan and execute relevant tools
     try:
         tool_plan = _plan_tool_calls(pkg)
+        # Skip search_legal_knowledge if topic map already found ordinance articles
+        if pkg.ordinance_articles and "search_legal_knowledge" in tool_plan:
+            topic_sourced = any(True for a in pkg.ordinance_articles
+                               if a.get("source") in ("ordinance", "regulations"))
+            if topic_sourced:
+                tool_plan.remove("search_legal_knowledge")
         if tool_plan:
             print(f"    🔧 Tool router plan ({len(tool_plan)} tools): {', '.join(tool_plan)}")
         _execute_tool_plan(tool_plan, pkg, db, get_secret_func)
