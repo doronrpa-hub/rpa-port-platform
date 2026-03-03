@@ -3132,3 +3132,137 @@ Doron's test email ("האם מותר לעסקה לפי פקודת המכס לק�
 3. Process FTA content after download into structured legal_knowledge docs
 4. Framework order Hebrew text (data_c3/framework_order_text.txt, 82KB) — same treatment as ordinance
 5. Consider paid Gemini tier for production stability (free tier quota issues)
+
+## Session 79 Summary (2026-03-03) — Email Reply Rules + Gap 2 Silent Redesign
+
+### Overview
+4 sub-commits across Session 79:
+- **C1+C2** (`5602c6e`): Wired elimination engine + verification engine into tool-calling path
+- **C3** (`09ebb62`): Gap 2 auto-trigger (WRONG — sent email from CC path)
+- **C4** (`eafc282`): Fixed email rules + Gap 2 silent redesign (THIS COMMIT)
+
+C4 replaced C3's broken email-sending behavior with the correct silent classification pattern.
+
+### Email Rules (user clarified — FINAL)
+1. **cc@rpa-port.co.il** = distribution group. All employees + RCB members. NEVER reply to it. NEVER send to it.
+2. **RCB replies ONLY when** rcb@rpa-port.co.il is in TO: AND is the **SOLE** TO recipient.
+3. **Only reply to individual @rpa-port.co.il users** — never cc@ group, never external.
+4. **CC path = process silently**: learn, classify, prepare answers, store results — but NEVER SEND.
+5. **External sender in TO: rcb@ alone** → find team member in CC chain → reply there.
+6. **Gap 2 reports** sent from tracker poll to doron@ only (not from CC path).
+
+### 6 Steps Implemented (C4 commit `eafc282`)
+
+| Step | Change | File |
+|------|--------|------|
+| 1 | Gap 2 classifies silently via `_run_gap2_silent_classification()` — stores on deal, NO email | `main.py` |
+| 2 | Block cc@rpa-port.co.il in `_is_internal_recipient()` | `rcb_helpers.py` |
+| 3 | Add `sole=False` param to `is_direct_recipient()` | `rcb_helpers.py` |
+| 4 | Direct path uses `is_direct_recipient(msg, rcb_email, sole=True)` + external CC fallback | `main.py` |
+| 5 | `_send_reply_safe()` uses `sole=True` — suppresses reply when multi-TO | `email_intent.py` |
+| 6 | Gap 2 report email sent from `rcb_tracker_poll` via `_build_gap2_report_html()` | `main.py` |
+
+### New Helper Functions in `main.py`
+
+**`_run_gap2_silent_classification(db, fs, deal_id, aggregated_text, get_secret)`** (~75 lines)
+- Fetches API keys, calls `run_full_classification()` with aggregated deal text
+- Stores classification doc in `rcb_classifications` collection
+- Updates deal with: `classification_auto_triggered`, `classification_auto_triggered_via: "gap2_cc_silent"`, `classification_report_sent: False`, `gap2_classification: {success, hs_codes, synthesis}`
+- Returns `{success: bool, classification_id: str}`
+
+**`_build_gap2_report_html(deal_id, deal_data)`** (~50 lines)
+- Builds compact Hebrew RTL notification email for Gap 2 results
+- HS code table with confidence badges, synthesis block, shipper/BOL info
+- Used by tracker poll when sending deferred Gap 2 reports
+
+### Key Code Patterns
+
+**`_is_internal_recipient()` — cc@ block:**
+```python
+addr = (email or "").strip().lower()
+if addr == "cc@rpa-port.co.il":
+    return False  # Group address — NEVER send to distribution list
+return addr.endswith("@rpa-port.co.il")
+```
+
+**`is_direct_recipient()` — sole param:**
+```python
+def is_direct_recipient(msg, rcb_email, sole=False):
+    to_recipients = msg.get('toRecipients', [])
+    if not to_recipients:
+        return True  # fail-open
+    to_addresses = [r.get('emailAddress', {}).get('address', '').lower() for r in to_recipients]
+    rcb_in_to = rcb_email.lower() in to_addresses
+    if sole:
+        return rcb_in_to and len(to_addresses) == 1
+    return rcb_in_to
+```
+
+**`_send_reply_safe()` — sole=True guard:**
+```python
+if not is_direct_recipient(msg, rcb_email, sole=True):
+    print(f"  📭 Reply suppressed — rcb@ not sole TO recipient")
+    return False
+```
+
+**Tracker poll Gap 2 report sender:**
+```python
+_gap2_deals = list(get_db().collection("tracker_deals")
+                   .where("classification_auto_triggered", "==", True)
+                   .where("classification_report_sent", "==", False)
+                   .limit(10).stream())
+# For each deal: build HTML, send to doron@, set classification_report_sent=True
+```
+
+### Firestore Index Added
+```json
+{
+  "collectionGroup": "tracker_deals",
+  "queryScope": "COLLECTION",
+  "fields": [
+    {"fieldPath": "classification_auto_triggered", "order": "ASCENDING"},
+    {"fieldPath": "classification_report_sent", "order": "ASCENDING"}
+  ]
+}
+```
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `functions/lib/rcb_helpers.py` | cc@ block in `_is_internal_recipient()`, `sole` param on `is_direct_recipient()` |
+| `functions/lib/email_intent.py` | `_send_reply_safe()` uses `sole=True` |
+| `functions/main.py` | `_run_gap2_silent_classification()`, `_build_gap2_report_html()`, sole-TO + CC fallback in direct path, Gap 2 report in tracker poll, `is_direct_recipient` import |
+| `firestore.indexes.json` | Composite index for classification_auto_triggered + classification_report_sent |
+| `functions/tests/test_email_rules.py` | **NEW** — 29 tests across 6 classes |
+
+### New Test File: `test_email_rules.py` (29 tests)
+| Class | Tests | What |
+|-------|-------|------|
+| `TestIsInternalRecipient` | 8 | cc@ blocked, case insensitive, whitespace, None, empty |
+| `TestIsDirectRecipientSole` | 7 | sole param, backward compat, fail-open, case insensitive |
+| `TestSendReplySafeSoleCheck` | 3 | multi-TO suppressed, sole-TO allowed, external blocked |
+| `TestGap2SilentClassification` | 3 | success stores on deal, no API key fails, failure stored |
+| `TestGap2ReportHtml` | 2 | with/without HS codes and synthesis |
+| `TestEmailReplyMatrix` | 6 | full rules matrix (6 scenarios from spec) |
+
+### Git Commits (Session 79 — all 3)
+- `5602c6e` — C1+C2: Wire elimination engine + verification engine into tool-calling path
+- `09ebb62` — C3: Gap 2 auto-trigger (SUPERSEDED by C4)
+- `eafc282` — C4: Fix email reply rules + Gap 2 silent redesign
+
+### Test Results
+- **1,530 passed**, 0 failed, 0 skipped — 1,501 existing + 29 new
+
+### Remaining Audit Issues (from Session 79 audit, NOT fixed)
+- **C5**: 58+ Firestore collections NOT in COLLECTION_FIELDS
+- **H1**: Agent 6 uses gpt-4o NOT Gemini Pro ($2.50/$10 vs $1.25/$10)
+- **H3**: Pre-classify bypass applies same HS to ALL items (should be per-item)
+- **H5**: Identity graph write-only — tracker never reads from it
+- **M10**: 3 functions fire at 02:00 IL simultaneously
+- **M8**: Physical exam alert severity "warning" should be "critical"
+- **M11**: Rate limit sender check case-sensitive
+- **H6**: I3 alert sends missing deal_id/alert_type quality gate params
+- **C4**: datetime.utcnow() deprecated (Python 3.12+)
+- **H4**: Gemini model version inconsistent
+- **H7**: `_call_claude_check` dead code in cross_checker.py
+- **H2**: Dead `_send_alert_email()` in main.py

@@ -568,6 +568,441 @@ COLLECTION_FIELDS = {
         "hs_fields": ["hs_codes"],
         "doc_type": "record",
     },
+    # ═══════════════════════════════════════════
+    #  Session 79 C5: 70 missing collections added below
+    # ═══════════════════════════════════════════
+    # ── Self-Learning System ──
+    "learned_classifications": {
+        "title_fields": ["product_description", "item_description"],
+        "keyword_fields": ["hs_code", "supplier", "origin", "method"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "learned_corrections": {
+        "title_fields": ["item_description", "reason"],
+        "keyword_fields": ["old_hs_code", "new_hs_code", "from_email"],
+        "hs_fields": ["old_hs_code", "new_hs_code"],
+        "doc_type": "record",
+    },
+    "learned_patterns": {
+        "title_fields": ["pattern", "description"],
+        "keyword_fields": ["chapter", "type"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "learned_answers": {
+        "title_fields": ["topic", "answer"],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "learned_contacts": {
+        "title_fields": ["name", "email", "company"],
+        "keyword_fields": ["email", "role"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "learned_doc_templates": {
+        "title_fields": ["template_key", "doc_type"],
+        "keyword_fields": ["doc_type", "sender"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "learned_document_types": {
+        "title_fields": ["name", "description"],
+        "keyword_fields": ["doc_type", "patterns"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "learning_log": {
+        "title_fields": ["subject", "action"],
+        "keyword_fields": ["type", "from_email"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # ── Pupil System ──
+    "pupil_observations": {
+        "title_fields": ["subject", "observation_type"],
+        "keyword_fields": ["from_email", "deal_id"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "pupil_teachings": {
+        "title_fields": ["teaching_id", "topic"],
+        "keyword_fields": ["type", "chapter"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "pupil_reviews": {
+        "title_fields": ["case_id", "item_description"],
+        "keyword_fields": ["status", "hs_code"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "pupil_corrections": {
+        "title_fields": ["case_id", "reason"],
+        "keyword_fields": ["status", "old_hs_code", "new_hs_code"],
+        "hs_fields": ["old_hs_code", "new_hs_code"],
+        "doc_type": "record",
+    },
+    "pupil_questions": {
+        "title_fields": ["question", "context"],
+        "keyword_fields": ["chapter", "type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "pupil_budget": {
+        "title_fields": [],
+        "keyword_fields": ["date"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "pupil_review_budget": {
+        "title_fields": [],
+        "keyword_fields": ["date"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "pupil_correction_budget": {
+        "title_fields": [],
+        "keyword_fields": ["date"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "pupil_consultation_log": {
+        "title_fields": ["question", "answer"],
+        "keyword_fields": ["from_email", "topic"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "pupil_audit_summaries": {
+        "title_fields": ["summary"],
+        "keyword_fields": ["date", "status"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    # ── Brain / Overnight ──
+    "brain_index": {
+        "title_fields": ["keyword", "keyword_he"],
+        "keyword_fields": ["keyword", "keyword_he", "chapter"],
+        "hs_fields": ["hs_codes"],
+        "doc_type": "record",
+    },
+    "brain_run_progress": {
+        "title_fields": [],
+        "keyword_fields": ["date"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "brain_email_styles": {
+        "title_fields": ["style", "description"],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "ai_knowledge_enrichments": {
+        "title_fields": ["title", "content"],
+        "keyword_fields": ["chapter", "type", "source"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "overnight_audit_results": {
+        "title_fields": ["summary"],
+        "keyword_fields": ["date", "status"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "enrichment_reports": {
+        "title_fields": ["summary"],
+        "keyword_fields": ["date", "type"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "enrichment_tasks": {
+        "title_fields": ["task_type", "description"],
+        "keyword_fields": ["status", "type"],
+        "hs_fields": [],
+        "doc_type": "queue",
+    },
+    "chapter_classification_rules": {
+        "title_fields": ["rule_text", "description"],
+        "keyword_fields": ["chapter"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # ── Tracker Extras ──
+    "tracker_observations": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["deal_id", "from_email", "doc_type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "tracker_awb_status": {
+        "title_fields": ["awb_number"],
+        "keyword_fields": ["awb_number", "deal_id", "status"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # ── Classification Pipeline ──
+    "classification_reports": {
+        "title_fields": ["subject", "tracking_code"],
+        "keyword_fields": ["status", "from_email"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "rcb_silent_classifications": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["deal_id"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "rcb_inspector_reports": {
+        "title_fields": ["summary", "report_type"],
+        "keyword_fields": ["date", "status"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "hs_code_crossref": {
+        "title_fields": ["description"],
+        "keyword_fields": ["il_code", "uk_code", "eu_code"],
+        "hs_fields": ["il_code", "uk_code", "eu_code"],
+        "doc_type": "record",
+    },
+    "hs_code_references": {
+        "title_fields": ["description"],
+        "keyword_fields": ["hs_code", "source"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "extraction_quality_log": {
+        "title_fields": ["filename"],
+        "keyword_fields": ["extraction_method", "quality"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "verification_cache": {
+        "title_fields": ["hs_code"],
+        "keyword_fields": ["hs_code"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "cache",
+    },
+    # ── System / Operational ──
+    "config": {
+        "title_fields": [],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "system",
+    },
+    "security_log": {
+        "title_fields": ["event", "message"],
+        "keyword_fields": ["type", "recipient", "source"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "system_metadata": {
+        "title_fields": ["type"],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "system",
+    },
+    "system_state": {
+        "title_fields": [],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "system",
+    },
+    "system_status": {
+        "title_fields": ["status"],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "system",
+    },
+    "system_counters": {
+        "title_fields": [],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "system",
+    },
+    "monitor_errors": {
+        "title_fields": ["error", "message"],
+        "keyword_fields": ["source", "level"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "scanner_logs": {
+        "title_fields": ["message"],
+        "keyword_fields": ["source", "level"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    # ── Knowledge / Pipeline ──
+    "knowledge_gaps": {
+        "title_fields": ["gap_description", "question"],
+        "keyword_fields": ["chapter", "type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "knowledge_queries": {
+        "title_fields": ["question", "answer"],
+        "keyword_fields": ["from_email", "topic"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "regulatory_requirements": {
+        "title_fields": ["description", "requirement"],
+        "keyword_fields": ["ministry", "type"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "regulatory",
+    },
+    "legal_requirements": {
+        "title_fields": ["title", "description"],
+        "keyword_fields": ["type", "source"],
+        "hs_fields": [],
+        "doc_type": "legal",
+    },
+    "pipeline_ingestion_log": {
+        "title_fields": ["source", "title"],
+        "keyword_fields": ["source", "status"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "shaarolami_scrape_staging": {
+        "title_fields": ["description_he"],
+        "keyword_fields": ["hs_code", "chapter"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "declarations_raw": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["from_email", "type"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "document_types": {
+        "title_fields": ["name", "description"],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "reference",
+    },
+    "free_import_cache": {
+        "title_fields": [],
+        "keyword_fields": ["hs_10"],
+        "hs_fields": ["hs_10"],
+        "doc_type": "cache",
+    },
+    "triangle_learnings": {
+        "title_fields": ["description"],
+        "keyword_fields": ["hs_code", "winner_hs"],
+        "hs_fields": ["hs_code", "winner_hs"],
+        "doc_type": "record",
+    },
+    # ── Librarian Internal ──
+    "librarian_index": {
+        "title_fields": ["title", "description"],
+        "keyword_fields": ["collection", "document_type"],
+        "hs_fields": ["hs_codes"],
+        "doc_type": "system",
+    },
+    "librarian_enrichment_log": {
+        "title_fields": ["type"],
+        "keyword_fields": ["type"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "librarian_search_log": {
+        "title_fields": ["query"],
+        "keyword_fields": ["query", "collection"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "librarian_tags": {
+        "title_fields": ["tag", "label"],
+        "keyword_fields": ["tag", "category"],
+        "hs_fields": [],
+        "doc_type": "reference",
+    },
+    # ── User-facing / CRM ──
+    "sellers": {
+        "title_fields": ["name", "company"],
+        "keyword_fields": ["email", "country"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "contacts": {
+        "title_fields": ["name", "email", "company"],
+        "keyword_fields": ["email", "role"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "inbox": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["from_email", "status"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    "buyers": {
+        "title_fields": ["name", "company"],
+        "keyword_fields": ["email", "country"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # ── Task Queues ──
+    "pending_tasks": {
+        "title_fields": ["description", "task_type"],
+        "keyword_fields": ["status", "priority"],
+        "hs_fields": [],
+        "doc_type": "queue",
+    },
+    "agent_tasks": {
+        "title_fields": ["description", "task_type"],
+        "keyword_fields": ["status", "type"],
+        "hs_fields": [],
+        "doc_type": "queue",
+    },
+    "pc_agent_tasks": {
+        "title_fields": ["description", "target_url"],
+        "keyword_fields": ["status", "task_category", "target_collection"],
+        "hs_fields": [],
+        "doc_type": "queue",
+    },
+    "pc_agent_downloads": {
+        "title_fields": ["title", "url"],
+        "keyword_fields": ["status", "task_id"],
+        "hs_fields": [],
+        "doc_type": "record",
+    },
+    # ── Session / Backup ──
+    "session_backups": {
+        "title_fields": ["session_id"],
+        "keyword_fields": ["session_id"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "sessions_backup": {
+        "title_fields": ["session_id"],
+        "keyword_fields": ["session_id"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    "session_missions": {
+        "title_fields": ["mission", "description"],
+        "keyword_fields": ["session_id", "status"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
+    # ── Batch Processing ──
+    "batch_reprocess_results": {
+        "title_fields": ["item_description"],
+        "keyword_fields": ["status", "hs_code"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "record",
+    },
+    "batch_reprocess_summary": {
+        "title_fields": ["summary"],
+        "keyword_fields": ["date", "status"],
+        "hs_fields": [],
+        "doc_type": "audit",
+    },
 }
 
 # Document type by file extension
