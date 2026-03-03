@@ -705,8 +705,13 @@ def helper_graph_mark_read(access_token, user_email, message_id):
         print(f"Graph mark-read error: {e}")
 
 def _is_internal_recipient(email: str) -> bool:
-    """Only @rpa-port.co.il recipients are allowed."""
-    return (email or "").strip().lower().endswith("@rpa-port.co.il")
+    """Only individual @rpa-port.co.il recipients are allowed.
+    Blocks cc@rpa-port.co.il (distribution group — never send to it).
+    """
+    addr = (email or "").strip().lower()
+    if addr == "cc@rpa-port.co.il":
+        return False  # Group address — NEVER send to distribution list
+    return addr.endswith("@rpa-port.co.il")
 
 
 def helper_graph_send(access_token, user_email, to_email, subject, body_html,
@@ -870,8 +875,12 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
 _RE_FWD_PATTERN = re.compile(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+')
 
 
-def is_direct_recipient(msg, rcb_email):
+def is_direct_recipient(msg, rcb_email, sole=False):
     """Check if rcb_email is in the message's toRecipients (not just CC).
+
+    Args:
+        sole: If True, returns True ONLY if rcb@ is the SOLE TO recipient
+              (no other people in TO:). Use for reply eligibility.
 
     Returns True if rcb@ is a direct TO recipient — replies are allowed.
     Returns False if rcb@ is only CC'd — replies must be suppressed.
@@ -880,10 +889,14 @@ def is_direct_recipient(msg, rcb_email):
     to_recipients = msg.get('toRecipients', [])
     if not to_recipients:
         return True  # fail-open: if Graph API didn't return toRecipients, allow
-    return any(
-        rcb_email.lower() in r.get('emailAddress', {}).get('address', '').lower()
+    to_addresses = [
+        r.get('emailAddress', {}).get('address', '').lower()
         for r in to_recipients
-    )
+    ]
+    rcb_in_to = rcb_email.lower() in to_addresses
+    if sole:
+        return rcb_in_to and len(to_addresses) == 1
+    return rcb_in_to
 
 
 

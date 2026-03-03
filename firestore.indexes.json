@@ -96,6 +96,14 @@
         {"fieldPath": "from_email", "order": "ASCENDING"},
         {"fieldPath": "created_at", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "tracker_deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "classification_auto_triggered", "order": "ASCENDING"},
+        {"fieldPath": "classification_report_sent", "order": "ASCENDING"}
+      ]
     }
   ]
 }

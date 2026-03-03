@@ -21,7 +21,7 @@ from lib.classification_agents import run_full_classification, build_classificat
 from lib.knowledge_query import detect_knowledge_query, handle_knowledge_query
 from lib.rcb_id import generate_rcb_id, RCBType
 from lib.extraction_adapter import extract_text_from_attachments
-from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal
+from lib.rcb_helpers import helper_get_graph_token, helper_graph_messages, helper_graph_attachments, helper_graph_mark_read, helper_graph_send, to_hebrew_name, build_rcb_reply, get_rcb_secrets_internal, is_direct_recipient
 
 # ── Optional agent imports (fail gracefully if modules have issues) ──
 try:
@@ -595,6 +595,145 @@ def _aggregate_deal_text(db, deal_id):
     return "\n\n---\n\n".join(texts)
 
 
+def _run_gap2_silent_classification(db, firestore_module, deal_id, doc_text, get_secret_func):
+    """Gap 2: Classify silently and store result on deal. No email sent.
+
+    Called from CC path when a deal accumulates invoice + shipping doc.
+    Returns dict with 'success' and 'classification_id' on success.
+    """
+    api_key = get_secret_func('ANTHROPIC_API_KEY')
+    if not api_key:
+        print(f"    Gap 2: No API key available — skipping")
+        return {"success": False, "error": "no_api_key"}
+
+    gemini_key = None
+    openai_key = None
+    try:
+        gemini_key = get_secret_func('GEMINI_API_KEY')
+    except Exception:
+        pass
+    try:
+        openai_key = get_secret_func('OPENAI_API_KEY')
+    except Exception:
+        pass
+
+    print(f"    Gap 2: {len(doc_text)} chars, classifying silently...")
+    result = run_full_classification(
+        api_key.strip(), doc_text, db,
+        gemini_key=(gemini_key or '').strip() or None,
+        openai_key=(openai_key or '').strip() or None,
+    )
+
+    update = {
+        "classification_auto_triggered": True,
+        "classification_auto_triggered_at": firestore_module.SERVER_TIMESTAMP,
+        "classification_auto_triggered_via": "gap2_cc_silent",
+        "classification_report_sent": False,  # Tracker poll will send and flip to True
+    }
+
+    if result and result.get("success"):
+        hs_codes = []
+        try:
+            for c in (result.get("agents", {})
+                      .get("classification", {})
+                      .get("classifications", [])):
+                hs = c.get("hs_code", "")
+                if hs:
+                    hs_codes.append({
+                        "hs_code": hs,
+                        "description": c.get("item", "")[:100],
+                        "confidence": c.get("confidence", ""),
+                    })
+        except Exception:
+            pass
+
+        update["gap2_classification"] = {
+            "success": True,
+            "hs_codes": hs_codes,
+            "synthesis": (result.get("synthesis") or "")[:2000],
+        }
+
+        # Store in rcb_classifications collection
+        cls_id = ""
+        try:
+            ref = db.collection("rcb_classifications").add({
+                "source": "gap2_cc_silent",
+                "deal_id": deal_id,
+                "classifications": hs_codes,
+                "synthesis": (result.get("synthesis") or "")[:5000],
+                "timestamp": firestore_module.SERVER_TIMESTAMP,
+            })
+            cls_id = ref[1].id if isinstance(ref, tuple) else getattr(ref, 'id', '')
+            update["rcb_classification_id"] = cls_id
+        except Exception as e:
+            print(f"    Gap 2: rcb_classifications save error: {e}")
+
+        db.collection("tracker_deals").document(deal_id).update(update)
+        print(f"    Gap 2: Silent classification stored for deal {deal_id} ({len(hs_codes)} HS codes)")
+        return {"success": True, "classification_id": cls_id, "hs_count": len(hs_codes)}
+    else:
+        update["gap2_classification"] = {
+            "success": False,
+            "error": (result or {}).get("error", "unknown"),
+        }
+        db.collection("tracker_deals").document(deal_id).update(update)
+        print(f"    Gap 2: Classification failed — stored failure on deal {deal_id}")
+        return {"success": False, "error": (result or {}).get("error", "unknown")}
+
+
+def _build_gap2_report_html(deal_id, deal_data):
+    """Build compact HTML notification for a Gap 2 silent classification result."""
+    cls = deal_data.get("gap2_classification", {})
+    hs_codes = cls.get("hs_codes", [])
+    synthesis = cls.get("synthesis", "")
+    bol = deal_data.get("bol_number", "")
+    direction = deal_data.get("direction", "import")
+    shipper = deal_data.get("shipper", "")
+
+    hs_rows = ""
+    for h in hs_codes[:10]:
+        hs_rows += (
+            f'<tr><td style="padding:6px 10px;border:1px solid #e0e0e0;font-family:monospace;font-size:14px">'
+            f'{h.get("hs_code","")}</td>'
+            f'<td style="padding:6px 10px;border:1px solid #e0e0e0;font-size:13px">'
+            f'{h.get("description","")[:80]}</td>'
+            f'<td style="padding:6px 10px;border:1px solid #e0e0e0;font-size:13px;text-align:center">'
+            f'{h.get("confidence","")}</td></tr>'
+        )
+
+    html = (
+        '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:0 auto;direction:rtl">'
+        '<div style="background:linear-gradient(135deg,#0f2439,#245a8a);color:#fff;padding:20px 24px;border-radius:10px 10px 0 0">'
+        '<h2 style="margin:0;font-size:18px">RCB | סיווג אוטומטי (Gap 2)</h2>'
+        f'<p style="margin:4px 0 0;font-size:12px;opacity:0.8">Deal: {deal_id} | B/L: {bol or "N/A"} | {direction}</p>'
+        '</div>'
+        '<div style="background:#fff;padding:20px 24px;border:1px solid #e0e0e0">'
+        f'<p style="font-size:13px;color:#555">שוגר: {shipper or "לא ידוע"}</p>'
+    )
+    if synthesis:
+        html += (
+            '<div style="background:#f0f8ff;border-right:4px solid #245a8a;padding:12px;margin:12px 0;font-size:13px">'
+            f'{synthesis[:1500]}</div>'
+        )
+    if hs_rows:
+        html += (
+            '<table style="width:100%;border-collapse:collapse;margin:12px 0">'
+            '<tr style="background:#f5f5f5"><th style="padding:8px;border:1px solid #e0e0e0;text-align:right">קוד HS</th>'
+            '<th style="padding:8px;border:1px solid #e0e0e0;text-align:right">תיאור</th>'
+            '<th style="padding:8px;border:1px solid #e0e0e0;text-align:center">ביטחון</th></tr>'
+            f'{hs_rows}</table>'
+        )
+    html += (
+        '<p style="font-size:11px;color:#999;margin-top:16px">'
+        'סיווג זה בוצע אוטומטית ממסמכים שהצטברו בתיק. נא לבדוק ולאשר.</p>'
+        '</div>'
+        '<div style="background:#f8faff;padding:12px 24px;border-radius:0 0 10px 10px;border:1px solid #e0e0e0;border-top:0">'
+        '<p style="font-size:10px;color:#aaa;margin:0">RCB — Robot Customs Broker | R.P.A.PORT LTD</p>'
+        '</div></div>'
+    )
+    return html
+
+
 def _screen_deal_parties(db, deal_id, get_secret_func, access_token=None, rcb_email=None):
     """Screen shipper/consignee/notify party against OpenSanctions.
     Flag-only — never block. Logs to security_log on hit."""
@@ -947,46 +1086,20 @@ def _rcb_check_email_inner(event) -> None:
                 except Exception as se:
                     print(f"    ⚠️ Schedule CC error (non-fatal): {se}")
 
-            # Session 51+52B: CC path = observe only, never classify, never send, never reply
-            # EXCEPT Gap 2 auto-trigger: when deal accumulates invoice + shipping doc.
-
-            # Gap 2: Auto-trigger classification when deal has enough documents
-            # (Session 34 built the flag, Session 79 wires it)
+            # Session 79: CC path = process/learn/prepare silently, NEVER send.
+            # Gap 2: When deal accumulates invoice + shipping doc → classify silently,
+            # store result on deal. Email send happens in tracker poll.
             if (tracker_result and tracker_result.get("classification_ready")
                     and tracker_result.get("deal_id")):
                 try:
                     _gap2_deal_id = tracker_result["deal_id"]
-                    print(f"  📋 Gap 2: Deal {_gap2_deal_id} ready for classification — aggregating text...")
+                    print(f"  📋 Gap 2: Deal {_gap2_deal_id} ready for classification")
                     _gap2_text = _aggregate_deal_text(get_db(), _gap2_deal_id)
                     if _gap2_text and len(_gap2_text) > 50:
-                        # Find team member in CC chain for reply
-                        _gap2_reply = None
-                        _all_cc = to_recipients + msg.get('ccRecipients', [])
-                        for _r in _all_cc:
-                            _addr = (_r.get('emailAddress', {}).get('address', '') or '').lower()
-                            if _addr.endswith('@rpa-port.co.il') and _addr != rcb_email.lower() and _addr != 'cc@rpa-port.co.il':
-                                _gap2_reply = _r.get('emailAddress', {}).get('address', '')
-                                break
-                        if not _gap2_reply:
-                            _gap2_reply = 'doron@rpa-port.co.il'  # Default team recipient
-
-                        print(f"    Gap 2: {len(_gap2_text)} chars aggregated, classifying → {_gap2_reply}")
-                        process_and_send_report(
-                            access_token, rcb_email, _gap2_reply, subject,
-                            from_email, [], msg_id, get_secret,
-                            get_db(), firestore, helper_graph_send, extract_text_from_attachments,
-                            email_body=_gap2_text,
-                        )
-                        # Link classification to deal
-                        try:
-                            get_db().collection("tracker_deals").document(_gap2_deal_id).update({
-                                "classification_auto_triggered": True,
-                                "classification_auto_triggered_via": "gap2_cc",
-                            })
-                        except Exception:
-                            pass
+                        _run_gap2_silent_classification(
+                            get_db(), firestore, _gap2_deal_id, _gap2_text, get_secret)
                     else:
-                        print(f"    Gap 2: Deal {_gap2_deal_id} ready but text too short ({len(_gap2_text or '')} chars)")
+                        print(f"    Gap 2: text too short ({len(_gap2_text or '')} chars)")
                 except Exception as gap2_err:
                     print(f"    ⚠️ Gap 2 auto-trigger error (non-fatal): {gap2_err}")
 
@@ -999,25 +1112,32 @@ def _rcb_check_email_inner(event) -> None:
             continue
 
         # ── Direct TO emails: full pipeline from ANY sender ──
-        # Session 47: Process all senders. Reply only to @rpa-port.co.il.
-        # Determine reply-to address: team sender → reply to them.
-        # External sender → find @rpa-port.co.il in To/CC chain.
-        # No team address found → classify + store, but NO reply email.
+        # Session 79: RCB replies ONLY when rcb@ is SOLE TO recipient.
+        # Reply goes to sender if @rpa-port.co.il, or to team member in CC chain.
         _reply_to = None
-        if from_email.lower().endswith('@rpa-port.co.il'):
-            _reply_to = from_email  # Team sender — reply directly
-        else:
-            # External sender — find @rpa-port.co.il in To/CC recipients
-            _all_recipients = to_recipients + msg.get('ccRecipients', [])
-            for _r in _all_recipients:
-                _addr = _r.get('emailAddress', {}).get('address', '').lower()
-                if _addr.endswith('@rpa-port.co.il') and _addr != rcb_email.lower() and _addr != 'cc@rpa-port.co.il':
-                    _reply_to = _r.get('emailAddress', {}).get('address', '')
-                    break
-            if _reply_to:
-                print(f"    📬 External sender {from_email} → reply to {_reply_to}")
+        _is_sole_to = is_direct_recipient(msg, rcb_email, sole=True)
+        if _is_sole_to:
+            _sender_lower = from_email.lower()
+            if (_sender_lower.endswith('@rpa-port.co.il')
+                    and _sender_lower != 'cc@rpa-port.co.il'
+                    and _sender_lower != rcb_email.lower()):
+                _reply_to = from_email  # Team sender — reply directly
+                print(f"    📬 Sole-TO from {from_email} → will reply")
             else:
-                print(f"    📬 External sender {from_email} → no team address in chain, will classify but NOT reply")
+                # External sender or system address — find team member in CC chain
+                for _r in msg.get('ccRecipients', []):
+                    _addr = (_r.get('emailAddress', {}).get('address', '') or '').lower()
+                    if (_addr.endswith('@rpa-port.co.il')
+                            and _addr != rcb_email.lower()
+                            and _addr != 'cc@rpa-port.co.il'):
+                        _reply_to = _r.get('emailAddress', {}).get('address', '')
+                        break
+                if _reply_to:
+                    print(f"    📬 External sender {from_email} → reply to CC team member {_reply_to}")
+                else:
+                    print(f"    📬 External sender {from_email} → no team in chain, classify only")
+        else:
+            print(f"    📬 rcb@ not sole TO recipient — classify only, no reply")
 
         # Check if already processed
         import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
@@ -2075,6 +2195,39 @@ def rcb_tracker_poll(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"🚨 I3 port intelligence alerts: {pi_result}")
     except Exception as pie:
         print(f"🚨 I3 alert engine error: {pie}")
+
+    # ── Gap 2: Send classification reports for silently-classified deals ──
+    # CC path classifies silently and stores results. Here we email them to doron@.
+    try:
+        _gap2_sent = 0
+        _gap2_deals = list(get_db().collection("tracker_deals")
+                           .where("classification_auto_triggered", "==", True)
+                           .where("classification_report_sent", "==", False)
+                           .limit(10).stream())
+        for _g2d in _gap2_deals:
+            if _gap2_sent >= 3:
+                break  # Max 3 per poll cycle
+            _g2data = _g2d.to_dict()
+            if not _g2data.get("gap2_classification", {}).get("success"):
+                continue  # Classification didn't succeed
+            _g2_deal_id = _g2d.id
+            _g2_bol = _g2data.get("bol_number", "")
+            _g2_html = _build_gap2_report_html(_g2_deal_id, _g2data)
+            _g2_subj = f"RCB | סיווג אוטומטי | {_g2_bol or _g2_deal_id[:8]}"
+            if helper_graph_send(access_token, rcb_email, 'doron@rpa-port.co.il',
+                                  _g2_subj, _g2_html, deal_id=_g2_deal_id,
+                                  alert_type="gap2_report", db=get_db()):
+                get_db().collection("tracker_deals").document(_g2_deal_id).update({
+                    "classification_report_sent": True,
+                    "classification_report_sent_at": firestore.SERVER_TIMESTAMP,
+                })
+                _gap2_sent += 1
+                _g2_hs_count = len(_g2data.get("gap2_classification", {}).get("hs_codes", []))
+                print(f"  📋 Gap 2 report sent for deal {_g2_deal_id} ({_g2_hs_count} HS codes)")
+        if _gap2_sent > 0:
+            print(f"📋 Gap 2: {_gap2_sent} classification reports sent to doron@")
+    except Exception as gap2_poll_err:
+        print(f"📋 Gap 2 report send error (non-fatal): {gap2_poll_err}")
 
 
 # ============================================================

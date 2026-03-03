@@ -804,8 +804,8 @@ def _send_reply_safe(body_html, msg, access_token, rcb_email, subject_override=N
         from lib.rcb_helpers import is_direct_recipient
     except ImportError:
         from rcb_helpers import is_direct_recipient
-    if not is_direct_recipient(msg, rcb_email):
-        print(f"  📭 Reply suppressed — rcb@ was CC'd, not TO recipient (from={from_email})")
+    if not is_direct_recipient(msg, rcb_email, sole=True):
+        print(f"  📭 Reply suppressed — rcb@ not sole TO recipient (from={from_email})")
         return False
 
     # Intelligence Gate: filter banned phrases from ALL outgoing replies
