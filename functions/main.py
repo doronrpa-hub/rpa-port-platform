@@ -947,9 +947,48 @@ def _rcb_check_email_inner(event) -> None:
                 except Exception as se:
                     print(f"    ⚠️ Schedule CC error (non-fatal): {se}")
 
-            # Session 51+52B: CC path = observe only, never classify, never send, never reply.
-            # process_email_intent removed — it created orphaned questions_log docs and
-            # could send clarification emails when RCB is only in CC (should be silent).
+            # Session 51+52B: CC path = observe only, never classify, never send, never reply
+            # EXCEPT Gap 2 auto-trigger: when deal accumulates invoice + shipping doc.
+
+            # Gap 2: Auto-trigger classification when deal has enough documents
+            # (Session 34 built the flag, Session 79 wires it)
+            if (tracker_result and tracker_result.get("classification_ready")
+                    and tracker_result.get("deal_id")):
+                try:
+                    _gap2_deal_id = tracker_result["deal_id"]
+                    print(f"  📋 Gap 2: Deal {_gap2_deal_id} ready for classification — aggregating text...")
+                    _gap2_text = _aggregate_deal_text(get_db(), _gap2_deal_id)
+                    if _gap2_text and len(_gap2_text) > 50:
+                        # Find team member in CC chain for reply
+                        _gap2_reply = None
+                        _all_cc = to_recipients + msg.get('ccRecipients', [])
+                        for _r in _all_cc:
+                            _addr = (_r.get('emailAddress', {}).get('address', '') or '').lower()
+                            if _addr.endswith('@rpa-port.co.il') and _addr != rcb_email.lower() and _addr != 'cc@rpa-port.co.il':
+                                _gap2_reply = _r.get('emailAddress', {}).get('address', '')
+                                break
+                        if not _gap2_reply:
+                            _gap2_reply = 'doron@rpa-port.co.il'  # Default team recipient
+
+                        print(f"    Gap 2: {len(_gap2_text)} chars aggregated, classifying → {_gap2_reply}")
+                        process_and_send_report(
+                            access_token, rcb_email, _gap2_reply, subject,
+                            from_email, [], msg_id, get_secret,
+                            get_db(), firestore, helper_graph_send, extract_text_from_attachments,
+                            email_body=_gap2_text,
+                        )
+                        # Link classification to deal
+                        try:
+                            get_db().collection("tracker_deals").document(_gap2_deal_id).update({
+                                "classification_auto_triggered": True,
+                                "classification_auto_triggered_via": "gap2_cc",
+                            })
+                        except Exception:
+                            pass
+                    else:
+                        print(f"    Gap 2: Deal {_gap2_deal_id} ready but text too short ({len(_gap2_text or '')} chars)")
+                except Exception as gap2_err:
+                    print(f"    ⚠️ Gap 2 auto-trigger error (non-fatal): {gap2_err}")
 
             get_db().collection("rcb_processed").document(safe_id_cc).set({
                 "processed_at": firestore.SERVER_TIMESTAMP,
