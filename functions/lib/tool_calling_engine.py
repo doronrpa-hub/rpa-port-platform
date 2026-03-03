@@ -418,9 +418,9 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
     validated = validate_and_correct_classifications(db, classifications)
     classification_dict["classifications"] = validated
 
-    # 7b: Free Import Order for valid HS codes
+    # 7b: Free Import Order for valid HS codes (ALL items, not just first 3)
     free_import_results = {}
-    for c in validated[:3]:
+    for c in validated:
         hs = c.get("hs_code", "")
         if hs and _is_valid_hs(hs):
             if hs in executor._fio_cache:
@@ -431,9 +431,9 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
             if fio.get("found"):
                 free_import_results[hs] = fio
 
-    # 7c: Ministry routing for valid HS codes
+    # 7c: Ministry routing for valid HS codes (ALL items, not just first 3)
     ministry_routing = {}
-    for c in validated[:3]:
+    for c in validated:
         hs = c.get("hs_code", "")
         if hs and _is_valid_hs(hs):
             if hs in executor._ministry_cache:
@@ -569,10 +569,10 @@ def tool_calling_classify(api_key, doc_text, db, gemini_key=None):
         except Exception as ve_err:
             print(f"  [TOOL ENGINE] Verification engine error (non-fatal): {ve_err}")
 
-    # 7d2: Cross-reference pipeline (EU TARIC + US HTS confidence adjustment)
+    # 7d2: Cross-reference pipeline (EU TARIC + US HTS confidence adjustment, ALL items)
     cross_ref_results = {}
     try:
-        for c in validated[:3]:
+        for c in validated:
             hs = c.get("hs_code", "")
             if not hs or not _is_valid_hs(hs):
                 continue

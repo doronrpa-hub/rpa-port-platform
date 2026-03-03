@@ -1026,7 +1026,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
         seller_name = invoice.get("seller", "")
         if INTELLIGENCE_AVAILABLE:
             print("    🧠 Intelligence: Pre-classifying from own knowledge...")
-            for item in items[:3]:
+            for item in items:
                 if not isinstance(item, dict):
                     continue
                 # Use extracted product description, not raw text blob
@@ -1064,7 +1064,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
 
         # Enhanced knowledge search — skip raw text blobs
         knowledge_context = ""
-        for item in items[:3]:
+        for item in items:
             if not isinstance(item, dict):
                 continue
             desc = item.get("description", "")
@@ -1164,7 +1164,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
         # Only for valid HS codes — skip text like "לא ניתן לסווג"
         free_import_results = {}
         if INTELLIGENCE_AVAILABLE:
-            for c in validated_classifications[:3]:
+            for c in validated_classifications:
                 hs = c.get("hs_code", "")
                 if hs and _is_valid_hs(hs):
                     try:
@@ -1178,7 +1178,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
         # Only for valid HS codes
         ministry_routing = {}
         if INTELLIGENCE_AVAILABLE:
-            for c in validated_classifications[:3]:
+            for c in validated_classifications:
                 hs = c.get("hs_code", "")
                 if hs and _is_valid_hs(hs):
                     try:

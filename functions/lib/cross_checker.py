@@ -126,10 +126,9 @@ def cross_check_all_items(classifications, item_descriptions, origin_country,
                           api_key, gemini_key, openai_key, db=None):
     """
     Cross-check multiple classified items. Returns list of cross-check results.
-    Only checks the first 3 items to limit cost.
     """
     results = []
-    for i, cls in enumerate(classifications[:3]):
+    for i, cls in enumerate(classifications):
         hs_code = cls.get("hs_code", "")
         desc = ""
         if i < len(item_descriptions):
