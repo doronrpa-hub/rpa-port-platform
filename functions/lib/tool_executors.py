@@ -1143,14 +1143,23 @@ class ToolExecutor:
                             "chapter_11_text": data.get("chapter_11_text", "")[:3000],
                         }
 
-            # Case 3: EU reform — word-boundary regex prevents "queue" matching "eu"
+            # Case 3: EU reform — rich in-memory data from parsed gov.il XMLs
             if _LEGAL_EU_KEYWORDS.search(query):
-                for doc_id, data in all_docs:
-                    if doc_id == "reform_eu_standards":
-                        return {"found": True, "type": "reform", **{
-                            k: v for k, v in data.items()
-                            if k not in ("source", "seeded_at")
-                        }}
+                try:
+                    from lib._eu_reform_data import get_eu_reform_summary, search_eu_reform
+                    # If query has specific keyword beyond just "EU", search full text
+                    q_stripped = re.sub(r'\b(eu|אירופה|רפורמ[הת]|reform|ce|europe)\b', '', query.lower(), flags=re.IGNORECASE).strip()
+                    if q_stripped and len(q_stripped) >= 3:
+                        return search_eu_reform(q_stripped)
+                    return get_eu_reform_summary()
+                except ImportError:
+                    # Fallback to Firestore doc
+                    for doc_id, data in all_docs:
+                        if doc_id == "reform_eu_standards":
+                            return {"found": True, "type": "reform", **{
+                                k: v for k, v in data.items()
+                                if k not in ("source", "seeded_at")
+                            }}
 
             # Case 4: US reform — word-boundary regex prevents "status"/"focus" matching "us"
             if _LEGAL_US_KEYWORDS.search(query):

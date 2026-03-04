@@ -284,7 +284,7 @@ CLAUDE_TOOLS = [
                         "chapter articles ('פרק 8', 'articles in chapter 4'), "
                         "chapter number ('11' for Agents chapter summary), "
                         "'agents' or 'סוכנים' for customs agents law, "
-                        "'EU' or 'אירופה' for EU reform, 'USA' for US reform, "
+                        "'EU' or 'אירופה' for EU reform (43 directives, phases, customs code 65), 'USA' for US reform, "
                         "discount code number ('100000') or group ('קוד הנחה 810'), "
                         "procedure ('נוהל 3', 'תש\"ר', 'הערכה', 'סיווג', 'יצואן מאושר'), "
                         "FTA country ('FTA EU', 'הסכם טורקיה'), FTA keyword ('EUR.1', 'כללי מקור'), "
