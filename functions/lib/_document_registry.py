@@ -273,9 +273,10 @@ DOCUMENT_REGISTRY: Dict[str, dict] = {
     },
 
     "approved_exporter": {
-        "title_he": "נוהל יצואן מאושר",
-        "title_en": "Approved Exporter Procedure",
+        "title_he": "נוהל יצואן מאושר (ייצוא מישראל)",
+        "title_en": "Approved Exporter Procedure (EXPORTS from Israel)",
         "category": "procedure",
+        "direction": "export",  # This is for EXPORTS from Israel, not imports
         "source_xml": "FTA_eu_sahar-hutz_agreements_nohal-misim-approved-exporter.xml",
         "source_pdf": None,
         "python_module": "_approved_exporter_GENERATED",

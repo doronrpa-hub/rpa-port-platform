@@ -1206,6 +1206,77 @@ class ToolExecutor:
                             result["repealed"] = True
                         return result
 
+            # ── Case H: FTA full-text search (16 countries, 69 documents) ──
+            try:
+                from lib._fta_all_countries import (
+                    get_fta_country as _fta_get, search_fta_full_text as _fta_search,
+                    search_fta_countries as _fta_countries, get_origin_proof_type as _fta_origin,
+                )
+                _fta_avail = True
+            except ImportError:
+                try:
+                    from _fta_all_countries import (
+                        get_fta_country as _fta_get, search_fta_full_text as _fta_search,
+                        search_fta_countries as _fta_countries, get_origin_proof_type as _fta_origin,
+                    )
+                    _fta_avail = True
+                except ImportError:
+                    _fta_avail = False
+
+            if _fta_avail:
+                # H1: FTA country lookup (e.g. "FTA EU", "הסכם טורקיה", "origin proof Korea")
+                fta_country_match = re.search(
+                    r'(?:fta|הסכם|סחר\s*חופשי|trade\s*agreement|origin\s*proof)\s+(\w+)',
+                    query, re.IGNORECASE,
+                )
+                if fta_country_match:
+                    country_q = fta_country_match.group(1)
+                    # Try direct code
+                    fta_data = _fta_get(country_q)
+                    if not fta_data:
+                        # Try country search
+                        matches = _fta_countries(country_q)
+                        if matches:
+                            fta_data = matches[0][1]
+                            country_q = matches[0][0]
+                    if fta_data:
+                        docs = fta_data.get("documents", {})
+                        doc_list = [{"key": k, "title": v.get("title", ""), "pages": v.get("pages", 0)}
+                                    for k, v in list(docs.items())[:10]]
+                        return {
+                            "found": True, "type": "fta_country",
+                            "country_code": country_q.lower(),
+                            "name_he": fta_data.get("name_he", ""),
+                            "name_en": fta_data.get("name_en", ""),
+                            "agreement_year": fta_data.get("agreement_year", 0),
+                            "origin_proof": fta_data.get("origin_proof", ""),
+                            "has_approved_exporter": fta_data.get("has_approved_exporter", False),
+                            "has_invoice_declaration": fta_data.get("has_invoice_declaration", False),
+                            "documents_count": len(docs),
+                            "documents": doc_list,
+                        }
+
+                # H2: FTA full-text search (e.g. "EUR.1 form", "כללי מקור", "cumulation")
+                fta_kw_match = re.search(
+                    r'(?:EUR\.?1|מקור|origin|cumulation|צבירה|יצואן\s*מאושר|approved\s*exporter'
+                    r'|invoice\s*declaration|הצהרת?\s*חשבונית?|protocol|נספח|annex)',
+                    query, re.IGNORECASE,
+                )
+                if fta_kw_match and query_words:
+                    fta_results = _fta_search(query)
+                    if fta_results:
+                        entries = [{
+                            "country_code": r.get("country_code", ""),
+                            "doc_key": r.get("doc_key", ""),
+                            "title": r.get("title", ""),
+                            "snippet": r.get("snippet", "")[:300],
+                        } for r in fta_results[:8]]
+                        return {
+                            "found": True, "type": "fta_search",
+                            "query": query, "count": len(fta_results),
+                            "results": entries,
+                        }
+
             # ── Case F1/F2: Discount code/group specific lookups ──
             # BEFORE broad keyword search — specific pattern match
             try:
@@ -1310,6 +1381,7 @@ class ToolExecutor:
                     'יבוא אישי': '10', 'personal import': '10',
                     'מצהרים': '25', 'declarant': '25',
                     'מתנים': '28', 'condition': '28', 'legal information': '28',
+                    'יצואן מאושר': 'approved_exporter', 'approved exporter': 'approved_exporter',
                 }
                 proc_num = None
                 if proc_match:

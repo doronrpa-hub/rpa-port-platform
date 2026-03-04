@@ -264,12 +264,15 @@ CLAUDE_TOOLS = [
             "Search Israeli customs legal knowledge: 311 individual Customs Ordinance articles (סעיפי פקודת המכס), "
             "33 Framework Order articles (צו מסגרת — FTA clauses, definitions, classification rules), "
             "64 discount code groups with 224 codes (קודי הנחה — duty exemptions and reductions), "
-            "6 customs procedures (נהלי מכס — release, valuation, classification, personal import, declarants, conditions), "
+            "7 customs procedures (נהלי מכס — release, valuation, classification, personal import, declarants, conditions, approved exporter for EXPORTS), "
+            "16 FTA countries with 69 full-text documents (הסכמי סחר חופשי — origin rules, EUR.1, protocols), "
             "chapter summaries, Customs Agents Law (חוק סוכני המכס), "
             "EU standards reform, US standards reform. "
             "Query by article number ('סעיף 130', 'article 62'), framework order article ('צו מסגרת 17'), "
             "chapter articles ('פרק 8'), chapter number (1-15), discount code ('קוד הנחה 810', '100000'), "
-            "procedure ('נוהל 3', 'תש\"ר', 'הערכה'), keyword across 311+33 articles, or topic."
+            "procedure ('נוהל 3', 'תש\"ר', 'הערכה', 'יצואן מאושר'), "
+            "FTA country ('FTA EU', 'הסכם טורקיה'), FTA keyword ('EUR.1', 'כללי מקור'), "
+            "keyword across 311+33 articles, or topic."
         ),
         "input_schema": {
             "type": "object",
@@ -283,9 +286,10 @@ CLAUDE_TOOLS = [
                         "'agents' or 'סוכנים' for customs agents law, "
                         "'EU' or 'אירופה' for EU reform, 'USA' for US reform, "
                         "discount code number ('100000') or group ('קוד הנחה 810'), "
-                        "procedure ('נוהל 3', 'תש\"ר', 'הערכה', 'סיווג'), "
+                        "procedure ('נוהל 3', 'תש\"ר', 'הערכה', 'סיווג', 'יצואן מאושר'), "
+                        "FTA country ('FTA EU', 'הסכם טורקיה'), FTA keyword ('EUR.1', 'כללי מקור'), "
                         "or any keyword to search across 311 ordinance articles, 33 framework order articles, "
-                        "discount codes, procedures, and legal texts."
+                        "69 FTA documents, discount codes, procedures, and legal texts."
                     ),
                 },
             },
