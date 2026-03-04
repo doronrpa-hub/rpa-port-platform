@@ -1003,6 +1003,13 @@ COLLECTION_FIELDS = {
         "hs_fields": [],
         "doc_type": "audit",
     },
+    # ── Session 82: Compliance Auditor ──
+    "compliance_audit_log": {
+        "title_fields": ["doc_id", "audit_type"],
+        "keyword_fields": ["doc_id", "hs_code", "country_code"],
+        "hs_fields": ["hs_code"],
+        "doc_type": "audit",
+    },
 }
 
 # Document type by file extension
