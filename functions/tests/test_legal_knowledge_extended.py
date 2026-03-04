@@ -226,8 +226,8 @@ class TestDataIntegrity(unittest.TestCase):
 
     def test_procedures_import(self):
         from lib._procedures_data import PROCEDURES
-        self.assertEqual(len(PROCEDURES), 6)
-        # All 6 procedure numbers present
+        self.assertGreaterEqual(len(PROCEDURES), 6)  # 6 base + approved_exporter
+        # All 6 base procedure numbers present
         for num in ["1", "2", "3", "10", "25", "28"]:
             self.assertIn(num, PROCEDURES, f"Procedure {num} missing")
 

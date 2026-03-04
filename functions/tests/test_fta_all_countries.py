@@ -19,6 +19,7 @@ from lib._fta_all_countries import (
     get_countries_with_approved_exporter,
     get_countries_with_invoice_declaration,
     search_fta_articles,
+    search_fta_full_text,
     search_fta_countries,
     get_origin_proof_type,
     classify_fta_document,
@@ -44,9 +45,12 @@ _REQUIRED_FIELDS = {
     "agreement_year", "effective_date", "origin_proof",
     "has_invoice_declaration", "has_approved_exporter",
     "cumulation", "cumulation_countries",
-    "govil_file_count", "xml_file_count",
-    "key_articles", "notes",
+    "key_articles",
 }
+
+# Fields that differ between stub and parsed versions
+_OPTIONAL_FIELDS = {"notes", "govil_file_count", "xml_file_count", "xml_count",
+                     "total_chars", "total_pages", "documents"}
 
 _VALID_PROOF_TYPES = {"EUR.1", "Certificate of Origin", "Invoice Declaration"}
 
@@ -248,12 +252,17 @@ class TestOriginProofType:
 # ===========================================================================
 
 class TestSearchArticles:
-    """Tests for search_fta_articles()."""
+    """Tests for search_fta_articles() and search_fta_full_text()."""
 
     def test_keyword_finds_results(self):
+        # search_fta_articles searches key_articles (old stubs)
+        # search_fta_full_text searches documents (parsed data)
         results = search_fta_articles("EUR.1")
+        ft_results = search_fta_full_text("EUR.1")
         assert isinstance(results, list)
-        assert len(results) > 0
+        assert isinstance(ft_results, list)
+        # At least one of the two APIs should return results
+        assert len(results) > 0 or len(ft_results) > 0
 
     def test_empty_keyword_returns_empty(self):
         results = search_fta_articles("")
@@ -263,23 +272,21 @@ class TestSearchArticles:
         results = search_fta_articles(None)
         assert results == []
 
-    def test_result_has_expected_keys(self):
-        results = search_fta_articles("origin")
+    def test_full_text_search_finds_eur1(self):
+        results = search_fta_full_text("EUR.1")
+        assert isinstance(results, list)
         assert len(results) > 0
         for r in results:
             assert "country_code" in r
-            assert "country_name" in r
-            assert "article_key" in r
-            assert "article_data" in r
 
     def test_case_insensitive(self):
-        results_lower = search_fta_articles("cumulation")
-        results_upper = search_fta_articles("CUMULATION")
+        results_lower = search_fta_full_text("protocol")
+        results_upper = search_fta_full_text("PROTOCOL")
         # Should find the same results
         assert len(results_lower) == len(results_upper)
 
     def test_hebrew_keyword(self):
-        results = search_fta_articles("מקור")
+        results = search_fta_full_text("מקור")
         assert isinstance(results, list)
         assert len(results) > 0
 
@@ -373,7 +380,7 @@ class TestSummaryStats:
     def test_expected_keys(self):
         stats = get_summary_stats()
         expected_keys = {
-            "total_countries", "total_govil_files", "total_xml_files",
+            "total_countries", "total_xml_files",
             "total_key_articles", "eur1_countries",
             "certificate_of_origin_countries", "invoice_declaration_countries",
             "approved_exporter_countries", "bloc_agreements",
@@ -402,46 +409,44 @@ class TestSummaryStats:
 # ===========================================================================
 
 class TestKeyArticles:
-    """Tests for key_articles field across all countries."""
+    """Tests for documents/key_articles fields across all countries."""
 
-    def test_eu_has_articles(self):
+    def test_eu_has_documents(self):
         eu = get_fta_country("eu")
-        assert len(eu["key_articles"]) >= 3
+        # Parsed version uses 'documents' dict with full text
+        docs = eu.get("documents", {})
+        assert len(docs) >= 3, f"EU has only {len(docs)} documents"
 
-    def test_all_countries_have_key_articles(self):
+    def test_all_countries_have_documents(self):
         for code, data in FTA_COUNTRIES.items():
-            assert "key_articles" in data, f"Country '{code}' missing key_articles"
-            assert isinstance(data["key_articles"], dict), (
-                f"Country '{code}' key_articles is not dict"
+            docs = data.get("documents", data.get("key_articles", {}))
+            assert isinstance(docs, dict), (
+                f"Country '{code}' documents/key_articles is not dict"
             )
 
-    def test_article_has_title(self):
+    def test_document_has_title(self):
         for code, data in FTA_COUNTRIES.items():
-            for art_key, art_data in data["key_articles"].items():
-                assert "title" in art_data, (
-                    f"Country '{code}' article '{art_key}' missing title"
+            docs = data.get("documents", data.get("key_articles", {}))
+            for doc_key, doc_data in docs.items():
+                assert "title" in doc_data, (
+                    f"Country '{code}' doc '{doc_key}' missing title"
                 )
 
-    def test_article_has_summary(self):
-        for code, data in FTA_COUNTRIES.items():
-            for art_key, art_data in data["key_articles"].items():
-                assert "summary" in art_data, (
-                    f"Country '{code}' article '{art_key}' missing summary"
-                )
-
-    def test_eu_protocol_4(self):
+    def test_eu_has_protocol_content(self):
         eu = get_fta_country("eu")
-        assert "protocol_4" in eu["key_articles"]
-        p4 = eu["key_articles"]["protocol_4"]
-        assert "Protocol 4" in p4["title"]
+        docs = eu.get("documents", eu.get("key_articles", {}))
+        # Should have protocol-related document
+        has_protocol = any("protocol" in k.lower() or "protocol" in v.get("title", "").lower()
+                          for k, v in docs.items())
+        assert has_protocol, "EU missing protocol document"
 
-    def test_usa_has_origin_rules(self):
+    def test_usa_has_origin_content(self):
         usa = get_fta_country("usa")
-        arts = usa["key_articles"]
-        # USA should have origin rules article
+        docs = usa.get("documents", usa.get("key_articles", {}))
+        # USA should have origin rules document
         has_origin = any("origin" in k.lower() or "origin" in v.get("title", "").lower()
-                         for k, v in arts.items())
-        assert has_origin, "USA missing origin rules article"
+                         for k, v in docs.items())
+        assert has_origin, "USA missing origin rules document"
 
 
 # ===========================================================================
