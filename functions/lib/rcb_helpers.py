@@ -704,13 +704,19 @@ def helper_graph_mark_read(access_token, user_email, message_id):
     except Exception as e:
         print(f"Graph mark-read error: {e}")
 
+_NO_REPLY_ADDRESSES = frozenset({
+    "cc@rpa-port.co.il",       # Distribution group — all employees + RCB
+    "frdsea@rpa-port.co.il",   # Forwarding group — never reply to it
+})
+
+
 def _is_internal_recipient(email: str) -> bool:
     """Only individual @rpa-port.co.il recipients are allowed.
-    Blocks cc@rpa-port.co.il (distribution group — never send to it).
+    Blocks group/system addresses listed in _NO_REPLY_ADDRESSES.
     """
     addr = (email or "").strip().lower()
-    if addr == "cc@rpa-port.co.il":
-        return False  # Group address — NEVER send to distribution list
+    if addr in _NO_REPLY_ADDRESSES:
+        return False  # Group/system address — NEVER send to it
     return addr.endswith("@rpa-port.co.il")
 
 

@@ -1033,8 +1033,9 @@ class ToolExecutor:
 
     def _search_legal_knowledge(self, inp):
         """Search legal knowledge: 311 Customs Ordinance articles (in-memory),
-        33 Framework Order articles (in-memory), Firestore chapter summaries,
-        customs agents law, EU/US standards reforms.
+        33 Framework Order articles (in-memory), 64 discount code groups with 224 codes (in-memory),
+        6 customs procedures with full Hebrew text (in-memory),
+        Firestore chapter summaries, customs agents law, EU/US standards reforms.
         Uses word-boundary regex for English keywords to prevent false positives."""
         query = str(inp.get("query", "")).strip()
         if not query:
@@ -1159,7 +1160,7 @@ class ToolExecutor:
                             if k not in ("source", "seeded_at")
                         }}
 
-            # ── Precompute keyword set for Cases C and E ──
+            # ── Precompute keyword set for broad searches ──
             raw_words = [w for w in re.split(r'[\s,;:?.!]+', query.lower()) if len(w) >= 3]
             _HE_PREFIXES = ('וה', 'של', 'ל', 'ב', 'ה', 'ש', 'מ', 'כ', 'ו')
             query_words = set(raw_words)
@@ -1169,39 +1170,8 @@ class ToolExecutor:
                         query_words.add(w[len(pfx):])
             query_words = list(query_words)
 
-            # ── Case C: Keyword search across all 311 ordinance articles ──
-            if _ord_available:
-                if query_words:
-                    scored = []
-                    for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
-                        # Search title + summary (high weight) + full Hebrew text (lower weight)
-                        ts_text = f"{art.get('t', '')} {art.get('s', '')}".lower()
-                        ts_hits = sum(1 for w in query_words if w in ts_text)
-                        f_text = art.get("f", "").lower()
-                        f_hits = sum(1 for w in query_words if w in f_text) if f_text else 0
-                        # Title/summary hits count double; require at least 1 match somewhere
-                        score = ts_hits * 2 + f_hits
-                        if score >= 2:
-                            scored.append((score, art_id, art))
-                    scored.sort(key=lambda x: -x[0])
-                    ord_matches = []
-                    for _, aid, a in scored[:15]:
-                        entry = {"article_id": aid, "chapter": a.get("ch", ""),
-                                 "title_he": a.get("t", ""), "summary_en": a.get("s", "")}
-                        # Include a snippet from full text if available
-                        ft = a.get("f", "")
-                        if ft:
-                            entry["text_snippet"] = ft[:500]
-                        ord_matches.append(entry)
-                if ord_matches:
-                    return {
-                        "found": True, "type": "ordinance_article_search",
-                        "query": query,
-                        "count": len(ord_matches),
-                        "articles": ord_matches[:15],
-                    }
-
             # ── Case D: Framework Order article lookup (צו מסגרת סעיף 17) ──
+            # BEFORE broad keyword search — specific pattern match
             try:
                 from lib._framework_order_data import FRAMEWORK_ORDER_ARTICLES as _FW_ARTS
                 _fw_avail = True
@@ -1213,7 +1183,6 @@ class ToolExecutor:
                     _fw_avail = False
 
             if _fw_avail:
-                # Check for framework order article reference
                 fw_match = re.search(
                     r'(?:צו\s*מסגרת|framework\s*order)\s*(?:סעיף|article)?\s*(\d{1,2}[א-ת]*)',
                     query, re.IGNORECASE,
@@ -1236,35 +1205,238 @@ class ToolExecutor:
                             result["repealed"] = True
                         return result
 
-            # ── Case E: Keyword search across 33 Framework Order articles ──
-            if _fw_avail and query_words:
-                    fw_scored = []
-                    for art_id, art in _FW_ARTS.items():
+            # ── Case F1/F2: Discount code/group specific lookups ──
+            # BEFORE broad keyword search — specific pattern match
+            try:
+                from lib._discount_codes_data import (
+                    DISCOUNT_GROUPS as _DC_GROUPS, DISCOUNT_CODES as _DC_CODES,
+                    get_discount_code as _dc_get_item, get_sub_code as _dc_get_sub,
+                    search_discount_codes as _dc_search, get_codes_by_group as _dc_by_group,
+                )
+                _dc_avail = True
+            except ImportError:
+                try:
+                    from _discount_codes_data import (
+                        DISCOUNT_GROUPS as _DC_GROUPS, DISCOUNT_CODES as _DC_CODES,
+                        get_discount_code as _dc_get_item, get_sub_code as _dc_get_sub,
+                        search_discount_codes as _dc_search, get_codes_by_group as _dc_by_group,
+                    )
+                    _dc_avail = True
+                except ImportError:
+                    _dc_avail = False
+
+            if _dc_avail:
+                # F1: Direct 6-digit sub-code lookup (e.g. "100000")
+                dc_code_match = re.search(r'\b(\d{6})\b', query)
+                if dc_code_match:
+                    code_str = dc_code_match.group(1)
+                    # Search all items for this sub_code
+                    for item_num, item_data in _DC_CODES.items():
+                        sub = item_data.get("sub_codes", {}).get(code_str)
+                        if sub:
+                            return {
+                                "found": True, "type": "discount_code",
+                                "group_id": str(item_data.get("group", "")),
+                                "code": code_str,
+                                "item_number": item_num,
+                                "description": sub.get("description_he", "")[:500],
+                                "duty": sub.get("customs_duty", ""),
+                                "purchase_tax": sub.get("purchase_tax", ""),
+                                "conditional": sub.get("conditional", False),
+                                "hs_refs": sub.get("hs_codes", []),
+                            }
+
+                # F2: Item/group lookup (קוד הנחה 3, discount group 1, פרט מכס 7)
+                dc_grp_match = re.search(
+                    r'(?:קוד\s*הנחה|discount\s*(?:code|group)|פרט\s*(?:מכס\s*)?)\s*(\d{1,10})',
+                    query, re.IGNORECASE,
+                )
+                if dc_grp_match:
+                    num = dc_grp_match.group(1)
+                    # Try as item number first (e.g. "קוד הנחה 810")
+                    item = _dc_get_item(num)
+                    if item:
+                        subs = item.get("sub_codes", {})
+                        codes_summary = [
+                            {"code": c, "duty": sd.get("customs_duty", ""), "desc": sd.get("description_he", "")[:120]}
+                            for c, sd in list(subs.items())[:20]
+                        ]
+                        return {
+                            "found": True, "type": "discount_group",
+                            "group_id": str(item.get("group", "")),
+                            "item_number": num,
+                            "description": item.get("description_he", "")[:500],
+                            "codes_count": len(subs),
+                            "codes": codes_summary,
+                        }
+                    # Try as group number (1-4)
+                    gnum = int(num) if num.isdigit() else None
+                    if gnum and gnum in _DC_GROUPS:
+                        group_items = _dc_by_group(gnum)
+                        codes_summary = [
+                            {"item": k, "desc": v.get("description_he", "")[:120]}
+                            for k, v in list(group_items.items())[:20]
+                        ]
+                        return {
+                            "found": True, "type": "discount_group",
+                            "group_id": str(gnum),
+                            "description": _DC_GROUPS[gnum][:500],
+                            "codes_count": len(group_items),
+                            "codes": codes_summary,
+                        }
+
+            # ── Case G1: Procedure by number or name ──
+            # BEFORE broad keyword search — specific pattern match
+            try:
+                from lib._procedures_data import PROCEDURES, get_procedure, search_procedures as _proc_search
+                _proc_avail = True
+            except ImportError:
+                try:
+                    from _procedures_data import PROCEDURES, get_procedure, search_procedures as _proc_search
+                    _proc_avail = True
+                except ImportError:
+                    _proc_avail = False
+
+            if _proc_avail:
+                proc_match = re.search(
+                    r'(?:נוהל|procedure|פרק)\s*(\d{1,2})',
+                    query, re.IGNORECASE,
+                )
+                proc_name_map = {
+                    'תש"ר': '1', 'תשר': '1', 'שחרור': '1', 'tashar': '1', 'release': '1',
+                    'הערכה': '2', 'valuation': '2',
+                    'סיווג': '3', 'classification': '3',
+                    'יבוא אישי': '10', 'personal import': '10',
+                    'מצהרים': '25', 'declarant': '25',
+                    'מתנים': '28', 'condition': '28', 'legal information': '28',
+                }
+                proc_num = None
+                if proc_match:
+                    proc_num = proc_match.group(1)
+                else:
+                    q_lower = query.lower()
+                    for name, num in proc_name_map.items():
+                        if name in q_lower:
+                            proc_num = num
+                            break
+
+                if proc_num:
+                    proc = get_procedure(proc_num)
+                    if proc:
+                        return {
+                            "found": True, "type": "customs_procedure",
+                            "procedure_number": proc["number"],
+                            "name_he": proc["name_he"],
+                            "name_en": proc["name_en"],
+                            "pages": proc["pages"],
+                            "full_text": proc["full_text"][:4000],
+                        }
+
+            # ── Case F3: Discount codes keyword search ──
+            if _dc_avail:
+                dc_kw_match = re.search(r'(?:קוד|הנחה|פטור|discount|exempt|רכב|נציגויות)', query, re.IGNORECASE)
+                if dc_kw_match and query_words:
+                    _dc_stop = {'קוד', 'הנחה', 'discount', 'exempt', 'code', 'פטור'}
+                    search_words = [w for w in query_words if w not in _dc_stop]
+                    all_results = []
+                    seen = set()
+                    for sw in (search_words or query_words):
+                        for item_num, sub_code, desc in _dc_search(sw):
+                            key = (item_num, sub_code)
+                            if key not in seen:
+                                seen.add(key)
+                                all_results.append({
+                                    "item_number": item_num,
+                                    "sub_code": sub_code,
+                                    "desc": desc[:150] if desc else "",
+                                })
+                    if all_results:
+                        return {
+                            "found": True, "type": "discount_code_search",
+                            "query": query, "count": len(all_results),
+                            "results": all_results[:15],
+                        }
+
+            # ── Case G2: Procedure keyword search ──
+            if _proc_avail:
+                proc_kw = re.search(r'(?:נוהל|procedure|הליך|process)', query, re.IGNORECASE)
+                if proc_kw and query_words:
+                    clean_q = re.sub(r'(?:נוהל|procedure|הליך|process)', '', query, flags=re.IGNORECASE).strip()
+                    if clean_q:
+                        proc_results = _proc_search(clean_q)
+                        if proc_results:
+                            entries = [{
+                                "number": r["number"],
+                                "name_he": r["name_he"],
+                                "name_en": r["name_en"],
+                                "match_count": r["match_count"],
+                                "snippets": r["snippets"][:2],
+                            } for r in proc_results[:5]]
+                            return {
+                                "found": True, "type": "procedure_search",
+                                "query": query, "count": len(entries),
+                                "results": entries,
+                            }
+
+            # ── Case C: Keyword search across all 311 ordinance articles ──
+            # Runs AFTER F3/G2 so specific domain searches take priority
+            if _ord_available:
+                ord_matches = []
+                if query_words:
+                    scored = []
+                    for art_id, art in CUSTOMS_ORDINANCE_ARTICLES.items():
                         ts_text = f"{art.get('t', '')} {art.get('s', '')}".lower()
                         ts_hits = sum(1 for w in query_words if w in ts_text)
                         f_text = art.get("f", "").lower()
                         f_hits = sum(1 for w in query_words if w in f_text) if f_text else 0
                         score = ts_hits * 2 + f_hits
                         if score >= 2:
-                            fw_scored.append((score, art_id, art))
-                    fw_scored.sort(key=lambda x: -x[0])
-                    fw_matches = []
-                    for _, aid, a in fw_scored[:10]:
-                        entry = {"article_id": aid, "title_he": a.get("t", ""),
-                                 "summary_en": a.get("s", "")}
-                        if a.get("fta"):
-                            entry["fta_country"] = a["fta"]
+                            scored.append((score, art_id, art))
+                    scored.sort(key=lambda x: -x[0])
+                    for _, aid, a in scored[:15]:
+                        entry = {"article_id": aid, "chapter": a.get("ch", ""),
+                                 "title_he": a.get("t", ""), "summary_en": a.get("s", "")}
                         ft = a.get("f", "")
                         if ft:
                             entry["text_snippet"] = ft[:500]
-                        fw_matches.append(entry)
-                    if fw_matches:
-                        return {
-                            "found": True, "type": "framework_order_search",
-                            "query": query,
-                            "count": len(fw_matches),
-                            "articles": fw_matches[:10],
-                        }
+                        ord_matches.append(entry)
+                if ord_matches:
+                    return {
+                        "found": True, "type": "ordinance_article_search",
+                        "query": query,
+                        "count": len(ord_matches),
+                        "articles": ord_matches[:15],
+                    }
+
+            # ── Case E: Keyword search across 33 Framework Order articles ──
+            if _fw_avail and query_words:
+                fw_scored = []
+                for art_id, art in _FW_ARTS.items():
+                    ts_text = f"{art.get('t', '')} {art.get('s', '')}".lower()
+                    ts_hits = sum(1 for w in query_words if w in ts_text)
+                    f_text = art.get("f", "").lower()
+                    f_hits = sum(1 for w in query_words if w in f_text) if f_text else 0
+                    score = ts_hits * 2 + f_hits
+                    if score >= 2:
+                        fw_scored.append((score, art_id, art))
+                fw_scored.sort(key=lambda x: -x[0])
+                fw_matches = []
+                for _, aid, a in fw_scored[:10]:
+                    entry = {"article_id": aid, "title_he": a.get("t", ""),
+                             "summary_en": a.get("s", "")}
+                    if a.get("fta"):
+                        entry["fta_country"] = a["fta"]
+                    ft = a.get("f", "")
+                    if ft:
+                        entry["text_snippet"] = ft[:500]
+                    fw_matches.append(entry)
+                if fw_matches:
+                    return {
+                        "found": True, "type": "framework_order_search",
+                        "query": query,
+                        "count": len(fw_matches),
+                        "articles": fw_matches[:10],
+                    }
 
             # Case 5: General keyword search across cached Firestore docs
             query_lower = query.lower()

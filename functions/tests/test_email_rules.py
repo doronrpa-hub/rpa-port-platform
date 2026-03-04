@@ -34,7 +34,7 @@ def _make_msg(to_list=None, cc_list=None, from_email="doron@rpa-port.co.il",
 
 
 class TestIsInternalRecipient(unittest.TestCase):
-    """Step 2: cc@rpa-port.co.il is blocked."""
+    """Step 2: group/system addresses are blocked."""
 
     def setUp(self):
         from lib.rcb_helpers import _is_internal_recipient
@@ -55,6 +55,13 @@ class TestIsInternalRecipient(unittest.TestCase):
 
     def test_cc_group_with_whitespace(self):
         self.assertFalse(self.check("  cc@rpa-port.co.il  "))
+
+    def test_frdsea_group_blocked(self):
+        """frdsea@ is a forwarding group — must never be a valid recipient."""
+        self.assertFalse(self.check("frdsea@rpa-port.co.il"))
+
+    def test_frdsea_case_insensitive(self):
+        self.assertFalse(self.check("FRDSEA@RPA-PORT.CO.IL"))
 
     def test_external_blocked(self):
         self.assertFalse(self.check("someone@gmail.com"))
@@ -337,6 +344,15 @@ class TestEmailReplyMatrix(unittest.TestCase):
     def test_send_to_cc_group_blocked(self):
         """Attempting to send to cc@ must always be blocked."""
         self.assertFalse(self.is_internal("cc@rpa-port.co.il"))
+
+    def test_send_to_frdsea_group_blocked(self):
+        """Attempting to send to frdsea@ must always be blocked."""
+        self.assertFalse(self.is_internal("frdsea@rpa-port.co.il"))
+
+    def test_from_frdsea_group_no_reply(self):
+        """frdsea@ as sender is a group — never reply."""
+        msg = _make_msg(to_list=["rcb@rpa-port.co.il"], from_email="frdsea@rpa-port.co.il")
+        self.assertFalse(self.is_internal("frdsea@rpa-port.co.il"))
 
 
 if __name__ == "__main__":

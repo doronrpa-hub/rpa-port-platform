@@ -263,10 +263,13 @@ CLAUDE_TOOLS = [
         "description": (
             "Search Israeli customs legal knowledge: 311 individual Customs Ordinance articles (סעיפי פקודת המכס), "
             "33 Framework Order articles (צו מסגרת — FTA clauses, definitions, classification rules), "
+            "64 discount code groups with 224 codes (קודי הנחה — duty exemptions and reductions), "
+            "6 customs procedures (נהלי מכס — release, valuation, classification, personal import, declarants, conditions), "
             "chapter summaries, Customs Agents Law (חוק סוכני המכס), "
             "EU standards reform, US standards reform. "
             "Query by article number ('סעיף 130', 'article 62'), framework order article ('צו מסגרת 17'), "
-            "chapter articles ('פרק 8'), chapter number (1-15), keyword across 311+33 articles, or topic."
+            "chapter articles ('פרק 8'), chapter number (1-15), discount code ('קוד הנחה 810', '100000'), "
+            "procedure ('נוהל 3', 'תש\"ר', 'הערכה'), keyword across 311+33 articles, or topic."
         ),
         "input_schema": {
             "type": "object",
@@ -279,7 +282,10 @@ CLAUDE_TOOLS = [
                         "chapter number ('11' for Agents chapter summary), "
                         "'agents' or 'סוכנים' for customs agents law, "
                         "'EU' or 'אירופה' for EU reform, 'USA' for US reform, "
-                        "or any keyword to search across 311 ordinance articles and legal texts."
+                        "discount code number ('100000') or group ('קוד הנחה 810'), "
+                        "procedure ('נוהל 3', 'תש\"ר', 'הערכה', 'סיווג'), "
+                        "or any keyword to search across 311 ordinance articles, 33 framework order articles, "
+                        "discount codes, procedures, and legal texts."
                     ),
                 },
             },
