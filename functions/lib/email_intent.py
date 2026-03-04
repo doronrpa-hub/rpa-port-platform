@@ -1953,6 +1953,26 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     if fta_html:
         reply_html = reply_html + fta_html
 
+    # Session 82: Append compliance citations if available
+    try:
+        from lib.compliance_auditor import render_citation_badges_html, Citation
+        _cite_list = []
+        for s in sources:
+            if s == "ordinance_targeted":
+                _cite_list.append(Citation("customs_ordinance", "", "פקודת המכס", "", "supporting"))
+            elif s == "framework_order":
+                _cite_list.append(Citation("framework_order", "", "צו מסגרת", "", "supporting"))
+            elif s == "fta_agreements":
+                _cite_list.append(Citation("fta_eu", "", "הסכמי סחר", "", "informational"))
+            elif s == "free_import_order":
+                _cite_list.append(Citation("free_import_order", "", "צו יבוא חופשי", "", "informational"))
+        if _cite_list:
+            badges = render_citation_badges_html(_cite_list)
+            if badges:
+                reply_html = reply_html + badges
+    except Exception:
+        pass  # fail-open
+
     # Build RCB-branded subject with tracking code
     tracking_code = _generate_query_tracking_code()
     topic_preview = (body_text or subject or "שאלה")[:40].strip()

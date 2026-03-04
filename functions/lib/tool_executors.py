@@ -249,6 +249,7 @@ class ToolExecutor:
             "get_israel_vat_rates": self._get_israel_vat_rates,
             "fetch_seller_website": self._fetch_seller_website,
             "search_xml_documents": self._search_xml_documents,
+            "compare_fta_document": self._compare_fta_document,
         }.get(tool_name)
 
         if not handler:
@@ -3058,4 +3059,89 @@ class ToolExecutor:
             if len(candidate) > 6:
                 return candidate
         return f"{name}.com"
+
+    # ── Tool #35: Compare FTA document against template ──
+
+    def _compare_fta_document(self, inp):
+        """Compare a live FTA origin document against official template."""
+        country_code = (inp.get("country_code") or "").lower().strip()
+        doc_type = (inp.get("document_type") or "").lower().strip()
+        live_fields = inp.get("live_fields") or {}
+
+        if not country_code:
+            return {"error": "country_code is required"}
+
+        try:
+            from lib.compliance_auditor import render_fta_comparison_html
+            from lib._fta_all_countries import get_fta_country
+        except ImportError:
+            return {"error": "compliance_auditor or _fta_all_countries not available"}
+
+        country = get_fta_country(country_code)
+        if not country:
+            return {"error": f"Unknown FTA country: {country_code}"}
+
+        # Build template fields based on document type
+        template = {}
+        if doc_type in ("eur1", "eur.1"):
+            template = {
+                "exporter": "(required - box 1)",
+                "consignee": "(required - box 2)",
+                "transport_details": "(box 3 - optional)",
+                "country_of_origin": "Israel",
+                "country_of_destination": country.get("name_en", country_code),
+                "description_of_goods": "(required - box 8)",
+                "gross_mass_kg": "(required - box 9)",
+                "invoices": "(box 10 - optional)",
+                "customs_endorsement": "(required - box 11)",
+                "declaration_by_exporter": "(required - box 12)",
+                "origin_criteria": "Protocol 4 rules of origin",
+            }
+        elif doc_type == "invoice_declaration":
+            template = {
+                "declaration_text": (
+                    "The exporter of the products covered by this document declares that, "
+                    "except where otherwise clearly indicated, these products are of Israeli "
+                    "preferential origin."
+                ),
+                "exporter_name": "(required)",
+                "date": "(required)",
+                "signature": "(required for non-approved exporters)",
+                "approved_exporter_number": "(required for approved exporters, optional otherwise)",
+            }
+        elif doc_type in ("certificate_of_origin", "coo"):
+            template = {
+                "exporter": "(required)",
+                "consignee": "(required)",
+                "country_of_origin": "Israel",
+                "description_of_goods": "(required)",
+                "quantity": "(required)",
+                "invoice_number": "(required)",
+                "certifying_authority": "(required - Israel Chamber of Commerce or equivalent)",
+            }
+        else:
+            template = {"document_type": doc_type, "note": "Unknown document type — showing available info"}
+
+        # Render comparison
+        comparison_html = render_fta_comparison_html(live_fields, template, country_code)
+
+        # Build result
+        matches = [k for k in live_fields if k in template]
+        missing = [k for k in template if k not in live_fields]
+
+        return {
+            "country": country.get("name_en", country_code),
+            "origin_proof": country.get("origin_proof", ""),
+            "document_type": doc_type,
+            "fields_provided": len(live_fields),
+            "fields_expected": len(template),
+            "matches": len(matches),
+            "missing_fields": missing[:10],
+            "comparison_html": comparison_html[:3000] if comparison_html else "",
+            "suggestion": (
+                f"Missing {len(missing)} required fields. "
+                "Ensure all template fields are filled before customs submission."
+                if missing else "All expected fields present."
+            ),
+        }
 

@@ -1,7 +1,7 @@
 """
 Tool Definitions for RCB Tool-Calling Classification Engine
 ============================================================
-Defines the 34 tools available to the AI during classification.
+Defines the 35 tools available to the AI during classification.
 Two formats: CLAUDE_TOOLS (Anthropic API) and GEMINI_TOOLS (Google AI).
 
 Tools wrap EXISTING functions — no new logic here, just schemas.
@@ -783,6 +783,34 @@ CLAUDE_TOOLS = [
             "required": ["query"],
         },
     },
+    # Tool #35 (Session 82): Compare FTA document against official template
+    {
+        "name": "compare_fta_document",
+        "description": (
+            "Compare a live FTA origin document (EUR.1, invoice declaration, certificate of origin) "
+            "against the official template from the relevant trade agreement. "
+            "Returns field-by-field comparison showing matches, mismatches, and missing fields. "
+            "Use when verifying origin proof documents in a shipment."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "FTA country code (eu, uk, efta, turkey, jordan, etc.)",
+                },
+                "document_type": {
+                    "type": "string",
+                    "description": "Type of origin document: 'eur1', 'invoice_declaration', 'certificate_of_origin'",
+                },
+                "live_fields": {
+                    "type": "object",
+                    "description": "Fields from the actual document being verified (e.g. {exporter: '...', consignee: '...', origin_country: '...'})",
+                },
+            },
+            "required": ["country_code", "document_type"],
+        },
+    },
 ]
 
 
@@ -888,6 +916,7 @@ WORKFLOW:
 32. Call get_israel_vat_rates to complete the total import cost picture (duty + purchase tax + VAT).
 33. Call fetch_seller_website when seller is identified — check their product catalogue to confirm/enrich classification. Especially useful when item descriptions are vague or incomplete. FREE and cached.
 34. Call search_xml_documents for FTA full text (origin rules, EUR.1, approved exporter), tariff section text, trade agreement protocols, or import/export order amendments. Covers 16 countries' FTA documents. Use when answering FTA questions or looking up origin protocols.
+35. Call compare_fta_document when you have a live origin proof document (EUR.1, invoice declaration, certificate of origin) and need to verify it matches the official template from the relevant FTA agreement.
 
 TOOL PRIORITY STRATEGY — use this decision tree for common cases:
 A) New product, no HS code known:
