@@ -149,6 +149,18 @@ except ImportError as e:
     CUSTOMS_LAW_AVAILABLE = False
     KNOWN_FAILURES = []
 
+# Session 82: Compliance Auditor — official document citations in emails
+try:
+    from lib.compliance_auditor import (
+        audit_classification as _compliance_audit,
+        render_compliance_section_html,
+        build_compliance_context,
+    )
+    COMPLIANCE_AUDITOR_AVAILABLE = True
+except ImportError as e:
+    print(f"Compliance auditor not available: {e}")
+    COMPLIANCE_AUDITOR_AVAILABLE = False
+
 # =============================================================================
 # FEATURE FLAGS (Session 26/27: cost optimization + cross-check)
 # =============================================================================
@@ -159,6 +171,7 @@ COST_TRACKING_ENABLED = True          # Print per-call cost estimates
 CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after classification
 ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine between pre_classify and Agent 2
 VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
+COMPLIANCE_AUDITOR_ENABLED = True     # Session 82: Official document citations in emails
 
 # Session 48: Gemini quota fast-fail — skip all Gemini calls after first 429
 # CRIT-2 fix: timestamp instead of bare boolean — auto-resets after 60s
@@ -1222,6 +1235,22 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
             except Exception as ve_err:
                 print(f"    Verification engine error (non-fatal): {ve_err}")
 
+        # ── COMPLIANCE AUDIT: Add official document citations ──
+        compliance_result = None
+        if COMPLIANCE_AUDITOR_ENABLED and COMPLIANCE_AUDITOR_AVAILABLE:
+            try:
+                hs_codes = [c.get("hs_code", "") for c in validated_classifications]
+                origin = invoice_data.get("origin", "") if invoice_data else ""
+                compliance_result = _compliance_audit(
+                    results=classification,
+                    invoice_data=invoice_data,
+                    origin=origin,
+                    hs_codes=hs_codes,
+                )
+                print(f"    Compliance audit: {len(compliance_result.citations)} citations, {len(compliance_result.flags)} flags")
+            except Exception as ca_err:
+                print(f"    Compliance auditor error (non-fatal): {ca_err}")
+
         # ── LINK: Map invoice line items → classifications ──
         validated_classifications = _link_invoice_to_classifications(items, validated_classifications)
         classification["classifications"] = validated_classifications
@@ -1391,6 +1420,7 @@ def run_full_classification(api_key, doc_text, db, gemini_key=None, openai_key=N
             "audit": audit,  # Quality gate results
             "elimination": elimination_results,  # Session 33 D9: Tariff tree elimination
             "verification_engine": ve_results,  # Session 34 Block E: Phase 4+5+Flagging
+            "compliance_audit": compliance_result,  # Session 82: Official document citations
         }
         return result
     except Exception as e:
@@ -2552,6 +2582,15 @@ def build_classification_email(results, sender_name, invoice_validation=None, tr
     html += _cls_customs_value(invoice_data, results)
     html += _cls_justification_details(card_items, _using_enriched)
     html += _cls_fta_benefits(intelligence, fta)
+
+    # Session 82: Compliance audit — official document citations
+    compliance_audit = results.get("compliance_audit")
+    if compliance_audit and COMPLIANCE_AUDITOR_AVAILABLE:
+        try:
+            html += render_compliance_section_html(compliance_audit)
+        except Exception:
+            pass  # fail-open
+
     html += _cls_risk(risk)
     html += _cls_smart_questions(results.get("smart_questions", []), classifications)
     html += _cls_original_email(original_email_body)
