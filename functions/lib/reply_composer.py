@@ -407,7 +407,7 @@ font-family:monospace;">{code_display}</td>
 # -----------------------------------------------------------------------
 
 def _block_tariff_table_with_discount(items_data, legal_category_he=""):
-    """Per-item table showing regular code + Chapter 98 code + discount.
+    """Per-item table showing regular code + Chapter 98 code + discount + VAT.
 
     Args:
         items_data: list of dicts with name, hs_code, regular_duty,
@@ -432,11 +432,7 @@ def _block_tariff_table_with_discount(items_data, legal_category_he=""):
         ch98_pt = _esc(item.get("chapter98_pt", ""))
         discount = _esc(item.get("discount_code", ""))
         conditions = _esc(item.get("conditions", ""))
-
-        conf = item.get("confidence", "")
-        conf_color = {
-            "high": _COLOR_OK, "medium": _COLOR_WARN, "low": _COLOR_ERR,
-        }.get(conf, _COLOR_PENDING)
+        vat = _esc(item.get("vat", "18%"))
 
         # Chapter 98 cell
         ch98_cell = ch98 if ch98 else "—"
@@ -450,6 +446,7 @@ def _block_tariff_table_with_discount(items_data, legal_category_he=""):
 <td style="padding:6px 10px;border:1px solid #ddd;font-family:monospace;direction:ltr;text-align:left;">{ch98_cell}</td>
 <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{ch98_duty_cell}</td>
 <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{discount}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{vat}</td>
 <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;">{conditions}</td>
 </tr>""")
 
@@ -461,11 +458,12 @@ def _block_tariff_table_with_discount(items_data, legal_category_he=""):
 <tr style="background:{_RPA_BLUE};color:#fff;">
 <th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">פריט</th>
 <th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">פרט רגיל</th>
-<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מכס</th>
-<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מס קניה</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מכס רגיל</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מס קניה רגיל</th>
 <th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">פרט 98</th>
 <th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מכס 98</th>
 <th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">קוד הנחה</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מע״מ</th>
 <th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">הערות</th>
 </tr>
 </thead>
@@ -813,6 +811,126 @@ def verify_citations(ai_response, bundle):
 
 
 # -----------------------------------------------------------------------
+#  PER-ITEM ENRICHMENT FROM EVIDENCE (not AI hallucination)
+# -----------------------------------------------------------------------
+
+def _build_per_item_from_evidence(case_plan, bundle, ai_items=None):
+    """Build per-item table data from evidence bundle + case_plan, NOT from AI.
+
+    Merges:
+      1. case_plan.items_to_classify (tariff_match with real HS codes)
+      2. bundle.chapter98_entries (Chapter 98 mappings)
+      3. case_plan item discount_info (computed by get_discount_for_item)
+      4. ai_items (AI-generated) as FALLBACK only
+
+    Returns:
+        list of dicts for _block_tariff_table_with_discount
+    """
+    try:
+        from lib.case_reasoning import get_discount_for_item
+    except ImportError:
+        try:
+            from case_reasoning import get_discount_for_item
+        except ImportError:
+            get_discount_for_item = None
+
+    try:
+        from lib._chapter98_data import get_chapter98_code, get_chapter98_entry, get_chapter98_by_category
+    except ImportError:
+        try:
+            from _chapter98_data import get_chapter98_code, get_chapter98_entry, get_chapter98_by_category
+        except ImportError:
+            get_chapter98_code = get_chapter98_entry = get_chapter98_by_category = None
+
+    # Build AI items lookup by name for fallback
+    ai_lookup = {}
+    for ai_item in (ai_items or []):
+        name = (ai_item.get("name") or "").strip().lower()
+        if name:
+            ai_lookup[name] = ai_item
+
+    result = []
+    for item in (case_plan.items_to_classify if case_plan else []):
+        name = item.get("name", "")
+        category = item.get("category", "")
+        tariff = item.get("tariff_match", {})
+
+        # 1. Real HS code from tariff lookup
+        hs_code = tariff.get("hs_code", "")
+        regular_duty = tariff.get("duty", "")
+        regular_pt = tariff.get("purchase_tax", "")
+
+        # Fallback to AI item if no tariff match
+        if not hs_code:
+            ai_item = ai_lookup.get(name.strip().lower(), {})
+            hs_code = ai_item.get("hs_code", "")
+            if not regular_duty:
+                regular_duty = ai_item.get("regular_duty", "")
+            if not regular_pt:
+                regular_pt = ai_item.get("regular_purchase_tax", "")
+
+        # 2. Chapter 98 code
+        ch98_code = ""
+        ch98_duty = ""
+        ch98_pt = ""
+        if get_chapter98_code and hs_code:
+            ch98_code = get_chapter98_code(hs_code) or ""
+        if not ch98_code and get_chapter98_by_category and category:
+            ch98_code = get_chapter98_by_category(category) or ""
+        if ch98_code and get_chapter98_entry:
+            ch98_entry = get_chapter98_entry(ch98_code)
+            if ch98_entry:
+                ch98_duty = ch98_entry.get("duty", "")
+                ch98_pt = ch98_entry.get("purchase_tax", "")
+
+        # 3. Discount code (from case_plan computation or compute now)
+        discount_info = item.get("discount_info", {})
+        if not discount_info and get_discount_for_item and hs_code and case_plan.legal_category:
+            discount_info = get_discount_for_item(
+                name, hs_code, case_plan.legal_category, category)
+
+        discount_code = ""
+        conditions = ""
+        if discount_info:
+            sub = discount_info.get("discount_sub_code", "")
+            if sub:
+                discount_code = f"7/{sub}"
+            discount_duty = discount_info.get("discount_duty", "")
+            discount_pt = discount_info.get("discount_pt", "")
+            if discount_duty:
+                conditions = f"מכס: {discount_duty}"
+            if discount_pt:
+                conditions += f", מס קניה: {discount_pt}" if conditions else f"מס קניה: {discount_pt}"
+            desc = discount_info.get("discount_desc_he", "")
+            if desc:
+                conditions = desc
+
+        # Special: vehicle uses discount code directly, no Chapter 98
+        if category == "vehicle":
+            conditions = "רכב — נוהל נפרד, ייתכן מס קניה גבוה"
+            ch98_code = ""
+            ch98_duty = ""
+            ch98_pt = ""
+
+        row = {
+            "name": name,
+            "hs_code": hs_code or "—",
+            "regular_duty": regular_duty or "—",
+            "regular_purchase_tax": regular_pt or "—",
+            "chapter98_code": ch98_code,
+            "chapter98_duty": ch98_duty,
+            "chapter98_pt": ch98_pt,
+            "discount_code": discount_code,
+            "vat": "18%",
+            "conditions": conditions,
+            "confidence": "medium" if hs_code else "low",
+        }
+        result.append(row)
+
+    return result
+
+
+# -----------------------------------------------------------------------
 #  ORCHESTRATORS
 # -----------------------------------------------------------------------
 
@@ -853,9 +971,10 @@ def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=N
     # B4: Tariff table (standard) or per-item table (with case_plan)
     cp = case_plan or getattr(bundle, 'case_plan', None)
     per_item_data = ai_response.get("items")
-    if per_item_data and cp and cp.per_item_required:
+    if cp and cp.per_item_required:
         legal_he = cp.legal_category_he if cp else ""
-        html_parts.append(_block_tariff_table_with_discount(per_item_data, legal_he))
+        enriched = _build_per_item_from_evidence(cp, bundle, per_item_data)
+        html_parts.append(_block_tariff_table_with_discount(enriched, legal_he))
     else:
         html_parts.append(_block_tariff_table(ai_response.get("hs_candidates")))
 
@@ -938,8 +1057,14 @@ def compose_live_shipment(ai_response, bundle, invoice_data=None,
     # Diagnosis
     html_parts.append(_block_diagnosis(ai_response.get("diagnosis")))
 
-    # Tariff table
-    html_parts.append(_block_tariff_table(ai_response.get("hs_candidates")))
+    # Tariff table (with per-item enrichment if case_plan)
+    cp = case_plan or getattr(bundle, 'case_plan', None)
+    if cp and cp.per_item_required:
+        legal_he = cp.legal_category_he if cp else ""
+        enriched = _build_per_item_from_evidence(cp, bundle, ai_response.get("items"))
+        html_parts.append(_block_tariff_table_with_discount(enriched, legal_he))
+    else:
+        html_parts.append(_block_tariff_table(ai_response.get("hs_candidates")))
 
     # FIO/FEO
     html_parts.append(_block_fio_feo(ai_response.get("regulatory"), bundle.direction))

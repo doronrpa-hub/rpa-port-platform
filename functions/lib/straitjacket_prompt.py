@@ -97,7 +97,12 @@ def _build_system_prompt(bundle, case_plan=None):
         parts.append("")
         parts.append("הוראות:")
         parts.append("- סווג כל פריט בנפרד בשדה items[] עם סיווג רגיל + סיווג פרק 98")
+        parts.append("- השתמש אך ורק בקודי HS שמופיעים בבלוק EVIDENCE — לא להמציא קודים!")
+        parts.append("- regular_duty ו-regular_purchase_tax חייבים לשקף את השיעור הרגיל (12%, 17% וכו') — לא 'exempt'")
+        parts.append("- exempt מופיע רק בעמודות פרק 98 (chapter98_duty, chapter98_pt)")
+        parts.append("- מע\"מ 18% חל תמיד, גם כשיש פטור ממכס ומס קניה")
         parts.append("- ציין קוד הנחה ספציפי לכל פריט לפי הסטטוס המשפטי")
+        parts.append("- קודי הנחה לתושב חוזר: 7/403400 (ציוד ביתי), 7/403100 (חפצים אישיים), 7/403200 (כלי עבודה)")
         if "vehicle_separate" in (case_plan.special_flags or []):
             parts.append("- רכב מנועי דורש נוהל נפרד — ציין זאת מפורשות")
         parts.append("")
@@ -403,15 +408,16 @@ def _get_output_schema(bundle, case_plan=None):
         schema["items"] = [
             {
                 "name": "שם הפריט",
-                "hs_code": "XX.XX.XXXXXX",
+                "hs_code": "קוד HS מתוך ה-EVIDENCE בלבד — לא להמציא קודים",
                 "description": "תיאור הפריט",
-                "regular_duty": "שיעור מכס רגיל",
-                "regular_purchase_tax": "מס קניה רגיל",
+                "regular_duty": "שיעור מכס רגיל מתוך התעריף (למשל 12%, 17%) — לא 'exempt'",
+                "regular_purchase_tax": "מס קניה רגיל (למשל 15%, 0%)",
                 "chapter98_code": "98.01.XXXXXX (אם רלוונטי) או null",
                 "chapter98_duty": "מכס לפי פרק 98 או null",
                 "chapter98_pt": "מס קניה לפי פרק 98 או null",
-                "discount_code": "פרט/קוד הנחה (למשל 7/403400) או null",
+                "discount_code": "פרט/קוד הנחה (למשל 7/403400 לציוד ביתי) או null",
                 "discount_desc": "תיאור ההנחה או null",
+                "vat": "18%",
                 "conditions": "תנאי הפטור/ההנחה",
                 "confidence": "high / medium / low",
             }

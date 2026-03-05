@@ -194,6 +194,7 @@ _ITEM_CATEGORY_TO_98: Dict[str, str] = {
     "music": "9801700000",
     "food": "9801800000",
     "personal": "9801900000",
+    "electronics": "9801900000",
 }
 
 # Vehicle is NOT in Chapter 98 — uses discount code item 7 directly (sub 310000+)

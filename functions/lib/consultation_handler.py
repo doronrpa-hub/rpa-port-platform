@@ -99,6 +99,105 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════
+#  PER-ITEM TARIFF LOOKUP (Fix: real HS codes)
+# ═══════════════════════════════════════════
+
+# Category -> typical tariff search keywords (Hebrew+English)
+_CATEGORY_SEARCH_TERMS = {
+    "furniture": ["ריהוט", "רהיטים", "furniture"],
+    "electronics": ["מוצרי חשמל", "electronics", "טלוויזיה", "television"],
+    "vehicle": ["רכב מנועי", "motor vehicle", "automobile"],
+    "personal": ["חפצים אישיים", "personal effects"],
+    "kitchen": ["כלי מטבח", "kitchenware"],
+    "textiles": ["מצעים", "bedding", "textiles"],
+    "music": ["כלי נגינה", "musical instruments"],
+    "food": ["מזון", "food"],
+}
+
+def _enrich_case_plan_items_with_tariff(case_plan, context_package, db):
+    """Run tariff search for each item in case_plan, inject real HS codes.
+
+    Modifies case_plan.items_to_classify in place — adds tariff_match dict
+    with hs_code, description, duty, purchase_tax from Firestore tariff collection.
+    Also adds results to context_package.tariff_results so evidence_bundle picks them up.
+    """
+    if not db:
+        return
+
+    for item in case_plan.items_to_classify:
+        category = item.get("category", "")
+        keywords = item.get("keywords", [])
+        name = item.get("name", "")
+
+        # Build search terms: item keywords + category defaults
+        search_terms = list(keywords)
+        search_terms.extend(_CATEGORY_SEARCH_TERMS.get(category, []))
+
+        # Search tariff collection for matching HS codes
+        best_match = None
+        for term in search_terms:
+            if not term:
+                continue
+            try:
+                results = list(db.collection("tariff")
+                               .where("description", ">=", term)
+                               .where("description", "<=", term + "\uf8ff")
+                               .limit(3).stream())
+                for doc in results:
+                    d = doc.to_dict()
+                    if d.get("corrupt_code"):
+                        continue
+                    best_match = {
+                        "hs_code": d.get("hs_code", doc.id),
+                        "description_he": d.get("description", ""),
+                        "description_en": d.get("description_en", ""),
+                        "duty": d.get("customs_rate", d.get("duty", "")),
+                        "purchase_tax": d.get("purchase_tax", d.get("pt", "")),
+                    }
+                    break
+                if best_match:
+                    break
+            except Exception:
+                continue
+
+        # Fallback: search by chapter if no keyword match
+        if not best_match and category:
+            _CATEGORY_CHAPTERS = {
+                "furniture": "94", "electronics": "85", "vehicle": "87",
+                "personal": "96", "kitchen": "73", "textiles": "63",
+                "music": "92", "food": "21",
+            }
+            ch = _CATEGORY_CHAPTERS.get(category)
+            if ch:
+                try:
+                    results = list(db.collection("tariff")
+                                   .where("hs_code", ">=", ch)
+                                   .where("hs_code", "<", str(int(ch) + 1))
+                                   .limit(1).stream())
+                    for doc in results:
+                        d = doc.to_dict()
+                        if not d.get("corrupt_code"):
+                            best_match = {
+                                "hs_code": d.get("hs_code", doc.id),
+                                "description_he": d.get("description", ""),
+                                "description_en": d.get("description_en", ""),
+                                "duty": d.get("customs_rate", d.get("duty", "")),
+                                "purchase_tax": d.get("purchase_tax", d.get("pt", "")),
+                            }
+                except Exception:
+                    pass
+
+        if best_match:
+            item["tariff_match"] = best_match
+            # Inject into context_package so evidence_bundle picks it up
+            if hasattr(context_package, 'tariff_results') and context_package.tariff_results is not None:
+                # Avoid duplicates
+                existing_codes = {r.get("hs_code") for r in context_package.tariff_results}
+                if best_match["hs_code"] not in existing_codes:
+                    context_package.tariff_results.append(best_match)
+
+
+# ═══════════════════════════════════════════
 #  CONSTANTS
 # ═══════════════════════════════════════════
 
@@ -362,6 +461,10 @@ def _run_composition_pipeline(context_package, get_secret_func, msg,
                 if case_plan.direction == "import" and direction_result["direction"] == "unknown":
                     direction_result["direction"] = "import"
                     direction_result["confidence"] = 0.75
+
+        # 1c. Per-item tariff lookup (feed real HS codes into evidence)
+        if case_plan and case_plan.items_to_classify and context_package:
+            _enrich_case_plan_items_with_tariff(case_plan, context_package, db)
 
         # 2. Build evidence bundle (with case_plan for directed searches)
         bundle = build_evidence_bundle(context_package, direction_result,
