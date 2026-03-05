@@ -1130,18 +1130,45 @@ class ToolExecutor:
                             "sections_count": data.get("sections_count", 0),
                         }
 
-            # Case 2: Customs agents — word-boundary regex prevents "reagent" matching "agent"
+            # Case 2: Customs agents — rich in-memory data from parsed Nevo law
             if _LEGAL_AGENT_KEYWORDS.search(query):
-                for doc_id, data in all_docs:
-                    if doc_id == "customs_agents_law":
-                        return {
-                            "found": True, "type": "customs_agents_law",
-                            "law_name_he": data.get("law_name_he", ""),
-                            "law_name_en": data.get("law_name_en", ""),
-                            "key_topics": data.get("key_topics", []),
-                            "law_references": data.get("law_references", [])[:5],
-                            "chapter_11_text": data.get("chapter_11_text", "")[:3000],
-                        }
+                try:
+                    from lib._customs_agents_law import search_customs_agents_law
+                    q_stripped = re.sub(
+                        r'\b(סוכנ[יה]?\s*מכס|customs?\s*agents?|חוק\s*סוכני|broker)\b',
+                        '', query.lower(), flags=re.IGNORECASE,
+                    ).strip()
+                    if q_stripped and len(q_stripped) >= 2:
+                        return search_customs_agents_law(q_stripped)
+                    # No specific sub-query → return overview
+                    return {
+                        "found": True, "type": "customs_agents_law",
+                        "law_name_he": "חוק סוכני המכס, תשכ\"ה-1964",
+                        "law_name_en": "Customs Agents Law, 1964",
+                        "chapters": 7,
+                        "articles": 35,
+                        "key_topics": [
+                            "Registration of customs agents",
+                            "Qualification requirements (age 23+, exams, 3yr apprenticeship)",
+                            "Deregistration and disciplinary measures",
+                            "Licensed clerks (פקידים רשויים)",
+                            "Agent duties: fidelity, integrity, record-keeping",
+                            "International forwarders (משלחים בינלאומיים)",
+                            "Penalties: fraudulent registration=3yr, unauthorized practice=1yr",
+                        ],
+                    }
+                except ImportError:
+                    # Fallback to Firestore doc
+                    for doc_id, data in all_docs:
+                        if doc_id == "customs_agents_law":
+                            return {
+                                "found": True, "type": "customs_agents_law",
+                                "law_name_he": data.get("law_name_he", ""),
+                                "law_name_en": data.get("law_name_en", ""),
+                                "key_topics": data.get("key_topics", []),
+                                "law_references": data.get("law_references", [])[:5],
+                                "chapter_11_text": data.get("chapter_11_text", "")[:3000],
+                            }
 
             # Case 3: EU reform — rich in-memory data from parsed gov.il XMLs
             if _LEGAL_EU_KEYWORDS.search(query):
