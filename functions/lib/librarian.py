@@ -518,18 +518,46 @@ def normalize_hs_code(hs_code):
     return code.ljust(10, '0')[:10]
 
 
+def _hs_code_variants(normalized):
+    """Generate all format variants of a 10-digit HS code for DB lookup.
+
+    The tariff collection stores hs_code in various formats depending on the
+    source that seeded it. This generates all plausible formats so a .where()
+    query can find the code regardless of how it was stored.
+    """
+    d = normalized  # 10 digits, e.g. "9401600000"
+    variants = {
+        d,                                          # 9401600000
+        f"{d[:2]}.{d[2:4]}.{d[4:]}",               # 94.01.600000
+        f"{d[:4]}.{d[4:6]}.{d[6:]}",               # 9401.60.0000
+        f"{d[:2]}.{d[2:4]}.{d[4:8]}/{d[8:]}",      # 94.01.6000/00 (old format)
+        f"{d[:4]}.{d[4:]}",                         # 9401.600000
+        d.rstrip("0") if len(d.rstrip("0")) >= 4 else d[:4],  # trimmed zeros
+    }
+    # Also try with check digit suffix from get_israeli_hs_format
+    try:
+        il_fmt = get_israeli_hs_format(d)
+        if il_fmt:
+            variants.add(il_fmt)
+    except Exception:
+        pass
+    return variants
+
+
 def validate_hs_code(db, hs_code):
     """
     Validate that an HS code exists in the tariff database.
     Returns: dict with {valid, exact_match, suggested_code, description, confidence}
-    
-    Session 11: Added to prevent agents from generating non-existent codes
+
+    Uses targeted .where() queries instead of brute-force .limit() scans.
+    Tries multiple format variants to handle format mismatches between
+    AI output (9401600000) and DB storage (94.01.600000).
     """
     normalized = normalize_hs_code(hs_code)
-    chapter = normalized[:2]
     heading = normalized[:4]
     subheading = normalized[:6]
-    
+    variants = _hs_code_variants(normalized)
+
     result = {
         "valid": False,
         "exact_match": False,
@@ -539,106 +567,93 @@ def validate_hs_code(db, hs_code):
         "suggested_description": None,
         "confidence": "none"
     }
-    
+
     try:
-        print(f"    🔍 Validating HS code: {get_israeli_hs_format(normalized)}")
-        
-        exact_matches = []
+        print(f"    Validating HS code: {get_israeli_hs_format(normalized)}")
+
+        # Strategy 1: Direct .where() queries on tariff collection for each variant
+        for collection_name in ("tariff", "tariff_chapters", "hs_code_index"):
+            hs_field = "hs_code" if collection_name == "tariff" else "code"
+            alt_field = "hs_code" if hs_field == "code" else None
+
+            for variant in variants:
+                if not variant:
+                    continue
+                try:
+                    docs = list(
+                        db.collection(collection_name)
+                        .where(hs_field, "==", variant)
+                        .limit(1).stream()
+                    )
+                    # Try alternate field name if primary returned nothing
+                    if not docs and alt_field:
+                        docs = list(
+                            db.collection(collection_name)
+                            .where(alt_field, "==", variant)
+                            .limit(1).stream()
+                        )
+                    if docs:
+                        data = docs[0].to_dict()
+                        if data.get("corrupt_code"):
+                            continue
+                        result["valid"] = True
+                        result["exact_match"] = True
+                        result["suggested_code"] = normalized
+                        result["suggested_description"] = (
+                            data.get("description_he", "")
+                            or data.get("description_en", "")
+                            or data.get("title_he", "")
+                            or data.get("title_en", "")
+                        )
+                        result["confidence"] = "high"
+                        print(f"    Exact match in {collection_name}: "
+                              f"{get_israeli_hs_format(normalized)}")
+                        return result
+                except Exception:
+                    continue
+
+        # Strategy 2: Range query for subheading-level partial match
         partial_matches = []
-        
-        # Search tariff_chapters for exact match
-        chapters_ref = db.collection('tariff_chapters').limit(1000).stream()
-        for doc in chapters_ref:
-            data = doc.to_dict()
-            doc_code = normalize_hs_code(data.get('code', data.get('hs_code', '')))
-            
-            if doc_code == normalized:
-                result["valid"] = True
-                result["exact_match"] = True
-                result["suggested_code"] = doc_code
-                result["suggested_description"] = data.get('description_he', data.get('description_en', ''))
-                result["confidence"] = "high"
-                print(f"    ✅ Exact match found: {get_israeli_hs_format(doc_code)}")
-                return result
-            
-            if doc_code[:6] == subheading:
-                partial_matches.append({
-                    "code": doc_code,
-                    "description": data.get('description_he', data.get('description_en', '')),
-                    "match_level": "subheading"
-                })
-            elif doc_code[:4] == heading:
-                partial_matches.append({
-                    "code": doc_code,
-                    "description": data.get('description_he', data.get('description_en', '')),
-                    "match_level": "heading"
-                })
-        
-        # Check tariff collection
-        tariff_ref = db.collection('tariff').limit(500).stream()
-        for doc in tariff_ref:
-            data = doc.to_dict()
-            if data.get("corrupt_code"):
-                continue  # Skip corrupt tariff entries
-            doc_code = normalize_hs_code(data.get('hs_code', ''))
-            
-            if doc_code == normalized:
-                result["valid"] = True
-                result["exact_match"] = True
-                result["suggested_code"] = doc_code
-                result["suggested_description"] = data.get('description_he', '')
-                result["confidence"] = "high"
-                print(f"    ✅ Exact match in tariff: {get_israeli_hs_format(doc_code)}")
-                return result
-            
-            if doc_code[:6] == subheading:
-                partial_matches.append({
-                    "code": doc_code,
-                    "description": data.get('description_he', ''),
-                    "match_level": "subheading"
-                })
-        
-        # Check hs_code_index
-        hs_index_ref = db.collection('hs_code_index').limit(500).stream()
-        for doc in hs_index_ref:
-            data = doc.to_dict()
-            doc_code = normalize_hs_code(data.get('code', data.get('hs_code', '')))
-            
-            if doc_code == normalized:
-                result["valid"] = True
-                result["exact_match"] = True
-                result["suggested_code"] = doc_code
-                result["suggested_description"] = data.get('description_he', data.get('description', ''))
-                result["confidence"] = "high"
-                print(f"    ✅ Exact match in hs_code_index: {get_israeli_hs_format(doc_code)}")
-                return result
-        
-        # If no exact match, suggest best partial match
+        for prefix_len, match_level in [(6, "subheading"), (4, "heading")]:
+            prefix = normalized[:prefix_len]
+            try:
+                docs = list(
+                    db.collection("tariff")
+                    .where("hs_code", ">=", prefix)
+                    .where("hs_code", "<", prefix + "\uf8ff")
+                    .limit(5).stream()
+                )
+                for doc in docs:
+                    data = doc.to_dict()
+                    if data.get("corrupt_code"):
+                        continue
+                    doc_code = data.get("hs_code", "")
+                    partial_matches.append({
+                        "code": normalize_hs_code(doc_code),
+                        "description": data.get("description_he", ""),
+                        "match_level": match_level,
+                    })
+            except Exception:
+                pass
+            if partial_matches:
+                break
+
         if partial_matches:
-            subheading_matches = [m for m in partial_matches if m["match_level"] == "subheading"]
-            if subheading_matches:
-                best = subheading_matches[0]
-                result["valid"] = True
-                result["exact_match"] = False
-                result["suggested_code"] = best["code"]
-                result["suggested_description"] = best["description"]
-                result["confidence"] = "medium"
-                print(f"    ⚠️ No exact match. Suggested: {get_israeli_hs_format(best['code'])}")
-            else:
-                best = partial_matches[0]
-                result["valid"] = True
-                result["exact_match"] = False
-                result["suggested_code"] = best["code"]
-                result["suggested_description"] = best["description"]
-                result["confidence"] = "low"
-                print(f"    ⚠️ Partial match only. Suggested: {get_israeli_hs_format(best['code'])}")
+            best = partial_matches[0]
+            result["valid"] = True
+            result["exact_match"] = False
+            result["suggested_code"] = best["code"]
+            result["suggested_description"] = best["description"]
+            result["confidence"] = "medium" if best["match_level"] == "subheading" else "low"
+            print(f"    Partial match ({best['match_level']}): "
+                  f"{get_israeli_hs_format(best['code'])}")
         else:
-            print(f"    ❌ HS code not found in database: {get_israeli_hs_format(normalized)}")
-        
+            print(f"    HS code not found: {get_israeli_hs_format(normalized)}")
+
         return result
-        
+
     except Exception as e:
-        print(f"    ❌ Error validating HS code: {e}")
+        print(f"    Error validating HS code: {e}")
         return result
 
 

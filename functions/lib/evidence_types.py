@@ -177,10 +177,13 @@ def build_evidence_bundle(context_package, direction_result, db=None):
     # 7. Tag other tool results (supplier website, logistics, etc.)
     _tag_other_results(bundle, context_package)
 
-    # 8. Direction-specific enrichment
+    # 8. Search discount codes if keywords detected
+    _tag_discount_codes(bundle)
+
+    # 9. Direction-specific enrichment
     _enrich_by_direction(bundle, dir_config)
 
-    # 9. Build source audit
+    # 10. Build source audit
     _build_source_audit(bundle)
 
     return bundle
@@ -335,6 +338,66 @@ def _tag_other_results(bundle, context_package):
 
 
 # -----------------------------------------------------------------------
+#  DISCOUNT CODES — תושב חוזר / עולה / פטור / הנחה
+# -----------------------------------------------------------------------
+
+# Keywords that trigger discount code search (Hebrew customs terms)
+_DISCOUNT_KEYWORDS = [
+    "תושב חוזר", "עולה", "עולה חדש", "סטודנט חוזר",
+    "קוד הנחה", "פטור", "פטור ממכס", "הנחה", "הקלה",
+    "חפצים אישיים", "חפצים ביתיים", "כלי עבודה",
+    "רכב עולה", "רכב תושב", "משלוח אישי",
+    "returning resident", "new immigrant", "oleh", "toshav chozer",
+    "discount code", "exemption", "duty free",
+]
+
+
+def _tag_discount_codes(bundle):
+    """Search discount codes if the email body contains relevant keywords."""
+    text = f"{bundle.original_subject} {bundle.original_body}".lower()
+    matched_keywords = [kw for kw in _DISCOUNT_KEYWORDS if kw in text]
+
+    if not matched_keywords:
+        return
+
+    try:
+        from lib._discount_codes_data import search_discount_codes, get_discount_code
+    except ImportError:
+        try:
+            from _discount_codes_data import search_discount_codes, get_discount_code
+        except ImportError:
+            return
+
+    seen = set()
+    for kw in matched_keywords:
+        results = search_discount_codes(kw)
+        for item_num, sub_code, desc in results:
+            key = (item_num, sub_code or "")
+            if key in seen:
+                continue
+            seen.add(key)
+
+            entry = {
+                "item_number": item_num,
+                "sub_code": sub_code or "",
+                "description_he": desc,
+                "source_name": "צו תעריף המכס והפטורים",
+                "source_ref": f"פרט {item_num}" + (f" קוד {sub_code}" if sub_code else ""),
+                "matched_keyword": kw,
+            }
+            # Enrich with duty details from sub_code if available
+            item_data = get_discount_code(item_num)
+            if item_data and sub_code:
+                sc_data = item_data.get("sub_codes", {}).get(sub_code, {})
+                entry["customs_duty"] = sc_data.get("customs_duty", "")
+                entry["purchase_tax"] = sc_data.get("purchase_tax", "")
+                entry["conditional"] = sc_data.get("conditional", False)
+                entry["hs_codes"] = sc_data.get("hs_codes", [])
+
+            bundle.discount_codes.append(entry)
+
+
+# -----------------------------------------------------------------------
 #  DIRECTION-SPECIFIC ENRICHMENT
 # -----------------------------------------------------------------------
 
@@ -426,6 +489,7 @@ _ALL_SOURCE_TYPES = [
     ("release_articles", "סעיפי שחרור"),
     ("web_results", "מקורות אינטרנט"),
     ("supplier_results", "אתר ספק"),
+    ("discount_codes", "קודי הנחה"),
 ]
 
 

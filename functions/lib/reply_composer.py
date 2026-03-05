@@ -346,6 +346,63 @@ def _block_fta(fta_data, direction="import"):
 
 
 # -----------------------------------------------------------------------
+#  BLOCK 6b: DISCOUNT CODES
+# -----------------------------------------------------------------------
+
+def _block_discount_codes(discount_data):
+    """Discount code / exemption table.
+
+    Args:
+        discount_data: list of dicts with item_number, sub_code, description,
+                       customs_duty, purchase_tax, applicable_to
+    """
+    if not discount_data:
+        return ""
+    rows = []
+    for dc in discount_data:
+        item = _esc(str(dc.get("item_number", "")))
+        sub = _esc(str(dc.get("sub_code", "")))
+        desc = _esc(str(dc.get("description", "")))
+        duty = _esc(str(dc.get("customs_duty", "")))
+        pt = _esc(str(dc.get("purchase_tax", "")))
+        applicable = _esc(str(dc.get("applicable_to", "")))
+        code_display = f"{item}"
+        if sub:
+            code_display += f"/{sub}"
+        rows.append(f"""<tr>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;
+font-family:monospace;">{code_display}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;">{desc}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{duty}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{pt}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;">{applicable}</td>
+</tr>""")
+
+    return f"""
+<div style="margin:16px 0;">
+<h3 style="color:{_RPA_BLUE};margin:0 0 8px;">קודי הנחה / פטורים</h3>
+<p style="font-size:13px;color:#555;margin:0 0 8px;">
+מקור: צו תעריף המכס והפטורים
+</p>
+<table style="width:100%;border-collapse:collapse;font-size:13px;" dir="rtl">
+<thead>
+<tr style="background:{_RPA_BLUE};color:#fff;">
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">קוד</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">תיאור</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מכס</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מס קניה</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">חל על</th>
+</tr>
+</thead>
+<tbody>
+{"".join(rows)}
+</tbody>
+</table>
+</div>
+"""
+
+
+# -----------------------------------------------------------------------
 #  BLOCK 7: VALUATION
 # -----------------------------------------------------------------------
 
@@ -724,6 +781,9 @@ def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=N
 
     # B6: FTA
     html_parts.append(_block_fta(ai_response.get("fta"), bundle.direction))
+
+    # B6b: Discount codes
+    html_parts.append(_block_discount_codes(ai_response.get("discount_codes")))
 
     # B7: Valuation (import only)
     html_parts.append(_block_valuation(ai_response.get("valuation_notes")))

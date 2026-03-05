@@ -2260,23 +2260,12 @@ def _check_for_correction(db, past_classification):
     except Exception:
         pass
     
-    # Source 3: Check tariff DB directly — maybe old code was wrong heading
-    try:
-        from lib.librarian import validate_hs_code
-        validation = validate_hs_code(db, old_code)
-        if validation and not validation.get("valid"):
-            return {
-                "type": "invalid_code",
-                "old_code": old_code,
-                "new_code": "",
-                "new_description": "Code not found in tariff DB",
-                "method": "Tariff DB validation",
-                "teaching_rule": "This code does not exist in the Israeli tariff",
-                "source_doc": "",
-            }
-    except Exception:
-        pass
-    
+    # Source 3: DISABLED — validate_hs_code has format mismatch issues
+    # (normalize_hs_code vs stored format) and .limit() truncation causes
+    # false "not found" results. A "code not found" is never a valid correction
+    # because there's no replacement to suggest. Re-enable only after
+    # validate_hs_code is fixed with proper format normalization.
+
     # Mark as checked so we don't re-scan
     try:
         db.collection(past_classification["collection"]).document(
@@ -2348,9 +2337,14 @@ def _send_correction_email(db, case_id, access_token, rcb_email):
     case_doc = db.collection("pupil_corrections").document(case_id).get()
     if not case_doc.exists:
         return False
-    
+
     case = case_doc.to_dict()
-    
+
+    # Never send "code not found" corrections — no replacement to suggest
+    if case.get("correction_type") == "invalid_code" or not case.get("corrected_hs_code"):
+        print(f"    🎓 Skipping correction {case_id}: no valid replacement code")
+        return False
+
     subject = f"🔄 תיקון סיווג: {case.get('original_description', '')[:40]}"
     
     body = f"""<div dir="rtl" style="font-family: Arial, sans-serif; line-height: 1.8;">

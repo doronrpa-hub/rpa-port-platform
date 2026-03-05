@@ -184,6 +184,23 @@ def _build_user_prompt(bundle):
                 parts.append(f"    {content}")
         parts.append("")
 
+    # Discount codes
+    if bundle.discount_codes:
+        parts.append("── קודי הנחה (צו תעריף המכס והפטורים) ──")
+        for dc in bundle.discount_codes:
+            duty_info = ""
+            if dc.get("customs_duty"):
+                duty_info += f" | מכס: {dc['customs_duty']}"
+            if dc.get("purchase_tax"):
+                duty_info += f" | מס קניה: {dc['purchase_tax']}"
+            parts.append(
+                f"  {dc.get('source_ref', '')}: "
+                f"{dc.get('description_he', '')}"
+                f"{duty_info} "
+                f"[{dc.get('source_name', '')}]"
+            )
+        parts.append("")
+
     # Valuation articles (import only)
     if bundle.valuation_articles:
         parts.append("── סעיפי הערכה (פקודת המכס) ──")
@@ -330,6 +347,19 @@ def _get_output_schema(bundle):
             "declaration_type": "סוג הצהרה (EUR.1 / הצהרת חשבון / תעודת מקור)",
             "source_ref": "source_ref",
         }
+
+    # Discount codes if found
+    if bundle.discount_codes:
+        schema["discount_codes"] = [
+            {
+                "item_number": "מספר פרט",
+                "sub_code": "קוד משנה",
+                "description": "תיאור ההנחה/פטור",
+                "customs_duty": "שיעור מכס (exempt / אחוז)",
+                "purchase_tax": "מס קניה (exempt / אחוז)",
+                "applicable_to": "לאיזה פריט רלוונטי",
+            }
+        ]
 
     # Valuation for import
     if bundle.valuation_articles:
