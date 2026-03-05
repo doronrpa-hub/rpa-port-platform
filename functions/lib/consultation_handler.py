@@ -68,6 +68,23 @@ except ImportError:
     except ImportError:
         filter_banned_phrases = None
 
+# Composition layer (Session 87)
+try:
+    from lib.direction_router import detect_direction, get_direction_config
+    from lib.evidence_types import build_evidence_bundle
+    from lib.straitjacket_prompt import build_straitjacket_prompt, parse_ai_response, is_valid_response, needs_escalation
+    from lib.reply_composer import compose_consultation, compose_live_shipment, verify_citations
+    COMPOSITION_LAYER_AVAILABLE = True
+except ImportError:
+    try:
+        from direction_router import detect_direction, get_direction_config
+        from evidence_types import build_evidence_bundle
+        from straitjacket_prompt import build_straitjacket_prompt, parse_ai_response, is_valid_response, needs_escalation
+        from reply_composer import compose_consultation, compose_live_shipment, verify_citations
+        COMPOSITION_LAYER_AVAILABLE = True
+    except ImportError:
+        COMPOSITION_LAYER_AVAILABLE = False
+
 
 # ═══════════════════════════════════════════
 #  CONSTANTS
@@ -293,28 +310,139 @@ def _synthesize_two(gemini_draft, chatgpt_draft, context_package, get_secret_fun
 
 
 # ═══════════════════════════════════════════
+#  COMPOSITION LAYER (Session 87)
+# ═══════════════════════════════════════════
+
+def _run_composition_pipeline(context_package, get_secret_func, msg,
+                              template_type="consultation"):
+    """Run the full evidence→straitjacket→AI→composer pipeline.
+
+    Args:
+        template_type: "consultation" or "live_shipment"
+
+    Returns:
+        dict with {html, subject, tracking_code} or None on failure.
+    """
+    if not COMPOSITION_LAYER_AVAILABLE:
+        return None
+
+    try:
+        subject = (msg.get("subject") or "").strip()
+        body_text = context_package.original_body or ""
+
+        # 1. Direction detection
+        direction_result = detect_direction(subject, body_text,
+                                            entities=context_package.entities)
+        print(f"    🧭 Direction: {direction_result['direction']} "
+              f"(conf={direction_result['confidence']:.2f})")
+
+        # 2. Build evidence bundle
+        bundle = build_evidence_bundle(context_package, direction_result)
+        print(f"    📋 Evidence: {len(bundle.sources_found)} sources found, "
+              f"{len(bundle.sources_not_found)} not found")
+
+        # 3. Build straitjacket prompt
+        prompt = build_straitjacket_prompt(bundle)
+
+        # 4. Call AI with straitjacket (Gemini → ChatGPT → Claude)
+        ai_text = None
+
+        if call_gemini and get_secret_func:
+            try:
+                gk = get_secret_func("GEMINI_API_KEY")
+                if gk:
+                    ai_text = call_gemini(gk, prompt["system"], prompt["user"],
+                                          max_tokens=2500)
+            except Exception as e:
+                logger.warning(f"Straitjacket Gemini error: {e}")
+
+        parsed = parse_ai_response(ai_text) if ai_text else None
+        reason = needs_escalation(parsed)
+
+        if reason and call_chatgpt and get_secret_func:
+            print(f"    ⬆️ Escalating to ChatGPT: {reason}")
+            try:
+                ok = get_secret_func("OPENAI_API_KEY")
+                if ok:
+                    ai_text = call_chatgpt(ok, prompt["system"], prompt["user"],
+                                           max_tokens=2500)
+                    parsed = parse_ai_response(ai_text) if ai_text else parsed
+                    reason = needs_escalation(parsed)
+            except Exception as e:
+                logger.warning(f"Straitjacket ChatGPT error: {e}")
+
+        if reason and call_claude and get_secret_func:
+            print(f"    ⬆️ Escalating to Claude: {reason}")
+            try:
+                ak = get_secret_func("ANTHROPIC_API_KEY")
+                if ak:
+                    ai_text = call_claude(ak, prompt["system"], prompt["user"],
+                                          max_tokens=2500)
+                    parsed = parse_ai_response(ai_text) if ai_text else parsed
+            except Exception as e:
+                logger.warning(f"Straitjacket Claude error: {e}")
+
+        if not parsed or not is_valid_response(parsed):
+            print(f"    ⚠️ Composition pipeline: no valid AI response")
+            return None
+
+        # 5. Compliance verification
+        verification = verify_citations(parsed, bundle)
+        if not verification["passed"]:
+            print(f"    ⚠️ Citation verification failed: {verification['errors']}")
+            # Continue anyway — warnings are logged but don't block
+
+        # 6. Compose HTML
+        recipient_name = ""
+        from_addr = (msg.get("from", {}).get("emailAddress", {}).get("name") or "")
+        if from_addr:
+            recipient_name = from_addr.split("@")[0].split(".")[0].strip()
+
+        composer = compose_live_shipment if template_type == "live_shipment" else compose_consultation
+        result = composer(parsed, bundle, recipient_name=recipient_name)
+        print(f"    ✅ Composition pipeline ({template_type}): HTML rendered ({len(result['html'])} chars)")
+        return result
+
+    except Exception as e:
+        logger.warning(f"Composition pipeline error: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+# ═══════════════════════════════════════════
 #  REPLY SENDING
 # ═══════════════════════════════════════════
 
-def _send_consultation_reply(msg, content, context_package, access_token, rcb_email, db):
-    """Send the consultation reply with RCB branding."""
-    tracking_code = _generate_query_tracking_code()
-    domain_label = _DOMAIN_LABELS.get(context_package.domain, "מכס")
+def _send_consultation_reply(msg, content, context_package, access_token, rcb_email, db,
+                             composed_result=None):
+    """Send the consultation reply with RCB branding.
 
-    # Build subject
-    orig_subject = (msg.get("subject") or "").strip()
-    # Strip Re:/Fwd: prefixes
-    orig_clean = re.sub(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+', '', orig_subject).strip()
-    if orig_clean and len(orig_clean) >= 3:
-        topic = orig_clean[:50]
+    Args:
+        composed_result: If provided (from composition pipeline), use its HTML
+                         instead of wrapping content with _wrap_html_rtl.
+    """
+    if composed_result:
+        tracking_code = composed_result["tracking_code"]
+        subject = composed_result["subject"]
+        body_html = composed_result["html"]
     else:
-        topic = context_package.original_body[:50].strip()
-        if len(context_package.original_body) > 50:
-            topic += "..."
-    subject = f"RCB | {tracking_code} | {domain_label} | {topic}"
+        tracking_code = _generate_query_tracking_code()
+        domain_label = _DOMAIN_LABELS.get(context_package.domain, "מכס")
 
-    # Wrap content in HTML
-    body_html = _wrap_html_rtl(content, subject)
+        # Build subject
+        orig_subject = (msg.get("subject") or "").strip()
+        orig_clean = re.sub(r'^(?:\s*(?:Re|RE|re|Fwd|FWD|FW|Fw|fw)\s*:\s*)+', '', orig_subject).strip()
+        if orig_clean and len(orig_clean) >= 3:
+            topic = orig_clean[:50]
+        else:
+            topic = context_package.original_body[:50].strip()
+            if len(context_package.original_body) > 50:
+                topic += "..."
+        subject = f"RCB | {tracking_code} | {domain_label} | {topic}"
+
+        # Legacy: Wrap content in HTML
+        body_html = _wrap_html_rtl(content, subject)
 
     # Send via the safe reply mechanism
     sent = _send_reply_safe(body_html, msg, access_token, rcb_email,
@@ -402,9 +530,9 @@ def _delegate_to_legacy(msg, sub_intent, db, firestore_module, access_token,
 # ═══════════════════════════════════════════
 
 def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
-                        get_secret_func, triage_result=None):
+                        get_secret_func, triage_result=None, template_type="consultation"):
     """
-    Main entry point for CONSULTATION emails.
+    Main entry point for CONSULTATION and LIVE_SHIPMENT emails.
 
     Flow:
       1. Check sub-intent — delegate to legacy if ADMIN/CORRECTION/etc.
@@ -420,8 +548,8 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
 
     print(f"    🧠 Consultation handler: subject={subject[:60]}")
 
-    # 1. Check sub-intent
-    if detect_email_intent:
+    # 1. Check sub-intent (skip for live_shipment — triage already classified)
+    if detect_email_intent and template_type == "consultation":
         try:
             privilege = _get_sender_privilege(from_email) if _get_sender_privilege else "TEAM"
             sub_result = detect_email_intent(subject, body_text, from_email,
@@ -450,7 +578,25 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
           f"ordinance={len(context_package.ordinance_articles)}, "
           f"xml={len(context_package.xml_results)}")
 
-    # 3. LEVEL 1: Gemini Flash
+    # 2b. Try composition pipeline (Session 87) — structured JSON + branded HTML
+    if COMPOSITION_LAYER_AVAILABLE:
+        print(f"    🎯 Trying composition pipeline (evidence→straitjacket→composer)")
+        composed = _run_composition_pipeline(context_package, get_secret_func, msg,
+                                               template_type=template_type)
+        if composed:
+            sent = _send_consultation_reply(msg, "", context_package,
+                                            access_token, rcb_email, db,
+                                            composed_result=composed)
+            _log_to_pupil(context_package,
+                          [("composition_pipeline", composed.get("tracking_code", ""))],
+                          "composition", db)
+            elapsed = int((time.time() - t0) * 1000)
+            return {"status": "replied" if sent else "send_failed",
+                    "handler": "consultation", "level": 0, "model": "composition",
+                    "elapsed_ms": elapsed, "confidence": context_package.confidence}
+        print(f"    ⚠️ Composition pipeline failed — falling back to legacy ladder")
+
+    # 3. LEVEL 1: Gemini Flash (legacy fallback)
     print(f"    🟢 Level 1: Gemini Flash")
     gemini_draft = _call_level1_gemini(context_package, get_secret_func)
 

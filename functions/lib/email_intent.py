@@ -24,6 +24,23 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Composition layer (Session 87)
+try:
+    from lib.direction_router import detect_direction
+    from lib.evidence_types import build_evidence_bundle
+    from lib.straitjacket_prompt import build_straitjacket_prompt, parse_ai_response, is_valid_response, needs_escalation
+    from lib.reply_composer import compose_consultation, verify_citations
+    _COMPOSITION_AVAILABLE = True
+except ImportError:
+    try:
+        from direction_router import detect_direction
+        from evidence_types import build_evidence_bundle
+        from straitjacket_prompt import build_straitjacket_prompt, parse_ai_response, is_valid_response, needs_escalation
+        from reply_composer import compose_consultation, verify_citations
+        _COMPOSITION_AVAILABLE = True
+    except ImportError:
+        _COMPOSITION_AVAILABLE = False
+
 # ═══════════════════════════════════════════
 #  CONSTANTS
 # ═══════════════════════════════════════════
@@ -1527,6 +1544,121 @@ def _build_fta_info_html(fta_result, tariff_candidates=None, product_desc=""):
 </div>'''
 
 
+def _try_composition_pipeline(db, msg, access_token, rcb_email, get_secret_func):
+    """Try the Session 87 composition pipeline for structured replies.
+
+    Returns result dict if successful, None to fall back to legacy.
+    """
+    if not _COMPOSITION_AVAILABLE:
+        return None
+
+    try:
+        from lib.context_engine import prepare_context_package
+    except ImportError:
+        try:
+            from context_engine import prepare_context_package
+        except ImportError:
+            return None
+
+    try:
+        from lib.classification_agents import call_gemini, call_chatgpt, call_claude
+    except ImportError:
+        try:
+            from classification_agents import call_gemini, call_chatgpt, call_claude
+        except ImportError:
+            return None
+
+    try:
+        subject = (msg.get("subject") or "").strip()
+        body_text = _get_body_text(msg)
+
+        # 1. SIF — System Intelligence First
+        context_package = prepare_context_package(subject, body_text, db, get_secret_func)
+
+        # 2. Direction detection
+        direction_result = detect_direction(subject, body_text,
+                                            entities=context_package.entities)
+
+        # 3. Build evidence bundle
+        bundle = build_evidence_bundle(context_package, direction_result)
+
+        # Skip composition if no evidence at all
+        if not bundle.sources_found:
+            return None
+
+        # 4. Build straitjacket prompt
+        prompt = build_straitjacket_prompt(bundle)
+
+        # 5. AI with escalation ladder (Gemini → ChatGPT → Claude)
+        ai_text = None
+        model_used = None
+
+        if call_gemini and get_secret_func:
+            try:
+                gk = (get_secret_func("GEMINI_API_KEY") or "").strip()
+                if gk:
+                    ai_text = call_gemini(gk, prompt["system"], prompt["user"],
+                                          max_tokens=2500)
+                    model_used = "gemini"
+            except Exception:
+                pass
+
+        parsed = parse_ai_response(ai_text) if ai_text else None
+        reason = needs_escalation(parsed)
+
+        if reason and call_chatgpt and get_secret_func:
+            try:
+                ok = (get_secret_func("OPENAI_API_KEY") or "").strip()
+                if ok:
+                    ai_text = call_chatgpt(ok, prompt["system"], prompt["user"],
+                                           max_tokens=2500)
+                    parsed = parse_ai_response(ai_text) if ai_text else parsed
+                    model_used = "chatgpt"
+                    reason = needs_escalation(parsed)
+            except Exception:
+                pass
+
+        if reason and call_claude and get_secret_func:
+            try:
+                ak = (get_secret_func("ANTHROPIC_API_KEY") or "").strip()
+                if ak:
+                    ai_text = call_claude(ak, prompt["system"], prompt["user"],
+                                          max_tokens=2500)
+                    parsed = parse_ai_response(ai_text) if ai_text else parsed
+                    model_used = "claude"
+            except Exception:
+                pass
+
+        if not parsed or not is_valid_response(parsed):
+            return None
+
+        # 6. Compose HTML
+        recipient_name = (msg.get("from", {}).get("emailAddress", {}).get("name") or "")
+        if recipient_name:
+            recipient_name = recipient_name.split("@")[0].split(".")[0].strip()
+
+        composed = compose_consultation(parsed, bundle, recipient_name=recipient_name)
+
+        # 7. Send
+        sent = _send_reply_safe(composed["html"], msg, access_token, rcb_email,
+                                subject_override=composed["subject"])
+
+        cost = {"gemini": 0.001, "chatgpt": 0.005, "claude": 0.01}.get(model_used, 0)
+        return {
+            "status": "replied" if sent else "send_failed",
+            "intent": "CONSULTATION",
+            "cost_usd": cost,
+            "tracking_code": composed["tracking_code"],
+            "answer_html": composed["html"][:10000],
+            "compose_model": f"composition_{model_used}",
+            "answer_sources": bundle.sources_found,
+        }
+
+    except Exception as e:
+        logger.warning(f"Composition pipeline error in email_intent: {e}")
+        return None
+
+
 def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_secret_func):
     """Handle CUSTOMS_QUESTION — domain-aware routing + Firestore tools + AI composition.
 
@@ -1536,6 +1668,13 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     3. Supplement with Firestore tools (tariff, regulatory, FTA)
     4. Compose reply with domain-specific context
     """
+    # Try composition pipeline first (Session 87)
+    composed = _try_composition_pipeline(db, msg, access_token, rcb_email, get_secret_func)
+    if composed:
+        composed["intent"] = "CUSTOMS_QUESTION"
+        return composed
+
+    # Legacy path below
     try:
         from lib.tool_executors import ToolExecutor
     except ImportError:
@@ -1724,6 +1863,13 @@ def _handle_knowledge_query(db, msg, access_token, rcb_email, get_secret_func, f
     3. Supplement with Firestore tools relevant to the domain
     4. Only fall back to flat keyword search if domain detection found nothing
     """
+    # Try composition pipeline first (Session 87)
+    composed = _try_composition_pipeline(db, msg, access_token, rcb_email, get_secret_func)
+    if composed:
+        composed["intent"] = "KNOWLEDGE_QUERY"
+        return composed
+
+    # Legacy path below
     try:
         from lib.tool_executors import ToolExecutor
     except ImportError:

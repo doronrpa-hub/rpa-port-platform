@@ -1227,7 +1227,25 @@ def _rcb_check_email_inner(event) -> None:
                     pass  # Session 75: thread_manager will handle this — falls through to legacy
 
                 elif triage_result.category == "LIVE_SHIPMENT":
-                    pass  # Session 75: shipment_handler will handle this — falls through to legacy
+                    if CONSULTATION_HANDLER_AVAILABLE:
+                        try:
+                            ship_result = handle_consultation(
+                                msg, get_db(), firestore, access_token, rcb_email,
+                                get_secret, triage_result=triage_result,
+                                template_type="live_shipment")
+                            if ship_result.get("status") in ("replied", "delegated"):
+                                helper_graph_mark_read(access_token, rcb_email, msg_id)
+                                get_db().collection("rcb_processed").document(safe_id).set({
+                                    "processed_at": firestore.SERVER_TIMESTAMP,
+                                    "subject": subject,
+                                    "from": from_email,
+                                    "type": "triage_live_shipment",
+                                    "level": ship_result.get("level", 0),
+                                    "model": ship_result.get("model", ""),
+                                })
+                                _triage_handled = True
+                        except Exception as ship_err:
+                            print(f"    ⚠️ Live shipment handler error (falling through): {ship_err}")
 
                 elif triage_result.category == "CONSULTATION":
                     if CONSULTATION_HANDLER_AVAILABLE:
