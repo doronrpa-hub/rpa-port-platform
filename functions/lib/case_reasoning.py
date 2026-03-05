@@ -93,6 +93,13 @@ _LEGAL_PATTERNS = [
     (re.compile(r'returning\s*resident', re.IGNORECASE), "toshav_chozer", "תושב חוזר", "7", "4xxxxx"),
     (re.compile(r'new\s*immigrant|oleh|olah', re.IGNORECASE),
      "oleh_chadash", "עולה חדש", "7", "3xxxxx"),
+    # Temporary import — professional equipment, ATA Carnet, exhibitions
+    (re.compile(r'יבוא\s*זמני|כניסה\s*זמנית|temporary\s*(?:import|admission)',
+                re.IGNORECASE),
+     "temporary_import", "יבוא זמני", "207", ""),
+    (re.compile(r'קרנ[הת]\s*[אa]\.?[טt]\.?[אa]|ATA\s*Carnet|carnet',
+                re.IGNORECASE),
+     "temporary_import", "יבוא זמני — קרנה ATA", "207", ""),
 ]
 
 
@@ -155,6 +162,31 @@ _ITEM_CATEGORIES = {
     "music": re.compile(
         r'כלי\s*נגינה|פסנתר|גיטרה|כינור|'
         r'musical\s*instrument|piano|guitar|violin',
+        re.IGNORECASE,
+    ),
+    "tools": re.compile(
+        r'מקדח[הות]*|מברג[הות]*|מסור|מפתח\s*ברגים|ארגז[י]?\s*כלים|כלי\s*עבודה|'
+        r'מכונ[הת]\s*(?:ל?הלחמה|ל?ריתוך|ל?ליטוש|ל?קידוח|ל?חיתוך|ל?השחזה)|מלחם|הלחמה|ריתוך|'
+        r'drill|screwdriver|saw|wrench|toolbox|tool\s*(?:box|kit|set)|'
+        r'welding\s*(?:machine|equipment)|grinder|sander|power\s*tool',
+        re.IGNORECASE,
+    ),
+    "safety": re.compile(
+        r'קסד[הות]*|כפפ[הות]*(?:\s*מגומי)?|משקפי\s*מגן|אוזניות\s*מגן|'
+        r'נעלי\s*(?:בטיחות|מגן)|חגורת?\s*בטיחות|ביגוד\s*מגן|אפוד\s*מגן|'
+        r'helmet|gloves|safety\s*(?:glasses|goggles|shoes|boots|vest|harness)|'
+        r'(?:rubber|protective)\s*gloves|hard\s*hat|ear\s*(?:protection|muffs)',
+        re.IGNORECASE,
+    ),
+    "workwear": re.compile(
+        r'בגדי\s*עבודה|סרבל[ים]*|חולצת?\s*עבודה|מכנסי\s*עבודה|'
+        r'work\s*(?:clothes|wear|uniform)|coverall|overalls|work\s*(?:shirt|pants)',
+        re.IGNORECASE,
+    ),
+    "industrial": re.compile(
+        r'מחולל|גנרטור|מדחס|קומפרסור|משאב[הת]|מנוף|עגורן|'
+        r'מכונ[הת]\s*(?:תפירה|כביסה\s*תעשייתית|אריזה)|ציוד\s*(?:מקצועי|תעשייתי)|'
+        r'generator|compressor|pump|crane|hoist|industrial\s*(?:equipment|machine)',
         re.IGNORECASE,
     ),
 }
@@ -248,7 +280,14 @@ def _build_evidence_targets(plan):
     targets = []
 
     # Legal status -> ordinance + discount codes
-    if plan.legal_category:
+    if plan.legal_category == "temporary_import":
+        targets.append("ordinance: section 162 (temporary admission)")
+        targets.append("ordinance: section 85 (exhibition goods)")
+        targets.append("ordinance: section 232 (regulation power — temporary admission)")
+        targets.append("discount_code: item 207 (temporary import — goods to be re-exported)")
+        targets.append("procedure: ATA Carnet (קרנה ATA) — temporary import of professional equipment")
+        targets.append("procedure: 10 (personal import)")
+    elif plan.legal_category:
         targets.append(f"ordinance: section 129 (entry-entitled persons)")
         targets.append(f"discount_code: item {plan.discount_group} sub {plan.discount_sub_range}")
 
@@ -264,8 +303,8 @@ def _build_evidence_targets(plan):
     for item in plan.items_to_classify:
         targets.append(f"tariff_search: {' '.join(item.get('keywords', []))}")
 
-    # Chapter 98 data
-    if plan.legal_category and plan.items_to_classify:
+    # Chapter 98 data (not for temporary import — uses discount 207 instead)
+    if plan.legal_category and plan.legal_category != "temporary_import" and plan.items_to_classify:
         targets.append("chapter_98: personal import codes")
 
     return targets
@@ -297,6 +336,36 @@ def get_discount_for_item(item_name, item_hs_code, legal_category, item_category
             return {}
 
     if not legal_category:
+        return {}
+
+    # Temporary import uses discount code 207, not Chapter 98
+    if legal_category == "temporary_import":
+        try:
+            from lib._discount_codes_data import get_discount_code
+        except ImportError:
+            try:
+                from _discount_codes_data import get_discount_code
+            except ImportError:
+                get_discount_code = None
+
+        if get_discount_code:
+            item207 = get_discount_code("207")
+            if item207:
+                return {
+                    "regular_hs_code": item_hs_code,
+                    "discount_group": "207",
+                    "discount_desc_he": item207.get("description_he", ""),
+                    "sub_codes": {
+                        sc_num: {
+                            "desc_he": sc_data.get("description_he", ""),
+                            "customs_duty": sc_data.get("customs_duty", ""),
+                            "purchase_tax": sc_data.get("purchase_tax", ""),
+                        }
+                        for sc_num, sc_data in item207.get("sub_codes", {}).items()
+                    },
+                    "legal_basis": "סעיף 162 לפקודת המכס — כניסה זמנית",
+                    "ata_carnet": True,
+                }
         return {}
 
     ch98_code = get_chapter98_code(item_hs_code)
@@ -408,7 +477,13 @@ def analyze_case(subject, body, entities=None, attachments=None):
     plan.origin_country = entities.get("origin_country", entities.get("country", ""))
 
     # 5. Determine case type
-    if cat_key:
+    if cat_key == "temporary_import":
+        plan.case_type = "LEGAL_STATUS"
+        plan.direction = "import"
+        plan.per_item_required = True
+        if "temporary_import" not in plan.special_flags:
+            plan.special_flags.append("temporary_import")
+    elif cat_key:
         plan.case_type = "LEGAL_STATUS"
         plan.direction = "import"  # Personal imports are always import
         plan.per_item_required = True

@@ -259,6 +259,10 @@ def _fallback_item_identification(items):
         "food": ("organic matter", "food product", "consumption"),
         "textiles": ("fabric, cotton, polyester", "textile product", "household/clothing"),
         "music": ("wood, metal, strings", "musical instrument", "music"),
+        "tools": ("metal, plastic, electric motor", "hand tool / power tool", "construction/repair"),
+        "safety": ("rubber, plastic, textile", "personal protective equipment", "safety/protection"),
+        "workwear": ("textile, polyester, cotton", "work clothing", "occupational use"),
+        "industrial": ("steel, metal, electric motor", "industrial equipment", "manufacturing/construction"),
     }
     for item in items:
         cat = item.get("category", "personal")
@@ -409,6 +413,10 @@ def _apply_chapter98(item_result, item, legal_category, item_category=""):
     Modifies item_result in-place to add chapter98_* fields.
     """
     if not legal_category or not item_result:
+        return
+
+    # Temporary import uses discount code 207, not Chapter 98
+    if legal_category == "temporary_import":
         return
 
     hs_code = item_result.get("hs_code", "")
@@ -656,8 +664,23 @@ def _collect_ordinance_articles(operation_context, item_result):
     articles = {}
     legal_category = operation_context.get("legal_category", "")
 
+    # Temporary import — sections 162, 85, 232
+    if legal_category == "temporary_import":
+        for art_id, key in [("162", "temporary_admission_162"),
+                            ("85", "exhibition_85"),
+                            ("232", "regulation_232")]:
+            art = get_ordinance_article(art_id)
+            if art:
+                articles[key] = {
+                    "article": art_id,
+                    "title_he": art.get("t", ""),
+                    "summary": art.get("s", ""),
+                    "applies": True,
+                    "reason": "temporary_import",
+                }
+
     # Section 129: Personal use exemption (entry-entitled persons)
-    if legal_category:
+    if legal_category and legal_category != "temporary_import":
         art129 = get_ordinance_article("129")
         if art129:
             articles["personal_use_129"] = {
@@ -912,14 +935,58 @@ def _run_verification_checks(result, item, operation_context, db):
     hs_clean = hs_code.replace(".", "").replace("/", "").replace(" ", "")
     chapter = hs_clean[:2].zfill(2) if len(hs_clean) >= 2 else ""
 
-    # CHECK 1: HS code exists in tariff DB
+    # CHECK 1: HS code exists in tariff DB (or find most specific subheading)
     if hs_clean and len(hs_clean) >= 4:
         try:
-            doc = db.collection("tariff").document(hs_clean[:10]).get()
-            if not doc.exists:
-                # Try without padding
-                doc = db.collection("tariff").document(hs_clean).get()
-            if not doc.exists:
+            found = False
+            # Try exact match first (10-digit, then as-is)
+            for doc_id in [hs_clean.ljust(10, "0")[:10], hs_clean]:
+                doc = db.collection("tariff").document(doc_id).get()
+                if doc.exists:
+                    found = True
+                    # If result was short (heading-level), upgrade to the full code
+                    if len(hs_clean) < 8 and len(doc_id) == 10:
+                        data = doc.to_dict()
+                        result["hs_code"] = doc_id
+                        result["description"] = (data.get("description", "") or
+                                                 data.get("description_he", "") or
+                                                 result.get("description", ""))
+                        result["duty_rate"] = data.get("duty_rate", "") or result.get("duty_rate", "")
+                    break
+            # If short code, try prefix search for most specific subheading
+            if not found and len(hs_clean) <= 6:
+                prefix = hs_clean.ljust(4, "0")[:4]
+                siblings = db.collection("tariff").where(
+                    "__name__", ">=", prefix + "000000"
+                ).where(
+                    "__name__", "<", prefix + "\uf8ff"
+                ).limit(5).stream()
+                for sib in siblings:
+                    sib_data = sib.to_dict()
+                    desc = (sib_data.get("description", "") or "").lower()
+                    item_kw = (item.get("name", "") + " " + item.get("essence", "")).lower()
+                    # Match any keyword from item description in tariff description
+                    item_words = set(re.findall(r'\w{3,}', item_kw))
+                    desc_words = set(re.findall(r'\w{3,}', desc))
+                    if item_words & desc_words:
+                        result["hs_code"] = sib.id
+                        result["description"] = sib_data.get("description", "")
+                        result["duty_rate"] = sib_data.get("duty_rate", "")
+                        found = True
+                        break
+                if not found:
+                    # Use first child as fallback
+                    siblings2 = db.collection("tariff").where(
+                        "__name__", ">=", prefix + "000000"
+                    ).where(
+                        "__name__", "<", prefix + "\uf8ff"
+                    ).limit(1).stream()
+                    for sib in siblings2:
+                        result["hs_code"] = sib.id
+                        result["description"] = sib.to_dict().get("description", "")
+                        result["duty_rate"] = sib.to_dict().get("duty_rate", "")
+                        found = True
+            if not found:
                 errors.append({
                     "check": "hs_exists",
                     "message": f"HS code {hs_code} not found in tariff database",

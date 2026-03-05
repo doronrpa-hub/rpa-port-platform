@@ -437,7 +437,7 @@ def _synthesize_two(gemini_draft, chatgpt_draft, context_package, get_secret_fun
 # ═══════════════════════════════════════════
 
 def _run_composition_pipeline(context_package, get_secret_func, msg,
-                              template_type="consultation"):
+                              template_type="consultation", db=None):
     """Run the full evidence→straitjacket→AI→composer pipeline.
 
     Args:
@@ -661,6 +661,33 @@ def _render_broker_result_html(broker_result):
                     <td style="font-size:11px;">{disc_desc[:40] or ch98_desc[:40]}</td>
                 </tr>""")
 
+            # Temporary import discount (item 207)
+            disc = cls.get("discount", {})
+            if disc and disc.get("discount_group") == "207":
+                sub_codes = disc.get("sub_codes", {})
+                legal_basis = disc.get("legal_basis", "")
+                parts.append(f"""<tr style="background:#e8f8f5;font-size:13px;">
+                    <td colspan="2" style="color:{_COLOR_OK};font-weight:bold;">
+                        יבוא זמני — פריט 207
+                    </td>
+                    <td colspan="2" style="font-size:11px;">{legal_basis}</td>
+                </tr>""")
+                for sc_num, sc_info in sorted(sub_codes.items()):
+                    sc_duty = sc_info.get("customs_duty", "")
+                    sc_desc = sc_info.get("desc_he", "")
+                    parts.append(f"""<tr style="font-size:12px;color:#2c3e50;">
+                        <td>{sc_desc[:50]}</td>
+                        <td>מכס: {sc_duty}</td>
+                        <td>מס קניה: {sc_info.get('purchase_tax', '')}</td>
+                        <td></td>
+                    </tr>""")
+                if disc.get("ata_carnet"):
+                    parts.append(f"""<tr style="font-size:12px;background:#fef9e7;">
+                        <td colspan="4" style="color:{_COLOR_OK};">
+                            קרנה ATA — פטור מלא ממכס ומס קניה (בכפוף להגשת פנקס ATA בלשכת המסחר)
+                        </td>
+                    </tr>""")
+
             # FIO requirements
             fio = cls.get("fio", {})
             if fio and fio.get("found"):
@@ -729,6 +756,31 @@ def _render_broker_result_html(broker_result):
                 סעיף {art}: {title}
                 {f'<span style="color:{_COLOR_OK};"> — חל עליך כ{reason}</span>' if reason else ''}
             </div>""")
+        parts.append("</td></tr>")
+
+    # --- Temporary import ordinance articles ---
+    ord_arts = broker_result.get("ordinance_articles", {})
+    temp_keys = [k for k in ord_arts if k.startswith(("temporary_", "exhibition_", "regulation_"))]
+    if temp_keys:
+        parts.append(f"""<tr><td style="padding:8px 24px;">
+            <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:6px;">
+                יבוא זמני — בסיס חוקי
+            </div>""")
+        for k in temp_keys:
+            art_data = ord_arts[k]
+            art = art_data.get("article", "")
+            title = art_data.get("title_he", "")
+            summary = art_data.get("summary", "")
+            parts.append(f"""<div style="font-size:13px;margin-bottom:4px;">
+                <b>סעיף {art}</b>: {title}
+                <br/><span style="color:#555;font-size:12px;">{summary[:150]}</span>
+            </div>""")
+        # ATA Carnet note
+        parts.append(f"""<div style="font-size:13px;margin-top:8px;padding:8px;background:#fef9e7;border-right:3px solid {_COLOR_WARN};">
+            <b>קרנה ATA (ATA Carnet)</b>: פנקס בין-לאומי המאפשר יבוא זמני ללא תשלום מכס ומס קניה.
+            ניתן להנפיק בלשכת המסחר הישראלית. בתוקף עד שנה, חובת יצוא חוזר בתוך התקופה.
+            <br/>חלופה: ערבות בנקאית/מזומן בגובה המכס (סעיף 162 לפקודת המכס).
+        </div>""")
         parts.append("</td></tr>")
 
     # --- Footer ---
@@ -981,7 +1033,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
     if COMPOSITION_LAYER_AVAILABLE:
         print(f"    🎯 Trying composition pipeline (evidence→straitjacket→composer)")
         composed = _run_composition_pipeline(context_package, get_secret_func, msg,
-                                               template_type=template_type)
+                                               template_type=template_type, db=db)
         if composed:
             sent = _send_consultation_reply(msg, "", context_package,
                                             access_token, rcb_email, db,
