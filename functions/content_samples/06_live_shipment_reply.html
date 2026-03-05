@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RCB | סיווג משלוח חי</title>
+<style>
+  body { margin:0; padding:20px; background:#f4f5f7; font-family: Arial, Helvetica, sans-serif; direction:rtl; }
+  .email-container { max-width:700px; margin:0 auto; background:#ffffff; border-radius:0; }
+  .section-title { font-size:15px; font-weight:bold; color:#1e3a5f; border-bottom:2px solid #2471a3; padding-bottom:6px; margin:18px 0 10px 0; }
+  .quote-block { background:#f0f7ff; border-right:4px solid #2471a3; padding:12px 16px; margin:10px 0; font-size:13px; line-height:1.8; color:#333; }
+  .law-cite { background:#fffbee; border-right:4px solid #f39c12; padding:10px 14px; margin:10px 0; font-size:13px; line-height:1.7; color:#555; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:bold; color:#fff; }
+  .badge-blue { background:#2471a3; }
+  .badge-green { background:#27ae60; }
+  .badge-amber { background:#f39c12; }
+  .badge-red { background:#e74c3c; }
+  .badge-purple { background:#8e44ad; }
+  .tariff-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:12px; }
+  .tariff-table th { background:#1e3a5f; color:#fff; padding:8px 10px; text-align:right; font-weight:bold; }
+  .tariff-table td { padding:7px 10px; border-bottom:1px solid #e8e8e8; }
+  .tariff-table tr:nth-child(even) { background:#f9fafb; }
+  .tariff-table .hs-code { font-family: 'Courier New', monospace; font-size:14px; font-weight:bold; color:#1e3a5f; direction:ltr; text-align:left; }
+  .fio-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:12px; }
+  .fio-table th { background:#27ae60; color:#fff; padding:7px 10px; text-align:right; }
+  .fio-table td { padding:6px 10px; border-bottom:1px solid #e8e8e8; }
+  .fta-box { background:#eaf7ee; border:1px solid #27ae60; border-radius:4px; padding:14px; margin:10px 0; }
+  .note-box { background:#fff8e1; border:1px solid #f39c12; border-radius:4px; padding:12px 14px; margin:10px 0; font-size:13px; }
+  .confidence-bar { height:6px; border-radius:3px; background:#e8e8e8; width:100px; display:inline-block; vertical-align:middle; }
+  .confidence-fill { height:100%; border-radius:3px; }
+  .shipment-grid { width:100%; border-collapse:collapse; font-size:13px; }
+  .shipment-grid td { padding:6px 10px; border-bottom:1px solid #f0f0f0; }
+  .shipment-grid .label { color:#888; width:130px; font-weight:bold; }
+  .shipment-grid .value { color:#333; }
+  .item-card { border:1px solid #e0e0e0; border-radius:4px; margin:10px 0; overflow:hidden; }
+  .item-card-header { background:#f4f5f7; padding:10px 14px; border-bottom:1px solid #e0e0e0; }
+  .item-card-body { padding:12px 14px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     TEMPLATE 2: LIVE SHIPMENT CLASSIFICATION (סיווג משלוח חי)
+     When: Real shipment with invoice — full classification pipeline ran
+     Subject: RCB | סיווג | MEDU1234567 | RCB-20260305-CLS-B3K9
+     Threading: deal_thread_id = <rcb-trk-{deal_id}@rpa-port.co.il>
+     ═══════════════════════════════════════════════════ -->
+
+<div class="email-container">
+
+<!-- HEADER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#1e3a5f;">
+<tr>
+  <td style="padding:18px 24px;" valign="middle">
+    <span style="display:inline-block;vertical-align:middle;width:44px;height:44px;line-height:44px;text-align:center;background:#fff;color:#1e3a5f;font-size:18px;font-weight:bold;border-radius:6px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
+    <span style="display:inline-block;vertical-align:middle;padding-right:12px;">
+      <span style="color:#ffffff;font-size:16px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
+      <span style="color:#aed6f1;font-size:12px;display:block;">RCB Customs Intelligence</span>
+    </span>
+  </td>
+  <td align="left" style="padding:18px 24px;" valign="middle">
+    <span class="badge badge-purple" style="font-size:13px;padding:5px 14px;">Import</span>
+    <span class="badge badge-green" style="font-size:13px;padding:5px 14px;">סיווג</span>
+  </td>
+</tr>
+</table>
+
+<!-- TRACKING CODE BAR -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf2f8;border-bottom:1px solid #d4e6f1;">
+<tr>
+  <td style="padding:8px 24px;font-size:12px;color:#2471a3;">
+    <strong>מספר סיווג:</strong> RCB-20260305-CLS-B3K9 &nbsp;&bull;&nbsp;
+    <strong>תיק:</strong> 4015697 &nbsp;&bull;&nbsp;
+    <strong>תאריך:</strong> 05/03/2026 15:12 IL
+  </td>
+</tr>
+</table>
+
+<!-- GREETING + SHIPMENT CONTEXT -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:20px 24px 10px;font-size:14px;line-height:1.8;color:#333;">
+
+<p style="margin:0 0 12px;">שלום דורון,</p>
+
+<p style="margin:0 0 12px;">
+קיבלתי את החשבונית מ-<strong>BELSHINA JSC</strong> (בלרוס) עבור יבוא צמיגים. בדקתי את המסמכים ששלחת:
+</p>
+
+<ol style="margin:4px 0 14px 0;padding:0 24px;font-size:13px;line-height:1.7;">
+  <li>Commercial Invoice #BEL-2026-0847 (USD 42,500)</li>
+  <li>Packing List (2x40HC)</li>
+  <li>Bill of Lading: MEDU1234567</li>
+</ol>
+
+</td></tr>
+</table>
+
+<!-- SHIPMENT INFO -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">פרטי המשלוח</div>
+
+<table class="shipment-grid">
+<tr><td class="label">ספק:</td><td class="value">BELSHINA JSC, Bobruisk, Belarus</td></tr>
+<tr><td class="label">יבואן:</td><td class="value">טיירמסטר בע"מ, חיפה</td></tr>
+<tr><td class="label">B/L:</td><td class="value" style="direction:ltr;text-align:left;">MEDU1234567</td></tr>
+<tr><td class="label">מכולות:</td><td class="value" style="direction:ltr;text-align:left;">MSKU1234567 (40HC), MSKU7654321 (40HC)</td></tr>
+<tr><td class="label">כיוון:</td><td class="value">Import &mdash; CIF Haifa</td></tr>
+<tr><td class="label">אוניה:</td><td class="value">MSC PARIS VOY. FA651R</td></tr>
+<tr><td class="label">ETA:</td><td class="value">12/03/2026</td></tr>
+<tr><td class="label">מטבע:</td><td class="value">USD 42,500.00 &nbsp; (BOI rate: 3.621 = 153,892.50 ILS)</td></tr>
+</table>
+
+</td></tr>
+</table>
+
+<!-- DIAGNOSIS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">איבחון</div>
+
+<p style="font-size:13px;line-height:1.8;color:#333;margin:0 0 10px;">
+בהתאם ל<strong>נוהל סיווג טובין</strong> (נוהל מס' 3), אנו בודקים את מאפייניהם הפיזיים של הטובין, מהותם ואופן שימושם.
+</p>
+
+<p style="font-size:13px;line-height:1.8;color:#333;margin:0 0 10px;">
+מדובר ב<strong>צמיגים פנאומטיים חדשים, מגומי, מסוג רדיאלי, למשאיות ולאוטובוסים</strong>. ביקרתי באתר הספק (<span style="direction:ltr;display:inline;">belshina.by</span>) ואיבחנתי את הדגמים הבאים:
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;margin:8px 0;border:1px solid #eee;">
+<tr style="background:#f4f5f7;">
+  <td style="padding:6px 10px;font-weight:bold;">דגם</td>
+  <td style="padding:6px 10px;font-weight:bold;">מידה</td>
+  <td style="padding:6px 10px;font-weight:bold;">שימוש</td>
+  <td style="padding:6px 10px;font-weight:bold;">כמות</td>
+</tr>
+<tr>
+  <td style="padding:5px 10px;">BEL-168M</td>
+  <td style="padding:5px 10px;direction:ltr;text-align:left;">315/80 R22.5</td>
+  <td style="padding:5px 10px;">משאיות כבדות</td>
+  <td style="padding:5px 10px;">200</td>
+</tr>
+<tr style="background:#f9fafb;">
+  <td style="padding:5px 10px;">BEL-128</td>
+  <td style="padding:5px 10px;direction:ltr;text-align:left;">295/75 R22.5</td>
+  <td style="padding:5px 10px;">אוטובוסים</td>
+  <td style="padding:5px 10px;">150</td>
+</tr>
+</table>
+
+</td></tr>
+</table>
+
+<!-- CLASSIFICATION RESULTS — per item cards -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">סיווג מכס</div>
+
+<p style="font-size:13px;color:#333;margin:0 0 8px;">
+בהתאם לתעריף המכס הסיווג הינו:
+</p>
+
+<!-- Item 1 -->
+<div class="item-card">
+  <div class="item-card-header">
+    <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="font-size:14px;font-weight:bold;color:#1e3a5f;">BEL-168M &mdash; צמיג רדיאלי 315/80 R22.5</td>
+      <td align="left" style="width:120px;">
+        <span class="badge badge-green">ביטחון: 92%</span>
+      </td>
+    </tr>
+    </table>
+  </div>
+  <div class="item-card-body">
+    <table class="tariff-table" style="margin:0;">
+    <thead>
+    <tr>
+      <th>פרט מכס</th>
+      <th>תיאור</th>
+      <th>מכס</th>
+      <th>מס קניה</th>
+      <th>מע"מ</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td class="hs-code">40.11.200000/5</td>
+      <td>צמיגים פנאומטיים חדשים, מגומי, מסוג המשמשים לאוטובוסים ולמשאיות</td>
+      <td><strong>0%</strong> (מע"ר)</td>
+      <td>0%</td>
+      <td>18%</td>
+    </tr>
+    </tbody>
+    </table>
+
+    <div style="margin-top:8px;font-size:12px;color:#555;">
+      <strong>אימות צולב:</strong>
+      EU TARIC: 4011.20 &#10004; &nbsp;|&nbsp; US HTS: 4011.20.10 &#10004; &nbsp;|&nbsp;
+      <span class="badge badge-green" style="font-size:10px;">+0.12</span>
+    </div>
+  </div>
+</div>
+
+<!-- Item 2 -->
+<div class="item-card">
+  <div class="item-card-header">
+    <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="font-size:14px;font-weight:bold;color:#1e3a5f;">BEL-128 &mdash; צמיג רדיאלי 295/75 R22.5</td>
+      <td align="left" style="width:120px;">
+        <span class="badge badge-green">ביטחון: 92%</span>
+      </td>
+    </tr>
+    </table>
+  </div>
+  <div class="item-card-body">
+    <table class="tariff-table" style="margin:0;">
+    <thead>
+    <tr>
+      <th>פרט מכס</th>
+      <th>תיאור</th>
+      <th>מכס</th>
+      <th>מס קניה</th>
+      <th>מע"מ</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td class="hs-code">40.11.200000/5</td>
+      <td>צמיגים פנאומטיים חדשים, מגומי, מסוג המשמשים לאוטובוסים ולמשאיות</td>
+      <td><strong>0%</strong> (מע"ר)</td>
+      <td>0%</td>
+      <td>18%</td>
+    </tr>
+    </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="law-cite">
+<strong>כללי פרשנות (GIR):</strong><br>
+כלל 1 &mdash; סיווג נקבע לפי לשון הפרטים והפתקים לחלקים ולפרקים.<br><br>
+<strong>הערה לפרק 40:</strong> פרט 40.11 מכסה צמיגים פנאומטיים חדשים, מגומי. הפרט מחלק לפי שימוש: כלי רכב נוסעים (40.11.10), אוטובוסים ומשאיות (40.11.20), כלי טיס (40.11.30), אופנועים (40.11.40), אופניים (40.11.50), חקלאיים (40.11.70), אחרים (40.11.80).<br><br>
+<strong>אימות ביטחון:</strong> מערכת האלימינציה (D-Block) סייגה 5 מועמדים ל-1 &mdash; <span class="badge badge-green" style="font-size:10px;">גבוהה</span>
+</div>
+
+</td></tr>
+</table>
+
+<!-- FIO -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">דרישות רגולטוריות &mdash; צו יבוא חופשי</div>
+
+<table class="fio-table">
+<thead>
+<tr>
+  <th>תוספת</th>
+  <th>רשות מאשרת</th>
+  <th>דרישה</th>
+  <th>תקן</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>תוספת 2</td>
+  <td>משרד התחבורה</td>
+  <td>אישור משרד התחבורה</td>
+  <td>ת"י 1022 &mdash; צמיגים פנאומטיים לכלי רכב מנועיים</td>
+</tr>
+<tr>
+  <td>תוספת 2</td>
+  <td>מכון התקנים הישראלי</td>
+  <td>בדיקת מעבדה</td>
+  <td>ECE R54 / ECE R117</td>
+</tr>
+</tbody>
+</table>
+
+<div class="note-box">
+  <strong>שים לב:</strong> צמיגים מיובאים חייבים באישור משרד התחבורה לפי ת"י 1022. נדרש גם סימון DOT/ECE על הצמיג עצמו.
+</div>
+
+</td></tr>
+</table>
+
+<!-- FTA -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">הסכמי סחר</div>
+
+<div style="background:#fff5f5;border:1px solid #e74c3c;border-radius:4px;padding:14px;margin:10px 0;">
+<p style="font-size:13px;color:#333;margin:0;">
+לעניין הסכמי סחר אבקש ליידע אותך כי לישראל <strong>אין</strong> הסכם סחר חופשי עם <strong>בלרוס</strong>.
+<br>שיעור המכס החל: <strong>0% (מע"ר)</strong> &mdash; צמיגים למשאיות/אוטובוסים פטורים ממכס ללא קשר למקור.
+</p>
+</div>
+
+</td></tr>
+</table>
+
+<!-- VALUATION -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">הערות הערכה</div>
+
+<div class="note-box">
+<p style="margin:0;font-size:13px;line-height:1.7;">
+בהתאם ל<strong>נוהל הערכה</strong> (נוהל מס' 2):<br>
+&bull; ערך העסקה: CIF Haifa = <strong>USD 42,500.00</strong><br>
+&bull; שער BOI ליום 05/03/2026: <strong>3.621</strong><br>
+&bull; ערך מכס: <strong>153,892.50 ILS</strong><br>
+&bull; מע"מ (18%): <strong>27,700.65 ILS</strong><br>
+&bull; <strong>סה"כ מסים משוערים: 27,700.65 ILS</strong>
+</p>
+</div>
+
+</td></tr>
+</table>
+
+<!-- RELEASE NOTES -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">הערות תש"ר</div>
+
+<div class="note-box">
+<p style="margin:0;font-size:13px;line-height:1.7;">
+בהתאם ל<strong>נוהל תש"ר</strong> (נוהל מס' 1):<br>
+&bull; נדרש אישור MOT <strong>לפני</strong> הגשת רשימון<br>
+&bull; יש לצרף <strong>תעודת תקן ECE</strong> לכל דגם צמיג<br>
+&bull; יש לוודא סימון DOT/ECE בולט על הצמיג
+</p>
+</div>
+
+<div class="law-cite">
+<strong>סעיף 62 לפקודת המכס:</strong><br>
+&laquo;לא ישוחררו טובין מפיקוח המכס אלא אם כן הוגש רשימון ושולמו המסים המגיעים...&raquo;
+</div>
+
+</td></tr>
+</table>
+
+<!-- ATTACHMENTS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">קבצים מצורפים</div>
+<div style="background:#f4f5f7;border:1px solid #ddd;border-radius:4px;padding:10px 14px;">
+  <table cellpadding="0" cellspacing="0" style="font-size:13px;">
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; tariff_chapter_40_full.html &mdash; פרק 40 מהתעריף (כל הפרטים)</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; fio_requirements_4011.html &mdash; צו יבוא חופשי (כל התוספות)</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; elimination_report.html &mdash; דוח אלימינציה מלא (5 מועמדים)</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; cross_check_report.html &mdash; אימות צולב (3 AI + UK API)</td></tr>
+  </table>
+</div>
+</td></tr>
+</table>
+
+<!-- FOOTER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #e0e0e0;background:#f8f9fa;">
+<tr><td style="padding:16px 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td>
+      <span style="display:inline-block;vertical-align:middle;width:32px;height:32px;line-height:32px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:12px;font-weight:bold;border-radius:4px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
+      <span style="display:inline-block;vertical-align:middle;padding-right:8px;">
+        <span style="font-size:12px;font-weight:bold;color:#1e3a5f;">RCB &mdash; AI Customs Broker</span><br>
+        <span style="font-size:11px;color:#888;">R.P.A. PORT LTD &bull; עמיל מכס 07294</span>
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:10px;color:#999;padding-top:8px;border-top:1px solid #eee;">
+      05/03/2026 15:12 IL &bull; RCB-20260305-CLS-B3K9 &bull; Pipeline: Tool-Calling Engine (15 rounds) + Cross-Check (4-way) + Elimination (D-Block)
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:11px;color:#aaa;padding-top:6px;">
+      סיווג זה מבוסס על נתוני החשבונית, תעריף המכס, צו יבוא חופשי, הסכמי סחר ונהלי מכס.
+      <br>מעקב אחר המשלוח יישלח אוטומטית עם כל עדכון סטטוס.
+    </td>
+  </tr>
+  </table>
+</td></tr>
+</table>
+
+</div><!-- /email-container -->
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RCB | סיווג + מעקב</title>
+<style>
+  body { margin:0; padding:20px; background:#f4f5f7; font-family: Arial, Helvetica, sans-serif; direction:rtl; }
+  .email-container { max-width:700px; margin:0 auto; background:#ffffff; }
+  .section-title { font-size:15px; font-weight:bold; color:#1e3a5f; border-bottom:2px solid #2471a3; padding-bottom:6px; margin:18px 0 10px 0; }
+  .quote-block { background:#f0f7ff; border-right:4px solid #2471a3; padding:12px 16px; margin:10px 0; font-size:13px; line-height:1.8; color:#333; }
+  .law-cite { background:#fffbee; border-right:4px solid #f39c12; padding:10px 14px; margin:10px 0; font-size:13px; line-height:1.7; color:#555; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:bold; color:#fff; }
+  .badge-blue { background:#2471a3; }
+  .badge-green { background:#27ae60; }
+  .badge-amber { background:#f39c12; }
+  .badge-red { background:#e74c3c; }
+  .badge-purple { background:#8e44ad; }
+  .badge-gray { background:#999; }
+  .tariff-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:12px; }
+  .tariff-table th { background:#1e3a5f; color:#fff; padding:8px 10px; text-align:right; font-weight:bold; }
+  .tariff-table td { padding:7px 10px; border-bottom:1px solid #e8e8e8; }
+  .tariff-table tr:nth-child(even) { background:#f9fafb; }
+  .tariff-table .hs-code { font-family:'Courier New',monospace; font-size:14px; font-weight:bold; color:#1e3a5f; direction:ltr; text-align:left; }
+  .fio-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:12px; }
+  .fio-table th { background:#27ae60; color:#fff; padding:7px 10px; text-align:right; }
+  .fio-table td { padding:6px 10px; border-bottom:1px solid #e8e8e8; }
+  .fta-box { background:#eaf7ee; border:1px solid #27ae60; border-radius:4px; padding:14px; margin:10px 0; }
+  .note-box { background:#fff8e1; border:1px solid #f39c12; border-radius:4px; padding:12px 14px; margin:10px 0; font-size:13px; }
+  .shipment-grid { width:100%; border-collapse:collapse; font-size:13px; }
+  .shipment-grid td { padding:6px 10px; border-bottom:1px solid #f0f0f0; }
+  .shipment-grid .label { color:#888; width:130px; font-weight:bold; }
+  .shipment-grid .value { color:#333; }
+  .step-grid { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }
+  .step-grid th { background:#f4f5f7; padding:6px 8px; text-align:right; font-weight:bold; color:#555; border-bottom:1px solid #ddd; }
+  .step-grid td { padding:6px 8px; border-bottom:1px solid #f0f0f0; }
+  .step-done { color:#27ae60; font-weight:bold; }
+  .step-pending { color:#999; }
+  .step-active { color:#2471a3; font-weight:bold; }
+  .container-table { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }
+  .container-table th { background:#1e3a5f; color:#fff; padding:7px 10px; text-align:right; }
+  .container-table td { padding:6px 10px; border-bottom:1px solid #e8e8e8; }
+  .container-table tr:nth-child(even) { background:#f9fafb; }
+  .item-card { border:1px solid #e0e0e0; border-radius:4px; margin:10px 0; overflow:hidden; }
+  .item-card-header { background:#f4f5f7; padding:10px 14px; border-bottom:1px solid #e0e0e0; }
+  .item-card-body { padding:12px 14px; }
+  .progress-bar { width:100%; height:10px; background:#e8e8e8; border-radius:5px; margin:10px 0; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:5px; }
+  .divider { border:none; border-top:3px solid #2471a3; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     TEMPLATE 4: COMBINED — LIVE SHIPMENT + TRACKING (סיווג + מעקב)
+     When: Gap 2 auto-trigger — deal has invoice + shipping docs across emails
+     Subject: RCB | סיווג + מעקב | MEDU1234567 | RCB-20260305-CMB-X4P7
+     Threading: deal_thread_id = <rcb-trk-{deal_id}@rpa-port.co.il>
+     ═══════════════════════════════════════════════════ -->
+
+<div class="email-container">
+
+<!-- HEADER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#1e3a5f;">
+<tr>
+  <td style="padding:18px 24px;" valign="middle">
+    <span style="display:inline-block;vertical-align:middle;width:44px;height:44px;line-height:44px;text-align:center;background:#fff;color:#1e3a5f;font-size:18px;font-weight:bold;border-radius:6px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
+    <span style="display:inline-block;vertical-align:middle;padding-right:12px;">
+      <span style="color:#ffffff;font-size:16px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
+      <span style="color:#aed6f1;font-size:12px;display:block;">RCB Customs Intelligence + Tracker</span>
+    </span>
+  </td>
+  <td align="left" style="padding:18px 24px;" valign="middle">
+    <span class="badge badge-purple" style="font-size:13px;padding:5px 14px;">Import</span>
+    <span class="badge badge-green" style="font-size:13px;padding:5px 14px;">סיווג</span>
+    <span class="badge badge-blue" style="font-size:13px;padding:5px 14px;">מעקב</span>
+  </td>
+</tr>
+</table>
+
+<!-- TRACKING CODE BAR -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf2f8;border-bottom:1px solid #d4e6f1;">
+<tr>
+  <td style="padding:8px 24px;font-size:12px;color:#2471a3;">
+    <strong>מספר משולב:</strong> RCB-20260305-CMB-X4P7 &nbsp;&bull;&nbsp;
+    <strong>תיק:</strong> 4015843 &nbsp;&bull;&nbsp;
+    <strong>B/L:</strong> MEDU9876543 &nbsp;&bull;&nbsp;
+    05/03/2026 16:00 IL
+  </td>
+</tr>
+</table>
+
+<!-- ═══════════════════════════════════════
+     PART 1: CLASSIFICATION (סיווג)
+     ═══════════════════════════════════════ -->
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:16px 24px 4px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf2f8;border-radius:4px;">
+  <tr><td style="padding:10px 16px;font-size:16px;font-weight:bold;color:#1e3a5f;">
+    &#9733; חלק א' &mdash; סיווג מכס
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+
+<!-- GREETING -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:10px 24px;font-size:14px;line-height:1.8;color:#333;">
+
+<p style="margin:0 0 10px;">שלום דורון,</p>
+
+<p style="margin:0 0 10px;">
+קיבלתי חשבונית ומסמכי שילוח ממספר הודעות דוא"ל שנשלחו ב-CC. ביצעתי סיווג אוטומטי עבור המשלוח מ-<strong>Samsung Electronics Vietnam</strong>:
+</p>
+
+<ol style="margin:4px 0 10px;padding:0 24px;font-size:13px;line-height:1.7;">
+  <li>Commercial Invoice #SEV-2026-4521 (USD 185,000)</li>
+  <li>Packing List &mdash; 1x40HC</li>
+  <li>B/L: MEDU9876543</li>
+  <li>Certificate of Origin (Form AK)</li>
+</ol>
+
+</td></tr>
+</table>
+
+<!-- DIAGNOSIS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">איבחון</div>
+
+<p style="font-size:13px;line-height:1.8;color:#333;margin:0 0 10px;">
+בהתאם ל<strong>נוהל סיווג טובין</strong> (נוהל מס' 3), אנו בודקים את מאפייניהם הפיזיים של הטובין, מהותם ואופן שימושם. מדובר ב<strong>מסכי LED/OLED (טלוויזיות), מותג Samsung, בגדלים 55"-85", עם יכולת Smart TV, מיוצרים בווייטנאם</strong>.
+</p>
+
+</td></tr>
+</table>
+
+<!-- CLASSIFICATION TABLE -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">סיווג מכס</div>
+
+<div class="item-card">
+  <div class="item-card-header">
+    <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="font-size:14px;font-weight:bold;color:#1e3a5f;">Samsung OLED TV 55"-85"</td>
+      <td align="left" style="width:120px;"><span class="badge badge-green">ביטחון: 95%</span></td>
+    </tr>
+    </table>
+  </div>
+  <div class="item-card-body">
+    <table class="tariff-table" style="margin:0;">
+    <thead>
+    <tr><th>פרט מכס</th><th>תיאור</th><th>מכס</th><th>מס קניה</th><th>מע"מ</th></tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td class="hs-code">85.28.720000/3</td>
+      <td>מקלטי טלוויזיה, צבעוניים, עם מסך שטוח (LCD/LED/OLED)</td>
+      <td><strong>0%</strong> (מע"ר)</td>
+      <td><strong>15%</strong></td>
+      <td>18%</td>
+    </tr>
+    </tbody>
+    </table>
+    <div style="margin-top:8px;font-size:12px;color:#555;">
+      EU TARIC: 8528.72 &#10004; &nbsp;|&nbsp; US HTS: 8528.72.64 &#10004; &nbsp;|&nbsp; <span class="badge badge-green" style="font-size:10px;">+0.12</span>
+    </div>
+  </div>
+</div>
+
+</td></tr>
+</table>
+
+<!-- FIO -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">דרישות רגולטוריות</div>
+<table class="fio-table">
+<thead><tr><th>תוספת</th><th>רשות</th><th>דרישה</th><th>תקן</th></tr></thead>
+<tbody>
+<tr><td>תוספת 2</td><td>משרד התקשורת</td><td>אישור התאמה לתקנות אלחוטיות</td><td>WiFi / Bluetooth</td></tr>
+<tr><td>תוספת 2</td><td>מכון התקנים</td><td>בדיקת בטיחות חשמלית</td><td>ת"י 900 / IEC 62368-1</td></tr>
+</tbody>
+</table>
+</td></tr>
+</table>
+
+<!-- FTA -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">הסכמי סחר</div>
+<div class="fta-box">
+<p style="font-size:13px;color:#333;margin:0 0 8px;">
+לישראל <strong>יש</strong> הסכם סחר חופשי עם <strong>וייטנאם</strong> (Israel-Vietnam FTA, נחתם 2023, נכנס לתוקף 2024). בהתאם לפרט המכס, ככל שאכן מיוצר המוצר ב<strong>וייטנאם</strong>:
+</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;margin:8px 0;">
+<tr><td style="padding:4px 0;width:140px;color:#555;font-weight:bold;">כללי מקור:</td><td style="padding:4px 0;color:#333;">CTH (שינוי סיווג ברמת פרק) או ערך מוסף מקומי 40%+</td></tr>
+<tr><td style="padding:4px 0;color:#555;font-weight:bold;">מסמך העדפה:</td><td style="padding:4px 0;color:#333;">Certificate of Origin Form AK</td></tr>
+<tr><td style="padding:4px 0;color:#555;font-weight:bold;">הובלה ישירה:</td><td style="padding:4px 0;color:#333;">נדרשת</td></tr>
+<tr><td style="padding:4px 0;color:#555;font-weight:bold;">שיעור העדפה:</td><td style="padding:4px 0;color:#333;"><strong>מס קניה: 0%</strong> (במקום 15%) &mdash; <span class="badge badge-green">חיסכון 27,750 ILS</span></td></tr>
+</table>
+<p style="font-size:12px;color:#27ae60;font-weight:bold;margin:6px 0 0;">
+&#9989; תעודת מקור Form AK מצורפת &mdash; זכאות להעדפה מאושרת.
+</p>
+</div>
+</td></tr>
+</table>
+
+<!-- VALUATION -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">הערכת מסים משוערת</div>
+<div class="note-box">
+<table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+<tr><td style="padding:3px 0;width:200px;">ערך CIF:</td><td style="padding:3px 0;font-weight:bold;">USD 185,000.00</td></tr>
+<tr><td style="padding:3px 0;">שער BOI (05/03/2026):</td><td style="padding:3px 0;">3.621</td></tr>
+<tr><td style="padding:3px 0;">ערך מכס:</td><td style="padding:3px 0;">669,885.00 ILS</td></tr>
+<tr><td style="padding:3px 0;">מכס (0% מע"ר):</td><td style="padding:3px 0;">0.00 ILS</td></tr>
+<tr><td style="padding:3px 0;">מס קניה (0% עם FTA, היה 15%):</td><td style="padding:3px 0;color:#27ae60;font-weight:bold;">0.00 ILS (חיסכון: 100,482.75)</td></tr>
+<tr><td style="padding:3px 0;">מע"מ (18%):</td><td style="padding:3px 0;">120,579.30 ILS</td></tr>
+<tr style="border-top:2px solid #ddd;"><td style="padding:6px 0;font-weight:bold;font-size:14px;">סה"כ מסים משוערים:</td><td style="padding:6px 0;font-weight:bold;font-size:14px;">120,579.30 ILS</td></tr>
+</table>
+</div>
+</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════
+     DIVIDER
+     ═══════════════════════════════════════ -->
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:0 24px;"><hr class="divider"></td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════
+     PART 2: TRACKING (מעקב)
+     ═══════════════════════════════════════ -->
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf2f8;border-radius:4px;">
+  <tr><td style="padding:10px 16px;font-size:16px;font-weight:bold;color:#1e3a5f;">
+    &#9733; חלק ב' &mdash; מעקב משלוח
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+
+<!-- PARTIES -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:10px 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+  <tr>
+    <td style="width:33%;vertical-align:top;padding:0 6px;">
+      <div style="color:#888;font-size:11px;font-weight:bold;margin-bottom:4px;">CONSIGNEE</div>
+      <div style="color:#333;">אלקטרוניקס אונליין בע"מ</div>
+    </td>
+    <td style="width:33%;vertical-align:top;padding:0 6px;">
+      <div style="color:#888;font-size:11px;font-weight:bold;margin-bottom:4px;">SHIPPER</div>
+      <div style="color:#333;">Samsung Electronics Vietnam</div>
+    </td>
+    <td style="width:33%;vertical-align:top;padding:0 6px;">
+      <div style="color:#888;font-size:11px;font-weight:bold;margin-bottom:4px;">CUSTOMS BROKER</div>
+      <div style="color:#333;">07294 - R.P.A. PORT LTD</div>
+    </td>
+  </tr>
+  </table>
+</td></tr>
+</table>
+
+<!-- PROGRESS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">התקדמות &mdash; 2 מתוך 7 שלבים</div>
+<div class="progress-bar">
+  <div class="progress-fill" style="width:28%;background:linear-gradient(90deg,#27ae60,#2471a3);"></div>
+</div>
+<table class="step-grid">
+<tr><th>#</th><th>שלב</th><th>סטטוס</th><th>תאריך</th></tr>
+<tr><td>1</td><td>מניפסט</td><td class="step-done">&#10004; הושלם</td><td style="direction:ltr;text-align:left;font-size:11px;">01/03/2026</td></tr>
+<tr><td>2</td><td>פריקה בנמל</td><td class="step-active">&#9654; בתהליך</td><td style="font-size:11px;color:#2471a3;">ETA: 12/03/2026</td></tr>
+<tr><td>3</td><td>D/O</td><td class="step-pending">&#9711; ממתין</td><td>&mdash;</td></tr>
+<tr><td>4</td><td>בדיקת מכס</td><td class="step-pending">&#9711; ממתין</td><td>&mdash;</td></tr>
+<tr><td>5</td><td>שחרור מכס</td><td class="step-pending">&#9711; ממתין</td><td>&mdash;</td></tr>
+<tr><td>6</td><td>שחרור מהנמל</td><td class="step-pending">&#9711; ממתין</td><td>&mdash;</td></tr>
+<tr><td>7</td><td>יציאת מטען</td><td class="step-pending">&#9711; ממתין</td><td>&mdash;</td></tr>
+</table>
+</td></tr>
+</table>
+
+<!-- CONTAINER TABLE -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">סטטוס מכולות</div>
+<table class="container-table">
+<thead><tr><th>מכולה</th><th>סוג</th><th>אוניה</th><th>ETA</th><th>סטטוס</th></tr></thead>
+<tbody>
+<tr>
+  <td style="font-family:'Courier New',monospace;font-size:12px;direction:ltr;text-align:left;">SEGU4567890</td>
+  <td>40HC</td>
+  <td>EVER GIVEN VOY. 123E</td>
+  <td style="direction:ltr;text-align:left;">12/03/2026</td>
+  <td><span class="badge badge-blue" style="font-size:10px;">בדרך</span></td>
+</tr>
+</tbody>
+</table>
+</td></tr>
+</table>
+
+<!-- ATTACHMENTS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+<div class="section-title">קבצים מצורפים</div>
+<div style="background:#f4f5f7;border:1px solid #ddd;border-radius:4px;padding:10px 14px;">
+  <table cellpadding="0" cellspacing="0" style="font-size:13px;">
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; tariff_chapter_85_extract.html &mdash; פרק 85 (טלוויזיות ומסכים)</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; fio_requirements_8528.html &mdash; צו יבוא חופשי</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; fta_vietnam_origin_rules.html &mdash; כללי מקור ישראל-וייטנאם</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; elimination_report.html &mdash; דוח אלימינציה מלא</td></tr>
+  <tr><td style="padding:3px 0;">&#128196;&nbsp; cross_check_report.html &mdash; אימות צולב</td></tr>
+  </table>
+</div>
+</td></tr>
+</table>
+
+<!-- FOOTER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #e0e0e0;background:#f8f9fa;">
+<tr><td style="padding:16px 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td>
+      <span style="display:inline-block;vertical-align:middle;width:32px;height:32px;line-height:32px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:12px;font-weight:bold;border-radius:4px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
+      <span style="display:inline-block;vertical-align:middle;padding-right:8px;">
+        <span style="font-size:12px;font-weight:bold;color:#1e3a5f;">RCB &mdash; AI Customs Broker</span><br>
+        <span style="font-size:11px;color:#888;">R.P.A. PORT LTD &bull; עמיל מכס 07294</span>
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:10px;color:#999;padding-top:8px;border-top:1px solid #eee;">
+      05/03/2026 16:00 IL &bull; RCB-20260305-CMB-X4P7 &bull; סיווג: Tool-Calling Engine + אימות צולב &bull; מעקב: TaskYam + Ocean
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:11px;color:#888;padding-top:6px;">
+      עדכוני מעקב יישלחו אוטומטית. סיווג מבוסס על חשבונית, תעריף, צו יבוא חופשי והסכם סחר.
+      <br>השב "stop following" להפסקת עדכוני מעקב.
+    </td>
+  </tr>
+  </table>
+</td></tr>
+</table>
+
+</div><!-- /email-container -->
+</body>
+</html>

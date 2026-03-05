@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RCB | מעקב משלוח</title>
+<style>
+  body { margin:0; padding:20px; background:#f4f5f7; font-family: Arial, Helvetica, sans-serif; direction:rtl; }
+  .email-container { max-width:700px; margin:0 auto; background:#ffffff; }
+  .section-title { font-size:15px; font-weight:bold; color:#1e3a5f; border-bottom:2px solid #2471a3; padding-bottom:6px; margin:18px 0 10px 0; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:bold; color:#fff; }
+  .badge-blue { background:#2471a3; }
+  .badge-green { background:#27ae60; }
+  .badge-amber { background:#f39c12; }
+  .badge-red { background:#e74c3c; }
+  .badge-purple { background:#8e44ad; }
+  .badge-gray { background:#999; }
+  .note-box { background:#fff8e1; border:1px solid #f39c12; border-radius:4px; padding:12px 14px; margin:10px 0; font-size:13px; }
+  .shipment-grid { width:100%; border-collapse:collapse; font-size:13px; }
+  .shipment-grid td { padding:6px 10px; border-bottom:1px solid #f0f0f0; }
+  .shipment-grid .label { color:#888; width:130px; font-weight:bold; }
+  .shipment-grid .value { color:#333; }
+  .step-grid { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }
+  .step-grid th { background:#f4f5f7; padding:6px 8px; text-align:right; font-weight:bold; color:#555; border-bottom:1px solid #ddd; }
+  .step-grid td { padding:6px 8px; border-bottom:1px solid #f0f0f0; }
+  .step-done { color:#27ae60; font-weight:bold; }
+  .step-pending { color:#999; }
+  .step-active { color:#2471a3; font-weight:bold; }
+  .container-table { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }
+  .container-table th { background:#1e3a5f; color:#fff; padding:7px 10px; text-align:right; }
+  .container-table td { padding:6px 10px; border-bottom:1px solid #e8e8e8; }
+  .container-table tr:nth-child(even) { background:#f9fafb; }
+  .progress-bar { width:100%; height:10px; background:#e8e8e8; border-radius:5px; margin:10px 0; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:5px; transition: width 0.3s; }
+  .ocean-event { font-size:12px; padding:4px 0; border-bottom:1px solid #f5f5f5; }
+  .ocean-time { direction:ltr; text-align:left; color:#555; font-size:11px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     TEMPLATE 3: TRACKING UPDATE (מעקב)
+     When: Tracker poll detects status change
+     Subject: RCB | MEDU1234567 | 4/7 Released | MSC PARIS
+     Threading: deal_thread_id = <rcb-trk-{deal_id}@rpa-port.co.il>
+     ═══════════════════════════════════════════════════ -->
+
+<div class="email-container">
+
+<!-- HEADER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#1e3a5f;">
+<tr>
+  <td style="padding:18px 24px;" valign="middle">
+    <span style="display:inline-block;vertical-align:middle;width:44px;height:44px;line-height:44px;text-align:center;background:#fff;color:#1e3a5f;font-size:18px;font-weight:bold;border-radius:6px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
+    <span style="display:inline-block;vertical-align:middle;padding-right:12px;">
+      <span style="color:#ffffff;font-size:16px;font-weight:bold;display:block;">R.P.A. PORT LTD</span>
+      <span style="color:#aed6f1;font-size:12px;display:block;">RCB Shipment Tracker</span>
+    </span>
+  </td>
+  <td align="left" style="padding:18px 24px;" valign="middle">
+    <span class="badge badge-purple" style="font-size:13px;padding:5px 14px;">Import</span>
+    <span class="badge badge-blue" style="font-size:13px;padding:5px 14px;">מעקב</span>
+  </td>
+</tr>
+</table>
+
+<!-- CHANGE BANNER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eaf2f8;border-bottom:1px solid #d4e6f1;">
+<tr>
+  <td style="padding:8px 24px;font-size:12px;color:#2471a3;">
+    <strong>&#9432; עדכון סטטוס:</strong> מכולה MSKU1234567 &mdash; שחרור מכס אושר
+    &nbsp;&bull;&nbsp; 05/03/2026 15:30 IL
+  </td>
+</tr>
+</table>
+
+<!-- PARTIES -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:16px 24px 8px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+  <tr>
+    <td style="width:33%;vertical-align:top;padding:0 6px;">
+      <div style="color:#888;font-size:11px;font-weight:bold;margin-bottom:4px;">CONSIGNEE</div>
+      <div style="color:#333;">טיירמסטר בע"מ</div>
+      <div style="color:#888;font-size:12px;">חיפה, ישראל</div>
+    </td>
+    <td style="width:33%;vertical-align:top;padding:0 6px;">
+      <div style="color:#888;font-size:11px;font-weight:bold;margin-bottom:4px;">SHIPPER</div>
+      <div style="color:#333;">BELSHINA JSC</div>
+      <div style="color:#888;font-size:12px;">Bobruisk, Belarus</div>
+    </td>
+    <td style="width:33%;vertical-align:top;padding:0 6px;">
+      <div style="color:#888;font-size:11px;font-weight:bold;margin-bottom:4px;">CUSTOMS BROKER</div>
+      <div style="color:#333;">07294 - R.P.A. PORT LTD</div>
+      <div style="color:#888;font-size:12px;">Haifa, Israel</div>
+    </td>
+  </tr>
+  </table>
+</td></tr>
+</table>
+
+<!-- SHIPMENT DETAILS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">פרטי משלוח</div>
+
+<table class="shipment-grid">
+<tr><td class="label">B/L:</td><td class="value" style="direction:ltr;text-align:left;">MEDU1234567</td></tr>
+<tr><td class="label">אוניה:</td><td class="value">MSC PARIS VOY. FA651R</td></tr>
+<tr><td class="label">מכולות:</td><td class="value">2 x 40HC</td></tr>
+<tr><td class="label">POL:</td><td class="value">Klaipeda, Lithuania &mdash; ETD: 22/02/2026 <span class="badge badge-green" style="font-size:10px;">ATD 22/02</span></td></tr>
+<tr><td class="label">POD:</td><td class="value">Haifa, Israel &mdash; ETA: 12/03/2026</td></tr>
+</table>
+
+</td></tr>
+</table>
+
+<!-- PROGRESS BAR -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">התקדמות &mdash; 4 מתוך 7 שלבים</div>
+
+<div class="progress-bar">
+  <div class="progress-fill" style="width:57%;background:linear-gradient(90deg,#27ae60,#2471a3);"></div>
+</div>
+
+<table class="step-grid">
+<tr>
+  <th>#</th>
+  <th>שלב</th>
+  <th>סטטוס</th>
+  <th>תאריך</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td>מניפסט</td>
+  <td class="step-done">&#10004; הושלם</td>
+  <td class="ocean-time">28/02/2026 09:15</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>פריקה בנמל</td>
+  <td class="step-done">&#10004; הושלם</td>
+  <td class="ocean-time">04/03/2026 14:20</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>D/O (הוראת מסירה)</td>
+  <td class="step-done">&#10004; התקבל</td>
+  <td class="ocean-time">04/03/2026 16:00</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>בדיקת מכס</td>
+  <td class="step-done">&#10004; אושר</td>
+  <td class="ocean-time">05/03/2026 11:30</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>שחרור מכס</td>
+  <td class="step-active">&#9654; פעיל</td>
+  <td class="ocean-time">&mdash;</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>שחרור מהנמל</td>
+  <td class="step-pending">&#9711; ממתין</td>
+  <td>&mdash;</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td>יציאת מטען</td>
+  <td class="step-pending">&#9711; ממתין</td>
+  <td>&mdash;</td>
+</tr>
+</table>
+
+</td></tr>
+</table>
+
+<!-- CONTAINER TABLE (TaskYam data) -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">סטטוס מכולות &mdash; TaskYam</div>
+
+<table class="container-table">
+<thead>
+<tr>
+  <th>מכולה</th>
+  <th>סוג</th>
+  <th>מניפסט</th>
+  <th>פריקה</th>
+  <th>D/O</th>
+  <th>מכס</th>
+  <th>שחרור</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td style="font-family:'Courier New',monospace;font-size:12px;direction:ltr;text-align:left;">MSKU1234567</td>
+  <td>40HC</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-pending">&#9711;</td>
+</tr>
+<tr>
+  <td style="font-family:'Courier New',monospace;font-size:12px;direction:ltr;text-align:left;">MSKU7654321</td>
+  <td>40HC</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-done">&#10004;</td>
+  <td class="step-active">&#9654;</td>
+  <td class="step-pending">&#9711;</td>
+</tr>
+</tbody>
+</table>
+
+</td></tr>
+</table>
+
+<!-- OCEAN EVENTS -->
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 24px 10px;">
+
+<div class="section-title">אירועי מסע ימי</div>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;">
+<tr class="ocean-event">
+  <td style="padding:5px 10px;width:140px;" class="ocean-time">22/02/2026 06:00</td>
+  <td style="padding:5px 10px;"><span class="badge badge-green" style="font-size:10px;">VD</span> &nbsp; Vessel Departed &mdash; Klaipeda</td>
+</tr>
+<tr class="ocean-event">
+  <td style="padding:5px 10px;" class="ocean-time">25/02/2026 14:00</td>
+  <td style="padding:5px 10px;"><span class="badge badge-blue" style="font-size:10px;">TS</span> &nbsp; Transshipment &mdash; Piraeus</td>
+</tr>
+<tr class="ocean-event">
+  <td style="padding:5px 10px;" class="ocean-time">26/02/2026 22:00</td>
+  <td style="padding:5px 10px;"><span class="badge badge-blue" style="font-size:10px;">TL</span> &nbsp; Transshipment Loaded &mdash; Piraeus</td>
+</tr>
+<tr class="ocean-event">
+  <td style="padding:5px 10px;" class="ocean-time">04/03/2026 08:00</td>
+  <td style="padding:5px 10px;"><span class="badge badge-green" style="font-size:10px;">VA</span> &nbsp; Vessel Arrived &mdash; Haifa</td>
+</tr>
+<tr class="ocean-event">
+  <td style="padding:5px 10px;" class="ocean-time">04/03/2026 14:20</td>
+  <td style="padding:5px 10px;"><span class="badge badge-green" style="font-size:10px;">UV</span> &nbsp; Unloaded from Vessel &mdash; Haifa</td>
+</tr>
+</table>
+
+</td></tr>
+</table>
+
+<!-- FOOTER -->
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #e0e0e0;background:#f8f9fa;">
+<tr><td style="padding:16px 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td>
+      <span style="display:inline-block;vertical-align:middle;width:32px;height:32px;line-height:32px;text-align:center;background:#1e3a5f;color:#ffffff;font-size:12px;font-weight:bold;border-radius:4px;font-family:Georgia,'Times New Roman',serif;">RCB</span>
+      <span style="display:inline-block;vertical-align:middle;padding-right:8px;">
+        <span style="font-size:12px;font-weight:bold;color:#1e3a5f;">RCB &mdash; AI Customs Broker</span><br>
+        <span style="font-size:11px;color:#888;">R.P.A. PORT LTD &bull; עמיל מכס 07294</span>
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:10px;color:#999;padding-top:8px;border-top:1px solid #eee;">
+      05/03/2026 15:30 IL &bull; עדכון אוטומטי כל 30 דקות
+    </td>
+  </tr>
+  <tr>
+    <td style="font-size:11px;color:#888;padding-top:6px;">
+      השב "stop following" להפסקת עדכונים למשלוח זה.
+    </td>
+  </tr>
+  </table>
+</td></tr>
+</table>
+
+</div><!-- /email-container -->
+</body>
+</html>
