@@ -403,6 +403,81 @@ font-family:monospace;">{code_display}</td>
 
 
 # -----------------------------------------------------------------------
+#  BLOCK 6c: PER-ITEM TARIFF TABLE WITH DISCOUNT
+# -----------------------------------------------------------------------
+
+def _block_tariff_table_with_discount(items_data, legal_category_he=""):
+    """Per-item table showing regular code + Chapter 98 code + discount.
+
+    Args:
+        items_data: list of dicts with name, hs_code, regular_duty,
+                    chapter98_code, chapter98_duty, discount_code, conditions, confidence
+        legal_category_he: e.g. "תושב חוזר"
+    """
+    if not items_data:
+        return ""
+
+    title = "סיווג מכס לפי פריטים"
+    if legal_category_he:
+        title += f" — {_esc(legal_category_he)}"
+
+    rows = []
+    for item in items_data:
+        name = _esc(item.get("name", ""))
+        hs = _esc(item.get("hs_code", ""))
+        reg_duty = _esc(item.get("regular_duty", "—"))
+        reg_pt = _esc(item.get("regular_purchase_tax", "—"))
+        ch98 = _esc(item.get("chapter98_code", ""))
+        ch98_duty = _esc(item.get("chapter98_duty", ""))
+        ch98_pt = _esc(item.get("chapter98_pt", ""))
+        discount = _esc(item.get("discount_code", ""))
+        conditions = _esc(item.get("conditions", ""))
+
+        conf = item.get("confidence", "")
+        conf_color = {
+            "high": _COLOR_OK, "medium": _COLOR_WARN, "low": _COLOR_ERR,
+        }.get(conf, _COLOR_PENDING)
+
+        # Chapter 98 cell
+        ch98_cell = ch98 if ch98 else "—"
+        ch98_duty_cell = ch98_duty if ch98_duty else "—"
+
+        rows.append(f"""<tr>
+<td style="padding:6px 10px;border:1px solid #ddd;font-weight:bold;">{name}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;font-family:monospace;direction:ltr;text-align:left;">{hs}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{reg_duty}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{reg_pt}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;font-family:monospace;direction:ltr;text-align:left;">{ch98_cell}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{ch98_duty_cell}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">{discount}</td>
+<td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;">{conditions}</td>
+</tr>""")
+
+    return f"""
+<div style="margin:16px 0;">
+<h3 style="color:{_RPA_BLUE};margin:0 0 8px;">{title}</h3>
+<table style="width:100%;border-collapse:collapse;font-size:12px;" dir="rtl">
+<thead>
+<tr style="background:{_RPA_BLUE};color:#fff;">
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">פריט</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">פרט רגיל</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מכס</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מס קניה</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">פרט 98</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">מכס 98</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">קוד הנחה</th>
+<th style="padding:8px 10px;border:1px solid {_RPA_BLUE};">הערות</th>
+</tr>
+</thead>
+<tbody>
+{"".join(rows)}
+</tbody>
+</table>
+</div>
+"""
+
+
+# -----------------------------------------------------------------------
 #  BLOCK 7: VALUATION
 # -----------------------------------------------------------------------
 
@@ -741,7 +816,8 @@ def verify_citations(ai_response, bundle):
 #  ORCHESTRATORS
 # -----------------------------------------------------------------------
 
-def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=None):
+def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=None,
+                         case_plan=None):
     """Compose Template 1: Consultation reply.
 
     Args:
@@ -749,6 +825,7 @@ def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=N
         bundle: EvidenceBundle
         recipient_name: name for greeting
         tracking_code: optional tracking code (generated if None)
+        case_plan: optional CasePlan for per-item rendering
 
     Returns:
         dict with {html: str, subject: str, tracking_code: str}
@@ -773,8 +850,14 @@ def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=N
     # B3: Diagnosis
     html_parts.append(_block_diagnosis(ai_response.get("diagnosis")))
 
-    # B4: Tariff table
-    html_parts.append(_block_tariff_table(ai_response.get("hs_candidates")))
+    # B4: Tariff table (standard) or per-item table (with case_plan)
+    cp = case_plan or getattr(bundle, 'case_plan', None)
+    per_item_data = ai_response.get("items")
+    if per_item_data and cp and cp.per_item_required:
+        legal_he = cp.legal_category_he if cp else ""
+        html_parts.append(_block_tariff_table_with_discount(per_item_data, legal_he))
+    else:
+        html_parts.append(_block_tariff_table(ai_response.get("hs_candidates")))
 
     # B5: FIO/FEO
     html_parts.append(_block_fio_feo(ai_response.get("regulatory"), bundle.direction))
@@ -782,8 +865,9 @@ def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=N
     # B6: FTA
     html_parts.append(_block_fta(ai_response.get("fta"), bundle.direction))
 
-    # B6b: Discount codes
-    html_parts.append(_block_discount_codes(ai_response.get("discount_codes")))
+    # B6b: Discount codes (if no per-item table already showing them)
+    if not per_item_data:
+        html_parts.append(_block_discount_codes(ai_response.get("discount_codes")))
 
     # B7: Valuation (import only)
     html_parts.append(_block_valuation(ai_response.get("valuation_notes")))
@@ -825,7 +909,7 @@ def compose_consultation(ai_response, bundle, recipient_name="", tracking_code=N
 
 
 def compose_live_shipment(ai_response, bundle, invoice_data=None,
-                          recipient_name="", tracking_code=None):
+                          recipient_name="", tracking_code=None, case_plan=None):
     """Compose Template 2: Live shipment classification reply.
 
     Args:
@@ -834,6 +918,7 @@ def compose_live_shipment(ai_response, bundle, invoice_data=None,
         invoice_data: optional dict with invoice metadata
         recipient_name: name for greeting
         tracking_code: optional tracking code
+        case_plan: optional CasePlan for per-item rendering
 
     Returns:
         dict with {html: str, subject: str, tracking_code: str}

@@ -23,21 +23,22 @@ from typing import Optional
 #  PROMPT BUILDER
 # -----------------------------------------------------------------------
 
-def build_straitjacket_prompt(bundle):
+def build_straitjacket_prompt(bundle, case_plan=None):
     """Build the AI system + user prompt from an EvidenceBundle.
 
     Args:
         bundle: EvidenceBundle from evidence_types.py
+        case_plan: Optional CasePlan from case_reasoning.py
 
     Returns:
         dict with 'system' and 'user' prompt strings
     """
-    system = _build_system_prompt(bundle)
-    user = _build_user_prompt(bundle)
+    system = _build_system_prompt(bundle, case_plan=case_plan)
+    user = _build_user_prompt(bundle, case_plan=case_plan)
     return {"system": system, "user": user}
 
 
-def _build_system_prompt(bundle):
+def _build_system_prompt(bundle, case_plan=None):
     """Build the system prompt with strict rules."""
     direction_label = {
         "import": "יבוא",
@@ -80,15 +81,36 @@ def _build_system_prompt(bundle):
         parts.append("  (הכל נמצא)")
     parts.append("")
 
+    # Case reasoning context
+    if case_plan and case_plan.legal_category:
+        parts.append("═══ הנחיות מיוחדות ═══")
+        parts.append(f"סטטוס משפטי: {case_plan.legal_category_he}")
+        parts.append(f"סוג תיק: {case_plan.case_type}")
+        if case_plan.discount_group:
+            parts.append(f"קוד הנחה רלוונטי: פרט {case_plan.discount_group}, "
+                         f"טווח {case_plan.discount_sub_range}")
+        if case_plan.items_to_classify:
+            parts.append(f"פריטים לסיווג: {len(case_plan.items_to_classify)}")
+            for i, item in enumerate(case_plan.items_to_classify, 1):
+                parts.append(f"  {i}. {item.get('name', '')} "
+                             f"(קטגוריה: {item.get('category', '')})")
+        parts.append("")
+        parts.append("הוראות:")
+        parts.append("- סווג כל פריט בנפרד בשדה items[] עם סיווג רגיל + סיווג פרק 98")
+        parts.append("- ציין קוד הנחה ספציפי לכל פריט לפי הסטטוס המשפטי")
+        if "vehicle_separate" in (case_plan.special_flags or []):
+            parts.append("- רכב מנועי דורש נוהל נפרד — ציין זאת מפורשות")
+        parts.append("")
+
     # JSON output schema
     parts.append("═══ פורמט פלט — JSON בלבד ═══")
-    parts.append(_get_output_schema(bundle))
+    parts.append(_get_output_schema(bundle, case_plan=case_plan))
     parts.append("")
 
     return "\n".join(parts)
 
 
-def _build_user_prompt(bundle):
+def _build_user_prompt(bundle, case_plan=None):
     """Build the user prompt with all evidence data."""
     parts = []
 
@@ -201,6 +223,21 @@ def _build_user_prompt(bundle):
             )
         parts.append("")
 
+    # Chapter 98 entries (personal import codes)
+    if bundle.chapter98_entries:
+        parts.append("── פרק 98 — יבוא אישי ──")
+        for entry in bundle.chapter98_entries:
+            parts.append(
+                f"  פרט רגיל {entry.get('regular_hs_code', '')}: "
+                f"מכס {entry.get('regular_duty', '')} | "
+                f"מס קניה {entry.get('regular_pt', '')} -> "
+                f"פרט 98: {entry.get('chapter98_code', '')} "
+                f"({entry.get('desc_he', '')}) | "
+                f"מכס: {entry.get('duty', '')} | מס קניה: {entry.get('purchase_tax', '')} "
+                f"[{entry.get('source_ref', '')}]"
+            )
+        parts.append("")
+
     # Valuation articles (import only)
     if bundle.valuation_articles:
         parts.append("── סעיפי הערכה (פקודת המכס) ──")
@@ -297,7 +334,7 @@ def _build_user_prompt(bundle):
 #  OUTPUT SCHEMA
 # -----------------------------------------------------------------------
 
-def _get_output_schema(bundle):
+def _get_output_schema(bundle, case_plan=None):
     """Return the JSON output schema description for the AI."""
     schema = {
         "diagnosis": {
@@ -358,6 +395,25 @@ def _get_output_schema(bundle):
                 "customs_duty": "שיעור מכס (exempt / אחוז)",
                 "purchase_tax": "מס קניה (exempt / אחוז)",
                 "applicable_to": "לאיזה פריט רלוונטי",
+            }
+        ]
+
+    # Per-item classification (when case_plan requires it)
+    if case_plan and case_plan.per_item_required:
+        schema["items"] = [
+            {
+                "name": "שם הפריט",
+                "hs_code": "XX.XX.XXXXXX",
+                "description": "תיאור הפריט",
+                "regular_duty": "שיעור מכס רגיל",
+                "regular_purchase_tax": "מס קניה רגיל",
+                "chapter98_code": "98.01.XXXXXX (אם רלוונטי) או null",
+                "chapter98_duty": "מכס לפי פרק 98 או null",
+                "chapter98_pt": "מס קניה לפי פרק 98 או null",
+                "discount_code": "פרט/קוד הנחה (למשל 7/403400) או null",
+                "discount_desc": "תיאור ההנחה או null",
+                "conditions": "תנאי הפטור/ההנחה",
+                "confidence": "high / medium / low",
             }
         ]
 

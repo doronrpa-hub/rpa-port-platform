@@ -85,6 +85,18 @@ except ImportError:
     except ImportError:
         COMPOSITION_LAYER_AVAILABLE = False
 
+# Case reasoning (Session 88)
+try:
+    from lib.case_reasoning import analyze_case
+    CASE_REASONING_AVAILABLE = True
+except ImportError:
+    try:
+        from case_reasoning import analyze_case
+        CASE_REASONING_AVAILABLE = True
+    except ImportError:
+        analyze_case = None
+        CASE_REASONING_AVAILABLE = False
+
 
 # ═══════════════════════════════════════════
 #  CONSTANTS
@@ -333,16 +345,32 @@ def _run_composition_pipeline(context_package, get_secret_func, msg,
         # 1. Direction detection
         direction_result = detect_direction(subject, body_text,
                                             entities=context_package.entities)
-        print(f"    🧭 Direction: {direction_result['direction']} "
+        print(f"    Direction: {direction_result['direction']} "
               f"(conf={direction_result['confidence']:.2f})")
 
-        # 2. Build evidence bundle
-        bundle = build_evidence_bundle(context_package, direction_result)
-        print(f"    📋 Evidence: {len(bundle.sources_found)} sources found, "
+        # 1b. Case reasoning (detect legal category, items, tier)
+        case_plan = None
+        if CASE_REASONING_AVAILABLE and analyze_case:
+            case_plan = analyze_case(subject, body_text,
+                                     entities=context_package.entities)
+            if case_plan and case_plan.case_type != "GENERAL":
+                print(f"    Case: {case_plan.case_type} | "
+                      f"{case_plan.legal_category_he or '-'} | "
+                      f"tier={case_plan.tier} | "
+                      f"{len(case_plan.items_to_classify)} items")
+                # Override direction if case reasoning detected import
+                if case_plan.direction == "import" and direction_result["direction"] == "unknown":
+                    direction_result["direction"] = "import"
+                    direction_result["confidence"] = 0.75
+
+        # 2. Build evidence bundle (with case_plan for directed searches)
+        bundle = build_evidence_bundle(context_package, direction_result,
+                                       case_plan=case_plan)
+        print(f"    Evidence: {len(bundle.sources_found)} sources found, "
               f"{len(bundle.sources_not_found)} not found")
 
-        # 3. Build straitjacket prompt
-        prompt = build_straitjacket_prompt(bundle)
+        # 3. Build straitjacket prompt (with case_plan for per-item schema)
+        prompt = build_straitjacket_prompt(bundle, case_plan=case_plan)
 
         # 4. Call AI with straitjacket (Gemini → ChatGPT → Claude)
         ai_text = None
@@ -399,7 +427,8 @@ def _run_composition_pipeline(context_package, get_secret_func, msg,
             recipient_name = from_addr.split("@")[0].split(".")[0].strip()
 
         composer = compose_live_shipment if template_type == "live_shipment" else compose_consultation
-        result = composer(parsed, bundle, recipient_name=recipient_name)
+        result = composer(parsed, bundle, recipient_name=recipient_name,
+                          case_plan=case_plan)
         print(f"    ✅ Composition pipeline ({template_type}): HTML rendered ({len(result['html'])} chars)")
         return result
 

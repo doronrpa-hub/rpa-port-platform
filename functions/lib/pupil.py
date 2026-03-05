@@ -2198,12 +2198,16 @@ def _check_for_correction(db, past_classification):
     Compare a past classification with current verified knowledge.
     Returns correction dict if mismatch found, None otherwise.
     """
+    from lib.librarian import normalize_hs_code
+
     old_code = past_classification.get("hs_code", "")
     description = past_classification.get("description", "")
-    
+
     if not old_code or not description:
         return None
-    
+
+    old_normalized = normalize_hs_code(old_code)
+
     # Check if we now have VERIFIED different knowledge
     # Source 1: Human-approved corrections
     try:
@@ -2218,9 +2222,9 @@ def _check_for_correction(db, past_classification):
             data = doc.to_dict()
             new_code = data.get("hs_code", "")
             new_desc = data.get("description", "")
-            
-            # Check if descriptions are similar but codes differ
-            if new_code and new_code != old_code:
+
+            # Check if descriptions are similar but codes differ (normalize both)
+            if new_code and normalize_hs_code(new_code) != old_normalized:
                 if _descriptions_match(description, new_desc):
                     return {
                         "type": "human_approved_correction",
@@ -2234,7 +2238,7 @@ def _check_for_correction(db, past_classification):
                     }
     except Exception:
         pass
-    
+
     # Source 2: Pupil teachings with high confidence
     try:
         teachings = list(
@@ -2246,7 +2250,7 @@ def _check_for_correction(db, past_classification):
         for doc in teachings:
             data = doc.to_dict()
             new_code = data.get("verified_hs_code", "")
-            if new_code and new_code != old_code:
+            if new_code and normalize_hs_code(new_code) != old_normalized:
                 if description.lower()[:30] in data.get("question", "").lower():
                     return {
                         "type": "verified_teaching",
@@ -2277,22 +2281,34 @@ def _check_for_correction(db, past_classification):
     return None
 
 
+_DESC_STOP_WORDS = frozenset({
+    "of", "the", "a", "an", "and", "or", "for", "in", "on", "to", "with",
+    "from", "by", "is", "are", "was", "were", "be", "been", "has", "have",
+    "at", "as", "it", "its", "not", "no", "-", "--", "other", "others",
+    "של", "את", "על", "עם", "או", "לא", "גם", "כל", "אחר", "אחרים",
+})
+
+
 def _descriptions_match(desc1, desc2):
-    """Check if two descriptions refer to the same product."""
+    """Check if two descriptions refer to the same product.
+    Requires 70% word overlap on meaningful words (stop words excluded),
+    and at least 3 meaningful words in both descriptions.
+    """
     if not desc1 or not desc2:
         return False
-    d1 = desc1.lower().strip()[:50]
-    d2 = desc2.lower().strip()[:50]
-    # Exact prefix match
+    d1 = desc1.lower().strip()[:80]
+    d2 = desc2.lower().strip()[:80]
+    # Exact prefix match (first 20 chars)
     if d1[:20] == d2[:20]:
         return True
-    # Word overlap
-    words1 = set(d1.split())
-    words2 = set(d2.split())
-    if len(words1) > 2 and len(words2) > 2:
-        overlap = words1 & words2
-        if len(overlap) >= min(len(words1), len(words2)) * 0.5:
-            return True
+    # Word overlap — exclude stop words, require 70% overlap
+    words1 = set(d1.split()) - _DESC_STOP_WORDS
+    words2 = set(d2.split()) - _DESC_STOP_WORDS
+    if len(words1) < 3 or len(words2) < 3:
+        return False
+    overlap = words1 & words2
+    if len(overlap) >= min(len(words1), len(words2)) * 0.7:
+        return True
     return False
 
 

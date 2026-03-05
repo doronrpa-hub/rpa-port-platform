@@ -13,7 +13,7 @@ Usage:
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 # -----------------------------------------------------------------------
@@ -100,6 +100,14 @@ class EvidenceBundle:
     # XML document results (EU reform, procedures, etc.)
     xml_results: list = field(default_factory=list)
 
+    # Case plan (from case_reasoning.py)
+    case_plan: Optional[Any] = None
+    # CasePlan dataclass with legal_category, items_to_classify, discount_group, etc.
+
+    # Chapter 98 data (for personal imports)
+    chapter98_entries: list = field(default_factory=list)
+    # Each: {hs_code, chapter98_code, desc_he, desc_en, duty, pt, discount_info}
+
     # Entities extracted from query
     entities: dict = field(default_factory=dict)
 
@@ -128,13 +136,14 @@ class EvidenceBundle:
 #  BUILDER: ContextPackage -> EvidenceBundle
 # -----------------------------------------------------------------------
 
-def build_evidence_bundle(context_package, direction_result, db=None):
+def build_evidence_bundle(context_package, direction_result, db=None, case_plan=None):
     """Transform a ContextPackage into a tagged EvidenceBundle.
 
     Args:
         context_package: ContextPackage from context_engine.prepare_context_package()
         direction_result: dict from direction_router.detect_direction()
         db: Optional Firestore client (for direction-specific enrichment)
+        case_plan: Optional CasePlan from case_reasoning.analyze_case()
 
     Returns:
         EvidenceBundle with every fact tagged by source
@@ -183,7 +192,12 @@ def build_evidence_bundle(context_package, direction_result, db=None):
     # 9. Direction-specific enrichment
     _enrich_by_direction(bundle, dir_config)
 
-    # 10. Build source audit
+    # 10. Case plan enrichment (Chapter 98, directed searches)
+    if case_plan:
+        bundle.case_plan = case_plan
+        _enrich_from_case_plan(bundle, case_plan)
+
+    # 11. Build source audit
     _build_source_audit(bundle)
 
     return bundle
@@ -475,6 +489,78 @@ def _add_procedure_ref(target_list, proc_num, proc_name):
 
 
 # -----------------------------------------------------------------------
+#  CASE PLAN ENRICHMENT (Chapter 98, directed discount codes)
+# -----------------------------------------------------------------------
+
+def _enrich_from_case_plan(bundle, case_plan):
+    """Enrich bundle with Chapter 98 data and directed discount codes
+    based on case_plan legal category and items."""
+
+    if not case_plan or not case_plan.legal_category:
+        return
+
+    # Load Chapter 98 data for each item that has a tariff match
+    try:
+        from lib._chapter98_data import get_chapter98_code, get_chapter98_entry
+    except ImportError:
+        try:
+            from _chapter98_data import get_chapter98_code, get_chapter98_entry
+        except ImportError:
+            return
+
+    try:
+        from lib.case_reasoning import get_discount_for_item
+    except ImportError:
+        try:
+            from case_reasoning import get_discount_for_item
+        except ImportError:
+            return
+
+    # For each tariff entry in the bundle, find Chapter 98 equivalent
+    for entry in bundle.tariff_entries:
+        hs_code = entry.get("hs_code", "")
+        ch98_code = get_chapter98_code(hs_code)
+        if ch98_code:
+            ch98_entry = get_chapter98_entry(ch98_code)
+            if ch98_entry:
+                bundle.chapter98_entries.append({
+                    "regular_hs_code": hs_code,
+                    "chapter98_code": ch98_code,
+                    "desc_he": ch98_entry.get("desc_he", ""),
+                    "desc_en": ch98_entry.get("desc_en", ""),
+                    "duty": ch98_entry.get("duty", ""),
+                    "purchase_tax": ch98_entry.get("purchase_tax", ""),
+                    "regular_duty": entry.get("duty", ""),
+                    "regular_pt": entry.get("purchase_tax", ""),
+                    "source_name": "תעריף המכס — פרק 98",
+                    "source_ref": f"פרט {ch98_code[:4]}.{ch98_code[4:]}",
+                })
+
+    # For each item in case_plan, compute per-item discount
+    for item in case_plan.items_to_classify:
+        category = item.get("category", "")
+        # Try to find matching tariff entry
+        item_hs = ""
+        for entry in bundle.tariff_entries:
+            # Simple category match
+            desc = (entry.get("description_he", "") + " " +
+                    entry.get("description_en", "")).lower()
+            for kw in item.get("keywords", []):
+                if kw.lower() in desc:
+                    item_hs = entry.get("hs_code", "")
+                    break
+            if item_hs:
+                break
+
+        if item_hs:
+            discount = get_discount_for_item(
+                item.get("name", ""), item_hs,
+                case_plan.legal_category, category)
+            if discount:
+                item["discount_info"] = discount
+
+
+# -----------------------------------------------------------------------
 #  SOURCE AUDIT
 # -----------------------------------------------------------------------
 
@@ -490,6 +576,7 @@ _ALL_SOURCE_TYPES = [
     ("web_results", "מקורות אינטרנט"),
     ("supplier_results", "אתר ספק"),
     ("discount_codes", "קודי הנחה"),
+    ("chapter98_entries", "פרק 98 — יבוא אישי"),
 ]
 
 
