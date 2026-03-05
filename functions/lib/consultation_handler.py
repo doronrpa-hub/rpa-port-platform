@@ -577,6 +577,9 @@ def _render_broker_result_html(broker_result):
     direction_he = "יבוא" if direction == "import" else "יצוא"
 
     parts = []
+    # --- DOCTYPE + charset for proper Hebrew rendering ---
+    parts.append('<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>'
+                 '<body style="margin:0;padding:0;">')
     # --- Header ---
     parts.append(f"""<table width="100%" cellpadding="0" cellspacing="0" style="direction:rtl;font-family:Arial,sans-serif;">
     <tr><td style="background:{_RPA_BLUE};padding:16px 24px;color:#fff;">
@@ -733,7 +736,7 @@ def _render_broker_result_html(broker_result):
     parts.append(f"""<tr><td style="background:#f8f9fa;padding:12px 24px;font-size:11px;color:#999;text-align:center;">
         RCB | RPA-PORT | {now_str} UTC | Broker Engine (deterministic)
         <br/>סיווג זה הוא הערכה מקצועית ואינו מהווה אישור רשמי של רשות המכס.
-    </td></tr></table>""")
+    </td></tr></table></body></html>""")
 
     return "\n".join(parts)
 
@@ -906,6 +909,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
             logger.warning(f"Sub-intent detection error: {e}")
 
     # 1b. Try broker engine (Session 90) — deterministic, no AI tool loop
+    _broker_sent = False  # Guard: if broker sends, do NOT let legacy also send
     if BROKER_ENGINE_AVAILABLE and template_type != "live_shipment":
         try:
             print(f"    Broker Engine: deterministic classification")
@@ -934,6 +938,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                         msg, "", None, access_token, rcb_email, db,
                         composed_result=composed,
                     )
+                    _broker_sent = sent  # Mark BEFORE return so except block knows
                     elapsed = int((time.time() - t0) * 1000)
                     print(f"    Broker Engine: sent={sent}, elapsed={elapsed}ms")
                     return {
@@ -950,6 +955,16 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
             print(f"    Broker Engine error: {e}")
             import traceback
             traceback.print_exc()
+            # If broker already sent the email, do NOT fall through to legacy
+            if _broker_sent:
+                elapsed = int((time.time() - t0) * 1000)
+                return {
+                    "status": "replied",
+                    "handler": "consultation",
+                    "level": -1,
+                    "model": "broker_engine",
+                    "elapsed_ms": elapsed,
+                }
 
     # 2. Run SIF
     if not prepare_context_package:
