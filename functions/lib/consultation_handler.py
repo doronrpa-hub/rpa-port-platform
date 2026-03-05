@@ -555,6 +555,200 @@ def _run_composition_pipeline(context_package, get_secret_func, msg,
 
 
 # ═══════════════════════════════════════════
+#  BROKER ENGINE HTML RENDERER
+# ═══════════════════════════════════════════
+
+_RPA_BLUE = "#1a5276"
+_COLOR_OK = "#27ae60"
+_COLOR_WARN = "#f39c12"
+_LOGO_URL = "https://storage.googleapis.com/rpa-port-customs.appspot.com/logo/rpa_port_logo.png"
+
+
+def _render_broker_result_html(broker_result):
+    """Render broker_engine.process_case() output into branded RTL HTML email.
+
+    Builds per-item table with HS code, duty rates, Chapter 98, discount,
+    FIO/FEO requirements, FTA, valuation articles.
+    """
+    op = broker_result.get("operation", {})
+    items = broker_result.get("items", [])
+    legal_he = op.get("legal_category_he", "")
+    direction = op.get("direction", "import")
+    direction_he = "יבוא" if direction == "import" else "יצוא"
+
+    parts = []
+    # --- Header ---
+    parts.append(f"""<table width="100%" cellpadding="0" cellspacing="0" style="direction:rtl;font-family:Arial,sans-serif;">
+    <tr><td style="background:{_RPA_BLUE};padding:16px 24px;color:#fff;">
+        <table width="100%"><tr>
+            <td><img src="{_LOGO_URL}" height="36" alt="RPA-PORT" style="vertical-align:middle;"/></td>
+            <td style="text-align:left;color:#d5e8f0;font-size:13px;">{direction_he}</td>
+        </tr></table>
+        <div style="font-size:20px;font-weight:bold;margin-top:8px;">
+            {"סיווג מכס" if not legal_he else f"סיווג מכס — {legal_he}"}
+        </div>
+    </td></tr>""")
+
+    # --- Per-item cards ---
+    for ci in items:
+        item = ci.get("item", {})
+        cls = ci.get("classification", {})
+        status = ci.get("status", "")
+        item_name = item.get("name", "?")
+
+        parts.append(f"""<tr><td style="padding:12px 24px;">
+        <table width="100%" cellpadding="6" cellspacing="0" style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;">
+            <tr style="background:#f0f4f8;">
+                <td colspan="4" style="font-size:16px;font-weight:bold;color:{_RPA_BLUE};">
+                    {item_name}
+                </td>
+            </tr>""")
+
+        if status == "kram":
+            # Item needs clarification
+            kram_qs = ci.get("kram_questions", cls.get("kram_questions", []))
+            parts.append(f"""<tr><td colspan="4" style="color:#c0392b;padding:8px;">
+                נדרש מידע נוסף לסיווג פריט זה:
+                <ul style="margin:4px 0;">""")
+            for q in kram_qs:
+                parts.append(f"<li>{q.get('question_he', '')}</li>")
+            parts.append("</ul></td></tr>")
+        elif cls:
+            hs_code = cls.get("hs_code", "")
+            hs_fmt = _format_hs(hs_code)
+            conf = cls.get("confidence", 0)
+            conf_pct = int(conf * 100) if conf <= 1 else int(conf)
+            duty = cls.get("duty_rate", "")
+            desc = cls.get("description", "")
+
+            # HS code + confidence row
+            conf_color = _COLOR_OK if conf_pct >= 70 else _COLOR_WARN if conf_pct >= 40 else "#c0392b"
+            parts.append(f"""<tr>
+                <td style="font-size:18px;font-family:monospace;font-weight:bold;">{hs_fmt}</td>
+                <td style="font-size:12px;color:#666;">{desc[:60]}</td>
+                <td style="text-align:center;">
+                    <span style="background:{conf_color};color:#fff;padding:2px 8px;border-radius:10px;font-size:12px;">{conf_pct}%</span>
+                </td>
+                <td style="text-align:center;font-size:13px;">{duty or '—'}</td>
+            </tr>""")
+
+            # Duty / PT / VAT row
+            pt = cls.get("purchase_tax", "")
+            vat = cls.get("vat_rate", broker_result.get("vat_rate", "18%"))
+            parts.append(f"""<tr style="background:#fafafa;font-size:13px;">
+                <td>מכס: {duty or '—'}</td>
+                <td>מס קניה: {pt or '—'}</td>
+                <td>מע"מ: {vat}</td>
+                <td></td>
+            </tr>""")
+
+            # Chapter 98 + discount row (if personal import)
+            ch98_code = cls.get("chapter98_code", "")
+            if ch98_code:
+                ch98_desc = cls.get("chapter98_desc_he", "")
+                ch98_duty = cls.get("chapter98_duty", "")
+                disc = cls.get("discount", {})
+                disc_desc = disc.get("discount_desc_he", "")
+                disc_duty = disc.get("discount_duty", "")
+                parts.append(f"""<tr style="background:#e8f8f5;font-size:13px;">
+                    <td colspan="2" style="color:{_COLOR_OK};font-weight:bold;">
+                        פרק 98: {_format_hs(ch98_code)}
+                    </td>
+                    <td>מכס הנחה: {disc_duty or ch98_duty or 'פטור'}</td>
+                    <td style="font-size:11px;">{disc_desc[:40] or ch98_desc[:40]}</td>
+                </tr>""")
+
+            # FIO requirements
+            fio = cls.get("fio", {})
+            if fio and fio.get("found"):
+                for req in fio.get("requirements", [])[:3]:
+                    auth = req.get("authority", "")
+                    appendix = req.get("appendix", "")
+                    std_ref = req.get("standard_ref", "")
+                    conf_type = req.get("confirmation_type", "")
+                    parts.append(f"""<tr style="font-size:12px;color:#7f8c8d;">
+                        <td>צו יבוא חופשי</td>
+                        <td>תוספת {appendix}</td>
+                        <td>{auth}</td>
+                        <td>{std_ref or conf_type}</td>
+                    </tr>""")
+
+            # FEO requirements
+            feo = cls.get("feo", {})
+            if feo and feo.get("found"):
+                for req in feo.get("requirements", [])[:3]:
+                    parts.append(f"""<tr style="font-size:12px;color:#7f8c8d;">
+                        <td>צו יצוא חופשי</td>
+                        <td>תוספת {req.get('appendix', '')}</td>
+                        <td>{req.get('authority', '')}</td>
+                        <td>{req.get('confirmation_type', '')}</td>
+                    </tr>""")
+
+            # FTA
+            fta = cls.get("fta", {})
+            if fta and fta.get("eligible"):
+                fw = fta.get("framework_order", {})
+                pref_doc = fw.get("preference_document", {})
+                parts.append(f"""<tr style="font-size:12px;background:#fef9e7;">
+                    <td style="color:{_COLOR_OK};">FTA: {fta.get('agreement_name', '')}</td>
+                    <td>שיעור מועדף: {fta.get('preferential_rate', '')}</td>
+                    <td>{pref_doc.get('primary', '') if isinstance(pref_doc, dict) else ''}</td>
+                    <td>{', '.join(fw.get('supplements', [])) if fw else ''}</td>
+                </tr>""")
+
+        parts.append("</table></td></tr>")
+
+    # --- Valuation section ---
+    val = broker_result.get("valuation", {})
+    if val and val.get("primary_method"):
+        parts.append(f"""<tr><td style="padding:8px 24px;">
+            <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:6px;">
+                הערכת שווי מכס
+            </div>
+            <div style="font-size:13px;">
+                שיטה ראשית: <b>ערך עסקה</b> (סעיף 132 לפקודת המכס) —
+                המחיר ששולם או שישולם בפועל.
+            </div>
+        </td></tr>""")
+
+    # --- Release notes ---
+    rel = broker_result.get("release_notes", [])
+    if rel:
+        parts.append(f"""<tr><td style="padding:8px 24px;">
+            <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:6px;">
+                שחרור מהמכס
+            </div>""")
+        for note in rel:
+            art = note.get("article", "")
+            title = note.get("title_he", "")
+            reason = note.get("applies_because", "")
+            parts.append(f"""<div style="font-size:13px;margin-bottom:4px;">
+                סעיף {art}: {title}
+                {f'<span style="color:{_COLOR_OK};"> — חל עליך כ{reason}</span>' if reason else ''}
+            </div>""")
+        parts.append("</td></tr>")
+
+    # --- Footer ---
+    now_str = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
+    parts.append(f"""<tr><td style="background:#f8f9fa;padding:12px 24px;font-size:11px;color:#999;text-align:center;">
+        RCB | RPA-PORT | {now_str} UTC | Broker Engine (deterministic)
+        <br/>סיווג זה הוא הערכה מקצועית ואינו מהווה אישור רשמי של רשות המכס.
+    </td></tr></table>""")
+
+    return "\n".join(parts)
+
+
+def _format_hs(hs_code):
+    """Format HS code to Israeli display format XX.XX.XXXXXX."""
+    clean = str(hs_code).replace(".", "").replace("/", "").replace(" ", "")
+    if len(clean) >= 10:
+        return f"{clean[:2]}.{clean[2:4]}.{clean[4:10]}"
+    elif len(clean) >= 4:
+        return f"{clean[:2]}.{clean[2:4]}.{clean[4:]}"
+    return clean
+
+
+# ═══════════════════════════════════════════
 #  REPLY SENDING
 # ═══════════════════════════════════════════
 
@@ -593,7 +787,7 @@ def _send_consultation_reply(msg, content, context_package, access_token, rcb_em
                             subject_override=subject)
 
     # Log to questions_log for cache
-    if sent and db:
+    if sent and db and context_package:
         try:
             normalized = re.sub(r'\s+', ' ',
                                 f"{context_package.original_subject} {context_package.original_body}"
@@ -726,16 +920,28 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                 )
                 print(f"    Broker Engine: {classified_count}/{len(items)} verified")
                 if classified_count > 0:
-                    # Convert broker result to composition pipeline format
-                    broker_result["_broker_engine"] = True
+                    # Render broker result to HTML and send
+                    html = _render_broker_result_html(broker_result)
+                    tracking_code = _generate_query_tracking_code()
+                    legal_he = broker_result.get("operation", {}).get("legal_category_he", "")
+                    broker_subject = f"RCB | {tracking_code} | {legal_he or 'סיווג'} | {(msg.get('subject') or '')[:40]}"
+                    composed = {
+                        "tracking_code": tracking_code,
+                        "subject": broker_subject,
+                        "html": html,
+                    }
+                    sent = _send_consultation_reply(
+                        msg, "", None, access_token, rcb_email, db,
+                        composed_result=composed,
+                    )
                     elapsed = int((time.time() - t0) * 1000)
+                    print(f"    Broker Engine: sent={sent}, elapsed={elapsed}ms")
                     return {
-                        "status": "completed",
+                        "status": "replied" if sent else "send_failed",
                         "handler": "consultation",
                         "level": -1,
                         "model": "broker_engine",
                         "elapsed_ms": elapsed,
-                        "broker_result": broker_result,
                     }
             elif broker_result and broker_result.get("status") == "kram":
                 print(f"    Broker Engine: kram — needs clarification")
