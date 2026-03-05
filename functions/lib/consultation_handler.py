@@ -97,6 +97,18 @@ except ImportError:
         analyze_case = None
         CASE_REASONING_AVAILABLE = False
 
+# Broker engine (Session 90) — deterministic classification
+try:
+    from lib.broker_engine import process_case as broker_process_case
+    BROKER_ENGINE_AVAILABLE = True
+except ImportError:
+    try:
+        from broker_engine import process_case as broker_process_case
+        BROKER_ENGINE_AVAILABLE = True
+    except ImportError:
+        broker_process_case = None
+        BROKER_ENGINE_AVAILABLE = False
+
 
 # ═══════════════════════════════════════════
 #  PER-ITEM TARIFF LOOKUP (Fix: real HS codes)
@@ -698,6 +710,40 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                 print(f"    ⚠️  Sub-intent {sub_intent} low confidence ({sub_confidence:.2f}) → treating as consultation")
         except Exception as e:
             logger.warning(f"Sub-intent detection error: {e}")
+
+    # 1b. Try broker engine (Session 90) — deterministic, no AI tool loop
+    if BROKER_ENGINE_AVAILABLE and template_type != "live_shipment":
+        try:
+            print(f"    Broker Engine: deterministic classification")
+            broker_result = broker_process_case(
+                subject + "\n" + body_text, "", db, get_secret_func,
+            )
+            if broker_result and broker_result.get("status") == "completed":
+                items = broker_result.get("items", [])
+                classified_count = sum(
+                    1 for it in items
+                    if it.get("classification", {}).get("verified")
+                )
+                print(f"    Broker Engine: {classified_count}/{len(items)} verified")
+                if classified_count > 0:
+                    # Convert broker result to composition pipeline format
+                    broker_result["_broker_engine"] = True
+                    elapsed = int((time.time() - t0) * 1000)
+                    return {
+                        "status": "completed",
+                        "handler": "consultation",
+                        "level": -1,
+                        "model": "broker_engine",
+                        "elapsed_ms": elapsed,
+                        "broker_result": broker_result,
+                    }
+            elif broker_result and broker_result.get("status") == "kram":
+                print(f"    Broker Engine: kram — needs clarification")
+                # Fall through to composition pipeline with kram data
+        except Exception as e:
+            print(f"    Broker Engine error: {e}")
+            import traceback
+            traceback.print_exc()
 
     # 2. Run SIF
     if not prepare_context_package:
