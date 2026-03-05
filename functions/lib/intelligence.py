@@ -1796,7 +1796,7 @@ def _search_tariff(db, keywords):
 
     # Search tariff collection
     try:
-        docs = db.collection("tariff").limit(500).stream()
+        docs = db.collection("tariff").stream()
         for doc in docs:
             data = doc.to_dict()
             search_text = ""

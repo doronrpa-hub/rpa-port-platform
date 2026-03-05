@@ -152,8 +152,8 @@ def _enrich_case_plan_items_with_tariff(case_plan, context_package, db):
                 continue
             try:
                 results = list(db.collection("tariff")
-                               .where("description", ">=", term)
-                               .where("description", "<=", term + "\uf8ff")
+                               .where("description_he", ">=", term)
+                               .where("description_he", "<=", term + "\uf8ff")
                                .limit(3).stream())
                 for doc in results:
                     d = doc.to_dict()
