@@ -3266,3 +3266,93 @@ _gap2_deals = list(get_db().collection("tracker_deals")
 - **H4**: Gemini model version inconsistent
 - **H7**: `_call_claude_check` dead code in cross_checker.py
 - **H2**: Dead `_send_alert_email()` in main.py
+
+## Session 85 Summary (2026-03-05) — Customs Agents Law from Nevo + PC Agent Overnight Audit
+
+### Overview
+Investigated overnight PC agent results (24/25 tasks failed due to gov.il WAF). Successfully fetched and parsed the complete Customs Agents Law (חוק סוכני המכס, תשכ"ה-1964) from the correct Nevo URL. Created structured Python module with 36 articles across 8 chapters, wired into search_legal_knowledge tool.
+
+### PC Agent Overnight Audit Results
+- Agent ran from ~22:00 to ~22:51 (2026-03-04), processed 25 tasks
+- **23/25 gov.il tasks**: 403 Forbidden (WAF/Cloudflare blocks `requests.get()`)
+- **1 Nevo task (ports_ordinance)**: 404 Not Found (wrong URL)
+- **1 Nevo task (customs_agents_law)**: Scraped WRONG PAGE (got Income Tax Ordinance instead)
+- Root cause: Agent uses `requests.get()` but tasks need `requires_browser: True` (Playwright/Selenium)
+- Wrong Nevo scrape deleted from Firestore `legal_knowledge` collection
+- **Action needed**: Upgrade PC agent with headless browser for gov.il WAF bypass
+
+### Customs Agents Law — Parsed and Wired
+
+**Source**: `https://www.nevo.co.il/law_html/law01/265_023.htm` (27,946 chars)
+
+**NEW: `functions/lib/_customs_agents_law.py`** (~380 lines)
+- 36 articles across 8 chapters (including chapter 6.1 for international forwarders)
+- Each article: `ch` (chapter), `t` (Hebrew title), `s` (English summary), `f` (full Hebrew text)
+- `search_customs_agents_law(query)` — supports:
+  - Article lookup: `סעיף 4`, `article 11`, bare `"27"`
+  - Chapter lookup: `פרק 3`, `chapter 2`
+  - Hebrew letter articles: `3א`, `24ב`, `29א`
+  - Keyword search with Hebrew prefix stripping
+
+**Chapters:**
+| # | Title (HE) | Title (EN) | Articles |
+|---|-----------|------------|----------|
+| 1 | פרשנות | Interpretation | 1 |
+| 2 | רישום סוכני מכס | Registration of Customs Agents | 2-7, 3א, 3ב |
+| 3 | מחיקת רישום ואמצעי משמעת | Deregistration and Disciplinary Measures | 11-15 |
+| 4 | פקידים רשויים | Licensed Clerks | 16-19 |
+| 5 | חובותיו של סוכן מכס | Duties of a Customs Agent | 20-22 |
+| 6 | ערר | Appeals | 23 |
+| 6.1 | משלחים בינלאומיים | International Forwarders | 24א, 24ב |
+| 7 | שונות | Miscellaneous | 25-35, 29א |
+
+### Files Created/Modified
+| Action | File | Changes |
+|--------|------|---------|
+| **CREATE** | `functions/lib/_customs_agents_law.py` | ~380 lines: full law module with search |
+| **CREATE** | `functions/tests/test_customs_agents_law.py` | 21 tests across 4 classes |
+| **CREATE** | `functions/data/customs_agents_law_raw.txt` | 27,946 chars raw source from Nevo |
+| **CREATE** | `functions/data/customs_agents_regulations_raw.txt` | 50,277 chars regulations (NOT YET PARSED) |
+| **MODIFY** | `functions/lib/tool_executors.py` | Case 2 rewritten: in-memory search replaces Firestore lookup |
+| **MODIFY** | `functions/lib/_document_registry.py` | customs_agents_law: status partial→complete, added python_module, source_url, article_count |
+
+### Wiring in tool_executors.py (Case 2)
+```python
+# Case 2: Customs agents — rich in-memory data from parsed Nevo law
+if _LEGAL_AGENT_KEYWORDS.search(query):
+    from lib._customs_agents_law import search_customs_agents_law
+    # Strip agent-specific keywords, search remaining query
+    # Falls back to Firestore doc if import fails
+```
+
+### Git Commit
+- `f0be07c` — Session 85: Customs Agents Law from Nevo — 36 articles parsed + search wired
+
+### Deployment
+- All Cloud Functions deployed to Firebase (2026-03-05)
+
+### Test Results
+- **2,015 passed**, 0 failed — zero regressions
+
+### Knowledge Gap Status After Session 85
+| Document | Status | Searchable? |
+|----------|--------|-------------|
+| פקודת המכס (311 articles) | In Python memory | YES |
+| חוק סוכני המכס (36 articles) | **In Python memory (NEW)** | **YES** |
+| צו יבוא חופשי + תוספות | In Firestore (6,121 docs) | YES |
+| צו יצוא + תוספות | In Firestore (979 docs) | YES |
+| צו מסגרת + תוספות | In Firestore (85 docs) | YES |
+| תעריף המכס | In Firestore (11,753 entries) | YES |
+| FTA origin rules (16 countries) | In Python memory (15.5M chars) | YES |
+| EU Reform | In Python memory | YES |
+| 7 customs procedures | In Python memory (119K chars) | YES |
+| תקנות סוכני המכס | Raw text downloaded (50K) | **NO — needs parsing** |
+| נוהל סיווג טובין | PC agent task failed (403) | NO |
+| FTA origin rules (18 tasks) | PC agent tasks failed (403) | Already covered by _fta_all_countries.py |
+| קודי הנחה | PC agent task failed (403) | NO |
+
+### Remaining PC Agent Tasks (24 still pending)
+All need browser-based scraping (Playwright/Selenium) — `requests.get()` blocked by gov.il WAF.
+- 18 FTA origin rules pages (gov.il) — mostly covered by existing _fta_all_countries.py
+- 5 procedure/law pages (gov.il)
+- 1 ports ordinance (needs correct Nevo URL)
