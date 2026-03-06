@@ -86,6 +86,32 @@ def _ensure_pre_classify():
     _pre_classify = pre_classify
 
 
+# Unified index (instant in-memory search — replaces slow Firestore scan)
+_unified_search = None
+_UNIFIED_AVAILABLE = False
+
+
+def _ensure_unified():
+    global _unified_search, _UNIFIED_AVAILABLE
+    if _unified_search is not None:
+        return
+    try:
+        try:
+            from lib._unified_search import find_tariff_codes, get_heading_subcodes, index_loaded
+        except ImportError:
+            from _unified_search import find_tariff_codes, get_heading_subcodes, index_loaded
+        if index_loaded():
+            _unified_search = {"find": find_tariff_codes, "subcodes": get_heading_subcodes}
+            _UNIFIED_AVAILABLE = True
+            print("    Unified index: loaded")
+        else:
+            _unified_search = {}
+            print("    Unified index: no data (run build_unified_index.py)")
+    except Exception as e:
+        _unified_search = {}
+        print(f"    Unified index: not available ({e})")
+
+
 # FTA country map (same as tool_executors — avoids importing the class)
 _FTA_COUNTRY_MAP = {
     "eu": "eu", "european union": "eu",
@@ -420,35 +446,47 @@ def _check_spare_part(item, text, db):
 # ---------------------------------------------------------------------------
 
 def _smart_tariff_search(item, db):
-    """FIX 5: Smart search — Hebrew name + English essence/function → merged candidates.
+    """FIX 5: Smart search — unified index first, pre_classify fallback.
 
-    Runs BOTH Hebrew and English searches through pre_classify, merges results.
+    Priority:
+      1. Unified index (instant in-memory, all 11,753 tariff entries + chapter notes)
+      2. pre_classify (Firestore keyword_index + tariff scan — slow fallback)
+
+    Runs BOTH Hebrew and English searches, merges results.
     When both agree on chapter → boost confidence.
-    Falls back to original _build_candidates_for_item() on failure.
     """
-    _ensure_pre_classify()
+    _ensure_unified()
 
     name_he = item.get("name", "")
     essence = item.get("essence", "")
     function = item.get("function", "")
     physical = item.get("physical", "")
-
-    # Search 1: Hebrew name (original behavior)
-    desc_he = name_he
     keywords = item.get("keywords", [])
+
+    # Build search descriptions
+    desc_he = name_he
     if keywords:
         desc_he = f"{desc_he} {' '.join(keywords)}"
     if physical:
         desc_he = f"{desc_he} ({physical})"
 
+    desc_en = " ".join(filter(None, [essence, function, physical]))
+
+    # --- Try unified index first (instant) ---
+    if _UNIFIED_AVAILABLE:
+        unified_candidates = _search_via_unified(desc_he, desc_en, item)
+        if unified_candidates:
+            print(f"    Unified index: {len(unified_candidates)} candidates for '{name_he[:40]}'")
+            return {"candidates": unified_candidates}
+
+    # --- Fallback to pre_classify (Firestore) ---
+    _ensure_pre_classify()
+
     result_he = _pre_classify(db, desc_he)
 
-    # Search 2: English essence + function (if available from Phase 1 AI)
     result_en = None
-    if essence or function:
-        desc_en = " ".join(filter(None, [essence, function, physical]))
-        if desc_en and desc_en.lower() != desc_he.lower():
-            result_en = _pre_classify(db, desc_en)
+    if desc_en and desc_en.lower() != desc_he.lower():
+        result_en = _pre_classify(db, desc_en)
 
     # Merge: combine candidates, boost when both agree on chapter
     if not result_he or not result_he.get("candidates"):
@@ -471,13 +509,80 @@ def _smart_tariff_search(item, db):
             continue
         seen.add(hs)
         ch = hs[:2]
-        # Boost candidates in agreed chapters
         if agreed_chapters and ch in agreed_chapters:
             c["confidence"] = min(100, (c.get("confidence") or 50) + 15)
         merged.append(c)
 
     result_he["candidates"] = merged
     return result_he
+
+
+def _search_via_unified(desc_he, desc_en, item):
+    """Search via unified index, return candidates in pre_classify format."""
+    find = _unified_search.get("find")
+    if not find:
+        return None
+
+    # Search Hebrew
+    results_he = find(desc_he, min_score=1) if desc_he else []
+
+    # Search English
+    results_en = []
+    if desc_en and desc_en.lower() != desc_he.lower():
+        results_en = find(desc_en, min_score=1)
+
+    if not results_he and not results_en:
+        return None
+
+    # Merge and deduplicate
+    seen = set()
+    candidates = []
+    he_chapters = set()
+    en_chapters = set()
+
+    for r in results_he:
+        hs = str(r["hs_code"]).replace(".", "").replace("/", "")
+        if hs in seen:
+            continue
+        seen.add(hs)
+        he_chapters.add(hs[:2])
+        candidates.append(_unified_to_candidate(r, "unified_he"))
+
+    for r in results_en:
+        hs = str(r["hs_code"]).replace(".", "").replace("/", "")
+        if hs in seen:
+            continue
+        seen.add(hs)
+        en_chapters.add(hs[:2])
+        candidates.append(_unified_to_candidate(r, "unified_en"))
+
+    # Boost candidates where Hebrew + English agree on chapter
+    agreed = he_chapters & en_chapters
+    if agreed:
+        for c in candidates:
+            ch = str(c["hs_code"]).replace(".", "").replace("/", "")[:2]
+            if ch in agreed:
+                c["confidence"] = min(95, c["confidence"] + 15)
+
+    # Sort by confidence
+    candidates.sort(key=lambda c: c["confidence"], reverse=True)
+    return candidates[:10]
+
+
+def _unified_to_candidate(result, source_label):
+    """Convert unified search result to pre_classify candidate format."""
+    score = result.get("score", 1)
+    weight = result.get("weight", 1)
+    # Convert to 0-95 confidence scale
+    confidence = min(95, max(20, score * 20 + weight * 2))
+    return {
+        "hs_code": result["hs_code"],
+        "confidence": confidence,
+        "source": source_label,
+        "description": result.get("description_he", result.get("description_en", "")),
+        "duty_rate": result.get("duty_rate", ""),
+        "reasoning": f"Unified index: score={score}, weight={weight}, sources={result.get('sources', [])}",
+    }
 
 
 def _build_candidates_for_item(item, db):
@@ -598,31 +703,47 @@ def _drill_to_subheading(hs_code, item, db):
     if len(heading) < 4:
         return None
 
-    # Query tariff collection for all sub-codes under this heading
-    prefix_lo = heading.ljust(10, "0")
-    prefix_hi = heading.ljust(10, "9")
+    # Query sub-codes: unified index first (instant), Firestore fallback
+    _ensure_unified()
     sub_codes = []
-    try:
-        docs = db.collection("tariff").where(
-            "__name__", ">=", prefix_lo
-        ).where(
-            "__name__", "<=", prefix_hi
-        ).stream()
-        for doc in docs:
-            data = doc.to_dict()
-            # Skip corrupt codes
-            if data.get("corrupt_code"):
-                continue
-            sub_codes.append({
-                "hs_code": doc.id,
-                "description": data.get("description", data.get("description_he", "")),
-                "description_en": data.get("description_en", ""),
-                "duty_rate": data.get("duty_rate", ""),
-                "purchase_tax": data.get("purchase_tax", ""),
-            })
-    except Exception as e:
-        print(f"    Drill-down query error for heading {heading}: {e}")
-        return None
+
+    if _UNIFIED_AVAILABLE:
+        subcodes_fn = _unified_search.get("subcodes")
+        if subcodes_fn:
+            raw = subcodes_fn(heading)
+            for r in raw:
+                sub_codes.append({
+                    "hs_code": r["hs_code"],
+                    "description": r.get("description_he", ""),
+                    "description_en": r.get("description_en", ""),
+                    "duty_rate": r.get("duty_rate", ""),
+                    "purchase_tax": r.get("purchase_tax", ""),
+                })
+
+    if not sub_codes:
+        # Firestore fallback
+        prefix_lo = heading.ljust(10, "0")
+        prefix_hi = heading.ljust(10, "9")
+        try:
+            docs = db.collection("tariff").where(
+                "__name__", ">=", prefix_lo
+            ).where(
+                "__name__", "<=", prefix_hi
+            ).stream()
+            for doc in docs:
+                data = doc.to_dict()
+                if data.get("corrupt_code"):
+                    continue
+                sub_codes.append({
+                    "hs_code": doc.id,
+                    "description": data.get("description", data.get("description_he", "")),
+                    "description_en": data.get("description_en", ""),
+                    "duty_rate": data.get("duty_rate", ""),
+                    "purchase_tax": data.get("purchase_tax", ""),
+                })
+        except Exception as e:
+            print(f"    Drill-down query error for heading {heading}: {e}")
+            return None
 
     if not sub_codes:
         return None
