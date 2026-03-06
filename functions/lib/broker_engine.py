@@ -694,9 +694,19 @@ def _drill_to_subheading(hs_code, item, db):
     """
     hs_clean = str(hs_code).replace(".", "").replace("/", "").replace(" ", "")
 
-    # Already 10-digit → nothing to drill
-    if len(hs_clean) >= 10 and not hs_clean.endswith("0000"):
-        return None
+    # Already a leaf → nothing to drill
+    if len(hs_clean) >= 10:
+        _ensure_unified()
+        if _UNIFIED_AVAILABLE:
+            try:
+                from lib._unified_search import is_leaf
+                if is_leaf(hs_clean):
+                    return None
+            except Exception:
+                pass
+        # Fallback heuristic: if it doesn't end in 0000, likely a leaf
+        if not hs_clean.endswith("0000"):
+            return None
 
     # Build heading prefix (first 4 digits minimum)
     heading = hs_clean[:4] if len(hs_clean) >= 4 else hs_clean

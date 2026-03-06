@@ -564,6 +564,26 @@ def rcb_api(req: https_fn.Request) -> https_fn.Response:
             return https_fn.Response(json.dumps(doc.to_dict(), default=str), content_type="application/json")
         return https_fn.Response(json.dumps({"error": "Not found"}), status=404, content_type="application/json")
     
+    # Send test email (for testing classification pipeline)
+    if path == "send-test" and method == "POST":
+        try:
+            data = req.get_json() or {}
+            to = data.get("to", "doron@rpa-port.co.il")
+            subject = data.get("subject", "RCB Test Email")
+            body = data.get("body", "<p>Test email from RCB API</p>")
+            # Only allow internal recipients
+            if not to.endswith("@rpa-port.co.il"):
+                return https_fn.Response(json.dumps({"ok": False, "error": "Only @rpa-port.co.il recipients allowed"}), status=403, content_type="application/json")
+            secrets = get_rcb_secrets_internal(get_secret)
+            access_token = helper_get_graph_token(secrets) if secrets else None
+            if not access_token:
+                return https_fn.Response(json.dumps({"ok": False, "error": "No Graph token"}), status=500, content_type="application/json")
+            rcb_email = secrets.get('RCB_EMAIL', 'rcb@rpa-port.co.il')
+            helper_graph_send(access_token, rcb_email, to, subject, body)
+            return https_fn.Response(json.dumps({"ok": True, "to": to, "subject": subject}), content_type="application/json")
+        except Exception as e:
+            return https_fn.Response(json.dumps({"ok": False, "error": str(e)}), status=500, content_type="application/json")
+
     return https_fn.Response(json.dumps({"error": "Unknown endpoint"}), status=404, content_type="application/json")
 
 

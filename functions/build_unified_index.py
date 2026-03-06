@@ -117,14 +117,34 @@ _HE_EN_SYNONYMS = {
     "paint": ["צבע"],
     "סבון": ["soap", "detergent"],
     "soap": ["סבון"],
-    "ריהוט": ["furniture"],
-    "furniture": ["ריהוט", "רהיט"],
+    "ריהוט": ["furniture", "רהיט", "רהיטים"],
+    "furniture": ["ריהוט", "רהיט", "רהיטים"],
+    "ספה": ["sofa", "couch", "ספות", "מושבים", "כורסה", "ריהוט"],
+    "sofa": ["ספה", "ספות", "couch", "מושבים"],
+    "couch": ["ספה", "sofa", "ספות"],
+    "כורסה": ["armchair", "ספה", "מושב"],
+    "כיסא": ["chair", "seat", "מושב"],
+    "chair": ["כיסא", "מושב", "seat"],
+    "שולחן": ["table", "desk"],
+    "table": ["שולחן"],
+    "מיטה": ["bed"],
+    "bed": ["מיטה"],
+    "ארון": ["closet", "cabinet", "wardrobe"],
+    "cabinet": ["ארון", "closet"],
+    "מזרן": ["mattress"],
+    "mattress": ["מזרן"],
     "צעצוע": ["toy"],
     "toy": ["צעצוע"],
     "נעל": ["shoe", "footwear"],
     "shoe": ["נעל", "נעליים"],
     "בגד": ["garment", "clothing", "apparel"],
     "clothing": ["בגד", "לבוש", "ביגוד"],
+    "מקרר": ["refrigerator", "fridge"],
+    "refrigerator": ["מקרר"],
+    "מכונת כביסה": ["washing machine"],
+    "מזגן": ["air conditioner", "ac"],
+    "תנור": ["oven", "furnace", "kiln"],
+    "oven": ["תנור"],
 }
 
 
@@ -498,20 +518,25 @@ def _pass2_synonyms(word_index):
     t0 = time.time()
     additions = 0
 
+    # Bidirectional: copy entries in BOTH directions (word→syn AND syn→word)
     for word, synonyms in _HE_EN_SYNONYMS.items():
-        if word not in word_index:
+        all_group = [word] + [s.lower() for s in synonyms]
+        # Collect all entries from every word in the group
+        pool = []
+        for w in all_group:
+            pool.extend(word_index.get(w, []))
+        if not pool:
             continue
-        entries = word_index[word]
-        for syn in synonyms:
-            syn_lower = syn.lower()
-            if syn_lower not in word_index:
-                word_index[syn_lower] = []
-            # Add cross-references (with lower weight)
-            existing_codes = {(e[0], e[1]) for e in word_index[syn_lower]}
-            for entry in entries:
+        # Distribute pool entries to every word in the group
+        for w in all_group:
+            if w not in word_index:
+                word_index[w] = []
+            existing_codes = {(e[0], e[1]) for e in word_index[w]}
+            for entry in pool:
                 key = (entry[0], entry[1])
                 if key not in existing_codes:
-                    word_index[syn_lower].append((entry[0], entry[1], max(1, entry[2] - 1)))
+                    word_index[w].append((entry[0], entry[1], max(1, entry[2] - 1)))
+                    existing_codes.add(key)
                     additions += 1
 
     elapsed = time.time() - t0
