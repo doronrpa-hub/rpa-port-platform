@@ -886,6 +886,53 @@ def _check_moc_requirement(item_result, item):
         item_result["moc_note"] += " (מופיע בצו יבוא חופשי תוספת 2)"
 
 
+# Chapters where EU reform CE marking may apply
+_EU_REFORM_CHAPTERS = {
+    "84", "85", "90", "94", "95",  # Electrical, instruments, furniture, toys
+    "33", "34", "39", "40", "44",  # Cosmetics, soaps, plastics, rubber, wood
+    "61", "62", "63", "64", "65",  # Textiles, footwear, headgear
+    "68", "69", "70", "73", "76",  # Stone, ceramic, glass, iron, aluminum
+    "96",  # Miscellaneous manufactured articles
+}
+
+
+def _check_eu_reform(item_result, item, operation_context):
+    """CHECK 1c: Flag EU reform applicability ("מה שטוב לאירופה").
+
+    If the HS chapter falls in EU reform scope AND origin is EU/EFTA,
+    add eu_reform_note with CE marking guidance.
+    """
+    if operation_context.get("direction") != "import":
+        return
+
+    hs_clean = str(item_result.get("hs_code", "")).replace(".", "").replace("/", "")
+    chapter = hs_clean[:2].zfill(2) if len(hs_clean) >= 2 else ""
+    if chapter not in _EU_REFORM_CHAPTERS:
+        return
+
+    origin = (operation_context.get("origin_country", "") or "").lower()
+    eu_origins = {"eu", "germany", "france", "italy", "spain", "netherlands",
+                  "belgium", "austria", "poland", "czech", "romania", "portugal",
+                  "sweden", "denmark", "finland", "ireland", "greece", "hungary",
+                  "bulgaria", "croatia", "slovakia", "slovenia", "estonia",
+                  "latvia", "lithuania", "luxembourg", "malta", "cyprus",
+                  "efta", "switzerland", "norway", "iceland", "liechtenstein"}
+
+    # Show note even without origin — it's informational
+    item_result["eu_reform_applicable"] = True
+    if origin in eu_origins:
+        item_result["eu_reform_note"] = (
+            'רפורמת "מה שטוב לאירופה" — מוצרים עם סימון CE מהאיחוד האירופי '
+            "עשויים להתקבל ללא בדיקה נוספת של מכון התקנים (מת\"י). "
+            "בתנאי שהדירקטיבה הרלוונטית אומצה בישראל (החלטת ממשלה 2118)."
+        )
+    else:
+        item_result["eu_reform_note"] = (
+            'פרק זה עשוי להיות בתחולת רפורמת "מה שטוב לאירופה". '
+            "אם המוצר מיוצר באירופה עם סימון CE, ייתכן פטור מבדיקת מת\"י."
+        )
+
+
 def _lookup_fio(db, hs_code):
     """Look up Free Import Order requirements directly from Firestore.
 

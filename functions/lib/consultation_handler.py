@@ -567,25 +567,29 @@ _LOGO_URL = "https://storage.googleapis.com/rpa-port-customs.appspot.com/logo/rp
 def _render_broker_result_html(broker_result):
     """Render broker_engine.process_case() output into branded RTL HTML email.
 
-    Each section IS the process documentation — proves the system did its work.
-    Block 1: Header + classification methodology citation
-    Block 2: URL visit results (what website was visited, what was found)
-    Block 3: Methodology — cites נוהל סיווג #3, explains process
+    Follows RCB_REPLY_SPEC.md Blocks 1-9 exactly.
+    Block 1: Greeting + intent recognition
+    Block 2: Research summary (URL visits)
+    Block 3: Diagnosis (methodology + confidence)
     Block 4: Official 6-column tariff table
-    Block 5: FIO/FEO requirements (specific per authority)
-    Block 6: FTA / Chapter 98 / Valuation / Release
+    Block 5: FIO/FEO requirements
+    Block 6: FTA trade agreements
+    Block 7: Valuation notes
+    Block 8: Release notes
+    Block 9: Footer
     """
     op = broker_result.get("operation", {})
     items = broker_result.get("items", [])
     legal_he = op.get("legal_category_he", "")
     direction = op.get("direction", "import")
     direction_he = "יבוא" if direction == "import" else "יצוא"
+    case_plan = broker_result.get("case_plan", {})
 
     parts = []
     # --- DOCTYPE + charset for proper Hebrew rendering ---
     parts.append('<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>'
                  '<body style="margin:0;padding:0;">')
-    # --- Block 1: Header ---
+    # --- Block 1: Header + Greeting ---
     parts.append(f"""<table width="100%" cellpadding="0" cellspacing="0" style="direction:rtl;font-family:Arial,sans-serif;">
     <tr><td style="background:{_RPA_BLUE};padding:16px 24px;color:#fff;">
         <table width="100%"><tr>
@@ -595,6 +599,19 @@ def _render_broker_result_html(broker_result):
         <div style="font-size:20px;font-weight:bold;margin-top:8px;">
             {"סיווג מכס" if not legal_he else f"סיווג מכס — {legal_he}"}
         </div>
+    </td></tr>""")
+
+    # Block 1b: Greeting text (RCB speaks as female broker per spec)
+    item_names = [ci.get("item", {}).get("name", "") for ci in items if ci.get("item", {}).get("name")]
+    items_summary = ", ".join(item_names[:5]) if item_names else "הטובין"
+    case_type_text = ""
+    if legal_he:
+        case_type_text = f" ומבינה שמדובר ב{legal_he}."
+    elif direction == "export":
+        case_type_text = " ומבינה שמדובר בייצוא."
+    parts.append(f"""<tr><td style="padding:12px 24px;font-size:13px;line-height:1.7;color:#2c3e50;">
+        בדקתי את הפנייה שלך וזיהיתי את הפריטים הבאים: <b>{items_summary}</b>{case_type_text}<br/>
+        בהתאם ל<b>נוהל סיווג טובין #3</b> (מנהלת המכס), בדקתי מאפיינים פיזיים, מהות ואופן שימוש.
     </td></tr>""")
 
     # --- Block 2: URL visit results (what website was visited, what was found) ---
@@ -759,6 +776,12 @@ def _render_broker_result_html(broker_result):
             if cls.get("moc_required"):
                 parts.append(f"""<div style="background:#fef3e0;padding:8px;border-right:3px solid #f39c12;font-size:13px;margin-bottom:8px;">
                     <b>משרד התקשורת:</b> {cls.get('moc_note', 'נדרש אישור תקשורת 1301')}
+                </div>""")
+
+            # EU reform callout (FIX 4 — CHECK 1c)
+            if cls.get("eu_reform_note"):
+                parts.append(f"""<div style="background:#eaf2f8;padding:8px;border-right:3px solid {_RPA_BLUE};font-size:13px;margin-bottom:8px;">
+                    <b>רפורמת CE:</b> {cls['eu_reform_note']}
                 </div>""")
 
         parts.append("</td></tr>")

@@ -1190,8 +1190,8 @@ def _rcb_check_email_inner(event) -> None:
                     _qdata = _qd.to_dict()
                     _thread_context = {
                         "tracking_code": _track_code,
-                        "original_question": _qdata.get("question", ""),
-                        "original_answer": _qdata.get("answer", ""),
+                        "original_question": _qdata.get("question_text", _qdata.get("question", "")),
+                        "original_answer": _qdata.get("answer_text", _qdata.get("answer", "")),
                         "original_intent": _qdata.get("intent", ""),
                         "original_from": _qdata.get("from_email", ""),
                     }

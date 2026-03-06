@@ -51,6 +51,8 @@ from lib.broker_engine import (
     _SPARE_PART_RE,
 )
 
+from lib.consultation_handler import _render_broker_result_html, _format_hs
+
 
 # ---------------------------------------------------------------------------
 #  MOCK DB
@@ -847,3 +849,170 @@ class TestConsultationHTMLRenderer:
         html = _render_broker_result_html(broker_result)
         assert "נדרש מידע נוסף" in html
         assert "מה הפריט?" in html
+
+
+# ---------------------------------------------------------------------------
+#  Session 93: FIX tests
+# ---------------------------------------------------------------------------
+
+class TestFormatHsCheckDigit:
+    """FIX 1: _format_hs must produce XX.XX.XXXXXX/X with Luhn check digit."""
+
+    def test_10digit_gets_check_digit(self):
+        result = _format_hs("7304190000")
+        assert result == "73.04.190000/9"
+
+    def test_already_has_slash(self):
+        result = _format_hs("0101210000/2")
+        assert result == "01.01.210000/2"
+
+    def test_short_code_padded(self):
+        result = _format_hs("8806")
+        # Should pad to 10 digits and add check digit
+        assert result.startswith("88.06.")
+        assert "/" in result
+
+    def test_dots_stripped(self):
+        result = _format_hs("73.04.190000")
+        assert result == "73.04.190000/9"
+
+    def test_chapter98_format(self):
+        result = _format_hs("9902403000")
+        assert result.startswith("99.02.")
+        assert "/" in result
+
+
+class TestEuReformCheck:
+    """FIX 4: EU reform detection (CHECK 1c)."""
+
+    def test_eu_origin_electronics(self):
+        """Chapter 85 + EU origin -> eu_reform_note with CE guidance."""
+        from lib.broker_engine import _check_eu_reform
+        item_result = {"hs_code": "8528720000"}
+        item = {"name": "TV"}
+        op = {"direction": "import", "origin_country": "germany"}
+        _check_eu_reform(item_result, item, op)
+        assert item_result.get("eu_reform_applicable") is True
+        assert "CE" in item_result.get("eu_reform_note", "")
+
+    def test_non_eu_origin_still_flags(self):
+        """Chapter 85 + non-EU origin -> informational note."""
+        from lib.broker_engine import _check_eu_reform
+        item_result = {"hs_code": "8528720000"}
+        item = {"name": "TV"}
+        op = {"direction": "import", "origin_country": "china"}
+        _check_eu_reform(item_result, item, op)
+        assert item_result.get("eu_reform_applicable") is True
+        assert "אירופה" in item_result.get("eu_reform_note", "")
+
+    def test_export_skipped(self):
+        """EU reform doesn't apply to exports."""
+        from lib.broker_engine import _check_eu_reform
+        item_result = {"hs_code": "8528720000"}
+        item = {"name": "TV"}
+        op = {"direction": "export", "origin_country": "germany"}
+        _check_eu_reform(item_result, item, op)
+        assert "eu_reform_applicable" not in item_result
+
+    def test_food_chapter_skipped(self):
+        """Chapter 02 (meat) not in EU reform scope."""
+        from lib.broker_engine import _check_eu_reform
+        item_result = {"hs_code": "0201300000"}
+        item = {"name": "beef"}
+        op = {"direction": "import", "origin_country": "france"}
+        _check_eu_reform(item_result, item, op)
+        assert "eu_reform_applicable" not in item_result
+
+
+class TestRenderBrokerBlocks:
+    """Verify _render_broker_result_html produces all spec blocks."""
+
+    def _make_result(self):
+        return {
+            "status": "completed",
+            "operation": {"direction": "import", "legal_category_he": "תושב חוזר"},
+            "items": [{
+                "item": {"name": "ספה", "source_url": "https://example.com/sofa"},
+                "status": "classified",
+                "classification": {
+                    "hs_code": "9401610000",
+                    "confidence": 0.85,
+                    "description": "ריפוד עם שלד עץ",
+                    "duty_rate": "12%",
+                    "purchase_tax": "",
+                    "vat_rate": "18%",
+                    "sub_codes": [
+                        {"hs_code": "9401610000", "description": "ריפוד עם שלד עץ", "duty_rate": "12%"},
+                        {"hs_code": "9401690000", "description": "אחרים", "duty_rate": "12%"},
+                    ],
+                    "chapter98_code": "9902403000",
+                    "chapter98_desc_he": "תושב חוזר",
+                    "chapter98_duty": "פטור",
+                    "discount": {"discount_desc_he": "תושב חוזר", "discount_duty": "פטור"},
+                    "fio": {"found": True, "requirements": [
+                        {"appendix": "2", "authority": "מכון התקנים", "standard_ref": "SI 60335", "conditions": ""},
+                    ]},
+                    "eu_reform_note": "רפורמת CE: test note",
+                },
+            }],
+            "valuation": {"primary_method": "transaction_value"},
+            "release_notes": [{"article": "62", "title_he": "שחרור"}],
+            "ordinance_articles": {},
+            "vat_rate": "18%",
+        }
+
+    def test_block1_greeting(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "בדקתי את הפנייה" in html
+        assert "נוהל סיווג" in html
+
+    def test_block2_url_visit(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "example.com/sofa" in html
+        assert "ביקרתי באתר" in html
+
+    def test_block4_6column_table(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "מכס כללי" in html
+        assert "מס קנייה" in html
+        assert "שיעור התוספות" in html
+        assert "יחידה סטטיסטית" in html
+
+    def test_block4_hs_format_with_check_digit(self):
+        html = _render_broker_result_html(self._make_result())
+        # Should contain XX.XX.XXXXXX/X format
+        assert re.search(r'\d{2}\.\d{2}\.\d{6}/\d', html)
+
+    def test_block5_fio_section(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "צו" in html
+        assert "תוספת" in html
+        assert "מכון התקנים" in html
+
+    def test_block6_chapter98(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "פרק 98" in html
+
+    def test_block7_valuation(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "הערכת שווי" in html
+        assert "סעיף 132" in html
+
+    def test_block8_release(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "שחרור" in html
+
+    def test_eu_reform_displayed(self):
+        html = _render_broker_result_html(self._make_result())
+        assert "רפורמת CE" in html
+
+    def test_empty_url_shows_message(self):
+        """When no URL visited, Block 2 should say so."""
+        result = self._make_result()
+        result["items"][0]["item"]["source_url"] = ""
+        html = _render_broker_result_html(result)
+        assert "לא נמצאו קישורים" in html
+
+    def test_html_starts_with_doctype(self):
+        html = _render_broker_result_html(self._make_result())
+        assert html.strip().startswith("<!DOCTYPE html>")
