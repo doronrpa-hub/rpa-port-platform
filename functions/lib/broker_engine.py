@@ -274,6 +274,111 @@ def _fallback_item_identification(items):
 
 
 # ---------------------------------------------------------------------------
+#  FIX 3: Visit manufacturer URL from email
+# ---------------------------------------------------------------------------
+
+_URL_RE = re.compile(r'https?://[^\s<>"\']+', re.IGNORECASE)
+_SKIP_URL_DOMAINS = {
+    "linkedin.com", "facebook.com", "twitter.com", "x.com", "instagram.com",
+    "youtube.com", "google.com", "mailchimp.com", "unsubscribe", "mailto:",
+    "rpa-port.co.il", "outlook.com", "microsoft.com", "office.com",
+}
+_SPEC_WEIGHT_RE = re.compile(
+    r'(?:weight|mass|משקל|net\s*weight)[:\s]*(\d+(?:[.,]\d+)?)\s*(g|kg|gram|גרם|ק"ג|oz|lb)',
+    re.IGNORECASE,
+)
+_SPEC_DIM_RE = re.compile(
+    r'(\d+(?:[.,]\d+)?)\s*[x×X]\s*(\d+(?:[.,]\d+)?)\s*[x×X]?\s*(\d+(?:[.,]\d+)?)?\s*(mm|cm|m|inch|")',
+    re.IGNORECASE,
+)
+_SPEC_FREQ_RE = re.compile(
+    r'(\d+(?:[.,]\d+)?)\s*(MHz|GHz|הרץ)',
+    re.IGNORECASE,
+)
+_SPEC_POWER_RE = re.compile(
+    r'(\d+(?:[.,]\d+)?)\s*(W|watt|kW|וואט)',
+    re.IGNORECASE,
+)
+
+
+def _extract_and_fetch_urls(text):
+    """Extract product URLs from email body, fetch page, extract specs.
+
+    Returns list of spec dicts: [{url, weight, dimensions, frequency, power, keywords}]
+    """
+    urls = _URL_RE.findall(text)
+    if not urls:
+        return []
+
+    # Filter to product URLs
+    product_urls = []
+    for url in urls:
+        url = url.rstrip(".,;)>]")
+        domain = url.split("/")[2].lower() if len(url.split("/")) > 2 else ""
+        if any(skip in domain for skip in _SKIP_URL_DOMAINS):
+            continue
+        product_urls.append(url)
+
+    if not product_urls:
+        return []
+
+    specs_list = []
+    for url in product_urls[:3]:  # Max 3 URLs
+        try:
+            import requests as req_lib
+            resp = req_lib.get(url, timeout=5, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            if resp.status_code != 200:
+                continue
+            html = resp.text[:50000]  # Limit to 50K chars
+
+            specs = {"url": url, "keywords": []}
+
+            # Extract weight
+            wm = _SPEC_WEIGHT_RE.search(html)
+            if wm:
+                specs["weight"] = f"{wm.group(1)} {wm.group(2)}"
+
+            # Extract dimensions
+            dm = _SPEC_DIM_RE.search(html)
+            if dm:
+                parts = [dm.group(1), dm.group(2)]
+                if dm.group(3):
+                    parts.append(dm.group(3))
+                specs["dimensions"] = f"{'x'.join(parts)} {dm.group(4)}"
+
+            # Extract frequency
+            fm = _SPEC_FREQ_RE.search(html)
+            if fm:
+                specs["frequency"] = f"{fm.group(1)} {fm.group(2)}"
+
+            # Extract power
+            pm = _SPEC_POWER_RE.search(html)
+            if pm:
+                specs["power"] = f"{pm.group(1)} {pm.group(2)}"
+
+            # Extract product keywords from title tag
+            import re as re2
+            title_m = re2.search(r'<title[^>]*>(.*?)</title>', html, re2.IGNORECASE | re2.DOTALL)
+            if title_m:
+                title_text = title_m.group(1).strip()[:200]
+                # Clean HTML entities
+                title_text = title_text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                specs["keywords"] = [w for w in title_text.split() if len(w) > 2][:10]
+
+            if any(specs.get(k) for k in ("weight", "dimensions", "frequency", "power")):
+                specs_list.append(specs)
+                print(f"    URL specs from {url[:60]}: {', '.join(k for k in ('weight','dimensions','frequency','power') if specs.get(k))}")
+
+        except Exception as e:
+            print(f"    URL fetch failed for {url[:60]}: {e}")
+            continue
+
+    return specs_list
+
+
+# ---------------------------------------------------------------------------
 #  PHASE 2: Spare parts check
 # ---------------------------------------------------------------------------
 
@@ -314,29 +419,74 @@ def _check_spare_part(item, text, db):
 #  PHASE 3-6: Build candidates + eliminate
 # ---------------------------------------------------------------------------
 
+def _smart_tariff_search(item, db):
+    """FIX 5: Smart search — Hebrew name + English essence/function → merged candidates.
+
+    Runs BOTH Hebrew and English searches through pre_classify, merges results.
+    When both agree on chapter → boost confidence.
+    Falls back to original _build_candidates_for_item() on failure.
+    """
+    _ensure_pre_classify()
+
+    name_he = item.get("name", "")
+    essence = item.get("essence", "")
+    function = item.get("function", "")
+    physical = item.get("physical", "")
+
+    # Search 1: Hebrew name (original behavior)
+    desc_he = name_he
+    keywords = item.get("keywords", [])
+    if keywords:
+        desc_he = f"{desc_he} {' '.join(keywords)}"
+    if physical:
+        desc_he = f"{desc_he} ({physical})"
+
+    result_he = _pre_classify(db, desc_he)
+
+    # Search 2: English essence + function (if available from Phase 1 AI)
+    result_en = None
+    if essence or function:
+        desc_en = " ".join(filter(None, [essence, function, physical]))
+        if desc_en and desc_en.lower() != desc_he.lower():
+            result_en = _pre_classify(db, desc_en)
+
+    # Merge: combine candidates, boost when both agree on chapter
+    if not result_he or not result_he.get("candidates"):
+        return result_en or {"candidates": []}
+    if not result_en or not result_en.get("candidates"):
+        return result_he
+
+    he_chapters = {str(c.get("hs_code", "")).replace(".", "")[:2]
+                   for c in result_he.get("candidates", [])}
+    en_chapters = {str(c.get("hs_code", "")).replace(".", "")[:2]
+                   for c in result_en.get("candidates", [])}
+    agreed_chapters = he_chapters & en_chapters
+
+    # Merge candidates, dedup by hs_code
+    seen = set()
+    merged = []
+    for c in result_he.get("candidates", []) + result_en.get("candidates", []):
+        hs = str(c.get("hs_code", "")).replace(".", "").replace("/", "")
+        if hs in seen:
+            continue
+        seen.add(hs)
+        ch = hs[:2]
+        # Boost candidates in agreed chapters
+        if agreed_chapters and ch in agreed_chapters:
+            c["confidence"] = min(100, (c.get("confidence") or 50) + 15)
+        merged.append(c)
+
+    result_he["candidates"] = merged
+    return result_he
+
+
 def _build_candidates_for_item(item, db):
     """Search tariff DB for candidate HS codes matching item description.
 
     Returns:
         pre_classify result dict with candidates list.
     """
-    _ensure_pre_classify()
-
-    description = item.get("name", "")
-    keywords = item.get("keywords", [])
-    if keywords:
-        description = f"{description} {' '.join(keywords)}"
-
-    # Add physical/essence/function context if available
-    physical = item.get("physical", "")
-    essence = item.get("essence", "")
-    function = item.get("function", "")
-    if physical:
-        description = f"{description} ({physical})"
-    if essence and essence not in description.lower():
-        description = f"{description} {essence}"
-
-    return _pre_classify(db, description)
+    return _smart_tariff_search(item, db)
 
 
 def classify_single_item(item, operation_context, db, spare_chapter=None):
@@ -401,6 +551,197 @@ def classify_single_item(item, operation_context, db, spare_chapter=None):
         "elimination_result": elim_result,
         "source": "elimination_engine",
     }
+
+
+# ---------------------------------------------------------------------------
+#  FIX 2: Sub-heading drill-down (heading → 10-digit XX.XX.XXXXXX/X)
+# ---------------------------------------------------------------------------
+
+# Distinguishing criteria patterns in Hebrew tariff descriptions
+_WEIGHT_RE = re.compile(r'(?:משקל|ק"ג|קילוגרם|גרם|kg|KG)\s*[:<]?\s*(\d+(?:[.,]\d+)?)', re.IGNORECASE)
+_POWER_RE = re.compile(r'(?:הספק|וואט|W|kW|קילוואט)\s*[:<]?\s*(\d+(?:[.,]\d+)?)', re.IGNORECASE)
+_CAPACITY_RE = re.compile(r'(?:נפח|ליטר|cm3|סמ"ק)\s*[:<]?\s*(\d+(?:[.,]\d+)?)', re.IGNORECASE)
+_DIMENSION_RE = re.compile(r'(?:אורך|רוחב|גובה|mm|cm|מ"מ)\s*[:<]?\s*(\d+(?:[.,]\d+)?)', re.IGNORECASE)
+
+# Weight thresholds commonly found in tariff descriptions (Hebrew)
+_WEIGHT_THRESHOLD_RE = re.compile(
+    r'(?:שמשקלו?\s*(?:אינו\s*עולה\s*על|עד|לא\s*יותר\s*מ)\s*(\d+(?:[.,]\d+)?)\s*(?:ק"ג|קילוגרם|גרם|kg|g))|'
+    r'(?:(\d+(?:[.,]\d+)?)\s*(?:ק"ג|קילוגרם|גרם|kg|g)\s*(?:ומטה|או\s*פחות))',
+    re.IGNORECASE,
+)
+
+
+def _drill_to_subheading(hs_code, item, db):
+    """Drill from heading-level HS (4-6 digit) to full 10-digit sub-heading.
+
+    Queries tariff DB for all sub-codes under the heading, parses description
+    DIFFERENCES to find distinguishing criteria (weight, material, power, etc.),
+    then matches item specs against criteria.
+
+    Returns:
+        dict with:
+            hs_code: str — best 10-digit code (or original if can't determine)
+            sub_codes: list — all sibling sub-codes found
+            description: str — description of matched code
+            duty_rate: str — duty rate of matched code
+            method: str — "spec_match" | "only_child" | "kram"
+            clarification_options: list — Hebrew multiple-choice if kram
+    """
+    hs_clean = str(hs_code).replace(".", "").replace("/", "").replace(" ", "")
+
+    # Already 10-digit → nothing to drill
+    if len(hs_clean) >= 10 and not hs_clean.endswith("0000"):
+        return None
+
+    # Build heading prefix (first 4 digits minimum)
+    heading = hs_clean[:4] if len(hs_clean) >= 4 else hs_clean
+    if len(heading) < 4:
+        return None
+
+    # Query tariff collection for all sub-codes under this heading
+    prefix_lo = heading.ljust(10, "0")
+    prefix_hi = heading.ljust(10, "9")
+    sub_codes = []
+    try:
+        docs = db.collection("tariff").where(
+            "__name__", ">=", prefix_lo
+        ).where(
+            "__name__", "<=", prefix_hi
+        ).stream()
+        for doc in docs:
+            data = doc.to_dict()
+            # Skip corrupt codes
+            if data.get("corrupt_code"):
+                continue
+            sub_codes.append({
+                "hs_code": doc.id,
+                "description": data.get("description", data.get("description_he", "")),
+                "description_en": data.get("description_en", ""),
+                "duty_rate": data.get("duty_rate", ""),
+                "purchase_tax": data.get("purchase_tax", ""),
+            })
+    except Exception as e:
+        print(f"    Drill-down query error for heading {heading}: {e}")
+        return None
+
+    if not sub_codes:
+        return None
+
+    # Only one sub-code → use it directly
+    if len(sub_codes) == 1:
+        sc = sub_codes[0]
+        return {
+            "hs_code": sc["hs_code"],
+            "description": sc["description"],
+            "duty_rate": sc["duty_rate"],
+            "purchase_tax": sc.get("purchase_tax", ""),
+            "sub_codes": sub_codes,
+            "method": "only_child",
+        }
+
+    # Try to match by item specs
+    matched = _match_subcode_by_specs(sub_codes, item)
+    if matched:
+        return {
+            "hs_code": matched["hs_code"],
+            "description": matched["description"],
+            "duty_rate": matched["duty_rate"],
+            "purchase_tax": matched.get("purchase_tax", ""),
+            "sub_codes": sub_codes,
+            "method": "spec_match",
+        }
+
+    # Can't determine — return all sub-codes + clarification options
+    options = []
+    for sc in sub_codes[:8]:  # Limit to 8 options
+        desc = sc.get("description", "") or sc.get("description_en", "")
+        if desc:
+            options.append({
+                "hs_code": sc["hs_code"],
+                "description": desc[:120],
+            })
+
+    return {
+        "hs_code": sub_codes[0]["hs_code"],  # Default to first
+        "description": sub_codes[0].get("description", ""),
+        "duty_rate": sub_codes[0].get("duty_rate", ""),
+        "purchase_tax": sub_codes[0].get("purchase_tax", ""),
+        "sub_codes": sub_codes,
+        "method": "kram",
+        "clarification_options": options,
+    }
+
+
+def _match_subcode_by_specs(sub_codes, item):
+    """Try to match a sub-code based on item specs vs description criteria.
+
+    Checks weight, power, capacity, material patterns in sub-code descriptions
+    against item's physical specs from AI analysis.
+    """
+    item_text = " ".join(filter(None, [
+        item.get("name", ""), item.get("physical", ""),
+        item.get("essence", ""), item.get("function", ""),
+    ])).lower()
+
+    # Extract item weight if available
+    item_weight = None
+    wm = _WEIGHT_RE.search(item_text)
+    if wm:
+        try:
+            item_weight = float(wm.group(1).replace(",", "."))
+            # Normalize to grams if "kg" context
+            if "kg" in item_text or "ק\"ג" in item_text or "קילו" in item_text:
+                item_weight *= 1000
+        except (ValueError, TypeError):
+            pass
+
+    best_score = -1
+    best_sc = None
+
+    for sc in sub_codes:
+        desc = (sc.get("description", "") + " " + sc.get("description_en", "")).lower()
+        score = 0
+
+        # Weight matching
+        if item_weight is not None:
+            tm = _WEIGHT_THRESHOLD_RE.search(desc)
+            if tm:
+                threshold_str = tm.group(1) or tm.group(2)
+                if threshold_str:
+                    try:
+                        threshold = float(threshold_str.replace(",", "."))
+                        # Normalize threshold to grams
+                        if "kg" in desc or "ק\"ג" in desc or "קילו" in desc:
+                            threshold *= 1000
+                        if item_weight <= threshold:
+                            score += 5  # Strong match
+                    except (ValueError, TypeError):
+                        pass
+
+        # Material matching
+        item_material = (item.get("physical", "") or "").lower()
+        for mat_he, mat_en in [("פלדה", "steel"), ("עץ", "wood"),
+                               ("פלסטיק", "plastic"), ("גומי", "rubber"),
+                               ("זכוכית", "glass"), ("אלומיניום", "alumin"),
+                               ("נחושת", "copper"), ("טקסטיל", "textile")]:
+            if (mat_he in item_material or mat_en in item_material) and \
+               (mat_he in desc or mat_en in desc):
+                score += 3
+
+        # Keyword overlap between item name and sub-code description
+        item_words = set(item.get("name", "").lower().split())
+        desc_words = set(desc.split())
+        overlap = item_words & desc_words - {"של", "או", "את", "עם", "לא", "כל", "the", "of", "and", "or", "for"}
+        score += len(overlap)
+
+        if score > best_score:
+            best_score = score
+            best_sc = sc
+
+    # Only return if we have a meaningful match (not just random overlap)
+    if best_score >= 3 and best_sc:
+        return best_sc
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -489,8 +830,60 @@ def _post_classification_cascade(item_result, item, operation_context, db):
         if fta:
             item_result["fta"] = fta
 
+    # --- CHECK 1b: MOC frequency detection ---
+    _check_moc_requirement(item_result, item)
+
+    # --- CHECK 1c: EU reform ("מה שטוב לאירופה") ---
+    _check_eu_reform(item_result, item, operation_context)
+
     # --- Always add VAT ---
     item_result["vat_rate"] = ISRAEL_VAT_RATE
+
+
+_MOC_KEYWORDS = re.compile(
+    r'radio|wifi|wi-fi|bluetooth|2\.4\s*GHz|5\s*GHz|5\.8\s*GHz|cellular|'
+    r'antenna|transmitter|רדיו|אנטנה|משדר|תקשורת|אלחוטי',
+    re.IGNORECASE,
+)
+_MOC_CHAPTERS = {"85", "88", "90", "95"}  # Electronics, aircraft/drones, instruments, toys
+
+
+def _check_moc_requirement(item_result, item):
+    """CHECK 1b: Detect if product requires MOC (Ministry of Communications) approval.
+
+    Products with radio/wifi/bluetooth frequencies need אישור תקשורת 1301
+    from משרד התקשורת per FIO תוספת 2.
+    """
+    hs_clean = str(item_result.get("hs_code", "")).replace(".", "").replace("/", "")
+    chapter = hs_clean[:2].zfill(2) if len(hs_clean) >= 2 else ""
+
+    # Only check relevant chapters
+    if chapter not in _MOC_CHAPTERS:
+        return
+
+    # Check item text for radio/frequency keywords
+    item_text = " ".join(filter(None, [
+        item.get("name", ""), item.get("physical", ""),
+        item.get("essence", ""), item.get("function", ""),
+        item.get("frequency", ""),
+    ]))
+
+    if not _MOC_KEYWORDS.search(item_text):
+        return
+
+    # Also check FIO authorities for MOC
+    fio = item_result.get("fio", {})
+    fio_has_moc = False
+    if fio and fio.get("found"):
+        for auth in fio.get("authorities", []):
+            if "תקשורת" in str(auth):
+                fio_has_moc = True
+                break
+
+    item_result["moc_required"] = True
+    item_result["moc_note"] = "נדרש אישור תקשורת 1301 ממשרד התקשורת"
+    if fio_has_moc:
+        item_result["moc_note"] += " (מופיע בצו יבוא חופשי תוספת 2)"
 
 
 def _lookup_fio(db, hs_code):
@@ -1322,8 +1715,26 @@ def process_case(email_text, attachments_text, db, get_secret_func):
         "special_flags": case_plan.special_flags,
     }
 
+    # PHASE 0b: Extract and fetch product URLs from email
+    url_specs = _extract_and_fetch_urls(text)
+
     # PHASE 1: Identify items with AI (ONE call)
     items = _identify_items_with_ai(case_plan.items_to_classify, get_secret_func)
+
+    # Attach URL-extracted specs to items
+    if url_specs:
+        for item in items:
+            item_name_lower = item.get("name", "").lower()
+            for spec in url_specs:
+                # If any spec keyword matches item name, attach
+                spec_keywords = spec.get("keywords", [])
+                if any(kw.lower() in item_name_lower for kw in spec_keywords if kw):
+                    for field in ("weight", "dimensions", "frequency", "power", "material"):
+                        if spec.get(field) and not item.get(field):
+                            item[field] = spec[field]
+                    if spec.get("url"):
+                        item["source_url"] = spec["url"]
+                    break  # One URL per item
 
     # Process each item
     classified_items = []
@@ -1347,6 +1758,23 @@ def process_case(email_text, attachments_text, db, get_secret_func):
                 }],
             })
             continue
+
+        # PHASE 6b: Sub-heading drill-down (heading → 10-digit)
+        hs_raw = str(result.get("hs_code", "")).replace(".", "").replace("/", "")
+        if len(hs_raw) < 10 or hs_raw.endswith("0000"):
+            drill = _drill_to_subheading(hs_raw, item, db)
+            if drill:
+                result["hs_code"] = drill["hs_code"]
+                result["sub_codes"] = drill.get("sub_codes", [])
+                result["drill_method"] = drill.get("method", "")
+                if drill.get("description"):
+                    result["description"] = drill["description"]
+                if drill.get("duty_rate"):
+                    result["duty_rate"] = drill["duty_rate"]
+                if drill.get("purchase_tax"):
+                    result["purchase_tax"] = drill["purchase_tax"]
+                if drill.get("clarification_options"):
+                    result["clarification_options"] = drill["clarification_options"]
 
         # PHASE 7: Chapter 98 mapping
         _apply_chapter98(result, item, case_plan.legal_category,

@@ -567,8 +567,13 @@ _LOGO_URL = "https://storage.googleapis.com/rpa-port-customs.appspot.com/logo/rp
 def _render_broker_result_html(broker_result):
     """Render broker_engine.process_case() output into branded RTL HTML email.
 
-    Builds per-item table with HS code, duty rates, Chapter 98, discount,
-    FIO/FEO requirements, FTA, valuation articles.
+    Each section IS the process documentation — proves the system did its work.
+    Block 1: Header + classification methodology citation
+    Block 2: URL visit results (what website was visited, what was found)
+    Block 3: Methodology — cites נוהל סיווג #3, explains process
+    Block 4: Official 6-column tariff table
+    Block 5: FIO/FEO requirements (specific per authority)
+    Block 6: FTA / Chapter 98 / Valuation / Release
     """
     op = broker_result.get("operation", {})
     items = broker_result.get("items", [])
@@ -580,7 +585,7 @@ def _render_broker_result_html(broker_result):
     # --- DOCTYPE + charset for proper Hebrew rendering ---
     parts.append('<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"></head>'
                  '<body style="margin:0;padding:0;">')
-    # --- Header ---
+    # --- Block 1: Header ---
     parts.append(f"""<table width="100%" cellpadding="0" cellspacing="0" style="direction:rtl;font-family:Arial,sans-serif;">
     <tr><td style="background:{_RPA_BLUE};padding:16px 24px;color:#fff;">
         <table width="100%"><tr>
@@ -592,7 +597,50 @@ def _render_broker_result_html(broker_result):
         </div>
     </td></tr>""")
 
-    # --- Per-item cards ---
+    # --- Block 2: URL visit results (what website was visited, what was found) ---
+    parts.append(f"""<tr><td style="padding:12px 24px;">
+    <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:8px;">
+        מידע שנאסף מאתר היצרן
+    </div>""")
+    _has_url_visit = False
+    for ci in items:
+        item = ci.get("item", {})
+        source_url = item.get("source_url", "")
+        if source_url:
+            _has_url_visit = True
+            specs_found = []
+            for field in ("weight", "dimensions", "frequency", "power"):
+                val = item.get(field)
+                if val:
+                    label = {"weight": "משקל", "dimensions": "מידות", "frequency": "תדר", "power": "הספק"}[field]
+                    specs_found.append(f"{label}: {val}")
+            parts.append(f"""<div style="font-size:13px;margin-bottom:6px;padding:8px;background:#eaf2f8;border-right:3px solid {_RPA_BLUE};">
+                ביקרתי באתר <a href="{source_url}" style="color:{_RPA_BLUE};">{source_url[:60]}</a>
+                {f' ומצאתי: <b>{", ".join(specs_found)}</b>' if specs_found else ' — לא נמצאו מפרטים טכניים'}
+            </div>""")
+    if not _has_url_visit:
+        parts.append("""<div style="font-size:13px;color:#666;">
+            לא נמצאו קישורים לאתרי יצרן בגוף ההודעה. לשיפור הסיווג, ניתן לצרף קישור לדף המוצר.
+        </div>""")
+    parts.append("</td></tr>")
+
+    # --- Block 3: Methodology — cite נוהל סיווג #3 ---
+    parts.append(f"""<tr><td style="padding:8px 24px;">
+        <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:6px;">
+            מתודולוגיית הסיווג
+        </div>
+        <div style="font-size:12px;color:#555;line-height:1.6;">
+            בהתאם ל<b>נוהל סיווג טובין #3</b> (מנהלת המכס):<br/>
+            1. זיהוי פיזי — חומר, מהות, שימוש (שלושת העמודים)<br/>
+            2. חיפוש בתעריף המכס — כללי פרשנות (GIR 1-6)<br/>
+            3. אלימינציה — סעיפים שאינם מתאימים הוסרו לפי הערות לפרקים ולחלקים<br/>
+            4. תת-פרט — ירידה לרמת 10 ספרות (XX.XX.XXXXXX/X)<br/>
+            5. בדיקת צו יבוא חופשי — תוספות, רשויות מאשרות, תקנים<br/>
+            6. אימות — לולאת בדיקה עצמית (3 סיבובים)
+        </div>
+    </td></tr>""")
+
+    # --- Block 4: Official 6-column tariff table per item ---
     for ci in items:
         item = ci.get("item", {})
         cls = ci.get("classification", {})
@@ -600,52 +648,84 @@ def _render_broker_result_html(broker_result):
         item_name = item.get("name", "?")
 
         parts.append(f"""<tr><td style="padding:12px 24px;">
-        <table width="100%" cellpadding="6" cellspacing="0" style="border:1px solid #ddd;border-radius:6px;margin-bottom:12px;">
-            <tr style="background:#f0f4f8;">
-                <td colspan="4" style="font-size:16px;font-weight:bold;color:{_RPA_BLUE};">
-                    {item_name}
-                </td>
-            </tr>""")
+        <div style="font-size:16px;font-weight:bold;color:{_RPA_BLUE};margin-bottom:8px;">
+            {item_name}
+        </div>""")
 
         if status == "kram":
-            # Item needs clarification
             kram_qs = ci.get("kram_questions", cls.get("kram_questions", []))
-            parts.append(f"""<tr><td colspan="4" style="color:#c0392b;padding:8px;">
-                נדרש מידע נוסף לסיווג פריט זה:
+            parts.append(f"""<div style="color:#c0392b;padding:8px;background:#fdf0f0;border-right:3px solid #c0392b;">
+                <b>נדרש מידע נוסף לסיווג פריט זה:</b>
                 <ul style="margin:4px 0;">""")
             for q in kram_qs:
                 parts.append(f"<li>{q.get('question_he', '')}</li>")
-            parts.append("</ul></td></tr>")
+            parts.append("</ul></div>")
         elif cls:
             hs_code = cls.get("hs_code", "")
             hs_fmt = _format_hs(hs_code)
             conf = cls.get("confidence", 0)
             conf_pct = int(conf * 100) if conf <= 1 else int(conf)
             duty = cls.get("duty_rate", "")
-            desc = cls.get("description", "")
-
-            # HS code + confidence row
-            conf_color = _COLOR_OK if conf_pct >= 70 else _COLOR_WARN if conf_pct >= 40 else "#c0392b"
-            parts.append(f"""<tr>
-                <td style="font-size:18px;font-family:monospace;font-weight:bold;">{hs_fmt}</td>
-                <td style="font-size:12px;color:#666;">{desc[:60]}</td>
-                <td style="text-align:center;">
-                    <span style="background:{conf_color};color:#fff;padding:2px 8px;border-radius:10px;font-size:12px;">{conf_pct}%</span>
-                </td>
-                <td style="text-align:center;font-size:13px;">{duty or '—'}</td>
-            </tr>""")
-
-            # Duty / PT / VAT row
             pt = cls.get("purchase_tax", "")
             vat = cls.get("vat_rate", broker_result.get("vat_rate", "18%"))
-            parts.append(f"""<tr style="background:#fafafa;font-size:13px;">
-                <td>מכס: {duty or '—'}</td>
-                <td>מס קניה: {pt or '—'}</td>
-                <td>מע"מ: {vat}</td>
-                <td></td>
-            </tr>""")
+            desc = cls.get("description", "")
+            conf_color = _COLOR_OK if conf_pct >= 70 else _COLOR_WARN if conf_pct >= 40 else "#c0392b"
 
-            # Chapter 98 + discount row (if personal import)
+            # Recommended code highlight
+            parts.append(f"""<div style="font-size:13px;margin-bottom:8px;">
+                <span style="font-size:18px;font-family:monospace;font-weight:bold;">{hs_fmt}</span>
+                <span style="background:{conf_color};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;margin-right:8px;">{conf_pct}%</span>
+                <span style="color:#555;font-size:12px;">{desc[:80]}</span>
+            </div>""")
+
+            # Official 6-column tariff table
+            sub_codes = cls.get("sub_codes", [])
+            if sub_codes:
+                parts.append("""<table width="100%" cellpadding="5" cellspacing="0" style="border:1px solid #ccc;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
+                <tr style="background:#2c3e50;color:#fff;font-weight:bold;">
+                    <td style="border:1px solid #555;width:15%;">פרט</td>
+                    <td style="border:1px solid #555;width:35%;">תיאור</td>
+                    <td style="border:1px solid #555;width:10%;">מכס כללי</td>
+                    <td style="border:1px solid #555;width:10%;">מס קנייה</td>
+                    <td style="border:1px solid #555;width:15%;">שיעור התוספות</td>
+                    <td style="border:1px solid #555;width:15%;">יחידה סטטיסטית</td>
+                </tr>""")
+                for sc in sub_codes:
+                    sc_hs = _format_hs(sc.get("hs_code", ""))
+                    sc_desc = sc.get("description", "") or sc.get("description_en", "")
+                    sc_duty = sc.get("duty_rate", "")
+                    sc_pt = sc.get("purchase_tax", "")
+                    is_recommended = (str(sc.get("hs_code", "")).replace(".", "").replace("/", "") ==
+                                      str(hs_code).replace(".", "").replace("/", ""))
+                    row_style = f"background:#e8f8f5;border-right:4px solid {_COLOR_OK};" if is_recommended else ""
+                    parts.append(f"""<tr style="{row_style}">
+                        <td style="border:1px solid #ddd;font-family:monospace;">{sc_hs}</td>
+                        <td style="border:1px solid #ddd;">{sc_desc[:100]}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_duty or '—'}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_pt or '—'}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">—</td>
+                        <td style="border:1px solid #ddd;text-align:center;">—</td>
+                    </tr>""")
+                parts.append("</table>")
+            else:
+                # Single-row table when no sub-codes available
+                parts.append(f"""<table width="100%" cellpadding="5" cellspacing="0" style="border:1px solid #ccc;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
+                <tr style="background:#2c3e50;color:#fff;font-weight:bold;">
+                    <td style="border:1px solid #555;">פרט</td>
+                    <td style="border:1px solid #555;">תיאור</td>
+                    <td style="border:1px solid #555;">מכס כללי</td>
+                    <td style="border:1px solid #555;">מס קנייה</td>
+                    <td style="border:1px solid #555;">מע"מ</td>
+                </tr>
+                <tr style="background:#e8f8f5;border-right:4px solid {_COLOR_OK};">
+                    <td style="border:1px solid #ddd;font-family:monospace;">{hs_fmt}</td>
+                    <td style="border:1px solid #ddd;">{desc[:100]}</td>
+                    <td style="border:1px solid #ddd;text-align:center;">{duty or '—'}</td>
+                    <td style="border:1px solid #ddd;text-align:center;">{pt or '—'}</td>
+                    <td style="border:1px solid #ddd;text-align:center;">{vat}</td>
+                </tr></table>""")
+
+            # Chapter 98 + discount (if personal import)
             ch98_code = cls.get("chapter98_code", "")
             if ch98_code:
                 ch98_desc = cls.get("chapter98_desc_he", "")
@@ -653,82 +733,120 @@ def _render_broker_result_html(broker_result):
                 disc = cls.get("discount", {})
                 disc_desc = disc.get("discount_desc_he", "")
                 disc_duty = disc.get("discount_duty", "")
-                parts.append(f"""<tr style="background:#e8f8f5;font-size:13px;">
-                    <td colspan="2" style="color:{_COLOR_OK};font-weight:bold;">
-                        פרק 98: {_format_hs(ch98_code)}
-                    </td>
-                    <td>מכס הנחה: {disc_duty or ch98_duty or 'פטור'}</td>
-                    <td style="font-size:11px;">{disc_desc[:40] or ch98_desc[:40]}</td>
-                </tr>""")
+                parts.append(f"""<div style="background:#e8f8f5;padding:8px;border-right:3px solid {_COLOR_OK};font-size:13px;margin-bottom:8px;">
+                    <b>פרק 98:</b> {_format_hs(ch98_code)} — {ch98_desc[:60] or disc_desc[:60]}
+                    <br/>מכס הנחה: <b>{disc_duty or ch98_duty or 'פטור'}</b>
+                </div>""")
 
             # Temporary import discount (item 207)
             disc = cls.get("discount", {})
             if disc and disc.get("discount_group") == "207":
-                sub_codes = disc.get("sub_codes", {})
+                sub_codes_207 = disc.get("sub_codes", {})
                 legal_basis = disc.get("legal_basis", "")
-                parts.append(f"""<tr style="background:#e8f8f5;font-size:13px;">
-                    <td colspan="2" style="color:{_COLOR_OK};font-weight:bold;">
-                        יבוא זמני — פריט 207
-                    </td>
-                    <td colspan="2" style="font-size:11px;">{legal_basis}</td>
-                </tr>""")
-                for sc_num, sc_info in sorted(sub_codes.items()):
-                    sc_duty = sc_info.get("customs_duty", "")
-                    sc_desc = sc_info.get("desc_he", "")
-                    parts.append(f"""<tr style="font-size:12px;color:#2c3e50;">
-                        <td>{sc_desc[:50]}</td>
-                        <td>מכס: {sc_duty}</td>
-                        <td>מס קניה: {sc_info.get('purchase_tax', '')}</td>
-                        <td></td>
-                    </tr>""")
+                parts.append(f"""<div style="background:#e8f8f5;padding:8px;border-right:3px solid {_COLOR_OK};font-size:13px;margin-bottom:8px;">
+                    <b>יבוא זמני — פריט 207</b> ({legal_basis})
+                </div>""")
+                for sc_num, sc_info in sorted(sub_codes_207.items()):
+                    parts.append(f"""<div style="font-size:12px;color:#2c3e50;padding:2px 8px;">
+                        {sc_info.get('desc_he', '')[:50]} — מכס: {sc_info.get('customs_duty', '')} | מס קניה: {sc_info.get('purchase_tax', '')}
+                    </div>""")
                 if disc.get("ata_carnet"):
-                    parts.append(f"""<tr style="font-size:12px;background:#fef9e7;">
-                        <td colspan="4" style="color:{_COLOR_OK};">
-                            קרנה ATA — פטור מלא ממכס ומס קניה (בכפוף להגשת פנקס ATA בלשכת המסחר)
-                        </td>
-                    </tr>""")
+                    parts.append(f"""<div style="font-size:12px;background:#fef9e7;padding:6px 8px;margin-top:4px;">
+                        <b>קרנה ATA</b> — פטור מלא ממכס ומס קניה (בכפוף להגשת פנקס ATA בלשכת המסחר)
+                    </div>""")
 
-            # FIO requirements
-            fio = cls.get("fio", {})
-            if fio and fio.get("found"):
-                for req in fio.get("requirements", [])[:3]:
-                    auth = req.get("authority", "")
-                    appendix = req.get("appendix", "")
-                    std_ref = req.get("standard_ref", "")
-                    conf_type = req.get("confirmation_type", "")
-                    parts.append(f"""<tr style="font-size:12px;color:#7f8c8d;">
-                        <td>צו יבוא חופשי</td>
-                        <td>תוספת {appendix}</td>
-                        <td>{auth}</td>
-                        <td>{std_ref or conf_type}</td>
-                    </tr>""")
+            # MOC requirement callout (FIX 4)
+            if cls.get("moc_required"):
+                parts.append(f"""<div style="background:#fef3e0;padding:8px;border-right:3px solid #f39c12;font-size:13px;margin-bottom:8px;">
+                    <b>משרד התקשורת:</b> {cls.get('moc_note', 'נדרש אישור תקשורת 1301')}
+                </div>""")
 
-            # FEO requirements
-            feo = cls.get("feo", {})
-            if feo and feo.get("found"):
-                for req in feo.get("requirements", [])[:3]:
-                    parts.append(f"""<tr style="font-size:12px;color:#7f8c8d;">
-                        <td>צו יצוא חופשי</td>
-                        <td>תוספת {req.get('appendix', '')}</td>
-                        <td>{req.get('authority', '')}</td>
-                        <td>{req.get('confirmation_type', '')}</td>
-                    </tr>""")
+        parts.append("</td></tr>")
 
-            # FTA
-            fta = cls.get("fta", {})
-            if fta and fta.get("eligible"):
-                fw = fta.get("framework_order", {})
-                pref_doc = fw.get("preference_document", {})
-                parts.append(f"""<tr style="font-size:12px;background:#fef9e7;">
-                    <td style="color:{_COLOR_OK};">FTA: {fta.get('agreement_name', '')}</td>
-                    <td>שיעור מועדף: {fta.get('preferential_rate', '')}</td>
-                    <td>{pref_doc.get('primary', '') if isinstance(pref_doc, dict) else ''}</td>
-                    <td>{', '.join(fw.get('supplements', [])) if fw else ''}</td>
+    # --- Block 5: FIO/FEO requirements (always shown — proves the check was done) ---
+    _fio_feo_label = f"צו {'יבוא' if direction == 'import' else 'יצוא'} חופשי"
+    parts.append(f"""<tr><td style="padding:8px 24px;">
+    <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:6px;">
+        דרישות רגולטוריות — {_fio_feo_label}
+    </div>""")
+
+    _has_fio_feo = False
+    for ci in items:
+        cls = ci.get("classification", {})
+        if not cls:
+            continue
+        fio = cls.get("fio", {})
+        feo = cls.get("feo", {})
+        if (fio and fio.get("found")) or (feo and feo.get("found")):
+            if not _has_fio_feo:
+                parts.append("""<table width="100%" cellpadding="4" cellspacing="0" style="border:1px solid #ddd;border-collapse:collapse;font-size:12px;">
+                <tr style="background:#f0f4f8;font-weight:bold;">
+                    <td style="border:1px solid #ddd;">תוספת</td>
+                    <td style="border:1px solid #ddd;">רשות מאשרת</td>
+                    <td style="border:1px solid #ddd;">תקן / אישור</td>
+                    <td style="border:1px solid #ddd;">תנאי</td>
                 </tr>""")
+                _has_fio_feo = True
 
-        parts.append("</table></td></tr>")
+            if fio and fio.get("found"):
+                for req in fio.get("requirements", [])[:5]:
+                    parts.append(f"""<tr>
+                        <td style="border:1px solid #ddd;">תוספת {req.get('appendix', '')}</td>
+                        <td style="border:1px solid #ddd;">{req.get('authority', '')}</td>
+                        <td style="border:1px solid #ddd;">{req.get('standard_ref', '') or req.get('confirmation_type', '')}</td>
+                        <td style="border:1px solid #ddd;font-size:11px;">{req.get('conditions', '')[:80]}</td>
+                    </tr>""")
 
-    # --- Valuation section ---
+            if feo and feo.get("found"):
+                for req in feo.get("requirements", [])[:5]:
+                    parts.append(f"""<tr>
+                        <td style="border:1px solid #ddd;">תוספת {req.get('appendix', '')}</td>
+                        <td style="border:1px solid #ddd;">{req.get('authority', '')}</td>
+                        <td style="border:1px solid #ddd;">{req.get('confirmation_type', '')}</td>
+                        <td style="border:1px solid #ddd;">—</td>
+                    </tr>""")
+
+    if _has_fio_feo:
+        parts.append("</table>")
+    else:
+        parts.append(f"""<div style="font-size:13px;color:{_COLOR_OK};padding:4px 0;">
+            בוצעה בדיקה — לא נמצאו דרישות ב{_fio_feo_label} עבור קוד המכס שנקבע.
+        </div>""")
+    parts.append("</td></tr>")
+
+    # --- Block 6a: FTA (always shown) ---
+    parts.append(f"""<tr><td style="padding:8px 24px;">
+    <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:6px;">
+        הסכמי סחר חופשי (FTA)
+    </div>""")
+    _has_fta = False
+    for ci in items:
+        cls = ci.get("classification", {})
+        fta = cls.get("fta", {}) if cls else {}
+        if fta and fta.get("eligible"):
+            _has_fta = True
+            fw = fta.get("framework_order", {})
+            pref_doc = fw.get("preference_document", {})
+            pref_primary = pref_doc.get("primary", "") if isinstance(pref_doc, dict) else ""
+            parts.append(f"""<div style="font-size:13px;background:#fef9e7;padding:8px;border-right:3px solid {_COLOR_WARN};margin-bottom:4px;">
+                <b>{fta.get('agreement_name', '')}</b>
+                {f" — שיעור מועדף: {fta.get('preferential_rate', '')}" if fta.get('preferential_rate') else ''}
+                {f" | מסמך מקור: {pref_primary}" if pref_primary else ''}
+                {f" | תוספות: {', '.join(fw.get('supplements', []))}" if fw and fw.get('supplements') else ''}
+            </div>""")
+    if not _has_fta:
+        origin = op.get("origin_country", "")
+        if origin:
+            parts.append(f"""<div style="font-size:13px;color:#666;">
+                בוצעה בדיקה — לא נמצא הסכם סחר חופשי עבור ארץ המוצא ({origin}).
+            </div>""")
+        else:
+            parts.append("""<div style="font-size:13px;color:#666;">
+                בוצעה בדיקה — לא צוינה ארץ מוצא. לבדיקת FTA נא לציין מאיפה הטובין.
+            </div>""")
+    parts.append("</td></tr>")
+
+    # --- Block 6b: Valuation ---
     val = broker_result.get("valuation", {})
     if val and val.get("primary_method"):
         parts.append(f"""<tr><td style="padding:8px 24px;">
@@ -741,7 +859,7 @@ def _render_broker_result_html(broker_result):
             </div>
         </td></tr>""")
 
-    # --- Release notes ---
+    # --- Block 6c: Release notes ---
     rel = broker_result.get("release_notes", [])
     if rel:
         parts.append(f"""<tr><td style="padding:8px 24px;">
@@ -758,7 +876,7 @@ def _render_broker_result_html(broker_result):
             </div>""")
         parts.append("</td></tr>")
 
-    # --- Temporary import ordinance articles ---
+    # --- Block 6d: Temporary import ordinance articles ---
     ord_arts = broker_result.get("ordinance_articles", {})
     temp_keys = [k for k in ord_arts if k.startswith(("temporary_", "exhibition_", "regulation_"))]
     if temp_keys:
@@ -775,7 +893,6 @@ def _render_broker_result_html(broker_result):
                 <b>סעיף {art}</b>: {title}
                 <br/><span style="color:#555;font-size:12px;">{summary[:150]}</span>
             </div>""")
-        # ATA Carnet note
         parts.append(f"""<div style="font-size:13px;margin-top:8px;padding:8px;background:#fef9e7;border-right:3px solid {_COLOR_WARN};">
             <b>קרנה ATA (ATA Carnet)</b>: פנקס בין-לאומי המאפשר יבוא זמני ללא תשלום מכס ומס קניה.
             ניתן להנפיק בלשכת המסחר הישראלית. בתוקף עד שנה, חובת יצוא חוזר בתוך התקופה.
@@ -788,16 +905,34 @@ def _render_broker_result_html(broker_result):
     parts.append(f"""<tr><td style="background:#f8f9fa;padding:12px 24px;font-size:11px;color:#999;text-align:center;">
         RCB | RPA-PORT | {now_str} UTC | Broker Engine (deterministic)
         <br/>סיווג זה הוא הערכה מקצועית ואינו מהווה אישור רשמי של רשות המכס.
+        <br/>מתודולוגיה: נוהל סיווג טובין #3 | כללי פרשנות GIR 1-6 | אלימינציה דטרמיניסטית
     </td></tr></table></body></html>""")
 
     return "\n".join(parts)
 
 
 def _format_hs(hs_code):
-    """Format HS code to Israeli display format XX.XX.XXXXXX."""
-    clean = str(hs_code).replace(".", "").replace("/", "").replace(" ", "")
+    """Format HS code to Israeli display format XX.XX.XXXXXX/X (with Luhn check digit)."""
+    raw = str(hs_code)
+    # If already has check digit after slash, preserve it
+    check = ""
+    if "/" in raw:
+        raw, check = raw.split("/", 1)
+    clean = raw.replace(".", "").replace(" ", "")
+    clean = clean.ljust(10, "0")[:10]
+    if not check and len(clean) == 10 and clean.isdigit():
+        # Compute Luhn check digit
+        total = 0
+        for i, ch in enumerate(reversed(clean)):
+            d = int(ch)
+            if i % 2 == 0:
+                d *= 2
+                if d > 9:
+                    d -= 9
+            total += d
+        check = str((10 - total % 10) % 10)
     if len(clean) >= 10:
-        return f"{clean[:2]}.{clean[2:4]}.{clean[4:10]}"
+        return f"{clean[:2]}.{clean[2:4]}.{clean[4:10]}/{check}"
     elif len(clean) >= 4:
         return f"{clean[:2]}.{clean[2:4]}.{clean[4:]}"
     return clean
@@ -923,7 +1058,8 @@ def _delegate_to_legacy(msg, sub_intent, db, firestore_module, access_token,
 # ═══════════════════════════════════════════
 
 def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
-                        get_secret_func, triage_result=None, template_type="consultation"):
+                        get_secret_func, triage_result=None, template_type="consultation",
+                        thread_context=None):
     """
     Main entry point for CONSULTATION and LIVE_SHIPMENT emails.
 
@@ -964,9 +1100,16 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
     _broker_sent = False  # Guard: if broker sends, do NOT let legacy also send
     if BROKER_ENGINE_AVAILABLE and template_type != "live_shipment":
         try:
+            # Merge thread context (FIX 6) — prepend original question for continuity
+            _broker_text = subject + "\n" + body_text
+            if thread_context and thread_context.get("original_question"):
+                _broker_text = (
+                    f"Original question: {thread_context['original_question']}\n"
+                    f"Follow-up reply:\n{_broker_text}"
+                )
             print(f"    Broker Engine: deterministic classification")
             broker_result = broker_process_case(
-                subject + "\n" + body_text, "", db, get_secret_func,
+                _broker_text, "", db, get_secret_func,
             )
             if broker_result and broker_result.get("status") == "completed":
                 items = broker_result.get("items", [])

@@ -1175,6 +1175,31 @@ def _rcb_check_email_inner(event) -> None:
             except Exception as bc_err:
                 print(f"    ⚠️ Brain Commander error (continuing normally): {bc_err}")
 
+        # ── FIX 6: Email conversation threading ──
+        # If subject contains an RCB tracking code, load original case context
+        _thread_context = None
+        try:
+            _rcb_track_match = re.search(r'RCB[-|][QT]-\d{8}-\w{5}', subject)
+            if _rcb_track_match:
+                _track_code = _rcb_track_match.group(0)
+                # Look up original case in questions_log
+                _q_docs = get_db().collection("questions_log").where(
+                    "tracking_code", "==", _track_code
+                ).limit(1).stream()
+                for _qd in _q_docs:
+                    _qdata = _qd.to_dict()
+                    _thread_context = {
+                        "tracking_code": _track_code,
+                        "original_question": _qdata.get("question", ""),
+                        "original_answer": _qdata.get("answer", ""),
+                        "original_intent": _qdata.get("intent", ""),
+                        "original_from": _qdata.get("from_email", ""),
+                    }
+                    print(f"    🧵 Thread match: {_track_code} — continuing conversation")
+                    break
+        except Exception:
+            pass  # Threading is nice-to-have, never block
+
         # ── Three-Layer Email Triage (Session 74) ──
         # Sits ON TOP of legacy flow. If triage handles it → continue.
         # If not → legacy flow runs exactly as before.
@@ -1232,7 +1257,8 @@ def _rcb_check_email_inner(event) -> None:
                             ship_result = handle_consultation(
                                 msg, get_db(), firestore, access_token, rcb_email,
                                 get_secret, triage_result=triage_result,
-                                template_type="live_shipment")
+                                template_type="live_shipment",
+                                thread_context=_thread_context)
                             if ship_result.get("status") in ("replied", "delegated"):
                                 helper_graph_mark_read(access_token, rcb_email, msg_id)
                                 get_db().collection("rcb_processed").document(safe_id).set({
@@ -1252,7 +1278,8 @@ def _rcb_check_email_inner(event) -> None:
                         try:
                             cons_result = handle_consultation(
                                 msg, get_db(), firestore, access_token, rcb_email,
-                                get_secret, triage_result=triage_result)
+                                get_secret, triage_result=triage_result,
+                                thread_context=_thread_context)
                             if cons_result.get("status") in ("replied", "delegated"):
                                 helper_graph_mark_read(access_token, rcb_email, msg_id)
                                 get_db().collection("rcb_processed").document(safe_id).set({
