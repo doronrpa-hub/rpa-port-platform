@@ -391,11 +391,16 @@ def _extract_and_fetch_urls(text):
                 title_text = title_m.group(1).strip()[:200]
                 # Clean HTML entities
                 title_text = title_text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                specs["title"] = title_text
                 specs["keywords"] = [w for w in title_text.split() if len(w) > 2][:10]
 
-            if any(specs.get(k) for k in ("weight", "dimensions", "frequency", "power")):
+            # Keep if has physical specs OR a meaningful title
+            has_specs = any(specs.get(k) for k in ("weight", "dimensions", "frequency", "power"))
+            has_title = bool(specs.get("title", "").strip())
+            if has_specs or has_title:
                 specs_list.append(specs)
-                print(f"    URL specs from {url[:60]}: {', '.join(k for k in ('weight','dimensions','frequency','power') if specs.get(k))}")
+                found = [k for k in ('weight', 'dimensions', 'frequency', 'power', 'title') if specs.get(k)]
+                print(f"    URL specs from {url[:60]}: {', '.join(found)}")
 
         except Exception as e:
             print(f"    URL fetch failed for {url[:60]}: {e}")
@@ -1871,6 +1876,22 @@ def process_case(email_text, attachments_text, db, get_secret_func):
 
     # PHASE 0: Analyze case
     case_plan = analyze_case("", text)
+
+    # PHASE 0b: Extract and fetch product URLs from email (BEFORE item check —
+    # email may contain only URLs with no inline product names)
+    url_specs = _extract_and_fetch_urls(text)
+
+    # If case_reasoning found 0 items but email has URLs, use page titles as items
+    if not case_plan.items_to_classify and url_specs:
+        url_items = []
+        for spec in url_specs:
+            title = spec.get("title", "").strip()
+            if title:
+                url_items.append(title)
+                print(f"    URL item from page title: {title[:80]}")
+        if url_items:
+            case_plan.items_to_classify = url_items
+
     if not case_plan.items_to_classify:
         return {
             "status": "no_items",
@@ -1892,9 +1913,6 @@ def process_case(email_text, attachments_text, db, get_secret_func):
         "case_type": case_plan.case_type,
         "special_flags": case_plan.special_flags,
     }
-
-    # PHASE 0b: Extract and fetch product URLs from email
-    url_specs = _extract_and_fetch_urls(text)
 
     # PHASE 1: Identify items with AI (ONE call)
     items = _identify_items_with_ai(case_plan.items_to_classify, get_secret_func)
