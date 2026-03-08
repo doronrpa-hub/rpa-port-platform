@@ -172,6 +172,7 @@ CROSS_CHECK_ENABLED = True            # Session 27: Run 3-way cross-check after 
 ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine between pre_classify and Agent 2
 VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
 COMPLIANCE_AUDITOR_ENABLED = True     # Session 82: Official document citations in emails
+USE_TARIFF_TREE = False               # Flip to True to test tariff tree module
 
 # Session 48: Gemini quota fast-fail — skip all Gemini calls after first 429
 # CRIT-2 fix: timestamp instead of bare boolean — auto-resets after 60s
