@@ -21,7 +21,7 @@ from typing import Optional
 # Constants
 # ---------------------------------------------------------------------------
 
-_XML_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data_c3', 'extracted')
+_XML_DIR = os.path.join(os.path.dirname(__file__), 'data')
 _CUSTOMS_ITEM_FILE = 'CustomsItem.xml'
 _DESCRIPTIONS_FILE = 'CustomsItemDetailsHistory.xml'
 _NS = 'http://malam.com/customs/CustomsBook/CBC_NG_8362_MSG01_CustomsBookOut'

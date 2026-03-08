@@ -8,3 +8,6 @@ content_samples/
 *.bak*
 *.backup*
 node_modules/
+
+# Explicitly include XML data files needed by tariff_tree.py
+!lib/data/*.xml

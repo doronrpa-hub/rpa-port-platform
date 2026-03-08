@@ -86,6 +86,12 @@ except ImportError as e:
     print(f"Consultation Handler not available: {e}")
     CONSULTATION_HANDLER_AVAILABLE = False
 
+try:
+    from lib.email_intent import _TARIFF_SUBTREE_RE, _handle_tariff_subtree, _get_body_text as _ei_get_body_text
+    _TARIFF_SUBTREE_AVAILABLE = True
+except ImportError:
+    _TARIFF_SUBTREE_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -1294,7 +1300,34 @@ def _rcb_check_email_inner(event) -> None:
                             print(f"    ⚠️ Live shipment handler error (falling through): {ship_err}")
 
                 elif triage_result.category == "CONSULTATION":
-                    if CONSULTATION_HANDLER_AVAILABLE:
+                    # ── Tariff subtree intercept — before consultation handler ──
+                    if _TARIFF_SUBTREE_AVAILABLE:
+                        try:
+                            _body_raw = _ei_get_body_text(msg)
+                            _subj_raw = msg.get('subject', '') or ''
+                            _combined = f"{_subj_raw} {_body_raw}"
+                            _st_match = _TARIFF_SUBTREE_RE.search(_combined)
+                            print(f"    SUBTREE_CHECK: pattern_match={bool(_st_match)}, text='{_combined[:80]}'")
+                            if _st_match:
+                                _mc = _st_match.group(1).replace(' ', '')
+                                _dg = _mc.replace('.', '')
+                                _hs = f"{_dg[:2]}.{_dg[2:4]}" if len(_dg) >= 4 else _mc
+                                if len(_dg) > 4:
+                                    _hs = f"{_dg[:2]}.{_dg[2:4]}.{_dg[4:]}"
+                                print(f"    🌳 Tariff subtree request: {_hs}")
+                                _st_res = _handle_tariff_subtree(get_db(), _hs, msg, access_token, rcb_email)
+                                if _st_res:
+                                    helper_graph_mark_read(access_token, rcb_email, msg_id)
+                                    get_db().collection("rcb_processed").document(safe_id).set({
+                                        "processed_at": firestore.SERVER_TIMESTAMP,
+                                        "subject": subject, "from": from_email,
+                                        "type": "tariff_subtree",
+                                    })
+                                    _triage_handled = True
+                        except Exception as st_err:
+                            print(f"    ⚠️ Subtree intercept error: {st_err}")
+
+                    if CONSULTATION_HANDLER_AVAILABLE and not _triage_handled:
                         try:
                             cons_result = handle_consultation(
                                 msg, get_db(), firestore, access_token, rcb_email,

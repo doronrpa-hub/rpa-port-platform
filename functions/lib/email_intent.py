@@ -1725,6 +1725,43 @@ def _handle_tariff_subtree(db, hs_code, msg, access_token, rcb_email):
     except Exception as e:
         logger.warning(f"Unified index lookup error: {e}")
 
+    # Enrich duty_map from Firestore — adds unit, check_digit, hs_code_formatted, duty text
+    if db:
+        try:
+            from google.cloud.firestore_v1.base_query import FieldFilter
+            try:
+                from lib.librarian import _hs_check_digit
+            except ImportError:
+                from librarian import _hs_check_digit
+            fs_docs = list(db.collection("tariff").where(
+                filter=FieldFilter("heading", "==", f"{heading_4[:2]}.{heading_4[2:4]}")
+            ).stream())
+            for doc in fs_docs:
+                d = doc.to_dict()
+                if d.get("corrupt_code"):
+                    continue
+                raw_key = doc.id.split('_')[0]
+                existing = duty_map.get(raw_key, {})
+                # Compute check digit if missing
+                chk = d.get('check_digit', '')
+                hs_fmt = d.get('hs_code_formatted', '')
+                if not chk and len(raw_key) == 10 and raw_key.isdigit():
+                    chk = _hs_check_digit(raw_key)
+                # Ensure hs_code_formatted includes check digit
+                if hs_fmt and '/' not in hs_fmt and chk:
+                    hs_fmt = f"{hs_fmt}/{chk}"
+                duty_map[raw_key] = {
+                    'duty': d.get('customs_duty', '') or existing.get('duty', ''),
+                    'pt': d.get('purchase_tax', '') or existing.get('pt', ''),
+                    'unit': d.get('unit', ''),
+                    'check_digit': chk,
+                    'hs_code_formatted': hs_fmt,
+                }
+            if fs_docs:
+                sources.append("firestore_tariff")
+        except Exception as e:
+            logger.warning(f"Firestore tariff enrichment error: {e}")
+
     # Firestore fallback if both tree and unified index empty
     if not subtree and not flat_subcodes and db:
         try:
@@ -1892,27 +1929,32 @@ def _build_subtree_html(subtree, duty_map, chapter_notes_html, hs_code):
     # Flatten the tree into rows with indent level
     rows_data = []
 
-    def _flatten(node, depth=0):
+    def _flatten(node, depth=0, parent_unit=''):
         fc_raw = node.get('fc', '').replace('.', '').replace(' ', '').split('/')[0]
         dm = duty_map.get(fc_raw, {})
+        # Use hs_code_formatted from Firestore (has check digit) or fall back to tree hs
+        hs_display = dm.get('hs_code_formatted', '') or node.get('hs', '')
+        # Unit: own value, or inherit from parent heading
+        unit = dm.get('unit', '') or parent_unit
         rows_data.append({
-            'hs': node.get('hs', ''),
+            'hs': hs_display,
             'desc_he': (node.get('desc_he', '') or '').replace('\n', ' '),
             'desc_en': (node.get('desc_en', '') or '').replace('\n', ' '),
-            'duty': dm.get('duty', '—'),
-            'pt': dm.get('pt', '—'),
-            'supplement': '—',
-            'unit': '—',
+            'duty': dm.get('duty', ''),
+            'pt': dm.get('pt', ''),
+            'supplement': '',
+            'unit': unit,
             'depth': depth,
             'level': node.get('level', 0),
         })
         for child in node.get('children', []):
-            _flatten(child, depth + 1)
+            _flatten(child, depth + 1, unit)
 
     _flatten(subtree)
 
     # Build HTML rows
     table_rows = []
+    has_patur = False
     for r in rows_data:
         indent = r['depth'] * 16
         is_heading = r['level'] <= 3
@@ -1922,8 +1964,13 @@ def _build_subtree_html(subtree, duty_map, chapter_notes_html, hs_code):
         if r['desc_en'] and not is_heading:
             desc += f'<br><span style="color:#888;font-size:11px;direction:ltr;unicode-bidi:embed">{r["desc_en"][:100]}</span>'
 
-        duty_display = r['duty'] if r['duty'] and r['duty'] != '—' else '—'
-        pt_display = r['pt'] if r['pt'] and r['pt'] != '—' else '—'
+        duty_display = r['duty'].strip() if r['duty'] else '—'
+        pt_display = r['pt'].strip() if r['pt'] else '—'
+        unit_display = r['unit'].strip() if r['unit'] else '—'
+
+        # Track if any duty/pt shows פטור for footnote
+        if 'פטור' in duty_display or 'פטור' in pt_display:
+            has_patur = True
 
         table_rows.append(f'''<tr style="background:{bg};">
   <td style="padding:6px 8px;border:1px solid #dee2e6;font-family:monospace;font-size:13px;direction:ltr;white-space:nowrap;text-align:center;font-weight:{weight}">{r['hs']}</td>
@@ -1931,7 +1978,7 @@ def _build_subtree_html(subtree, duty_map, chapter_notes_html, hs_code):
   <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{duty_display}</td>
   <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{pt_display}</td>
   <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{r['supplement']}</td>
-  <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{r['unit']}</td>
+  <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{unit_display}</td>
 </tr>''')
 
     # Chapter notes section
@@ -1970,8 +2017,10 @@ def _build_subtree_html(subtree, duty_map, chapter_notes_html, hs_code):
   </tbody>
 </table>
 
+{"" if not has_patur else '<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:4px;padding:10px 12px;margin:0 0 12px 0;font-size:12px;color:#5d4037;direction:rtl;line-height:1.6;">* <strong>פטור</strong> — פטור ממכס ו/או ממס קנייה בהתאם לצו תעריף המכס. ייתכן ששיעורי מכס מופחתים חלים מכוח הסכמי סחר חופשי (FTA) — יש לבדוק זכאות לפי ארץ המקור ותעודת מקור מתאימה.</div>'}
+
 <div style="color:#888;font-size:11px;border-top:1px solid #eee;padding-top:8px;">
-מקור: עץ תעריף המכס הישראלי (XML) | {len(rows_data)} פרטים | שיעורי מכס ומס קנייה מהמערכת
+מקור: עץ תעריף המכס הישראלי (XML) + Firestore | {len(rows_data)} פרטים
 </div>
 
 </div>
@@ -1994,18 +2043,13 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     3. Supplement with Firestore tools (tariff, regulatory, FTA)
     4. Compose reply with domain-specific context
     """
-    # Try composition pipeline first (Session 87)
-    composed = _try_composition_pipeline(db, msg, access_token, rcb_email, get_secret_func)
-    if composed:
-        composed["intent"] = "CUSTOMS_QUESTION"
-        return composed
-
-    # Session 95: Tariff subtree lookup — early exit when user asks for full heading
+    # Session 95: Tariff subtree lookup — MUST be first (before composition pipeline)
     body_text_raw = _get_body_text(msg)
     subject_raw = msg.get('subject', '') or ''
     combined_text = f"{subject_raw} {body_text_raw}"
     subtree_match = _TARIFF_SUBTREE_RE.search(combined_text)
-    if subtree_match and _TARIFF_TREE_AVAILABLE:
+    logger.info(f"SUBTREE_CHECK: pattern match={bool(subtree_match)}, tree_available={_TARIFF_TREE_AVAILABLE}")
+    if subtree_match:
         matched_code = subtree_match.group(1).replace(' ', '')
         # Normalize to XX.XX format
         digits = matched_code.replace('.', '')
@@ -2019,6 +2063,12 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
         subtree_result = _handle_tariff_subtree(db, hs_dotted, msg, access_token, rcb_email)
         if subtree_result:
             return subtree_result
+
+    # Try composition pipeline (Session 87)
+    composed = _try_composition_pipeline(db, msg, access_token, rcb_email, get_secret_func)
+    if composed:
+        composed["intent"] = "CUSTOMS_QUESTION"
+        return composed
 
     # Legacy path below
     try:
@@ -2607,6 +2657,27 @@ def _dispatch(intent, result, msg, db, firestore_module,
               access_token, rcb_email, get_secret_func):
     """Route intent to appropriate handler."""
     entities = result.get('entities', {})
+
+    # ── Tariff subtree early exit — fires regardless of intent classification ──
+    if intent in ('CUSTOMS_QUESTION', 'KNOWLEDGE_QUERY'):
+        body_text_raw = _get_body_text(msg)
+        subject_raw = msg.get('subject', '') or ''
+        combined_text = f"{subject_raw} {body_text_raw}"
+        subtree_match = _TARIFF_SUBTREE_RE.search(combined_text)
+        logger.info(f"SUBTREE_CHECK: intent={intent}, pattern_match={bool(subtree_match)}, tree_available={_TARIFF_TREE_AVAILABLE}")
+        if subtree_match:
+            matched_code = subtree_match.group(1).replace(' ', '')
+            digits = matched_code.replace('.', '')
+            if len(digits) >= 4:
+                hs_dotted = f"{digits[:2]}.{digits[2:4]}"
+                if len(digits) > 4:
+                    hs_dotted = f"{digits[:2]}.{digits[2:4]}.{digits[4:]}"
+            else:
+                hs_dotted = matched_code
+            print(f"  🌳 Tariff subtree request detected: {hs_dotted}")
+            subtree_result = _handle_tariff_subtree(db, hs_dotted, msg, access_token, rcb_email)
+            if subtree_result:
+                return subtree_result
 
     if intent == 'ADMIN_INSTRUCTION':
         return _handle_admin_instruction(db, firestore_module, msg, entities,
