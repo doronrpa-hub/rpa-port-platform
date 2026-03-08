@@ -41,6 +41,17 @@ except ImportError:
     except ImportError:
         _COMPOSITION_AVAILABLE = False
 
+# Tariff tree (Session 95)
+try:
+    from lib.tariff_tree import get_subtree as _tree_get_subtree
+    _TARIFF_TREE_AVAILABLE = True
+except ImportError:
+    try:
+        from tariff_tree import get_subtree as _tree_get_subtree
+        _TARIFF_TREE_AVAILABLE = True
+    except ImportError:
+        _TARIFF_TREE_AVAILABLE = False
+
 # ═══════════════════════════════════════════
 #  CONSTANTS
 # ═══════════════════════════════════════════
@@ -90,6 +101,18 @@ def _generate_query_tracking_code():
 # ═══════════════════════════════════════════
 #  REGEX PATTERN SETS
 # ═══════════════════════════════════════════
+
+# TARIFF_SUBTREE: user asks for the full heading/chapter breakdown
+# Matches: "תביאי לי את פרט מכס 84.36 במלואו", "הצגי פרט 03.06",
+#          "show me heading 84.36", "כל פרט 84.36"
+_TARIFF_SUBTREE_RE = re.compile(
+    r'(?:תביא[י]?|הצג[י]?|הראה|תראי?|כל\s*ה?פרט|show|display|full|את\s*(?:כל\s*)?(?:ה?פרט|heading))'
+    r'.*?'
+    r'(?:פרט\s*(?:ה?מכס\s*)?|heading\s*|hs\s*)?'
+    r'(\d{2}[.\s]?\d{2}(?:[.\s]?\d{2,6})?)',
+    re.IGNORECASE
+)
+
 
 # ADMIN_INSTRUCTION patterns (ADMIN only)
 ADMIN_INSTRUCTION_PATTERNS = [
@@ -1659,6 +1682,309 @@ def _try_composition_pipeline(db, msg, access_token, rcb_email, get_secret_func)
         return None
 
 
+# ═══════════════════════════════════════════
+#  TARIFF SUBTREE HANDLER (Session 95)
+# ═══════════════════════════════════════════
+
+def _handle_tariff_subtree(db, hs_code, msg, access_token, rcb_email):
+    """Handle tariff subtree request — return full heading tree as 6-column HTML table.
+
+    Called when user asks for 'פרט מכס XX.XX במלואו' or similar.
+    Strategy: XML tree (hierarchical) > unified index flat list > Firestore fallback.
+    """
+    heading_4 = hs_code.replace('.', '').replace(' ', '')[:4]
+    subtree = None
+    sources = []
+
+    # Try XML tree first (available locally, not in Cloud Functions)
+    if _TARIFF_TREE_AVAILABLE:
+        try:
+            subtree = _tree_get_subtree(hs_code, db)
+            if subtree and subtree.get('children'):
+                sources.append("tariff_tree")
+        except Exception as e:
+            logger.warning(f"Tariff tree error: {e}")
+
+    # Load duty rates + flat subcodes from unified index
+    duty_map = {}
+    flat_subcodes = []
+    try:
+        try:
+            from lib._unified_search import get_heading_subcodes
+        except ImportError:
+            from _unified_search import get_heading_subcodes
+        for sc in get_heading_subcodes(heading_4, leaves_only=False):
+            raw = sc.get('hs_raw', '').split('_')[0]
+            duty_map[raw] = {
+                'duty': sc.get('duty_rate', ''),
+                'pt': sc.get('purchase_tax', ''),
+            }
+            flat_subcodes.append(sc)
+        if flat_subcodes:
+            sources.append("unified_index")
+    except Exception as e:
+        logger.warning(f"Unified index lookup error: {e}")
+
+    # Firestore fallback if both tree and unified index empty
+    if not subtree and not flat_subcodes and db:
+        try:
+            prefix_lo = heading_4.ljust(10, '0')
+            prefix_hi = heading_4.ljust(9, '9') + '9'
+            docs = db.collection("tariff").where(
+                "__name__", ">=", prefix_lo
+            ).where(
+                "__name__", "<=", prefix_hi
+            ).stream()
+            for doc in docs:
+                data = doc.to_dict()
+                if data.get("corrupt_code"):
+                    continue
+                flat_subcodes.append({
+                    "hs_code": doc.id,
+                    "hs_raw": doc.id,
+                    "description_he": data.get("description_he", data.get("description", "")),
+                    "description_en": data.get("description_en", ""),
+                    "duty_rate": data.get("duty_rate", ""),
+                    "purchase_tax": data.get("purchase_tax", ""),
+                })
+                duty_map[doc.id] = {
+                    "duty": data.get("duty_rate", ""),
+                    "pt": data.get("purchase_tax", ""),
+                }
+            if flat_subcodes:
+                sources.append("firestore_tariff")
+        except Exception as e:
+            logger.warning(f"Firestore tariff fallback error: {e}")
+
+    # Nothing found at all
+    if not subtree and not flat_subcodes:
+        return None
+
+    # If no XML tree, build a synthetic subtree dict from flat subcodes
+    if not subtree and flat_subcodes:
+        subtree = _build_synthetic_subtree(hs_code, heading_4, flat_subcodes)
+
+    # Load chapter notes
+    chapter_num = heading_4[:2]
+    chapter_notes_html = _fetch_chapter_notes_for_heading(db, chapter_num, hs_code)
+
+    # Build HTML
+    html = _build_subtree_html(subtree, duty_map, chapter_notes_html, hs_code)
+
+    # Build subject
+    tracking_code = _generate_query_tracking_code()
+    reply_subject = f"RCB | {tracking_code} | פרט מכס {hs_code}"
+
+    sent = _send_reply_safe(html, msg, access_token, rcb_email,
+                            subject_override=reply_subject)
+
+    return {
+        "status": "replied" if sent else "send_failed",
+        "intent": "CUSTOMS_QUESTION",
+        "sub_intent": "tariff_subtree",
+        "cost_usd": 0.0,
+        "tracking_code": tracking_code,
+        "answer_html": html[:10000],
+        "compose_model": "tariff_tree",
+        "answer_sources": sources + ["chapter_notes"],
+    }
+
+
+def _build_synthetic_subtree(hs_code, heading_4, flat_subcodes):
+    """Build a subtree dict from flat subcodes (when XML tree not available)."""
+    heading_desc_he = ""
+    heading_desc_en = ""
+    children = []
+    for sc in sorted(flat_subcodes, key=lambda x: x.get('hs_raw', '') or x.get('hs_code', '')):
+        raw = (sc.get('hs_raw', '') or sc.get('hs_code', '')).split('_')[0].replace('.', '').replace('/', '')
+        hs_fmt = sc.get('hs_code', '')
+        if not hs_fmt or hs_fmt == raw:
+            # Format it
+            if len(raw) >= 4:
+                padded = raw.ljust(10, '0')[:10]
+                hs_fmt = f"{padded[:2]}.{padded[2:4]}.{padded[4:10]}"
+        desc_he = sc.get('description_he', '')
+        desc_en = sc.get('description_en', '')
+
+        # Check if this is the heading itself (4-digit level)
+        trimmed = raw.rstrip('0')
+        if len(trimmed) <= 4:
+            heading_desc_he = desc_he
+            heading_desc_en = desc_en
+            continue
+
+        # Determine depth by trailing zeros
+        depth = 1
+        if len(raw) >= 6 and raw[4:6] != '00':
+            depth = 1
+        if len(raw) >= 8 and raw[6:8] != '00':
+            depth = 2
+        if len(raw) >= 10 and raw[8:10] != '00':
+            depth = 3
+
+        children.append({
+            'fc': raw,
+            'hs': hs_fmt,
+            'level': 4 + depth - 1,
+            'desc_he': desc_he,
+            'desc_en': desc_en,
+            'children': [],
+        })
+
+    hs_dotted = f"{heading_4[:2]}.{heading_4[2:4]}"
+    return {
+        'fc': heading_4.ljust(10, '0'),
+        'hs': hs_dotted,
+        'level': 3,
+        'desc_he': heading_desc_he,
+        'desc_en': heading_desc_en,
+        'children': children,
+    }
+
+
+def _fetch_chapter_notes_for_heading(db, chapter_num, hs_code):
+    """Fetch chapter notes and subheading rules relevant to a heading."""
+    if db is None:
+        return ""
+    try:
+        if len(chapter_num) == 1:
+            chapter_num = "0" + chapter_num
+        doc = db.collection("chapter_notes").document(f"chapter_{chapter_num}").get()
+        if not doc.exists:
+            return ""
+        data = doc.to_dict()
+        parts = []
+
+        # Chapter preamble
+        preamble = data.get("preamble", "")
+        if preamble:
+            parts.append(f"<strong>הערות לפרק {chapter_num}:</strong><br>{preamble[:2000]}")
+
+        # Subheading rules — filter to those mentioning this heading
+        heading_digits = hs_code.replace('.', '').replace(' ', '')[:4]
+        heading_dot = f"{heading_digits[:2]}.{heading_digits[2:4]}"
+        sub_rules = data.get("subheading_rules", [])
+        relevant_rules = []
+        for rule in sub_rules:
+            if heading_digits in str(rule) or heading_dot in str(rule):
+                relevant_rules.append(str(rule))
+        if relevant_rules:
+            parts.append(f"<strong>כללים לפרטי משנה ({heading_dot}):</strong><br>" +
+                         "<br>".join(relevant_rules[:5]))
+
+        # Notes array
+        notes = data.get("notes", [])
+        if notes:
+            notes_text = "<br>".join(str(n)[:500] for n in notes[:5])
+            parts.append(f"<strong>הערות:</strong><br>{notes_text}")
+
+        return "<br><br>".join(parts)
+    except Exception as e:
+        logger.warning(f"Chapter notes fetch error: {e}")
+        return ""
+
+
+def _build_subtree_html(subtree, duty_map, chapter_notes_html, hs_code):
+    """Build 6-column HTML tariff table from subtree dict.
+
+    Columns: פרט | תיאור | מכס כללי | מס קנייה | שיעור התוספות | יחידה
+    """
+    # Flatten the tree into rows with indent level
+    rows_data = []
+
+    def _flatten(node, depth=0):
+        fc_raw = node.get('fc', '').replace('.', '').replace(' ', '').split('/')[0]
+        dm = duty_map.get(fc_raw, {})
+        rows_data.append({
+            'hs': node.get('hs', ''),
+            'desc_he': (node.get('desc_he', '') or '').replace('\n', ' '),
+            'desc_en': (node.get('desc_en', '') or '').replace('\n', ' '),
+            'duty': dm.get('duty', '—'),
+            'pt': dm.get('pt', '—'),
+            'supplement': '—',
+            'unit': '—',
+            'depth': depth,
+            'level': node.get('level', 0),
+        })
+        for child in node.get('children', []):
+            _flatten(child, depth + 1)
+
+    _flatten(subtree)
+
+    # Build HTML rows
+    table_rows = []
+    for r in rows_data:
+        indent = r['depth'] * 16
+        is_heading = r['level'] <= 3
+        weight = 'bold' if is_heading else 'normal'
+        bg = '#f0f4f8' if is_heading else '#ffffff'
+        desc = r['desc_he']
+        if r['desc_en'] and not is_heading:
+            desc += f'<br><span style="color:#888;font-size:11px;direction:ltr;unicode-bidi:embed">{r["desc_en"][:100]}</span>'
+
+        duty_display = r['duty'] if r['duty'] and r['duty'] != '—' else '—'
+        pt_display = r['pt'] if r['pt'] and r['pt'] != '—' else '—'
+
+        table_rows.append(f'''<tr style="background:{bg};">
+  <td style="padding:6px 8px;border:1px solid #dee2e6;font-family:monospace;font-size:13px;direction:ltr;white-space:nowrap;text-align:center;font-weight:{weight}">{r['hs']}</td>
+  <td style="padding:6px 8px;border:1px solid #dee2e6;padding-right:{indent + 8}px;font-weight:{weight}">{desc}</td>
+  <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{duty_display}</td>
+  <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{pt_display}</td>
+  <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{r['supplement']}</td>
+  <td style="padding:6px 8px;border:1px solid #dee2e6;text-align:center;">{r['unit']}</td>
+</tr>''')
+
+    # Chapter notes section
+    notes_section = ""
+    if chapter_notes_html:
+        notes_section = f'''<div style="background:#fef9e7;border:1px solid #f9e79f;border-radius:4px;padding:12px;margin:0 0 16px 0;direction:rtl;font-size:13px;line-height:1.6;">
+{chapter_notes_html}
+</div>'''
+
+    heading_desc = (subtree.get('desc_he', '') or '').replace('\n', ' ')
+
+    return f'''<div dir="rtl" style="font-family: Arial, sans-serif; direction: rtl; text-align: right;">
+<div style="background:linear-gradient(135deg, #1e3a5f, #2471a3);color:white;padding:16px 20px;border-radius:6px 6px 0 0;">
+  <div style="font-size:11px;opacity:0.8;">ר.פ.א פורט | RCB</div>
+  <div style="font-size:20px;font-weight:bold;margin-top:4px;">פרט מכס {hs_code}</div>
+  <div style="font-size:13px;margin-top:4px;opacity:0.9;">{heading_desc}</div>
+</div>
+
+<div style="padding:16px 20px;background:#fff;border:1px solid #dee2e6;border-top:none;">
+
+{notes_section}
+
+<table dir="rtl" style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+  <thead>
+    <tr style="background:#1e3a5f;color:white;">
+      <th style="padding:10px 8px;border:1px solid #1e3a5f;width:16%;">פרט</th>
+      <th style="padding:10px 8px;border:1px solid #1e3a5f;">תיאור</th>
+      <th style="padding:10px 8px;border:1px solid #1e3a5f;width:10%;text-align:center;">מכס כללי</th>
+      <th style="padding:10px 8px;border:1px solid #1e3a5f;width:10%;text-align:center;">מס קנייה</th>
+      <th style="padding:10px 8px;border:1px solid #1e3a5f;width:10%;text-align:center;">שיעור התוספות</th>
+      <th style="padding:10px 8px;border:1px solid #1e3a5f;width:8%;text-align:center;">יחידה</th>
+    </tr>
+  </thead>
+  <tbody>
+    {"".join(table_rows)}
+  </tbody>
+</table>
+
+<div style="color:#888;font-size:11px;border-top:1px solid #eee;padding-top:8px;">
+מקור: עץ תעריף המכס הישראלי (XML) | {len(rows_data)} פרטים | שיעורי מכס ומס קנייה מהמערכת
+</div>
+
+</div>
+
+<div style="background:#f8f9fa;padding:12px 20px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 6px 6px;">
+<div style="color:#888;font-size:12px;">
+RCB — מערכת אוטומטית לסיווג מכס וסחר בינלאומי<br>
+ר.פ.א פורט בע"מ | עמיל מכס מורשה
+</div>
+</div>
+</div>'''
+
+
 def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_secret_func):
     """Handle CUSTOMS_QUESTION — domain-aware routing + Firestore tools + AI composition.
 
@@ -1673,6 +1999,26 @@ def _handle_customs_question(db, entities, msg, access_token, rcb_email, get_sec
     if composed:
         composed["intent"] = "CUSTOMS_QUESTION"
         return composed
+
+    # Session 95: Tariff subtree lookup — early exit when user asks for full heading
+    body_text_raw = _get_body_text(msg)
+    subject_raw = msg.get('subject', '') or ''
+    combined_text = f"{subject_raw} {body_text_raw}"
+    subtree_match = _TARIFF_SUBTREE_RE.search(combined_text)
+    if subtree_match and _TARIFF_TREE_AVAILABLE:
+        matched_code = subtree_match.group(1).replace(' ', '')
+        # Normalize to XX.XX format
+        digits = matched_code.replace('.', '')
+        if len(digits) >= 4:
+            hs_dotted = f"{digits[:2]}.{digits[2:4]}"
+            if len(digits) > 4:
+                hs_dotted = f"{digits[:2]}.{digits[2:4]}.{digits[4:]}"
+        else:
+            hs_dotted = matched_code
+        print(f"  🌳 Tariff subtree request detected: {hs_dotted}")
+        subtree_result = _handle_tariff_subtree(db, hs_dotted, msg, access_token, rcb_email)
+        if subtree_result:
+            return subtree_result
 
     # Legacy path below
     try:

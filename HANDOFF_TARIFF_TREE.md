@@ -45,11 +45,10 @@ Returns list of: `{fc, hs, level, desc_he, desc_en, path: [...], match_field}`
 
 ```python
 # functions/lib/classification_agents.py, line 175
-USE_TARIFF_TREE = False  # Flip to True to test tariff tree module
+USE_TARIFF_TREE = True  # Session 95: active
 ```
 
-Currently **OFF**. Not wired to anything yet. Exists for future integration.
-When False — all existing behavior unchanged, nothing breaks.
+**ON** since Session 95. Wired into `email_intent.py` CUSTOMS_QUESTION handler.
 
 ## Files
 
@@ -86,3 +85,22 @@ When False — all existing behavior unchanged, nothing breaks.
 
 4. **Firestore gap-fill**: Call `load_tariff_tree(db=firestore_client)` to fill
    the 311 nodes missing descriptions from the existing `tariff` collection.
+
+## PRODUCTION NOTE
+
+**XML files are NOT in Cloud Functions.** The two XML files (`CustomsItem.xml` 12.6 MB,
+`CustomsItemDetailsHistory.xml` 42.9 MB) live at `data_c3/extracted/` which is outside the
+`functions/` deployment directory. Cloud Functions will not have them.
+
+**Production uses the unified index fallback** (flat list, no parent-child hierarchy).
+The fallback chain in `_handle_tariff_subtree()` is:
+
+1. **XML tree** (`tariff_tree.get_subtree()`) — full hierarchy with 9 levels. Only available locally.
+2. **Unified index** (`_unified_search.get_heading_subcodes()`) — flat list under a 4-digit heading.
+   Available in production via `_unified_index.py` (4.8 MB, deployed with functions).
+3. **Firestore** (`tariff` collection range query) — flat list, same as unified but slower.
+
+To get the full hierarchical tree in production, the XML files must be copied into
+`functions/lib/data/` (or similar path inside the deployment directory) and the
+`_XML_DIR` constant in `tariff_tree.py` updated accordingly. The `.gcloudignore` file
+must also be updated to allow these files through. Total size: ~55 MB.
