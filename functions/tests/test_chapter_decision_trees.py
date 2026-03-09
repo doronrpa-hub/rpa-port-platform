@@ -1,7 +1,8 @@
 """Tests for Chapter Decision Trees — Sessions 98-99.
 
 Chapter 03 (Session 98): 5 mandatory test cases + edge cases.
-Chapters 01, 02, 04, 05 (Session 99): species/product routing + gate tests.
+Chapters 01-05 (Session 99a): species/product routing + gate tests.
+Chapters 06-15 (Session 99b): plants, vegetables, fruit, spices, cereals, oils.
 """
 
 import sys
@@ -19,6 +20,16 @@ from lib._chapter_decision_trees import (
     _decide_chapter_03,
     _decide_chapter_04,
     _decide_chapter_05,
+    _decide_chapter_06,
+    _decide_chapter_07,
+    _decide_chapter_08,
+    _decide_chapter_09,
+    _decide_chapter_10,
+    _decide_chapter_11,
+    _decide_chapter_12,
+    _decide_chapter_13,
+    _decide_chapter_14,
+    _decide_chapter_15,
     _detect_creature_type,
     _detect_crustacean_species,
     _detect_ch01_species,
@@ -33,6 +44,16 @@ from lib._chapter_decision_trees import (
     _is_chapter_03_candidate,
     _is_chapter_04_candidate,
     _is_chapter_05_candidate,
+    _is_chapter_06_candidate,
+    _is_chapter_07_candidate,
+    _is_chapter_08_candidate,
+    _is_chapter_09_candidate,
+    _is_chapter_10_candidate,
+    _is_chapter_11_candidate,
+    _is_chapter_12_candidate,
+    _is_chapter_13_candidate,
+    _is_chapter_14_candidate,
+    _is_chapter_15_candidate,
     available_chapters,
 )
 
@@ -801,12 +822,9 @@ class TestPublicAPIAllChapters(unittest.TestCase):
 
     def test_available_chapters_includes_all(self):
         chapters = available_chapters()
-        self.assertIn(1, chapters)
-        self.assertIn(2, chapters)
-        self.assertIn(3, chapters)
-        self.assertIn(4, chapters)
-        self.assertIn(5, chapters)
-        self.assertEqual(len(chapters), 5)
+        for ch in range(1, 16):
+            self.assertIn(ch, chapters)
+        self.assertEqual(len(chapters), 15)
 
     def test_decide_chapter_routes_to_ch01(self):
         product = _make_product(name="live cattle", essence="bovine animal",
@@ -834,6 +852,443 @@ class TestPublicAPIAllChapters(unittest.TestCase):
         result = decide_chapter(product)
         self.assertIsNotNone(result)
         self.assertEqual(result["chapter"], 5)
+
+
+# ========================================================================
+# CHAPTER 06 — LIVE PLANTS, CUT FLOWERS
+# ========================================================================
+
+class TestChapter06Tree(unittest.TestCase):
+
+    def test_tulip_bulb_0601(self):
+        product = _make_product(name="פקעת צבעוני", essence="tulip bulb",
+                                processing_state="live")
+        result = _decide_chapter_06(product)
+        self.assertEqual(result["chapter"], 6)
+        self.assertEqual(result["candidates"][0]["heading"], "06.01")
+
+    def test_cut_roses_0603(self):
+        product = _make_product(name="ורדים חתוכים", essence="cut roses bouquet",
+                                processing_state="fresh")
+        result = _decide_chapter_06(product)
+        self.assertEqual(result["candidates"][0]["heading"], "06.03")
+
+    def test_foliage_0604(self):
+        product = _make_product(name="decorative fern foliage",
+                                essence="ornamental foliage")
+        result = _decide_chapter_06(product)
+        self.assertEqual(result["candidates"][0]["heading"], "06.04")
+
+    def test_tree_seedling_0602(self):
+        product = _make_product(name="שתיל עץ זית", essence="olive tree seedling",
+                                processing_state="live")
+        result = _decide_chapter_06(product)
+        self.assertEqual(result["candidates"][0]["heading"], "06.02")
+
+    def test_artificial_flower_redirect_ch67(self):
+        product = _make_product(name="artificial plastic flowers",
+                                essence="artificial flower")
+        result = _decide_chapter_06(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 67)
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_06_candidate("tulip bulb"))
+        self.assertTrue(_is_chapter_06_candidate("ורדים"))
+        self.assertFalse(_is_chapter_06_candidate("steel pipes"))
+
+
+# ========================================================================
+# CHAPTER 07 — VEGETABLES
+# ========================================================================
+
+class TestChapter07Tree(unittest.TestCase):
+
+    def test_fresh_potatoes_0701(self):
+        product = _make_product(name="תפוח אדמה טרי", essence="fresh potatoes",
+                                processing_state="fresh")
+        result = _decide_chapter_07(product)
+        self.assertEqual(result["chapter"], 7)
+        self.assertEqual(result["candidates"][0]["heading"], "07.01")
+
+    def test_fresh_tomatoes_0702(self):
+        product = _make_product(name="עגבניות טריות", essence="fresh tomatoes",
+                                processing_state="fresh")
+        result = _decide_chapter_07(product)
+        self.assertEqual(result["candidates"][0]["heading"], "07.02")
+
+    def test_frozen_vegetables_0710(self):
+        product = _make_product(name="ירקות קפואים", essence="frozen mixed vegetables",
+                                processing_state="frozen")
+        result = _decide_chapter_07(product)
+        self.assertEqual(result["candidates"][0]["heading"], "07.10")
+
+    def test_dried_lentils_0713(self):
+        product = _make_product(name="עדשים יבשות", essence="dried lentils",
+                                processing_state="dried")
+        result = _decide_chapter_07(product)
+        self.assertEqual(result["candidates"][0]["heading"], "07.13")
+
+    def test_pickled_cucumbers_redirect_ch20(self):
+        product = _make_product(name="מלפפון חמוץ", essence="pickled cucumbers",
+                                processing_state="")
+        result = _decide_chapter_07(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 20)
+
+    def test_garlic_0703(self):
+        product = _make_product(name="fresh garlic", processing_state="fresh")
+        result = _decide_chapter_07(product)
+        self.assertEqual(result["candidates"][0]["heading"], "07.03")
+
+    def test_broccoli_0704(self):
+        product = _make_product(name="ברוקולי טרי", processing_state="fresh")
+        result = _decide_chapter_07(product)
+        self.assertEqual(result["candidates"][0]["heading"], "07.04")
+
+
+# ========================================================================
+# CHAPTER 08 — FRUIT AND NUTS
+# ========================================================================
+
+class TestChapter08Tree(unittest.TestCase):
+
+    def test_fresh_oranges_0805(self):
+        product = _make_product(name="תפוזים טריים", essence="fresh oranges",
+                                processing_state="fresh")
+        result = _decide_chapter_08(product)
+        self.assertEqual(result["chapter"], 8)
+        self.assertEqual(result["candidates"][0]["heading"], "08.05")
+
+    def test_bananas_0803(self):
+        product = _make_product(name="בננות", essence="bananas",
+                                processing_state="fresh")
+        result = _decide_chapter_08(product)
+        self.assertEqual(result["candidates"][0]["heading"], "08.03")
+
+    def test_almonds_0802(self):
+        product = _make_product(name="שקדים", essence="almonds",
+                                processing_state="")
+        result = _decide_chapter_08(product)
+        self.assertEqual(result["candidates"][0]["heading"], "08.02")
+
+    def test_frozen_strawberries_0811(self):
+        product = _make_product(name="תותים קפואים", essence="frozen strawberries",
+                                processing_state="frozen")
+        result = _decide_chapter_08(product)
+        self.assertEqual(result["candidates"][0]["heading"], "08.11")
+
+    def test_raisins_dried_grapes_0806(self):
+        product = _make_product(name="צימוקים", essence="raisins dried grapes",
+                                processing_state="dried")
+        result = _decide_chapter_08(product)
+        self.assertEqual(result["candidates"][0]["heading"], "08.06")
+
+    def test_jam_redirect_ch20(self):
+        product = _make_product(name="ריבת תות", essence="strawberry jam",
+                                processing_state="")
+        result = _decide_chapter_08(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 20)
+
+    def test_apples_0808(self):
+        product = _make_product(name="תפוחים טריים", essence="fresh apples",
+                                processing_state="fresh")
+        result = _decide_chapter_08(product)
+        self.assertEqual(result["candidates"][0]["heading"], "08.08")
+
+
+# ========================================================================
+# CHAPTER 09 — COFFEE, TEA, SPICES
+# ========================================================================
+
+class TestChapter09Tree(unittest.TestCase):
+
+    def test_coffee_beans_0901(self):
+        product = _make_product(name="פולי קפה ירוקים", essence="green coffee beans",
+                                processing_state="")
+        result = _decide_chapter_09(product)
+        self.assertEqual(result["chapter"], 9)
+        self.assertEqual(result["candidates"][0]["heading"], "09.01")
+
+    def test_green_tea_0902(self):
+        product = _make_product(name="תה ירוק", essence="green tea leaves",
+                                processing_state="dried")
+        result = _decide_chapter_09(product)
+        self.assertEqual(result["candidates"][0]["heading"], "09.02")
+
+    def test_black_pepper_0904(self):
+        product = _make_product(name="פלפל שחור", essence="black peppercorns",
+                                processing_state="dried")
+        result = _decide_chapter_09(product)
+        self.assertEqual(result["candidates"][0]["heading"], "09.04")
+
+    def test_cinnamon_0906(self):
+        product = _make_product(name="קינמון טחון", essence="ground cinnamon",
+                                processing_state="")
+        result = _decide_chapter_09(product)
+        self.assertEqual(result["candidates"][0]["heading"], "09.06")
+
+    def test_turmeric_0910(self):
+        product = _make_product(name="כורכום", essence="turmeric powder",
+                                processing_state="")
+        result = _decide_chapter_09(product)
+        self.assertEqual(result["candidates"][0]["heading"], "09.10")
+
+    def test_coffee_beverage_mix_redirect_ch21(self):
+        product = _make_product(name="instant coffee beverage mix",
+                                essence="coffee drink blend with milk")
+        result = _decide_chapter_09(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 21)
+
+
+# ========================================================================
+# CHAPTER 10 — CEREALS
+# ========================================================================
+
+class TestChapter10Tree(unittest.TestCase):
+
+    def test_wheat_1001(self):
+        product = _make_product(name="חיטה", essence="wheat grain",
+                                processing_state="")
+        result = _decide_chapter_10(product)
+        self.assertEqual(result["chapter"], 10)
+        self.assertEqual(result["candidates"][0]["heading"], "10.01")
+
+    def test_rice_1006(self):
+        product = _make_product(name="אורז בסמטי", essence="basmati rice",
+                                processing_state="")
+        result = _decide_chapter_10(product)
+        self.assertEqual(result["candidates"][0]["heading"], "10.06")
+
+    def test_corn_1005(self):
+        product = _make_product(name="תירס", essence="maize corn grain",
+                                processing_state="")
+        result = _decide_chapter_10(product)
+        self.assertEqual(result["candidates"][0]["heading"], "10.05")
+
+    def test_quinoa_1008(self):
+        product = _make_product(name="קינואה", essence="quinoa seeds",
+                                processing_state="")
+        result = _decide_chapter_10(product)
+        self.assertEqual(result["candidates"][0]["heading"], "10.08")
+
+    def test_wheat_flour_redirect_ch11(self):
+        product = _make_product(name="קמח חיטה", essence="wheat flour",
+                                processing_state="")
+        result = _decide_chapter_10(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 11)
+
+
+# ========================================================================
+# CHAPTER 11 — MILLING PRODUCTS
+# ========================================================================
+
+class TestChapter11Tree(unittest.TestCase):
+
+    def test_wheat_flour_1101(self):
+        product = _make_product(name="wheat flour", essence="wheat flour white",
+                                processing_state="")
+        result = _decide_chapter_11(product)
+        self.assertEqual(result["chapter"], 11)
+        self.assertEqual(result["candidates"][0]["heading"], "11.01")
+
+    def test_rice_flour_1102(self):
+        product = _make_product(name="rice flour", essence="rice flour",
+                                processing_state="")
+        result = _decide_chapter_11(product)
+        self.assertEqual(result["candidates"][0]["heading"], "11.02")
+
+    def test_corn_starch_1108(self):
+        product = _make_product(name="עמילן תירס", essence="corn starch",
+                                processing_state="")
+        result = _decide_chapter_11(product)
+        self.assertEqual(result["candidates"][0]["heading"], "11.08")
+
+    def test_malt_1107(self):
+        product = _make_product(name="לתת שעורה", essence="barley malt",
+                                processing_state="")
+        result = _decide_chapter_11(product)
+        self.assertEqual(result["candidates"][0]["heading"], "11.07")
+
+    def test_wheat_gluten_1109(self):
+        product = _make_product(name="גלוטן חיטה", essence="wheat gluten",
+                                processing_state="")
+        result = _decide_chapter_11(product)
+        self.assertEqual(result["candidates"][0]["heading"], "11.09")
+
+
+# ========================================================================
+# CHAPTER 12 — OIL SEEDS
+# ========================================================================
+
+class TestChapter12Tree(unittest.TestCase):
+
+    def test_soybeans_1201(self):
+        product = _make_product(name="סויה", essence="soya beans",
+                                processing_state="")
+        result = _decide_chapter_12(product)
+        self.assertEqual(result["chapter"], 12)
+        self.assertEqual(result["candidates"][0]["heading"], "12.01")
+
+    def test_sunflower_seeds_1206(self):
+        product = _make_product(name="גרעיני חמנייה", essence="sunflower seeds",
+                                processing_state="")
+        result = _decide_chapter_12(product)
+        self.assertEqual(result["candidates"][0]["heading"], "12.06")
+
+    def test_sesame_seeds_1207(self):
+        product = _make_product(name="שומשום", essence="sesame seeds",
+                                processing_state="")
+        result = _decide_chapter_12(product)
+        self.assertEqual(result["candidates"][0]["heading"], "12.07")
+
+    def test_medicinal_herbs_1211(self):
+        product = _make_product(name="צמח מרפא", essence="medicinal plant herb",
+                                processing_state="dried")
+        result = _decide_chapter_12(product)
+        self.assertEqual(result["candidates"][0]["heading"], "12.11")
+
+    def test_soybean_oil_redirect_ch15(self):
+        product = _make_product(name="שמן סויה", essence="soybean oil crude",
+                                processing_state="")
+        result = _decide_chapter_12(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 15)
+
+    def test_hay_fodder_1214(self):
+        product = _make_product(name="חציר מספוא", essence="hay fodder",
+                                processing_state="dried")
+        result = _decide_chapter_12(product)
+        self.assertEqual(result["candidates"][0]["heading"], "12.14")
+
+
+# ========================================================================
+# CHAPTER 13 — LAC, GUMS, RESINS
+# ========================================================================
+
+class TestChapter13Tree(unittest.TestCase):
+
+    def test_gum_arabic_1301(self):
+        product = _make_product(name="גומי ערבי", essence="gum arabic",
+                                processing_state="")
+        result = _decide_chapter_13(product)
+        self.assertEqual(result["chapter"], 13)
+        self.assertEqual(result["candidates"][0]["heading"], "13.01")
+
+    def test_shellac_1301(self):
+        product = _make_product(name="shellac", essence="lac resin",
+                                processing_state="")
+        result = _decide_chapter_13(product)
+        self.assertEqual(result["candidates"][0]["heading"], "13.01")
+
+    def test_pectin_1302(self):
+        product = _make_product(name="פקטין", essence="pectin food grade",
+                                processing_state="")
+        result = _decide_chapter_13(product)
+        self.assertEqual(result["candidates"][0]["heading"], "13.02")
+
+    def test_agar_agar_1302(self):
+        product = _make_product(name="agar agar", essence="agar seaweed extract",
+                                processing_state="")
+        result = _decide_chapter_13(product)
+        self.assertEqual(result["candidates"][0]["heading"], "13.02")
+
+    def test_plant_extract_1302(self):
+        product = _make_product(name="aloe plant extract", essence="aloe vera extract",
+                                processing_state="")
+        result = _decide_chapter_13(product)
+        self.assertEqual(result["candidates"][0]["heading"], "13.02")
+
+
+# ========================================================================
+# CHAPTER 14 — VEGETABLE PLAITING MATERIALS
+# ========================================================================
+
+class TestChapter14Tree(unittest.TestCase):
+
+    def test_bamboo_1401(self):
+        product = _make_product(name="במבוק גולמי", essence="raw bamboo",
+                                processing_state="")
+        result = _decide_chapter_14(product)
+        self.assertEqual(result["chapter"], 14)
+        self.assertEqual(result["candidates"][0]["heading"], "14.01")
+
+    def test_rattan_1401(self):
+        product = _make_product(name="rattan raw", essence="rattan cane",
+                                processing_state="")
+        result = _decide_chapter_14(product)
+        self.assertEqual(result["candidates"][0]["heading"], "14.01")
+
+    def test_kapok_1404(self):
+        product = _make_product(name="kapok fiber", essence="kapok vegetable fiber",
+                                processing_state="")
+        result = _decide_chapter_14(product)
+        self.assertEqual(result["candidates"][0]["heading"], "14.04")
+
+    def test_coir_1404(self):
+        product = _make_product(name="coir coconut fiber",
+                                essence="coconut coir")
+        result = _decide_chapter_14(product)
+        self.assertEqual(result["candidates"][0]["heading"], "14.04")
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_14_candidate("bamboo"))
+        self.assertTrue(_is_chapter_14_candidate("rattan"))
+        self.assertTrue(_is_chapter_14_candidate("kapok"))
+        self.assertFalse(_is_chapter_14_candidate("steel"))
+
+
+# ========================================================================
+# CHAPTER 15 — ANIMAL/VEGETABLE FATS AND OILS
+# ========================================================================
+
+class TestChapter15Tree(unittest.TestCase):
+
+    def test_olive_oil_1509(self):
+        product = _make_product(name="שמן זית כתית", essence="virgin olive oil",
+                                processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["chapter"], 15)
+        self.assertEqual(result["candidates"][0]["heading"], "15.09")
+
+    def test_palm_oil_1511(self):
+        product = _make_product(name="שמן דקל", essence="crude palm oil",
+                                processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["candidates"][0]["heading"], "15.11")
+
+    def test_sunflower_oil_1512(self):
+        product = _make_product(name="שמן חמנייה", essence="refined sunflower oil",
+                                processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["candidates"][0]["heading"], "15.12")
+
+    def test_margarine_1517(self):
+        product = _make_product(name="מרגרינה", essence="margarine spread",
+                                processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["candidates"][0]["heading"], "15.17")
+
+    def test_beeswax_1521(self):
+        product = _make_product(name="שעוות דבורים", essence="natural beeswax",
+                                processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["candidates"][0]["heading"], "15.21")
+
+    def test_hydrogenated_oil_1516(self):
+        product = _make_product(name="hydrogenated vegetable oil",
+                                essence="hydrogenated fat", processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["candidates"][0]["heading"], "15.16")
+
+    def test_lard_animal_fat_1501(self):
+        product = _make_product(name="lard pig fat", essence="rendered lard",
+                                processing_state="")
+        result = _decide_chapter_15(product)
+        self.assertEqual(result["candidates"][0]["heading"], "15.01")
 
 
 if __name__ == "__main__":
