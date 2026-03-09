@@ -173,7 +173,7 @@ ELIMINATION_ENABLED = True            # Session 33 D9: Run elimination engine be
 VERIFICATION_ENGINE_ENABLED = True    # Session 34 Block E: Phase 4+5+Flagging
 COMPLIANCE_AUDITOR_ENABLED = True     # Session 82: Official document citations in emails
 USE_TARIFF_TREE = True                # Session 95: Tariff tree module active
-USE_SMART_CLASSIFY = False            # Session 97: Smart classify as first attempt in consultation handler
+USE_SMART_CLASSIFY = True             # Session 97: Smart classify as first attempt in consultation handler
 
 # Session 48: Gemini quota fast-fail — skip all Gemini calls after first 429
 # CRIT-2 fix: timestamp instead of bare boolean — auto-resets after 60s
