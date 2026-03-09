@@ -74,6 +74,34 @@ from lib._chapter_decision_trees import (
     _is_chapter_22_candidate,
     _is_chapter_23_candidate,
     _is_chapter_24_candidate,
+    _decide_chapter_25,
+    _decide_chapter_26,
+    _decide_chapter_27,
+    _decide_chapter_28,
+    _decide_chapter_29,
+    _decide_chapter_30,
+    _decide_chapter_31,
+    _decide_chapter_32,
+    _decide_chapter_33,
+    _decide_chapter_34,
+    _decide_chapter_35,
+    _decide_chapter_36,
+    _decide_chapter_37,
+    _decide_chapter_38,
+    _is_chapter_25_candidate,
+    _is_chapter_26_candidate,
+    _is_chapter_27_candidate,
+    _is_chapter_28_candidate,
+    _is_chapter_29_candidate,
+    _is_chapter_30_candidate,
+    _is_chapter_31_candidate,
+    _is_chapter_32_candidate,
+    _is_chapter_33_candidate,
+    _is_chapter_34_candidate,
+    _is_chapter_35_candidate,
+    _is_chapter_36_candidate,
+    _is_chapter_37_candidate,
+    _is_chapter_38_candidate,
     available_chapters,
 )
 
@@ -844,7 +872,7 @@ class TestPublicAPIAllChapters(unittest.TestCase):
         chapters = available_chapters()
         for ch in range(1, 16):
             self.assertIn(ch, chapters)
-        self.assertEqual(len(chapters), 24)
+        self.assertEqual(len(chapters), 38)
 
     def test_decide_chapter_routes_to_ch01(self):
         product = _make_product(name="live cattle", essence="bovine animal",
@@ -1759,6 +1787,703 @@ class TestChapters16to24Integration(unittest.TestCase):
         result = decide_chapter(product)
         self.assertIsNotNone(result)
         self.assertEqual(result["chapter"], 24)
+
+
+# ========================================================================
+# CHAPTER 25 — SALT, SULPHUR, EARTHS, STONE, CEMENT
+# ========================================================================
+
+class TestChapter25(unittest.TestCase):
+
+    def test_salt_routes_to_2501(self):
+        product = _make_product(name="sea salt", essence="sodium chloride")
+        result = _decide_chapter_25(product)
+        self.assertEqual(result["chapter"], 25)
+        self.assertTrue(any("25.01" in c["heading"] for c in result["candidates"]))
+
+    def test_sulphur_routes_to_2503(self):
+        product = _make_product(name="crude sulphur", essence="elemental sulphur")
+        result = _decide_chapter_25(product)
+        self.assertEqual(result["chapter"], 25)
+        self.assertTrue(any("25.03" in c["heading"] for c in result["candidates"]))
+
+    def test_sand_routes_to_2505(self):
+        product = _make_product(name="quartz sand", essence="natural sand silica")
+        result = _decide_chapter_25(product)
+        self.assertEqual(result["chapter"], 25)
+        self.assertTrue(any("25.05" in c["heading"] for c in result["candidates"]))
+
+    def test_cement_routes_to_2523(self):
+        product = _make_product(name="portland cement", essence="cement clinker")
+        result = _decide_chapter_25(product)
+        self.assertEqual(result["chapter"], 25)
+        self.assertTrue(any("25.23" in c["heading"] for c in result["candidates"]))
+
+    def test_marble_routes_to_2515(self):
+        product = _make_product(name="marble blocks", essence="marble stone")
+        result = _decide_chapter_25(product)
+        self.assertEqual(result["chapter"], 25)
+        self.assertTrue(any("25.15" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_25_candidate("sea salt"))
+        self.assertTrue(_is_chapter_25_candidate("מלט פורטלנד"))
+        self.assertFalse(_is_chapter_25_candidate("cotton fabric"))
+
+
+# ========================================================================
+# CHAPTER 26 — ORES, SLAG, ASH
+# ========================================================================
+
+class TestChapter26(unittest.TestCase):
+
+    def test_iron_ore_routes_to_2601(self):
+        product = _make_product(name="iron ore concentrate", essence="iron ore")
+        result = _decide_chapter_26(product)
+        self.assertEqual(result["chapter"], 26)
+        self.assertTrue(any("26.01" in c["heading"] for c in result["candidates"]))
+
+    def test_copper_ore_routes_to_2603(self):
+        product = _make_product(name="copper ore", essence="copper concentrate")
+        result = _decide_chapter_26(product)
+        self.assertEqual(result["chapter"], 26)
+        self.assertTrue(any("26.03" in c["heading"] for c in result["candidates"]))
+
+    def test_slag_routes_to_2618_2619_2620_2621(self):
+        product = _make_product(name="granulated slag", essence="slag from smelting")
+        result = _decide_chapter_26(product)
+        self.assertEqual(result["chapter"], 26)
+        self.assertTrue(len(result["candidates"]) >= 1)
+
+    def test_ash_routes_correctly(self):
+        product = _make_product(name="fly ash", essence="coal ash residue")
+        result = _decide_chapter_26(product)
+        self.assertEqual(result["chapter"], 26)
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_26_candidate("iron ore"))
+        self.assertTrue(_is_chapter_26_candidate("עפרת נחושת"))
+        self.assertFalse(_is_chapter_26_candidate("orange juice"))
+
+
+# ========================================================================
+# CHAPTER 27 — MINERAL FUELS, OILS, BITUMINOUS SUBSTANCES
+# ========================================================================
+
+class TestChapter27(unittest.TestCase):
+
+    def test_crude_oil_routes_to_2709(self):
+        product = _make_product(name="crude petroleum oil", essence="crude oil")
+        result = _decide_chapter_27(product)
+        self.assertEqual(result["chapter"], 27)
+        self.assertTrue(any("27.09" in c["heading"] for c in result["candidates"]))
+
+    def test_coal_routes_to_2701(self):
+        product = _make_product(name="bituminous coal", essence="coal anthracite")
+        result = _decide_chapter_27(product)
+        self.assertEqual(result["chapter"], 27)
+        self.assertTrue(any("27.01" in c["heading"] for c in result["candidates"]))
+
+    def test_natural_gas_routes_to_2711(self):
+        product = _make_product(name="liquefied natural gas LNG", essence="natural gas")
+        result = _decide_chapter_27(product)
+        self.assertEqual(result["chapter"], 27)
+        self.assertTrue(any("27.11" in c["heading"] for c in result["candidates"]))
+
+    def test_diesel_routes_to_2710(self):
+        product = _make_product(name="diesel fuel", essence="petroleum diesel")
+        result = _decide_chapter_27(product)
+        self.assertEqual(result["chapter"], 27)
+        self.assertTrue(any("27.10" in c["heading"] for c in result["candidates"]))
+
+    def test_bitumen_routes_to_2713_2715(self):
+        product = _make_product(name="petroleum bitumen asphalt", essence="bitumen")
+        result = _decide_chapter_27(product)
+        self.assertEqual(result["chapter"], 27)
+        self.assertTrue(len(result["candidates"]) >= 1)
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_27_candidate("crude petroleum"))
+        self.assertTrue(_is_chapter_27_candidate("פחם אבן"))
+        self.assertFalse(_is_chapter_27_candidate("fresh apples"))
+
+
+# ========================================================================
+# CHAPTER 28 — INORGANIC CHEMICALS
+# ========================================================================
+
+class TestChapter28(unittest.TestCase):
+
+    def test_hydrochloric_acid_routes(self):
+        product = _make_product(name="hydrochloric acid", essence="hydrogen chloride")
+        result = _decide_chapter_28(product)
+        self.assertEqual(result["chapter"], 28)
+        self.assertTrue(len(result["candidates"]) >= 1)
+
+    def test_sodium_hydroxide_routes(self):
+        product = _make_product(name="sodium hydroxide", essence="caustic soda NaOH")
+        result = _decide_chapter_28(product)
+        self.assertEqual(result["chapter"], 28)
+
+    def test_hydrogen_peroxide_routes(self):
+        product = _make_product(name="hydrogen peroxide", essence="H2O2")
+        result = _decide_chapter_28(product)
+        self.assertEqual(result["chapter"], 28)
+
+    def test_titanium_dioxide_routes(self):
+        product = _make_product(name="titanium dioxide", essence="TiO2 pigment")
+        result = _decide_chapter_28(product)
+        self.assertEqual(result["chapter"], 28)
+
+    def test_rare_earth_routes(self):
+        product = _make_product(name="cerium oxide rare earth", essence="rare earth compound")
+        result = _decide_chapter_28(product)
+        self.assertEqual(result["chapter"], 28)
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_28_candidate("hydrochloric acid"))
+        self.assertTrue(_is_chapter_28_candidate("תחמוצת טיטניום"))
+        self.assertFalse(_is_chapter_28_candidate("wooden table"))
+
+
+# ========================================================================
+# CHAPTER 29 — ORGANIC CHEMICALS
+# ========================================================================
+
+class TestChapter29(unittest.TestCase):
+
+    def test_methanol_routes(self):
+        product = _make_product(name="methanol", essence="methyl alcohol CH3OH")
+        result = _decide_chapter_29(product)
+        self.assertEqual(result["chapter"], 29)
+
+    def test_acetic_acid_routes(self):
+        product = _make_product(name="acetic acid", essence="ethanoic acid")
+        result = _decide_chapter_29(product)
+        self.assertEqual(result["chapter"], 29)
+
+    def test_acetone_routes(self):
+        product = _make_product(name="acetone", essence="propanone ketone")
+        result = _decide_chapter_29(product)
+        self.assertEqual(result["chapter"], 29)
+
+    def test_citric_acid_routes(self):
+        product = _make_product(name="citric acid", essence="citric acid anhydrous")
+        result = _decide_chapter_29(product)
+        self.assertEqual(result["chapter"], 29)
+
+    def test_amino_acid_routes(self):
+        product = _make_product(name="lysine amino acid", essence="amino acid")
+        result = _decide_chapter_29(product)
+        self.assertEqual(result["chapter"], 29)
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_29_candidate("methanol"))
+        self.assertTrue(_is_chapter_29_candidate("citric acid"))
+        self.assertFalse(_is_chapter_29_candidate("live horses"))
+
+
+# ========================================================================
+# CHAPTER 30 — PHARMACEUTICALS
+# ========================================================================
+
+class TestChapter30(unittest.TestCase):
+
+    def test_medicine_tablet_routes_to_3004(self):
+        product = _make_product(name="paracetamol tablets 500mg", essence="medicine dosage")
+        result = _decide_chapter_30(product)
+        self.assertEqual(result["chapter"], 30)
+        self.assertTrue(any("30.04" in c["heading"] for c in result["candidates"]))
+
+    def test_vaccine_routes_to_3002(self):
+        product = _make_product(name="influenza vaccine", essence="vaccine immunological")
+        result = _decide_chapter_30(product)
+        self.assertEqual(result["chapter"], 30)
+        self.assertTrue(any("30.02" in c["heading"] for c in result["candidates"]))
+
+    def test_bandage_routes_to_3005(self):
+        product = _make_product(name="sterile adhesive bandage", essence="medical dressing")
+        result = _decide_chapter_30(product)
+        self.assertEqual(result["chapter"], 30)
+        self.assertTrue(any("30.05" in c["heading"] for c in result["candidates"]))
+
+    def test_pharmaceutical_api_routes_to_3003(self):
+        product = _make_product(name="amoxicillin bulk pharmaceutical",
+                                essence="antibiotic active ingredient not dosed")
+        result = _decide_chapter_30(product)
+        self.assertEqual(result["chapter"], 30)
+
+    def test_serum_routes_to_3002(self):
+        product = _make_product(name="antiserum immunological", essence="serum antitoxin")
+        result = _decide_chapter_30(product)
+        self.assertEqual(result["chapter"], 30)
+        self.assertTrue(any("30.02" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_30_candidate("paracetamol tablets"))
+        self.assertTrue(_is_chapter_30_candidate("תרופה"))
+        self.assertFalse(_is_chapter_30_candidate("steel pipe"))
+
+
+# ========================================================================
+# CHAPTER 31 — FERTILIZERS
+# ========================================================================
+
+class TestChapter31(unittest.TestCase):
+
+    def test_urea_routes_to_3102(self):
+        product = _make_product(name="urea fertilizer", essence="nitrogen fertilizer urea")
+        result = _decide_chapter_31(product)
+        self.assertEqual(result["chapter"], 31)
+        self.assertTrue(any("31.02" in c["heading"] for c in result["candidates"]))
+
+    def test_potash_routes_to_3104(self):
+        product = _make_product(name="muriate of potash granular",
+                                essence="KCl 60%")
+        result = _decide_chapter_31(product)
+        self.assertEqual(result["chapter"], 31)
+        self.assertTrue(any("31.04" in c["heading"] for c in result["candidates"]))
+
+    def test_npk_routes_to_3105(self):
+        product = _make_product(name="NPK compound fertilizer 15-15-15",
+                                essence="compound fertilizer")
+        result = _decide_chapter_31(product)
+        self.assertEqual(result["chapter"], 31)
+        self.assertTrue(any("31.05" in c["heading"] for c in result["candidates"]))
+
+    def test_phosphate_routes_to_3103(self):
+        product = _make_product(name="superphosphate granular",
+                                essence="Thomas slag")
+        result = _decide_chapter_31(product)
+        self.assertEqual(result["chapter"], 31)
+        self.assertTrue(any("31.03" in c["heading"] for c in result["candidates"]))
+
+    def test_animal_manure_routes_to_3101(self):
+        product = _make_product(name="animal manure guano",
+                                essence="organic fertilizer guano")
+        result = _decide_chapter_31(product)
+        self.assertEqual(result["chapter"], 31)
+        self.assertTrue(any("31.01" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_31_candidate("urea fertilizer"))
+        self.assertTrue(_is_chapter_31_candidate("דשן"))
+        self.assertFalse(_is_chapter_31_candidate("cotton shirt"))
+
+
+# ========================================================================
+# CHAPTER 32 — TANNING, DYES, PAINTS, INKS
+# ========================================================================
+
+class TestChapter32(unittest.TestCase):
+
+    def test_paint_routes_to_3208_3209(self):
+        product = _make_product(name="acrylic paint coating",
+                                essence="paint synthetic polymer")
+        result = _decide_chapter_32(product)
+        self.assertEqual(result["chapter"], 32)
+        self.assertTrue(any("32.08" in c["heading"] or "32.09" in c["heading"]
+                            for c in result["candidates"]))
+
+    def test_ink_routes_to_3215(self):
+        product = _make_product(name="printing ink", essence="ink pigment")
+        result = _decide_chapter_32(product)
+        self.assertEqual(result["chapter"], 32)
+        self.assertTrue(any("32.15" in c["heading"] for c in result["candidates"]))
+
+    def test_dye_routes_to_3204(self):
+        product = _make_product(name="synthetic organic dye",
+                                essence="reactive dye colorant")
+        result = _decide_chapter_32(product)
+        self.assertEqual(result["chapter"], 32)
+        self.assertTrue(any("32.04" in c["heading"] for c in result["candidates"]))
+
+    def test_tanning_extract_routes_to_3201(self):
+        product = _make_product(name="tanning extract vegetable",
+                                essence="tanning extract")
+        result = _decide_chapter_32(product)
+        self.assertEqual(result["chapter"], 32)
+        self.assertTrue(any("32.01" in c["heading"] for c in result["candidates"]))
+
+    def test_varnish_routes(self):
+        product = _make_product(name="wood varnish lacquer",
+                                essence="varnish coating")
+        result = _decide_chapter_32(product)
+        self.assertEqual(result["chapter"], 32)
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_32_candidate("acrylic paint"))
+        self.assertTrue(_is_chapter_32_candidate("צבע קיר"))
+        self.assertFalse(_is_chapter_32_candidate("frozen fish"))
+
+
+# ========================================================================
+# CHAPTER 33 — COSMETICS, ESSENTIAL OILS, PERFUMERY
+# ========================================================================
+
+class TestChapter33(unittest.TestCase):
+
+    def test_perfume_routes_to_3303(self):
+        product = _make_product(name="eau de parfum", essence="perfume fragrance")
+        result = _decide_chapter_33(product)
+        self.assertEqual(result["chapter"], 33)
+        self.assertTrue(any("33.03" in c["heading"] for c in result["candidates"]))
+
+    def test_shampoo_routes_to_3305(self):
+        product = _make_product(name="hair shampoo", essence="shampoo")
+        result = _decide_chapter_33(product)
+        self.assertEqual(result["chapter"], 33)
+        self.assertTrue(any("33.05" in c["heading"] for c in result["candidates"]))
+
+    def test_essential_oil_routes_to_3301(self):
+        product = _make_product(name="lavender essential oil", essence="essential oil")
+        result = _decide_chapter_33(product)
+        self.assertEqual(result["chapter"], 33)
+        self.assertTrue(any("33.01" in c["heading"] for c in result["candidates"]))
+
+    def test_toothpaste_routes_to_3306(self):
+        product = _make_product(name="fluoride toothpaste", essence="toothpaste dentifrice")
+        result = _decide_chapter_33(product)
+        self.assertEqual(result["chapter"], 33)
+        self.assertTrue(any("33.06" in c["heading"] for c in result["candidates"]))
+
+    def test_skin_cream_routes_to_3304(self):
+        product = _make_product(name="face cream moisturizer",
+                                essence="skin care cream cosmetic")
+        result = _decide_chapter_33(product)
+        self.assertEqual(result["chapter"], 33)
+        self.assertTrue(any("33.04" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_33_candidate("perfume"))
+        self.assertTrue(_is_chapter_33_candidate("שמפו"))
+        self.assertFalse(_is_chapter_33_candidate("iron ore"))
+
+
+# ========================================================================
+# CHAPTER 34 — SOAP, DETERGENT, WAX, CANDLES
+# ========================================================================
+
+class TestChapter34(unittest.TestCase):
+
+    def test_soap_routes_to_3401(self):
+        product = _make_product(name="toilet soap bar", essence="soap")
+        result = _decide_chapter_34(product)
+        self.assertEqual(result["chapter"], 34)
+        self.assertTrue(any("34.01" in c["heading"] for c in result["candidates"]))
+
+    def test_detergent_routes_to_3402(self):
+        product = _make_product(name="laundry detergent surfactant",
+                                essence="washing detergent")
+        result = _decide_chapter_34(product)
+        self.assertEqual(result["chapter"], 34)
+        self.assertTrue(any("34.02" in c["heading"] for c in result["candidates"]))
+
+    def test_candle_routes_to_3406(self):
+        product = _make_product(name="paraffin wax candle", essence="candle")
+        result = _decide_chapter_34(product)
+        self.assertEqual(result["chapter"], 34)
+        self.assertTrue(any("34.06" in c["heading"] for c in result["candidates"]))
+
+    def test_polish_routes_to_3405(self):
+        product = _make_product(name="shoe polish", essence="polish cream")
+        result = _decide_chapter_34(product)
+        self.assertEqual(result["chapter"], 34)
+        self.assertTrue(any("34.05" in c["heading"] for c in result["candidates"]))
+
+    def test_wax_routes_to_3404(self):
+        product = _make_product(name="artificial wax blend",
+                                essence="synthetic wax prepared")
+        result = _decide_chapter_34(product)
+        self.assertEqual(result["chapter"], 34)
+        self.assertTrue(any("34.04" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_34_candidate("soap bar"))
+        self.assertTrue(_is_chapter_34_candidate("סבון"))
+        self.assertFalse(_is_chapter_34_candidate("crude petroleum"))
+
+
+# ========================================================================
+# CHAPTER 35 — ALBUMINOIDAL SUBSTANCES, GLUES, ENZYMES
+# ========================================================================
+
+class TestChapter35(unittest.TestCase):
+
+    def test_casein_routes_to_3501(self):
+        product = _make_product(name="casein powder", essence="casein milk protein")
+        result = _decide_chapter_35(product)
+        self.assertEqual(result["chapter"], 35)
+        self.assertTrue(any("35.01" in c["heading"] for c in result["candidates"]))
+
+    def test_gelatin_routes_to_3503(self):
+        product = _make_product(name="gelatin powder food grade", essence="gelatin")
+        result = _decide_chapter_35(product)
+        self.assertEqual(result["chapter"], 35)
+        self.assertTrue(any("35.03" in c["heading"] for c in result["candidates"]))
+
+    def test_enzyme_routes_to_3507(self):
+        product = _make_product(name="lipase enzyme industrial", essence="enzyme")
+        result = _decide_chapter_35(product)
+        self.assertEqual(result["chapter"], 35)
+        self.assertTrue(any("35.07" in c["heading"] for c in result["candidates"]))
+
+    def test_glue_routes_to_3506(self):
+        product = _make_product(name="adhesive glue epoxy", essence="glue adhesive")
+        result = _decide_chapter_35(product)
+        self.assertEqual(result["chapter"], 35)
+        self.assertTrue(any("35.06" in c["heading"] for c in result["candidates"]))
+
+    def test_dextrin_routes_to_3505(self):
+        product = _make_product(name="modified starch dextrin",
+                                essence="dextrin modified starch")
+        result = _decide_chapter_35(product)
+        self.assertEqual(result["chapter"], 35)
+        self.assertTrue(any("35.05" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_35_candidate("gelatin powder"))
+        self.assertTrue(_is_chapter_35_candidate("דבק"))
+        self.assertFalse(_is_chapter_35_candidate("diesel fuel"))
+
+
+# ========================================================================
+# CHAPTER 36 — EXPLOSIVES, FIREWORKS, MATCHES
+# ========================================================================
+
+class TestChapter36(unittest.TestCase):
+
+    def test_fireworks_routes_to_3604(self):
+        product = _make_product(name="fireworks display rockets",
+                                essence="fireworks pyrotechnics")
+        result = _decide_chapter_36(product)
+        self.assertEqual(result["chapter"], 36)
+        self.assertTrue(any("36.04" in c["heading"] for c in result["candidates"]))
+
+    def test_matches_routes_to_3605(self):
+        product = _make_product(name="safety matches box", essence="matches")
+        result = _decide_chapter_36(product)
+        self.assertEqual(result["chapter"], 36)
+        self.assertTrue(any("36.05" in c["heading"] for c in result["candidates"]))
+
+    def test_dynamite_routes_to_3602(self):
+        product = _make_product(name="dynamite explosive",
+                                essence="prepared explosives")
+        result = _decide_chapter_36(product)
+        self.assertEqual(result["chapter"], 36)
+        self.assertTrue(any("36.02" in c["heading"] for c in result["candidates"]))
+
+    def test_propellant_powder_routes_to_3601(self):
+        product = _make_product(name="propellant powder smokeless",
+                                essence="propellant powder")
+        result = _decide_chapter_36(product)
+        self.assertEqual(result["chapter"], 36)
+        self.assertTrue(any("36.01" in c["heading"] for c in result["candidates"]))
+
+    def test_fuse_routes_to_3603(self):
+        product = _make_product(name="detonating fuse cord",
+                                essence="safety fuse detonator")
+        result = _decide_chapter_36(product)
+        self.assertEqual(result["chapter"], 36)
+        self.assertTrue(any("36.03" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_36_candidate("fireworks"))
+        self.assertTrue(_is_chapter_36_candidate("חומר נפץ"))
+        self.assertFalse(_is_chapter_36_candidate("cotton fabric"))
+
+
+# ========================================================================
+# CHAPTER 37 — PHOTOGRAPHIC GOODS
+# ========================================================================
+
+class TestChapter37(unittest.TestCase):
+
+    def test_photographic_film_routes_to_3702(self):
+        product = _make_product(name="photographic film roll 35mm",
+                                essence="photographic film unexposed")
+        result = _decide_chapter_37(product)
+        self.assertEqual(result["chapter"], 37)
+        self.assertTrue(any("37.02" in c["heading"] for c in result["candidates"]))
+
+    def test_photographic_paper_routes_to_3703(self):
+        product = _make_product(name="photographic paper rolls",
+                                essence="photographic paper sensitized")
+        result = _decide_chapter_37(product)
+        self.assertEqual(result["chapter"], 37)
+        self.assertTrue(any("37.03" in c["heading"] for c in result["candidates"]))
+
+    def test_photographic_plates_routes_to_3701(self):
+        product = _make_product(name="photographic plates sensitized",
+                                essence="photographic plates")
+        result = _decide_chapter_37(product)
+        self.assertEqual(result["chapter"], 37)
+        self.assertTrue(any("37.01" in c["heading"] for c in result["candidates"]))
+
+    def test_instant_film_routes_to_3701(self):
+        product = _make_product(name="instant print film packs",
+                                essence="instant film photographic")
+        result = _decide_chapter_37(product)
+        self.assertEqual(result["chapter"], 37)
+
+    def test_chemical_preparations_routes_to_3707(self):
+        product = _make_product(name="photographic developer chemical",
+                                essence="photographic chemical preparation")
+        result = _decide_chapter_37(product)
+        self.assertEqual(result["chapter"], 37)
+        self.assertTrue(any("37.07" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_37_candidate("photographic film"))
+        self.assertTrue(_is_chapter_37_candidate("סרט צילום"))
+        self.assertFalse(_is_chapter_37_candidate("copper wire"))
+
+
+# ========================================================================
+# CHAPTER 38 — MISCELLANEOUS CHEMICAL PRODUCTS
+# ========================================================================
+
+class TestChapter38(unittest.TestCase):
+
+    def test_insecticide_routes_to_3808(self):
+        product = _make_product(name="insecticide spray", essence="pesticide insecticide")
+        result = _decide_chapter_38(product)
+        self.assertEqual(result["chapter"], 38)
+        self.assertTrue(any("38.08" in c["heading"] for c in result["candidates"]))
+
+    def test_activated_carbon_routes_to_3802(self):
+        product = _make_product(name="activated carbon granules",
+                                essence="activated charcoal")
+        result = _decide_chapter_38(product)
+        self.assertEqual(result["chapter"], 38)
+        self.assertTrue(any("38.02" in c["heading"] for c in result["candidates"]))
+
+    def test_antifreeze_routes_to_3820(self):
+        product = _make_product(name="antifreeze coolant", essence="anti-freezing preparation")
+        result = _decide_chapter_38(product)
+        self.assertEqual(result["chapter"], 38)
+        self.assertTrue(any("38.20" in c["heading"] for c in result["candidates"]))
+
+    def test_biodiesel_routes_to_3826(self):
+        product = _make_product(name="biodiesel B100 fatty acid methyl ester",
+                                essence="biodiesel FAME")
+        result = _decide_chapter_38(product)
+        self.assertEqual(result["chapter"], 38)
+        self.assertTrue(any("38.26" in c["heading"] for c in result["candidates"]))
+
+    def test_soldering_flux_routes_to_3810(self):
+        product = _make_product(name="soldering flux paste",
+                                essence="welding flux preparation")
+        result = _decide_chapter_38(product)
+        self.assertEqual(result["chapter"], 38)
+        self.assertTrue(any("38.10" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_38_candidate("insecticide spray"))
+        self.assertTrue(_is_chapter_38_candidate("חומר הדברה"))
+        self.assertFalse(_is_chapter_38_candidate("live poultry"))
+
+
+# ========================================================================
+# INTEGRATION: CHAPTERS 25-38 via decide_chapter()
+# ========================================================================
+
+class TestChapters25to38Integration(unittest.TestCase):
+    """Test that decide_chapter() correctly dispatches to chapters 25-38."""
+
+    def test_decide_chapter_detects_cement(self):
+        product = _make_product(name="portland cement bags", essence="cement")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 25)
+
+    def test_decide_chapter_detects_iron_ore(self):
+        product = _make_product(name="iron ore lumps", essence="hematite ore")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 26)
+
+    def test_decide_chapter_detects_petroleum(self):
+        product = _make_product(name="crude petroleum cargo", essence="crude oil")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 27)
+
+    def test_decide_chapter_detects_inorganic_chemical(self):
+        product = _make_product(name="hydrochloric acid technical grade",
+                                essence="HCl acid solution")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 28)
+
+    def test_decide_chapter_detects_citric_acid(self):
+        product = _make_product(name="citric acid anhydrous bulk",
+                                essence="organic acid citric")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 29)
+
+    def test_decide_chapter_detects_tablets(self):
+        product = _make_product(name="ibuprofen tablets 200mg",
+                                essence="medicine dosage form")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 30)
+
+    def test_decide_chapter_detects_fertilizer(self):
+        product = _make_product(name="urea granular fertilizer",
+                                essence="nitrogen fertilizer")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 31)
+
+    def test_decide_chapter_detects_paint(self):
+        product = _make_product(name="acrylic wall paint",
+                                essence="latex paint")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 32)
+
+    def test_decide_chapter_detects_perfume(self):
+        product = _make_product(name="eau de toilette spray",
+                                essence="perfume fragrance")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 33)
+
+    def test_decide_chapter_detects_soap(self):
+        product = _make_product(name="toilet soap bars", essence="soap bar")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 34)
+
+    def test_decide_chapter_detects_gelatin(self):
+        product = _make_product(name="gelatin sheets food grade",
+                                essence="gelatin powder")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 35)
+
+    def test_decide_chapter_detects_fireworks(self):
+        product = _make_product(name="display fireworks rockets",
+                                essence="pyrotechnics fireworks")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 36)
+
+    def test_decide_chapter_detects_photo_film(self):
+        product = _make_product(name="photographic film 35mm",
+                                essence="photographic plate unexposed")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 37)
+
+    def test_decide_chapter_detects_herbicide(self):
+        product = _make_product(name="herbicide glyphosate",
+                                essence="weed killer fungicide")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 38)
 
 
 if __name__ == "__main__":

@@ -3662,6 +3662,1499 @@ def _decide_chapter_24(product):
 
 
 # ============================================================================
+# CHAPTER 25: Salt; sulphur; earths and stone; plastering materials, lime, cement
+# ============================================================================
+
+_CH25_SALT = re.compile(
+    r'(?:מלח\s*(?:גולמי|שולחן|תעשייתי|ים)|'
+    r'salt|sodium\s*chloride|rock\s*salt|sea\s*salt|table\s*salt|'
+    r'brine|salt\s*(?:deicing|de.icing|industrial))',
+    re.IGNORECASE
+)
+
+_CH25_SULPHUR = re.compile(
+    r'(?:גופרית|sulphur|sulfur|sublimed\s*sulph|precipitated\s*sulph)',
+    re.IGNORECASE
+)
+
+_CH25_SAND_GRAVEL = re.compile(
+    r'(?:חול|חצץ|אבן\s*(?:שחיקה|טבעית)|'
+    r'sand|gravel|pebble|crushed\s*stone|natural\s*sand|'
+    r'silica\s*sand|quartz\s*sand)',
+    re.IGNORECASE
+)
+
+_CH25_CEMENT = re.compile(
+    r'(?:מלט|צמנט|cement|clinker|portland)',
+    re.IGNORECASE
+)
+
+_CH25_PLASTER = re.compile(
+    r'(?:גבס|טיח|plaster|gypsum|anhydrite|stucco)',
+    re.IGNORECASE
+)
+
+_CH25_LIME = re.compile(
+    r'(?:סיד|lime|quicklime|slaked\s*lime|hydraulic\s*lime|calcium\s*oxide|'
+    r'calcium\s*hydroxide)',
+    re.IGNORECASE
+)
+
+_CH25_MARBLE_GRANITE = re.compile(
+    r'(?:שיש|גרניט|אבן\s*בנייה|marble|granite|travertine|'
+    r'sandstone|slate|basalt|porphyry|monumental\s*stone)',
+    re.IGNORECASE
+)
+
+_CH25_CLAY = re.compile(
+    r'(?:חימר|קאולין|בנטוניט|clay|kaolin|bentonite|'
+    r'fireclay|chamotte|andalusite|mullite|dolomite)',
+    re.IGNORECASE
+)
+
+_CH25_MICA_TALC = re.compile(
+    r'(?:טלק|מיקה|אסבסט|mica|talc|asbestos|vermiculite|meerschaum)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_25_candidate(text):
+    return bool(
+        _CH25_SALT.search(text) or _CH25_SULPHUR.search(text)
+        or _CH25_SAND_GRAVEL.search(text) or _CH25_CEMENT.search(text)
+        or _CH25_PLASTER.search(text) or _CH25_LIME.search(text)
+        or _CH25_MARBLE_GRANITE.search(text) or _CH25_CLAY.search(text)
+        or _CH25_MICA_TALC.search(text)
+    )
+
+
+def _decide_chapter_25(product):
+    """Chapter 25: Salt; sulphur; earths and stone; plastering materials, lime, cement.
+
+    Headings:
+        25.01 — Salt; pure NaCl; sea water
+        25.03 — Sulphur (crude/refined)
+        25.05 — Natural sands
+        25.06 — Quartz; quartzite
+        25.15 — Marble, travertine, building stone
+        25.16 — Granite, sandstone, porphyry
+        25.17 — Pebbles, gravel, broken stone
+        25.07 — Kaolin and other kaolinic clays
+        25.08 — Other clays, andalusite, mullite, chamotte
+        25.20 — Gypsum; anhydrite; plasters
+        25.22 — Quicklime, slaked lime, hydraulic lime
+        25.23 — Portland cement and similar
+        25.25 — Mica
+        25.26 — Natural steatite/talc
+    """
+    text = _product_text(product)
+    result = {"chapter": 25, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH25_SALT.search(text):
+        result["candidates"].append({"heading": "25.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Salt / sodium chloride / sea water → 25.01.",
+            "rule_applied": "GIR 1 — heading 25.01"})
+        return result
+    if _CH25_SULPHUR.search(text):
+        result["candidates"].append({"heading": "25.03", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Sulphur (crude or refined) → 25.03.",
+            "rule_applied": "GIR 1 — heading 25.03"})
+        return result
+    if _CH25_CEMENT.search(text):
+        result["candidates"].append({"heading": "25.23", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Portland cement / clinker → 25.23.",
+            "rule_applied": "GIR 1 — heading 25.23"})
+        return result
+    if _CH25_PLASTER.search(text):
+        result["candidates"].append({"heading": "25.20", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Gypsum / plaster → 25.20.",
+            "rule_applied": "GIR 1 — heading 25.20"})
+        return result
+    if _CH25_LIME.search(text):
+        result["candidates"].append({"heading": "25.22", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Quicklime / slaked lime / hydraulic lime → 25.22.",
+            "rule_applied": "GIR 1 — heading 25.22"})
+        return result
+    if _CH25_CLAY.search(text):
+        if re.search(r'(?:קאולין|kaolin)', text, re.IGNORECASE):
+            heading, reasoning = "25.07", "Kaolin / kaolinic clay → 25.07."
+        else:
+            heading, reasoning = "25.08", "Clay / bentonite / fireclay → 25.08."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH25_MARBLE_GRANITE.search(text):
+        if re.search(r'(?:שיש|marble|travertine)', text, re.IGNORECASE):
+            heading, reasoning = "25.15", "Marble / travertine / building stone → 25.15."
+        else:
+            heading, reasoning = "25.16", "Granite / sandstone / porphyry → 25.16."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH25_SAND_GRAVEL.search(text):
+        if re.search(r'(?:חצץ|gravel|pebble|crushed)', text, re.IGNORECASE):
+            heading, reasoning = "25.17", "Pebbles / gravel / crushed stone → 25.17."
+        else:
+            heading, reasoning = "25.05", "Natural sand → 25.05."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH25_MICA_TALC.search(text):
+        if re.search(r'(?:מיקה|mica)', text, re.IGNORECASE):
+            heading, reasoning = "25.25", "Mica → 25.25."
+        else:
+            heading, reasoning = "25.26", "Talc / steatite → 25.26."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "25.30", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Mineral product n.e.s. → 25.30.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type of mineral? (salt, sulphur, sand, cement, plaster, lime, clay, marble, granite)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 26: Ores, slag and ash
+# ============================================================================
+
+_CH26_IRON_ORE = re.compile(
+    r'(?:עפרת?\s*ברזל|iron\s*ore|hematite|magnetite|limonite|siderite)',
+    re.IGNORECASE
+)
+_CH26_COPPER_ORE = re.compile(
+    r'(?:עפרת?\s*נחושת|copper\s*ore|chalcopyrite|malachite\s*ore)',
+    re.IGNORECASE
+)
+_CH26_ALUMINIUM_ORE = re.compile(
+    r'(?:בוקסיט|עפרת?\s*אלומיניום|bauxite|aluminium\s*ore|aluminum\s*ore)',
+    re.IGNORECASE
+)
+_CH26_SLAG_ASH = re.compile(
+    r'(?:סיגים|אפר|שלאק|slag|ash|dross|scale|skimming|fly\s*ash|'
+    r'bottom\s*ash|clinker\s*ash)',
+    re.IGNORECASE
+)
+_CH26_OTHER_ORE = re.compile(
+    r'(?:עפרה|עפרת|ore|concentrate|manganese\s*ore|chromium\s*ore|'
+    r'tungsten\s*ore|nickel\s*ore|cobalt\s*ore|tin\s*ore|zinc\s*ore|'
+    r'lead\s*ore|titanium\s*ore|zirconium\s*ore|uranium\s*ore|'
+    r'molybdenum|precious\s*metal\s*ore|gold\s*ore|silver\s*ore)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_26_candidate(text):
+    return bool(
+        _CH26_IRON_ORE.search(text) or _CH26_COPPER_ORE.search(text)
+        or _CH26_ALUMINIUM_ORE.search(text) or _CH26_SLAG_ASH.search(text)
+        or _CH26_OTHER_ORE.search(text)
+    )
+
+
+def _decide_chapter_26(product):
+    """Chapter 26: Ores, slag and ash.
+
+    Headings:
+        26.01 — Iron ores and concentrates
+        26.03 — Copper ores and concentrates
+        26.06 — Aluminium ores (bauxite)
+        26.19-26.21 — Slag, ash, residues containing metals
+        26.02-26.17 — Other metal ores and concentrates
+    """
+    text = _product_text(product)
+    result = {"chapter": 26, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH26_IRON_ORE.search(text):
+        result["candidates"].append({"heading": "26.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Iron ore / hematite / magnetite → 26.01.",
+            "rule_applied": "GIR 1 — heading 26.01"})
+        return result
+    if _CH26_COPPER_ORE.search(text):
+        result["candidates"].append({"heading": "26.03", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Copper ore / concentrate → 26.03.",
+            "rule_applied": "GIR 1 — heading 26.03"})
+        return result
+    if _CH26_ALUMINIUM_ORE.search(text):
+        result["candidates"].append({"heading": "26.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Bauxite / aluminium ore → 26.06.",
+            "rule_applied": "GIR 1 — heading 26.06"})
+        return result
+    if _CH26_SLAG_ASH.search(text):
+        result["candidates"].append({"heading": "26.21", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Slag / ash / dross / residues → 26.21.",
+            "rule_applied": "GIR 1 — heading 26.21"})
+        return result
+    if _CH26_OTHER_ORE.search(text):
+        result["candidates"].append({"heading": "26.17", "subheading_hint": None,
+            "confidence": 0.75, "reasoning": "Other metal ore / concentrate → 26.17 (other ores n.e.s.).",
+            "rule_applied": "GIR 1 — heading 26.17"})
+        result["questions_needed"].append("Which metal ore? (manganese, chromium, nickel, zinc, lead, tin, etc.)")
+        return result
+
+    result["candidates"].append({"heading": "26.21", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Ore/slag/ash type unclear → 26.21.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What type of ore or residue? (iron, copper, bauxite, slag, ash)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 27: Mineral fuels, mineral oils, bituminous substances; mineral waxes
+# ============================================================================
+
+_CH27_COAL = re.compile(
+    r'(?:פחם\s*(?:אבן|ביטומני|חום|אנתרציט|קוק)|'
+    r'coal|anthracite|bituminous\s*coal|lignite|brown\s*coal|coke|'
+    r'briquette\s*(?:of\s*)?coal|peat)',
+    re.IGNORECASE
+)
+_CH27_CRUDE_OIL = re.compile(
+    r'(?:נפט\s*גולמי|שמן\s*גולמי|crude\s*(?:oil|petroleum)|'
+    r'bituminous\s*oil\s*(?:crude|natural))',
+    re.IGNORECASE
+)
+_CH27_PETROLEUM = re.compile(
+    r'(?:בנזין|סולר|דלק|נפט|קרוסין|מזוט|ביטומן|אספלט|'
+    r'gasoline|petrol|diesel|kerosene|jet\s*fuel|fuel\s*oil|'
+    r'heavy\s*fuel|naphtha|bitumen|asphalt|petroleum\s*(?:jelly|wax)|'
+    r'vaseline|paraffin\s*(?:wax|oil)|lubricating\s*oil|white\s*oil)',
+    re.IGNORECASE
+)
+_CH27_GAS = re.compile(
+    r'(?:גז\s*(?:טבעי|נוזלי|LPG|LNG)|'
+    r'natural\s*gas|LPG|LNG|liquefied\s*(?:petroleum|natural)\s*gas|'
+    r'propane|butane|methane)',
+    re.IGNORECASE
+)
+_CH27_TAR = re.compile(
+    r'(?:זפת|tar|pitch|creosote|coal\s*tar)',
+    re.IGNORECASE
+)
+_CH27_ELECTRICITY = re.compile(
+    r'(?:חשמל|electrical\s*energy|electricity)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_27_candidate(text):
+    return bool(
+        _CH27_COAL.search(text) or _CH27_CRUDE_OIL.search(text)
+        or _CH27_PETROLEUM.search(text) or _CH27_GAS.search(text)
+        or _CH27_TAR.search(text) or _CH27_ELECTRICITY.search(text)
+    )
+
+
+def _decide_chapter_27(product):
+    """Chapter 27: Mineral fuels, oils, waxes, bituminous substances.
+
+    Headings:
+        27.01 — Coal; briquettes of coal
+        27.02 — Lignite
+        27.04 — Coke and semi-coke of coal/lignite/peat
+        27.09 — Petroleum oils, crude
+        27.10 — Petroleum oils (not crude); preparations ≥70% petroleum
+        27.11 — Petroleum gases (LPG, LNG, natural gas, propane, butane)
+        27.12 — Petroleum jelly, paraffin wax, mineral wax
+        27.13 — Petroleum coke, petroleum bitumen
+        27.15 — Bituminous mixtures (asphalt)
+        27.16 — Electrical energy
+    """
+    text = _product_text(product)
+    result = {"chapter": 27, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH27_CRUDE_OIL.search(text):
+        result["candidates"].append({"heading": "27.09", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Crude petroleum oil → 27.09.",
+            "rule_applied": "GIR 1 — heading 27.09"})
+        return result
+    if _CH27_GAS.search(text):
+        result["candidates"].append({"heading": "27.11", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Petroleum/natural gas (LPG/LNG/propane/butane) → 27.11.",
+            "rule_applied": "GIR 1 — heading 27.11"})
+        return result
+    if _CH27_COAL.search(text):
+        if re.search(r'(?:קוק|coke)', text, re.IGNORECASE):
+            heading, reasoning = "27.04", "Coke / semi-coke → 27.04."
+        elif re.search(r'(?:לגניט|lignite|brown\s*coal)', text, re.IGNORECASE):
+            heading, reasoning = "27.02", "Lignite / brown coal → 27.02."
+        else:
+            heading, reasoning = "27.01", "Coal / anthracite / bituminous coal → 27.01."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH27_ELECTRICITY.search(text):
+        result["candidates"].append({"heading": "27.16", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Electrical energy → 27.16.",
+            "rule_applied": "GIR 1 — heading 27.16"})
+        return result
+    if _CH27_TAR.search(text):
+        result["candidates"].append({"heading": "27.06", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Tar / pitch / creosote → 27.06.",
+            "rule_applied": "GIR 1 — heading 27.06"})
+        return result
+    if _CH27_PETROLEUM.search(text):
+        if re.search(r'(?:ביטומן|אספלט|bitumen|asphalt)', text, re.IGNORECASE):
+            heading, reasoning = "27.15", "Bitumen / asphalt → 27.15."
+        elif re.search(r'(?:וזלין|פרפין|petroleum\s*jelly|paraffin\s*wax|vaseline)', text, re.IGNORECASE):
+            heading, reasoning = "27.12", "Petroleum jelly / paraffin wax → 27.12."
+        else:
+            heading, reasoning = "27.10", "Petroleum products (gasoline/diesel/kerosene/fuel oil) → 27.10."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "27.10", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Mineral fuel type unclear → 27.10.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type of mineral fuel? (coal, crude oil, gasoline/diesel, LPG/gas, bitumen, wax)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 28: Inorganic chemicals; compounds of precious/rare-earth metals
+# ============================================================================
+
+_CH28_ACID = re.compile(
+    r'(?:חומצה\s*(?:גפרתנית|מלחית|חנקתית|זרחנית|פלואורית|בורית)|'
+    r'(?:hydrochloric|sulphuric|sulfuric|nitric|phosphoric|hydrofluoric|'
+    r'boric|hydrobromic|hydrogen\s*peroxide)\s*acid|H2SO4|HCl|HNO3|H3PO4|H2O2)',
+    re.IGNORECASE
+)
+_CH28_BASE = re.compile(
+    r'(?:נתרן\s*הידרוקסיד|אשלגן\s*הידרוקסיד|'
+    r'sodium\s*hydroxide|potassium\s*hydroxide|caustic\s*(?:soda|potash)|'
+    r'NaOH|KOH|calcium\s*hydroxide|ammonia|ammonium\s*hydroxide)',
+    re.IGNORECASE
+)
+_CH28_OXIDE = re.compile(
+    r'(?:תחמוצת|אוקסיד|oxide|zinc\s*oxide|titanium\s*dioxide|'
+    r'aluminium\s*oxide|aluminum\s*oxide|silicon\s*dioxide|'
+    r'iron\s*oxide|TiO2|ZnO|Al2O3|SiO2)',
+    re.IGNORECASE
+)
+_CH28_HALOGEN = re.compile(
+    r'(?:כלור|ברום|יוד|פלואור|chlorine|bromine|iodine|fluorine)',
+    re.IGNORECASE
+)
+_CH28_SALT_INORGANIC = re.compile(
+    r'(?:סודיום\s*(?:כלוריד|קרבונט|ביקרבונט|סולפט|ניטרט|פוספט)|'
+    r'sodium\s*(?:carbonate|bicarbonate|sulphate|sulfate|nitrate|phosphate)|'
+    r'potassium\s*(?:chloride|carbonate|nitrate|permanganate)|'
+    r'calcium\s*(?:carbonate|chloride|phosphate|sulphate|sulfate)|'
+    r'barium\s*(?:sulphate|sulfate)|magnesium\s*(?:oxide|sulphate|sulfate|chloride))',
+    re.IGNORECASE
+)
+_CH28_RARE_EARTH = re.compile(
+    r'(?:אדמות\s*נדירות|rare\s*earth|lanthanide|cerium|lanthanum|'
+    r'neodymium|yttrium|scandium)',
+    re.IGNORECASE
+)
+_CH28_GENERAL = re.compile(
+    r'(?:כימיקל\s*(?:אי.?אורגני|אנאורגני)|inorganic\s*chemical|'
+    r'chemical\s*(?:compound|reagent|element)|'
+    r'carbon\s*(?:black|dioxide)|CO2|activated\s*carbon|silicon)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_28_candidate(text):
+    return bool(
+        _CH28_ACID.search(text) or _CH28_BASE.search(text)
+        or _CH28_OXIDE.search(text) or _CH28_HALOGEN.search(text)
+        or _CH28_SALT_INORGANIC.search(text) or _CH28_RARE_EARTH.search(text)
+        or _CH28_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_28(product):
+    """Chapter 28: Inorganic chemicals.
+
+    Headings:
+        28.01 — Fluorine, chlorine, bromine, iodine
+        28.06-28.11 — Inorganic acids (HCl, H2SO4, HNO3, H3PO4, etc.)
+        28.12-28.15 — Halides, sulphides
+        28.16-28.21 — Hydroxides, oxides (NaOH, KOH, ZnO, TiO2, Al2O3)
+        28.33-28.42 — Sulphates, nitrates, phosphates, carbonates, cyanides
+        28.43-28.46 — Compounds of precious/rare-earth metals; isotopes
+        28.47-28.53 — Other inorganic compounds, H2O2, carbides, etc.
+    """
+    text = _product_text(product)
+    result = {"chapter": 28, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH28_HALOGEN.search(text):
+        result["candidates"].append({"heading": "28.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Halogen element (F/Cl/Br/I) → 28.01.",
+            "rule_applied": "GIR 1 — heading 28.01"})
+        return result
+    if _CH28_ACID.search(text):
+        if re.search(r'(?:H2O2|hydrogen\s*peroxide)', text, re.IGNORECASE):
+            heading, reasoning = "28.47", "Hydrogen peroxide → 28.47."
+        else:
+            heading, reasoning = "28.06", "Inorganic acid → 28.06 (or appropriate acid heading)."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH28_BASE.search(text):
+        result["candidates"].append({"heading": "28.15", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Hydroxide / caustic (NaOH/KOH/ammonia) → 28.15.",
+            "rule_applied": "GIR 1 — heading 28.15"})
+        return result
+    if _CH28_OXIDE.search(text):
+        result["candidates"].append({"heading": "28.18", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Metal oxide (ZnO/TiO2/Al2O3) → 28.18.",
+            "rule_applied": "GIR 1 — heading 28.18"})
+        return result
+    if _CH28_SALT_INORGANIC.search(text):
+        result["candidates"].append({"heading": "28.36", "subheading_hint": None,
+            "confidence": 0.75, "reasoning": "Inorganic salt (carbonate/sulphate/nitrate/phosphate) → 28.36.",
+            "rule_applied": "GIR 1 — heading 28.36"})
+        result["questions_needed"].append("Which salt? (carbonate, sulphate, nitrate, phosphate, chloride)")
+        return result
+    if _CH28_RARE_EARTH.search(text):
+        result["candidates"].append({"heading": "28.46", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Rare earth compounds → 28.46.",
+            "rule_applied": "GIR 1 — heading 28.46"})
+        return result
+    if _CH28_GENERAL.search(text):
+        result["candidates"].append({"heading": "28.53", "subheading_hint": None,
+            "confidence": 0.65, "reasoning": "Inorganic chemical compound n.e.s. → 28.53.",
+            "rule_applied": "GIR 1 — heading 28.53"})
+        return result
+
+    result["candidates"].append({"heading": "28.53", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Inorganic chemical, type unclear → 28.53.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type of inorganic chemical? (acid, base/alkali, oxide, halogen, salt, rare earth)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 29: Organic chemicals
+# ============================================================================
+
+_CH29_HYDROCARBON = re.compile(
+    r'(?:פחמימן|hydrocarbon|benzene|toluene|xylene|styrene|'
+    r'ethylene|propylene|butadiene|cyclohexane|naphthalene|'
+    r'acetylene|methane)',
+    re.IGNORECASE
+)
+_CH29_ALCOHOL = re.compile(
+    r'(?:אלכוהול\s*(?:מתילי|אתילי|איזופרופילי)|'
+    r'methanol|ethanol|isopropanol|propanol|butanol|'
+    r'glycerol|glycerin|sorbitol|mannitol|ethylene\s*glycol|'
+    r'propylene\s*glycol)',
+    re.IGNORECASE
+)
+_CH29_ACID_ORGANIC = re.compile(
+    r'(?:חומצה\s*(?:אצטית|ציטרית|לקטית|אוקסלית|טרטרית)|'
+    r'acetic\s*acid|citric\s*acid|lactic\s*acid|oxalic\s*acid|'
+    r'tartaric\s*acid|formic\s*acid|propionic\s*acid|'
+    r'stearic\s*acid|oleic\s*acid|benzoic\s*acid|'
+    r'salicylic\s*acid|ascorbic\s*acid)',
+    re.IGNORECASE
+)
+_CH29_ESTER = re.compile(
+    r'(?:אסתר|ester|acetate|phthalate|acrylate|methacrylate)',
+    re.IGNORECASE
+)
+_CH29_AMINE = re.compile(
+    r'(?:אמין|amine|aniline|melamine|hexamethylene)',
+    re.IGNORECASE
+)
+_CH29_KETONE_ALDEHYDE = re.compile(
+    r'(?:קטון|אלדהיד|acetone|ketone|aldehyde|formaldehyde|'
+    r'acetaldehyde|cyclohexanone|MEK|methyl\s*ethyl\s*ketone)',
+    re.IGNORECASE
+)
+_CH29_VITAMIN = re.compile(
+    r'(?:ויטמין|vitamin\s*[A-K]|provitamin|ascorbic)',
+    re.IGNORECASE
+)
+_CH29_HORMONE = re.compile(
+    r'(?:הורמון|hormone|steroid|cortisone|insulin|testosterone|'
+    r'estrogen|progesterone)',
+    re.IGNORECASE
+)
+_CH29_SUGAR_CHEM = re.compile(
+    r'(?:סוכר\s*(?:כימי|טהור)|chemically\s*pure\s*sugar|'
+    r'sucrose\s*(?:pure|analytical)|fructose\s*(?:pure|analytical))',
+    re.IGNORECASE
+)
+_CH29_GENERAL = re.compile(
+    r'(?:כימיקל\s*אורגני|organic\s*chemical|organic\s*compound)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_29_candidate(text):
+    return bool(
+        _CH29_HYDROCARBON.search(text) or _CH29_ALCOHOL.search(text)
+        or _CH29_ACID_ORGANIC.search(text) or _CH29_ESTER.search(text)
+        or _CH29_AMINE.search(text) or _CH29_KETONE_ALDEHYDE.search(text)
+        or _CH29_VITAMIN.search(text) or _CH29_HORMONE.search(text)
+        or _CH29_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_29(product):
+    """Chapter 29: Organic chemicals.
+
+    Headings:
+        29.01-29.04 — Hydrocarbons (acyclic, cyclic, halogenated, sulfonated)
+        29.05 — Acyclic alcohols (methanol, ethanol, glycerol)
+        29.06 — Cyclic alcohols (menthol, cyclohexanol)
+        29.12-29.14 — Aldehydes, ketones, quinones
+        29.15-29.18 — Carboxylic acids and derivatives
+        29.21-29.29 — Nitrogen-function compounds (amines, amides)
+        29.36 — Provitamins and vitamins
+        29.37 — Hormones and steroids
+        29.40 — Chemically pure sugars (other than sucrose/etc. of Ch.17)
+    """
+    text = _product_text(product)
+    result = {"chapter": 29, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH29_VITAMIN.search(text):
+        result["candidates"].append({"heading": "29.36", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Vitamin / provitamin → 29.36.",
+            "rule_applied": "GIR 1 — heading 29.36"})
+        return result
+    if _CH29_HORMONE.search(text):
+        result["candidates"].append({"heading": "29.37", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Hormone / steroid → 29.37.",
+            "rule_applied": "GIR 1 — heading 29.37"})
+        return result
+    if _CH29_HYDROCARBON.search(text):
+        result["candidates"].append({"heading": "29.02", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Hydrocarbon (benzene/toluene/ethylene/etc.) → 29.02.",
+            "rule_applied": "GIR 1 — heading 29.02"})
+        return result
+    if _CH29_ALCOHOL.search(text):
+        result["candidates"].append({"heading": "29.05", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Alcohol (methanol/ethanol/glycerol/glycol) → 29.05.",
+            "rule_applied": "GIR 1 — heading 29.05"})
+        return result
+    if _CH29_KETONE_ALDEHYDE.search(text):
+        if re.search(r'(?:אלדהיד|aldehyde|formaldehyde)', text, re.IGNORECASE):
+            heading, reasoning = "29.12", "Aldehyde → 29.12."
+        else:
+            heading, reasoning = "29.14", "Ketone (acetone/MEK) → 29.14."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH29_ACID_ORGANIC.search(text):
+        result["candidates"].append({"heading": "29.15", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Organic / carboxylic acid → 29.15.",
+            "rule_applied": "GIR 1 — heading 29.15"})
+        return result
+    if _CH29_ESTER.search(text):
+        result["candidates"].append({"heading": "29.15", "subheading_hint": None,
+            "confidence": 0.75, "reasoning": "Ester / acetate / acrylate → 29.15.",
+            "rule_applied": "GIR 1 — heading 29.15"})
+        return result
+    if _CH29_AMINE.search(text):
+        result["candidates"].append({"heading": "29.21", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Amine / aniline / melamine → 29.21.",
+            "rule_applied": "GIR 1 — heading 29.21"})
+        return result
+    if _CH29_SUGAR_CHEM.search(text):
+        result["candidates"].append({"heading": "29.40", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Chemically pure sugar → 29.40.",
+            "rule_applied": "GIR 1 — heading 29.40"})
+        return result
+
+    result["candidates"].append({"heading": "29.42", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Organic chemical compound n.e.s. → 29.42.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type of organic chemical? (hydrocarbon, alcohol, acid, ester, amine, vitamin, hormone)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 30: Pharmaceutical products
+# ============================================================================
+
+_CH30_TABLET_CAPSULE = re.compile(
+    r'(?:טבליה|טבליות|כמוסה|כמוסות|כדור|כדורים|'
+    r'tablet|capsule|pill|caplet|lozenge|dragee)',
+    re.IGNORECASE
+)
+_CH30_INJECTION = re.compile(
+    r'(?:זריקה|אמפולה|עירוי|injection|ampoule|ampule|'
+    r'syringe|infusion|injectable|IV\s*bag|vial)',
+    re.IGNORECASE
+)
+_CH30_CREAM_OINTMENT = re.compile(
+    r'(?:משחה\s*רפואית|ג\'ל\s*רפואי|קרם\s*רפואי|'
+    r'ointment|pharmaceutical\s*(?:cream|gel)|topical\s*(?:cream|gel)|'
+    r'dermal\s*(?:cream|patch)|transdermal\s*patch)',
+    re.IGNORECASE
+)
+_CH30_SYRUP = re.compile(
+    r'(?:סירופ\s*(?:רפואי|שיעול)|'
+    r'(?:cough|pharmaceutical|medicinal)\s*syrup|'
+    r'oral\s*(?:solution|suspension|liquid))',
+    re.IGNORECASE
+)
+_CH30_VACCINE = re.compile(
+    r'(?:חיסון|חיסונים|vaccine|immunological|serum|antiserum|'
+    r'toxoid|toxin|antitoxin)',
+    re.IGNORECASE
+)
+_CH30_BANDAGE_MEDICAL = re.compile(
+    r'(?:תחבושת\s*(?:רפואית|ספוגית)|פלסטר\s*רפואי|גבס\s*רפואי|'
+    r'(?:adhesive|surgical)\s*bandage|(?:medical|surgical)\s*dressing|'
+    r'first\s*aid\s*(?:bandage|kit)|sticking\s*plaster|catgut|'
+    r'suture|blood\s*grouping\s*reagent)',
+    re.IGNORECASE
+)
+_CH30_VETERINARY = re.compile(
+    r'(?:וטרינר|לבע"ח|veterinary|for\s*(?:animal|livestock)\s*use)',
+    re.IGNORECASE
+)
+_CH30_PHARMA_GENERAL = re.compile(
+    r'(?:תרופה|תרופות|רפואי|רפואה|'
+    r'pharmaceutical|medicament|medication|medicine|drug\s*(?:product)?|'
+    r'dosage\s*form|API\s*(?:active\s*pharmaceutical))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_30_candidate(text):
+    return bool(
+        _CH30_TABLET_CAPSULE.search(text) or _CH30_INJECTION.search(text)
+        or _CH30_VACCINE.search(text) or _CH30_PHARMA_GENERAL.search(text)
+        or _CH30_BANDAGE_MEDICAL.search(text) or _CH30_CREAM_OINTMENT.search(text)
+        or _CH30_SYRUP.search(text)
+    )
+
+
+def _decide_chapter_30(product):
+    """Chapter 30: Pharmaceutical products.
+
+    Headings:
+        30.01 — Glands/organs; extracts thereof; heparin
+        30.02 — Human/animal blood; antisera; vaccines; toxins; cultures
+        30.03 — Medicaments (not in dosage form or packed for retail)
+        30.04 — Medicaments (in dosage form or packed for retail)
+        30.05 — Wadding, gauze, bandages, surgical dressings
+        30.06 — Pharmaceutical goods (sutures, blood reagents, first aid, etc.)
+    """
+    text = _product_text(product)
+    result = {"chapter": 30, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH30_VACCINE.search(text):
+        result["candidates"].append({"heading": "30.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Vaccine / serum / immunological product → 30.02.",
+            "rule_applied": "GIR 1 — heading 30.02"})
+        return result
+    if _CH30_BANDAGE_MEDICAL.search(text):
+        result["candidates"].append({"heading": "30.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Surgical bandage / dressing / plaster → 30.05.",
+            "rule_applied": "GIR 1 — heading 30.05"})
+        return result
+    # Dosage forms → 30.04
+    if (_CH30_TABLET_CAPSULE.search(text) or _CH30_INJECTION.search(text)
+            or _CH30_CREAM_OINTMENT.search(text) or _CH30_SYRUP.search(text)):
+        conf = 0.85
+        form_desc = "dosage form"
+        if _CH30_TABLET_CAPSULE.search(text):
+            form_desc = "tablets/capsules"
+        elif _CH30_INJECTION.search(text):
+            form_desc = "injection/ampoule"
+        elif _CH30_SYRUP.search(text):
+            form_desc = "oral syrup/solution"
+        elif _CH30_CREAM_OINTMENT.search(text):
+            form_desc = "ointment/cream/patch"
+        reasoning = f"Medicament in {form_desc} → 30.04."
+        if _CH30_VETERINARY.search(text):
+            reasoning += " (veterinary)"
+        result["candidates"].append({"heading": "30.04", "subheading_hint": None,
+            "confidence": conf, "reasoning": reasoning,
+            "rule_applied": "GIR 1 — heading 30.04"})
+        return result
+
+    if _CH30_PHARMA_GENERAL.search(text):
+        result["candidates"].append({"heading": "30.04", "subheading_hint": None,
+            "confidence": 0.70, "reasoning": "Pharmaceutical product, form unclear → 30.04 (most common).",
+            "rule_applied": "GIR 1 — heading 30.04"})
+        result["questions_needed"].append(
+            "What form? (tablet/capsule, injection, syrup, cream/ointment, vaccine, bandage)")
+        return result
+
+    result["candidates"].append({"heading": "30.04", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Pharmaceutical product → 30.04.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What pharmaceutical form and purpose?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 31: Fertilizers
+# ============================================================================
+
+_CH31_NITROGEN = re.compile(
+    r'(?:דשן\s*(?:חנקני|אוריאה)|'
+    r'urea|ammonium\s*(?:nitrate|sulphate|sulfate)|'
+    r'nitrogenous\s*fertilizer|nitrogen\s*fertilizer|'
+    r'sodium\s*nitrate\s*(?:fertilizer|natural)|'
+    r'calcium\s*(?:ammonium\s*nitrate|cyanamide))',
+    re.IGNORECASE
+)
+_CH31_PHOSPHATE = re.compile(
+    r'(?:דשן\s*(?:זרחני|סופרפוספט)|'
+    r'superphosphate|phosphatic\s*fertilizer|phosphate\s*fertilizer|'
+    r'Thomas\s*slag|basic\s*slag|dicalcium\s*phosphate|'
+    r'ground\s*phosphate)',
+    re.IGNORECASE
+)
+_CH31_POTASSIC = re.compile(
+    r'(?:דשן\s*(?:אשלגני|פוטסיום)|'
+    r'potassic\s*fertilizer|potash\s*fertilizer|'
+    r'potassium\s*chloride\s*fertilizer|muriate\s*of\s*potash|'
+    r'potassium\s*sulphate\s*fertilizer)',
+    re.IGNORECASE
+)
+_CH31_NPK = re.compile(
+    r'(?:NPK|דשן\s*(?:מורכב|משולב)|compound\s*fertilizer|'
+    r'complex\s*fertilizer|mixed\s*fertilizer|'
+    r'(?:nitrogen|phosph|potass).*(?:nitrogen|phosph|potass))',
+    re.IGNORECASE
+)
+_CH31_GUANO = re.compile(
+    r'(?:גואנו|guano|animal\s*fertilizer|manure)',
+    re.IGNORECASE
+)
+_CH31_GENERAL = re.compile(
+    r'(?:דשן|fertilizer|fertiliser|plant\s*(?:food|nutrient))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_31_candidate(text):
+    return bool(
+        _CH31_NITROGEN.search(text) or _CH31_PHOSPHATE.search(text)
+        or _CH31_POTASSIC.search(text) or _CH31_NPK.search(text)
+        or _CH31_GUANO.search(text) or _CH31_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_31(product):
+    """Chapter 31: Fertilizers.
+
+    Headings:
+        31.01 — Animal/vegetable fertilizers (guano, manure)
+        31.02 — Mineral or chemical, nitrogenous (urea, ammonium nitrate)
+        31.03 — Mineral or chemical, phosphatic (superphosphate)
+        31.04 — Mineral or chemical, potassic (muriate of potash)
+        31.05 — Compound/complex fertilizers; other fertilizers; NPK
+    """
+    text = _product_text(product)
+    result = {"chapter": 31, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH31_NPK.search(text):
+        result["candidates"].append({"heading": "31.05", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Compound/NPK fertilizer → 31.05.",
+            "rule_applied": "GIR 1 — heading 31.05"})
+        return result
+    if _CH31_NITROGEN.search(text):
+        result["candidates"].append({"heading": "31.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Nitrogenous fertilizer (urea/ammonium nitrate) → 31.02.",
+            "rule_applied": "GIR 1 — heading 31.02"})
+        return result
+    if _CH31_PHOSPHATE.search(text):
+        result["candidates"].append({"heading": "31.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Phosphatic fertilizer (superphosphate) → 31.03.",
+            "rule_applied": "GIR 1 — heading 31.03"})
+        return result
+    if _CH31_POTASSIC.search(text):
+        result["candidates"].append({"heading": "31.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Potassic fertilizer (muriate of potash) → 31.04.",
+            "rule_applied": "GIR 1 — heading 31.04"})
+        return result
+    if _CH31_GUANO.search(text):
+        result["candidates"].append({"heading": "31.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Animal/vegetable fertilizer (guano/manure) → 31.01.",
+            "rule_applied": "GIR 1 — heading 31.01"})
+        return result
+
+    result["candidates"].append({"heading": "31.05", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Fertilizer type unclear → 31.05.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type of fertilizer? (nitrogenous/urea, phosphatic, potassic, NPK compound, organic/guano)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 32: Tanning/dyeing extracts; dyes; pigments; paints; varnishes; inks
+# ============================================================================
+
+_CH32_TANNING = re.compile(
+    r'(?:עפץ|חומר\s*עיבוד\s*עור|tanning\s*(?:extract|agent|substance)|'
+    r'quebracho|wattle|tannin|synthetic\s*tanning)',
+    re.IGNORECASE
+)
+_CH32_DYE = re.compile(
+    r'(?:צבע\s*(?:סינתטי|אורגני|ריאקטיבי)|'
+    r'(?:synthetic|organic|reactive|acid|disperse|vat|direct)\s*dye|'
+    r'dyestuff|colorant|pigment\s*(?:dye|organic)|'
+    r'fluorescent\s*(?:brightener|whitener)|optical\s*brightener)',
+    re.IGNORECASE
+)
+_CH32_PIGMENT = re.compile(
+    r'(?:פיגמנט|pigment|colour\s*(?:lake|preparation)|'
+    r'titanium\s*dioxide\s*pigment|iron\s*oxide\s*pigment|'
+    r'carbon\s*black\s*pigment|zinc\s*(?:oxide|chromate)\s*pigment)',
+    re.IGNORECASE
+)
+_CH32_PAINT = re.compile(
+    r'(?:צבע\s*(?:קיר|שמן|אקריל|לטקס|תרסיס|ים)|'
+    r'paint|enamel|lacquer|distemper|varnish|'
+    r'(?:acrylic|latex|oil|water)\s*(?:based\s*)?paint|'
+    r'anti.?fouling|anti.?corrosive\s*paint|primer|undercoat|putty|'
+    r'wood\s*(?:stain|filler))',
+    re.IGNORECASE
+)
+_CH32_INK = re.compile(
+    r'(?:דיו|ink|printing\s*ink|writing\s*ink|stamp\s*pad\s*ink)',
+    re.IGNORECASE
+)
+_CH32_ARTISTS = re.compile(
+    r'(?:צבע\s*(?:אמנים|שמן\s*אמנים)|'
+    r'artist.?s?\s*(?:colour|color|paint)|water.?colour|oil\s*(?:colour|color)|'
+    r'poster\s*(?:colour|paint)|tempera)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_32_candidate(text):
+    return bool(
+        _CH32_TANNING.search(text) or _CH32_DYE.search(text)
+        or _CH32_PIGMENT.search(text) or _CH32_PAINT.search(text)
+        or _CH32_INK.search(text) or _CH32_ARTISTS.search(text)
+    )
+
+
+def _decide_chapter_32(product):
+    """Chapter 32: Tanning/dyeing; dyes; pigments; paints; varnishes; inks; putty.
+
+    Headings:
+        32.01-32.02 — Tanning extracts; tanning substances
+        32.04 — Synthetic organic colouring matter (dyes)
+        32.06 — Colour preparations; pigments; colour lakes
+        32.08-32.10 — Paints, varnishes, enamels (dissolved in non-aqueous / aqueous)
+        32.12 — Pigments in non-aqueous media (stamping foils, dyes for retail)
+        32.13 — Artists' colours
+        32.15 — Printing ink, writing ink, drawing ink
+    """
+    text = _product_text(product)
+    result = {"chapter": 32, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH32_TANNING.search(text):
+        result["candidates"].append({"heading": "32.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Tanning extract / tanning agent → 32.01.",
+            "rule_applied": "GIR 1 — heading 32.01"})
+        return result
+    if _CH32_INK.search(text):
+        result["candidates"].append({"heading": "32.15", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Printing / writing / drawing ink → 32.15.",
+            "rule_applied": "GIR 1 — heading 32.15"})
+        return result
+    if _CH32_ARTISTS.search(text):
+        result["candidates"].append({"heading": "32.13", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Artists' colours / watercolour / tempera → 32.13.",
+            "rule_applied": "GIR 1 — heading 32.13"})
+        return result
+    if _CH32_DYE.search(text):
+        result["candidates"].append({"heading": "32.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Synthetic dye / dyestuff / colorant → 32.04.",
+            "rule_applied": "GIR 1 — heading 32.04"})
+        return result
+    if _CH32_PIGMENT.search(text):
+        result["candidates"].append({"heading": "32.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Pigment / colour preparation / colour lake → 32.06.",
+            "rule_applied": "GIR 1 — heading 32.06"})
+        return result
+    if _CH32_PAINT.search(text):
+        result["candidates"].append({"heading": "32.09", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Paint / varnish / lacquer / enamel / primer → 32.09.",
+            "rule_applied": "GIR 1 — heading 32.09"})
+        return result
+
+    result["candidates"].append({"heading": "32.12", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Tanning/dyeing/paint product n.e.s. → 32.12.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type of product? (tanning agent, dye, pigment, paint/varnish, ink, artists' colours)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 33: Essential oils, resinoids; perfumery, cosmetic, toiletry preparations
+# ============================================================================
+
+_CH33_ESSENTIAL_OIL = re.compile(
+    r'(?:שמן\s*(?:אתרי|אתרים)|'
+    r'essential\s*oil|resinoid|oleoresin|'
+    r'(?:lavender|peppermint|eucalyptus|tea\s*tree|rose|lemon)\s*oil)',
+    re.IGNORECASE
+)
+_CH33_PERFUME = re.compile(
+    r'(?:בושם|בשמים|מי\s*(?:בושם|טואלט)|'
+    r'perfume|parfum|eau\s*de\s*(?:toilette|parfum|cologne)|'
+    r'cologne|fragrance|aftershave)',
+    re.IGNORECASE
+)
+_CH33_CREAM_LOTION = re.compile(
+    r'(?:קרם\s*(?:פנים|ידיים|גוף|עור|לחות|שיזוף|הגנה)|'
+    r'(?:skin|face|hand|body|moisturizing|sunscreen|sun\s*protection)\s*cream|'
+    r'lotion|body\s*(?:lotion|milk|butter)|sunblock|SPF)',
+    re.IGNORECASE
+)
+_CH33_SHAMPOO = re.compile(
+    r'(?:שמפו|מרכך|conditioner|shampoo|hair\s*(?:conditioner|rinse|mask|treatment|serum))',
+    re.IGNORECASE
+)
+_CH33_TOOTHPASTE = re.compile(
+    r'(?:משחת?\s*שיניים|שטיפת?\s*פה|'
+    r'toothpaste|dentifrice|mouthwash|mouth\s*rinse|dental\s*(?:floss|preparation))',
+    re.IGNORECASE
+)
+_CH33_DEODORANT = re.compile(
+    r'(?:דאודורנט|אנטיפרספירנט|deodorant|antiperspirant)',
+    re.IGNORECASE
+)
+_CH33_MAKEUP = re.compile(
+    r'(?:איפור|שפתון|לק|מסקרה|אייליינר|פודרה|סומק|'
+    r'(?:lip|eye)\s*(?:stick|liner|shadow|pencil|gloss)|'
+    r'mascara|foundation|blush|rouge|powder\s*(?:compact|face)|'
+    r'nail\s*(?:polish|varnish|lacquer)|makeup|cosmetic\s*(?:set|kit))',
+    re.IGNORECASE
+)
+_CH33_SHAVING = re.compile(
+    r'(?:קרם\s*גילוח|סבון\s*גילוח|shaving\s*(?:cream|foam|gel|soap)|'
+    r'pre.?shave|after.?shave\s*(?:balm|lotion))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_33_candidate(text):
+    return bool(
+        _CH33_ESSENTIAL_OIL.search(text) or _CH33_PERFUME.search(text)
+        or _CH33_CREAM_LOTION.search(text) or _CH33_SHAMPOO.search(text)
+        or _CH33_TOOTHPASTE.search(text) or _CH33_DEODORANT.search(text)
+        or _CH33_MAKEUP.search(text) or _CH33_SHAVING.search(text)
+    )
+
+
+def _decide_chapter_33(product):
+    """Chapter 33: Essential oils; perfumery, cosmetic, toiletry preparations.
+
+    Headings:
+        33.01 — Essential oils; resinoids; extracted oleoresins
+        33.02 — Mixtures of odoriferous substances (for food/beverage industry)
+        33.03 — Perfumes and toilet waters
+        33.04 — Beauty/make-up/skin-care preparations; sunscreen; manicure/pedicure
+        33.05 — Hair preparations (shampoo, conditioner, hair spray, dyes)
+        33.06 — Oral/dental hygiene (toothpaste, mouthwash, dental floss)
+        33.07 — Shaving, deodorant, bath, depilatory, room perfuming preparations
+    """
+    text = _product_text(product)
+    result = {"chapter": 33, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH33_ESSENTIAL_OIL.search(text):
+        result["candidates"].append({"heading": "33.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Essential oil / resinoid / oleoresin → 33.01.",
+            "rule_applied": "GIR 1 — heading 33.01"})
+        return result
+    if _CH33_PERFUME.search(text):
+        result["candidates"].append({"heading": "33.03", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Perfume / eau de toilette / cologne → 33.03.",
+            "rule_applied": "GIR 1 — heading 33.03"})
+        return result
+    if _CH33_TOOTHPASTE.search(text):
+        result["candidates"].append({"heading": "33.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Toothpaste / mouthwash / dental prep → 33.06.",
+            "rule_applied": "GIR 1 — heading 33.06"})
+        return result
+    if _CH33_SHAMPOO.search(text):
+        result["candidates"].append({"heading": "33.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Shampoo / hair conditioner / hair treatment → 33.05.",
+            "rule_applied": "GIR 1 — heading 33.05"})
+        return result
+    if _CH33_DEODORANT.search(text) or _CH33_SHAVING.search(text):
+        result["candidates"].append({"heading": "33.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Deodorant / shaving prep / bath prep → 33.07.",
+            "rule_applied": "GIR 1 — heading 33.07"})
+        return result
+    if _CH33_MAKEUP.search(text) or _CH33_CREAM_LOTION.search(text):
+        result["candidates"].append({"heading": "33.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Cosmetic / skin-care / makeup / sunscreen → 33.04.",
+            "rule_applied": "GIR 1 — heading 33.04"})
+        return result
+
+    result["candidates"].append({"heading": "33.04", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Cosmetic/toiletry product n.e.s. → 33.04.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type? (essential oil, perfume, skin cream, shampoo, toothpaste, deodorant, makeup)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 34: Soap, washing preparations, lubricating preparations, waxes, candles
+# ============================================================================
+
+_CH34_SOAP = re.compile(
+    r'(?:סבון|soap\s*(?:bar|liquid|flake)?)',
+    re.IGNORECASE
+)
+_CH34_DETERGENT = re.compile(
+    r'(?:חומר\s*(?:ניקוי|כביסה|שטיפה)|דטרגנט|אבקת\s*כביסה|מרכך\s*כביסה|'
+    r'detergent|washing\s*(?:powder|liquid|agent)|laundry\s*(?:powder|liquid|detergent)|'
+    r'dish\s*(?:soap|liquid|detergent)|fabric\s*(?:softener|conditioner)|'
+    r'surfactant|surface.?active\s*(?:agent|preparation))',
+    re.IGNORECASE
+)
+_CH34_POLISH = re.compile(
+    r'(?:משחת?\s*(?:נעליים|רצפה|רהיטים)|'
+    r'polish|shoe\s*(?:cream|polish)|floor\s*polish|furniture\s*polish|'
+    r'scouring\s*(?:paste|powder|cream))',
+    re.IGNORECASE
+)
+_CH34_WAX = re.compile(
+    r'(?:שעווה\s*(?:מלאכותית|סינתטית)|'
+    r'artificial\s*wax|prepared\s*wax|wax\s*(?:polish|preparation)|'
+    r'modelling\s*(?:paste|clay|wax))',
+    re.IGNORECASE
+)
+_CH34_CANDLE = re.compile(
+    r'(?:נר|נרות|candle|taper|night.?light)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_34_candidate(text):
+    return bool(
+        _CH34_SOAP.search(text) or _CH34_DETERGENT.search(text)
+        or _CH34_POLISH.search(text) or _CH34_WAX.search(text)
+        or _CH34_CANDLE.search(text)
+    )
+
+
+def _decide_chapter_34(product):
+    """Chapter 34: Soap, organic surface-active agents, washing preparations, waxes, candles.
+
+    Headings:
+        34.01 — Soap; organic surface-active products in bars/flakes for soap use
+        34.02 — Organic surface-active agents; washing/cleaning preparations; detergents
+        34.04 — Artificial waxes and prepared waxes
+        34.05 — Polishes, creams (shoe, furniture, floor, car)
+        34.06 — Candles, tapers, and the like
+    """
+    text = _product_text(product)
+    result = {"chapter": 34, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH34_CANDLE.search(text):
+        result["candidates"].append({"heading": "34.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Candle / taper → 34.06.",
+            "rule_applied": "GIR 1 — heading 34.06"})
+        return result
+    if _CH34_DETERGENT.search(text):
+        result["candidates"].append({"heading": "34.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Detergent / washing preparation / surfactant → 34.02.",
+            "rule_applied": "GIR 1 — heading 34.02"})
+        return result
+    if _CH34_POLISH.search(text):
+        result["candidates"].append({"heading": "34.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Polish (shoe/floor/furniture/scouring) → 34.05.",
+            "rule_applied": "GIR 1 — heading 34.05"})
+        return result
+    if _CH34_WAX.search(text):
+        result["candidates"].append({"heading": "34.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Artificial/prepared wax → 34.04.",
+            "rule_applied": "GIR 1 — heading 34.04"})
+        return result
+    if _CH34_SOAP.search(text):
+        result["candidates"].append({"heading": "34.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Soap (bar/liquid/flake) → 34.01.",
+            "rule_applied": "GIR 1 — heading 34.01"})
+        return result
+
+    result["candidates"].append({"heading": "34.02", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Soap/detergent product unclear → 34.02.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What type? (soap bar, detergent, polish, wax, candle)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 35: Albuminoidal substances; modified starches; glues; enzymes
+# ============================================================================
+
+_CH35_CASEIN = re.compile(
+    r'(?:קזאין|אלבומין|casein|caseinates|albumin|gelatin|gelatine|'
+    r'peptone|dextrin|isinglass)',
+    re.IGNORECASE
+)
+_CH35_STARCH_MODIFIED = re.compile(
+    r'(?:עמילן\s*(?:שונה|מותאם)|'
+    r'modified\s*starch|esterified\s*starch|etherified\s*starch|'
+    r'pregelatinised\s*starch)',
+    re.IGNORECASE
+)
+_CH35_GLUE = re.compile(
+    r'(?:דבק|glue|adhesive|prepared\s*glue|animal\s*glue|'
+    r'casein\s*glue|starch\s*(?:glue|paste)|'
+    r'rubber\s*cement|contact\s*(?:adhesive|cement))',
+    re.IGNORECASE
+)
+_CH35_ENZYME = re.compile(
+    r'(?:אנזים|enzyme|rennet|pepsin|lipase|protease|amylase|'
+    r'cellulase|lactase)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_35_candidate(text):
+    return bool(
+        _CH35_CASEIN.search(text) or _CH35_STARCH_MODIFIED.search(text)
+        or _CH35_GLUE.search(text) or _CH35_ENZYME.search(text)
+    )
+
+
+def _decide_chapter_35(product):
+    """Chapter 35: Albuminoidal substances; modified starches; glues; enzymes.
+
+    Headings:
+        35.01 — Casein, caseinates, casein glues; albumins
+        35.02 — Albumins, albuminates; other albumin derivatives
+        35.03 — Gelatin; isinglass; other glues of animal origin
+        35.04 — Peptones; other protein substances; hide powder
+        35.05 — Dextrins; modified starches; starch-based glues
+        35.06 — Prepared glues n.e.s.; adhesives; products for use as glues
+        35.07 — Enzymes; prepared enzymes n.e.s.
+    """
+    text = _product_text(product)
+    result = {"chapter": 35, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH35_ENZYME.search(text):
+        result["candidates"].append({"heading": "35.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Enzyme (rennet/pepsin/lipase/protease) → 35.07.",
+            "rule_applied": "GIR 1 — heading 35.07"})
+        return result
+    if _CH35_GLUE.search(text):
+        result["candidates"].append({"heading": "35.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Prepared glue / adhesive → 35.06.",
+            "rule_applied": "GIR 1 — heading 35.06"})
+        return result
+    if _CH35_STARCH_MODIFIED.search(text):
+        result["candidates"].append({"heading": "35.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Modified starch / dextrin → 35.05.",
+            "rule_applied": "GIR 1 — heading 35.05"})
+        return result
+    if _CH35_CASEIN.search(text):
+        if re.search(r'(?:ג\'לטין|gelatin|gelatine|isinglass)', text, re.IGNORECASE):
+            heading, reasoning = "35.03", "Gelatin / isinglass → 35.03."
+        else:
+            heading, reasoning = "35.01", "Casein / albumin → 35.01."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "35.06", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Albuminoidal/glue/enzyme product n.e.s. → 35.06.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type? (casein/albumin, gelatin, modified starch, glue/adhesive, enzyme)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 36: Explosives; pyrotechnic products; matches; pyrophoric alloys
+# ============================================================================
+
+_CH36_EXPLOSIVE = re.compile(
+    r'(?:חומר\s*נפץ|חומרי\s*נפץ|TNT|דינמיט|'
+    r'explosive|dynamite|TNT|detonator|blasting\s*cap|'
+    r'detonating\s*(?:fuse|cord)|propellant\s*powder|'
+    r'gun\s*powder|smokeless\s*powder)',
+    re.IGNORECASE
+)
+_CH36_FIREWORK = re.compile(
+    r'(?:זיקוקין|זיקוקי\s*דינור|אבוקה|'
+    r'firework|firecracker|pyrotechnic|signal\s*(?:flare|rocket)|'
+    r'distress\s*signal|rain\s*rocket|fog\s*signal)',
+    re.IGNORECASE
+)
+_CH36_MATCH = re.compile(
+    r'(?:גפרור|גפרורים|match|safety\s*match|strike\s*anywhere)',
+    re.IGNORECASE
+)
+_CH36_FERRO_CERIUM = re.compile(
+    r'(?:אבן\s*(?:צור|מצית)|ferro.?cerium|pyrophoric\s*alloy|'
+    r'lighter\s*flint)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_36_candidate(text):
+    return bool(
+        _CH36_EXPLOSIVE.search(text) or _CH36_FIREWORK.search(text)
+        or _CH36_MATCH.search(text) or _CH36_FERRO_CERIUM.search(text)
+    )
+
+
+def _decide_chapter_36(product):
+    """Chapter 36: Explosives; pyrotechnic products; matches; pyrophoric alloys.
+
+    Headings:
+        36.01 — Propellant powders
+        36.02 — Prepared explosives (dynamite, TNT, etc.)
+        36.03 — Detonating/safety fuses; detonators; electric detonators; igniters
+        36.04 — Fireworks, signalling flares, rain rockets, fog signals, etc.
+        36.05 — Matches
+        36.06 — Ferro-cerium and other pyrophoric alloys; lighter flints
+    """
+    text = _product_text(product)
+    result = {"chapter": 36, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH36_MATCH.search(text):
+        result["candidates"].append({"heading": "36.05", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Matches / safety matches → 36.05.",
+            "rule_applied": "GIR 1 — heading 36.05"})
+        return result
+    if _CH36_FIREWORK.search(text):
+        result["candidates"].append({"heading": "36.04", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Fireworks / pyrotechnics / signal flares → 36.04.",
+            "rule_applied": "GIR 1 — heading 36.04"})
+        return result
+    if _CH36_FERRO_CERIUM.search(text):
+        result["candidates"].append({"heading": "36.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Ferro-cerium / pyrophoric alloy / lighter flint → 36.06.",
+            "rule_applied": "GIR 1 — heading 36.06"})
+        return result
+    if _CH36_EXPLOSIVE.search(text):
+        if re.search(r'(?:detonator|fuse|igniter|blasting\s*cap)', text, re.IGNORECASE):
+            heading, reasoning = "36.03", "Detonator / fuse / igniter → 36.03."
+        elif re.search(r'(?:propellant|gun\s*powder|smokeless)', text, re.IGNORECASE):
+            heading, reasoning = "36.01", "Propellant powder → 36.01."
+        else:
+            heading, reasoning = "36.02", "Prepared explosive (dynamite/TNT) → 36.02."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "36.02", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Explosive/pyrotechnic product n.e.s. → 36.02.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What type? (explosive, firework, match, detonator, propellant)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 37: Photographic or cinematographic goods
+# ============================================================================
+
+_CH37_FILM = re.compile(
+    r'(?:סרט\s*(?:צילום|צילומי|קולנוע|רנטגן)|'
+    r'photographic\s*(?:film|plate)|x.?ray\s*film|'
+    r'cinematographic\s*film|instant\s*print\s*film|'
+    r'microfilm|microfiche)',
+    re.IGNORECASE
+)
+_CH37_PAPER = re.compile(
+    r'(?:נייר\s*(?:צילום|פוטו)|'
+    r'photographic\s*paper|sensitized\s*(?:paper|textile)|'
+    r'photo\s*paper)',
+    re.IGNORECASE
+)
+_CH37_CHEMICAL_PHOTO = re.compile(
+    r'(?:תכשיר\s*צילום|chemical\s*(?:for\s*)?photograph|'
+    r'developer|fixer|photographic\s*(?:chemical|reagent)|'
+    r'toner\s*(?:photographic|cartridge)|unmixed\s*product\s*(?:for\s*)?photograph)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_37_candidate(text):
+    return bool(
+        _CH37_FILM.search(text) or _CH37_PAPER.search(text)
+        or _CH37_CHEMICAL_PHOTO.search(text)
+    )
+
+
+def _decide_chapter_37(product):
+    """Chapter 37: Photographic or cinematographic goods.
+
+    Headings:
+        37.01 — Photographic plates and film in flat form, sensitised, unexposed
+        37.02 — Photographic film in rolls, sensitised, unexposed
+        37.03 — Photographic paper/textiles, sensitised, unexposed
+        37.04 — Photographic plates, film, paper, exposed but not developed
+        37.05 — Photographic plates and film, exposed and developed (excl. cinema film)
+        37.06 — Cinematographic film, exposed and developed
+        37.07 — Chemical preparations for photographic uses
+    """
+    text = _product_text(product)
+    result = {"chapter": 37, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH37_CHEMICAL_PHOTO.search(text):
+        result["candidates"].append({"heading": "37.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Photographic chemical (developer/fixer/toner) → 37.07.",
+            "rule_applied": "GIR 1 — heading 37.07"})
+        return result
+    if _CH37_PAPER.search(text):
+        result["candidates"].append({"heading": "37.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Photographic paper / sensitised paper → 37.03.",
+            "rule_applied": "GIR 1 — heading 37.03"})
+        return result
+    if _CH37_FILM.search(text):
+        if re.search(r'(?:roll|רול)', text, re.IGNORECASE):
+            heading, reasoning = "37.02", "Photographic film in rolls → 37.02."
+        elif re.search(r'(?:קולנוע|cinematographic|cinema)', text, re.IGNORECASE):
+            heading, reasoning = "37.06", "Cinematographic film → 37.06."
+        else:
+            heading, reasoning = "37.01", "Photographic plate/film in flat form → 37.01."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "37.07", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Photographic product n.e.s. → 37.07.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What type? (film, paper, chemicals/developer)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 38: Miscellaneous chemical products
+# ============================================================================
+
+_CH38_INSECTICIDE = re.compile(
+    r'(?:חומר\s*(?:הדברה|קוטל\s*(?:חרקים|עשבים|פטריות|מזיקים))|'
+    r'insecticide|pesticide|herbicide|fungicide|rodenticide|'
+    r'disinsecting|weed\s*killer|bug\s*spray|ant\s*killer|'
+    r'mosquito\s*(?:repellent|coil)|plant\s*growth\s*regulator)',
+    re.IGNORECASE
+)
+_CH38_DISINFECTANT = re.compile(
+    r'(?:חומר\s*(?:חיטוי|דזינפקציה)|'
+    r'disinfectant|sanitizer|sanitiser|sterilising|germicide|'
+    r'bactericide|antiseptic\s*(?:solution|product))',
+    re.IGNORECASE
+)
+_CH38_ANTIFREEZE = re.compile(
+    r'(?:נוזל\s*(?:קירור|נגד\s*קפיאה)|'
+    r'antifreeze|anti.?freeze|de.?icing\s*(?:fluid|preparation)|'
+    r'coolant\s*(?:fluid|liquid))',
+    re.IGNORECASE
+)
+_CH38_BIODIESEL = re.compile(
+    r'(?:ביודיזל|bio.?diesel|bio.?ethanol|bio.?fuel|'
+    r'fatty\s*acid\s*methyl\s*ester|FAME)',
+    re.IGNORECASE
+)
+_CH38_DIAGNOSTIC = re.compile(
+    r'(?:ריאגנט\s*(?:אבחון|מעבדה)|'
+    r'diagnostic\s*(?:reagent|kit|test)|laboratory\s*reagent|'
+    r'certified\s*reference\s*material)',
+    re.IGNORECASE
+)
+_CH38_FLUX = re.compile(
+    r'(?:שטף\s*(?:הלחמה|ריתוך)|flux|soldering\s*flux|welding\s*flux|'
+    r'pickling\s*(?:preparation|paste)|electroplating\s*preparation)',
+    re.IGNORECASE
+)
+_CH38_ACTIVATED_CARBON = re.compile(
+    r'(?:פחם\s*פעיל|activated\s*(?:carbon|charcoal)|'
+    r'activated\s*natural\s*mineral|activated\s*earth)',
+    re.IGNORECASE
+)
+_CH38_GENERAL_CHEMICAL = re.compile(
+    r'(?:תכשיר\s*כימי|chemical\s*(?:preparation|product)\s*n\.?e\.?s|'
+    r'residual\s*(?:product|lye)|industrial\s*(?:fatty\s*acid|tall\s*oil))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_38_candidate(text):
+    return bool(
+        _CH38_INSECTICIDE.search(text) or _CH38_DISINFECTANT.search(text)
+        or _CH38_ANTIFREEZE.search(text) or _CH38_BIODIESEL.search(text)
+        or _CH38_DIAGNOSTIC.search(text) or _CH38_FLUX.search(text)
+        or _CH38_ACTIVATED_CARBON.search(text) or _CH38_GENERAL_CHEMICAL.search(text)
+    )
+
+
+def _decide_chapter_38(product):
+    """Chapter 38: Miscellaneous chemical products.
+
+    Headings:
+        38.02 — Activated carbon; activated natural mineral products
+        38.08 — Insecticides, rodenticides, herbicides, fungicides, disinfectants
+        38.09 — Finishing agents, dye carriers, pickling preparations
+        38.10 — Metal pickling/soldering/welding/electroplating preparations
+        38.20 — Anti-freezing preparations; de-icing fluids
+        38.21 — Culture media for micro-organisms; diagnostic/laboratory reagents
+        38.22 — Composite diagnostic/laboratory reagents (excl. Ch.30)
+        38.24 — Prepared binders for foundry moulds; chemical products n.e.s.
+        38.26 — Biodiesel (FAME and blends thereof)
+    """
+    text = _product_text(product)
+    result = {"chapter": 38, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH38_INSECTICIDE.search(text):
+        result["candidates"].append({"heading": "38.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Insecticide / herbicide / fungicide / pesticide → 38.08.",
+            "rule_applied": "GIR 1 — heading 38.08"})
+        return result
+    if _CH38_DISINFECTANT.search(text):
+        result["candidates"].append({"heading": "38.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Disinfectant / sanitizer / germicide → 38.08.",
+            "rule_applied": "GIR 1 — heading 38.08"})
+        return result
+    if _CH38_ANTIFREEZE.search(text):
+        result["candidates"].append({"heading": "38.20", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Antifreeze / de-icing fluid / coolant → 38.20.",
+            "rule_applied": "GIR 1 — heading 38.20"})
+        return result
+    if _CH38_BIODIESEL.search(text):
+        result["candidates"].append({"heading": "38.26", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Biodiesel / FAME / biofuel → 38.26.",
+            "rule_applied": "GIR 1 — heading 38.26"})
+        return result
+    if _CH38_DIAGNOSTIC.search(text):
+        result["candidates"].append({"heading": "38.22", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Diagnostic reagent / laboratory reagent / test kit → 38.22.",
+            "rule_applied": "GIR 1 — heading 38.22"})
+        return result
+    if _CH38_ACTIVATED_CARBON.search(text):
+        result["candidates"].append({"heading": "38.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Activated carbon / charcoal / activated earth → 38.02.",
+            "rule_applied": "GIR 1 — heading 38.02"})
+        return result
+    if _CH38_FLUX.search(text):
+        result["candidates"].append({"heading": "38.10", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Soldering/welding flux / pickling preparation → 38.10.",
+            "rule_applied": "GIR 1 — heading 38.10"})
+        return result
+
+    result["candidates"].append({"heading": "38.24", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Miscellaneous chemical product n.e.s. → 38.24.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append(
+        "What type? (insecticide, disinfectant, antifreeze, biodiesel, diagnostic reagent, activated carbon)")
+    return result
+
+
+# ============================================================================
 # PUBLIC API — dispatches to the right chapter tree
 # ============================================================================
 
@@ -3691,6 +5184,20 @@ _CHAPTER_TREES = {
     22: _decide_chapter_22,
     23: _decide_chapter_23,
     24: _decide_chapter_24,
+    25: _decide_chapter_25,
+    26: _decide_chapter_26,
+    27: _decide_chapter_27,
+    28: _decide_chapter_28,
+    29: _decide_chapter_29,
+    30: _decide_chapter_30,
+    31: _decide_chapter_31,
+    32: _decide_chapter_32,
+    33: _decide_chapter_33,
+    34: _decide_chapter_34,
+    35: _decide_chapter_35,
+    36: _decide_chapter_36,
+    37: _decide_chapter_37,
+    38: _decide_chapter_38,
 }
 
 
@@ -3753,6 +5260,20 @@ _CHAPTER_DETECT_ORDER = [
     (22, _is_chapter_22_candidate, _decide_chapter_22),
     (23, _is_chapter_23_candidate, _decide_chapter_23),
     (24, _is_chapter_24_candidate, _decide_chapter_24),
+    (25, _is_chapter_25_candidate, _decide_chapter_25),
+    (26, _is_chapter_26_candidate, _decide_chapter_26),
+    (27, _is_chapter_27_candidate, _decide_chapter_27),
+    (28, _is_chapter_28_candidate, _decide_chapter_28),
+    (29, _is_chapter_29_candidate, _decide_chapter_29),
+    (30, _is_chapter_30_candidate, _decide_chapter_30),
+    (31, _is_chapter_31_candidate, _decide_chapter_31),
+    (32, _is_chapter_32_candidate, _decide_chapter_32),
+    (33, _is_chapter_33_candidate, _decide_chapter_33),
+    (34, _is_chapter_34_candidate, _decide_chapter_34),
+    (35, _is_chapter_35_candidate, _decide_chapter_35),
+    (36, _is_chapter_36_candidate, _decide_chapter_36),
+    (37, _is_chapter_37_candidate, _decide_chapter_37),
+    (38, _is_chapter_38_candidate, _decide_chapter_38),
 ]
 
 
