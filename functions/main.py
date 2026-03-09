@@ -2125,7 +2125,14 @@ def test_pdf_report(req: https_fn.Request) -> https_fn.Response:
 # ============================================================
 @https_fn.on_request(region="us-central1", memory=options.MemoryOption.GB_1, timeout_sec=300)
 def rcb_self_test(req: https_fn.Request) -> https_fn.Response:
-    """RCB Self-Test — sends test emails to itself, verifies, cleans up."""
+    """RCB Self-Test — sends test emails to itself, verifies, cleans up.
+    PAUSED: disabled until reworked (Session 99). Self-test creates feedback loops."""
+    # Self-test paused — returns 503 until reworked
+    return https_fn.Response(
+        json.dumps({"status": "paused", "reason": "Self-test disabled until reworked — creates feedback loops"}),
+        status=503,
+        headers={"Content-Type": "application/json"}
+    )
     from lib.rcb_self_test import run_all_tests
     try:
         secrets = get_rcb_secrets_internal(get_secret)
@@ -2372,6 +2379,18 @@ def rcb_pupil_learn(event: scheduler_fn.ScheduledEvent) -> None:
         print("⏸️ Pupil not available — skipping learning cycle")
         return
 
+    # Early-exit: skip all phases if no unprocessed observations exist
+    try:
+        obs_query = (get_db().collection("pupil_observations")
+                     .where("verified", "==", False)
+                     .limit(1)
+                     .get())
+        if not obs_query:
+            print("⏸️ No unprocessed pupil observations — skipping learning cycle")
+            return
+    except Exception as e:
+        print(f"  ⚠️ Pupil early-exit check failed ({e}) — proceeding anyway")
+
     print("🎓 Pupil learning cycle starting...")
     try:
         from lib.pupil import (
@@ -2456,7 +2475,8 @@ def _send_digest(label):
         print("❌ No access token — cannot send digest")
         return
 
-    cc_email = "cc@rpa-port.co.il"
+    # Send digest to doron@ only — cc@ is a distribution group, NEVER send to it
+    digest_recipient = "doron@rpa-port.co.il"
 
     if PORT_INTELLIGENCE_AVAILABLE:
         digest_html = build_morning_digest(get_db())
@@ -2470,9 +2490,9 @@ def _send_digest(label):
             date_str = now_il.strftime("%d.%m.%Y")
             time_str = now_il.strftime("%H:%M")
             subject = f"RCB | דוח בוקר | {date_str} {time_str}"
-            ok = helper_graph_send(access_token, rcb_email, cc_email, subject, digest_html)
+            ok = helper_graph_send(access_token, rcb_email, digest_recipient, subject, digest_html)
             if ok:
-                print(f"📬 {label} digest sent to {cc_email}")
+                print(f"📬 {label} digest sent to {digest_recipient}")
             else:
                 print(f"⚠️ {label} digest send failed")
             return
@@ -2498,7 +2518,7 @@ def _send_digest(label):
     timeout_sec=300,
 )
 def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
-    """I4: Morning digest — all active shipments + port status, sent to cc@rpa-port.co.il."""
+    """I4: Morning digest — all active shipments + port status, sent to doron@rpa-port.co.il."""
     try:
         _send_digest("Morning 07:00")
     except Exception as e:
@@ -2515,7 +2535,7 @@ def rcb_daily_digest(event: scheduler_fn.ScheduledEvent) -> None:
     timeout_sec=300,
 )
 def rcb_afternoon_digest(event: scheduler_fn.ScheduledEvent) -> None:
-    """I4: Afternoon digest — same format as morning, sent to cc@rpa-port.co.il at 14:00 IL."""
+    """I4: Afternoon digest — same format as morning, sent to doron@rpa-port.co.il at 14:00 IL."""
     try:
         _send_digest("Afternoon 14:00")
     except Exception as e:
