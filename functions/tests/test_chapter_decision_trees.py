@@ -218,6 +218,10 @@ from lib._chapter_decision_trees import (
     _is_chapter_95_candidate,
     _is_chapter_96_candidate,
     _is_chapter_97_candidate,
+    _decide_chapter_98,
+    _decide_chapter_99,
+    _is_chapter_98_candidate,
+    _is_chapter_99_candidate,
     available_chapters,
 )
 
@@ -988,7 +992,7 @@ class TestPublicAPIAllChapters(unittest.TestCase):
         chapters = available_chapters()
         for ch in range(1, 16):
             self.assertIn(ch, chapters)
-        self.assertEqual(len(chapters), 96)
+        self.assertEqual(len(chapters), 98)
 
     def test_decide_chapter_routes_to_ch01(self):
         product = _make_product(name="live cattle", essence="bovine animal",
@@ -4617,6 +4621,139 @@ class TestChapters73to97Integration(unittest.TestCase):
         result = decide_chapter(product)
         self.assertIsNotNone(result)
         self.assertEqual(result["chapter"], 97)
+
+
+# ============================================================================
+# Chapter 98: Israeli personal import exemptions
+# ============================================================================
+
+class TestChapter98Detection(unittest.TestCase):
+    def test_candidate_returning_resident(self):
+        self.assertTrue(_is_chapter_98_candidate("תושב חוזר מביא רהיטים"))
+    def test_candidate_new_immigrant(self):
+        self.assertTrue(_is_chapter_98_candidate("עולה חדש importing furniture"))
+    def test_candidate_english(self):
+        self.assertTrue(_is_chapter_98_candidate("returning resident personal import"))
+    def test_candidate_gift(self):
+        self.assertTrue(_is_chapter_98_candidate("gift package from abroad"))
+    def test_candidate_personal_import(self):
+        self.assertTrue(_is_chapter_98_candidate("personal effects household goods"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_98_candidate("industrial steel pipe"))
+
+class TestChapter98Decision(unittest.TestCase):
+    def test_decide_furniture_returning_resident(self):
+        product = _make_product(name="furniture sofa תושב חוזר", essence="furniture personal import")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+        self.assertTrue(len(result["candidates"]) > 0)
+        self.assertEqual(result["candidates"][0]["heading"], "98.01")
+        self.assertEqual(result["candidates"][0]["subheading_hint"], "9801400000")
+    def test_decide_gift_package(self):
+        product = _make_product(name="gift package from family abroad", essence="gift present")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+        self.assertEqual(result["candidates"][0]["heading"], "98.02")
+    def test_decide_vehicle_relocation(self):
+        product = _make_product(name="vehicle relocation personal car import", essence="car personal")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+        self.assertEqual(result["candidates"][0]["heading"], "98.03")
+        self.assertTrue(len(result["questions_needed"]) > 0)
+    def test_decide_new_immigrant_clothing(self):
+        product = _make_product(name="עולה חדש clothing textiles shirts", essence="clothing textiles")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+        self.assertEqual(result["candidates"][0]["subheading_hint"], "9801100000")
+    def test_decide_professional_equipment(self):
+        product = _make_product(name="professional equipment tools of trade", essence="professional tools")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+        self.assertEqual(result["candidates"][0]["heading"], "98.01")
+    def test_decide_personal_import_general(self):
+        product = _make_product(name="personal effects household import תכולת דירה", essence="household effects")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+    def test_decide_footwear_oleh(self):
+        product = _make_product(name="shoes boots oleh chadash import", essence="footwear shoes")
+        result = _decide_chapter_98(product)
+        self.assertEqual(result["chapter"], 98)
+        self.assertEqual(result["candidates"][0]["subheading_hint"], "9801200000")
+
+
+# ============================================================================
+# Chapter 99: Israeli temporary provisions and special quotas
+# ============================================================================
+
+class TestChapter99Detection(unittest.TestCase):
+    def test_candidate_disaster_relief(self):
+        self.assertTrue(_is_chapter_99_candidate("disaster relief humanitarian aid"))
+    def test_candidate_disaster_hebrew(self):
+        self.assertTrue(_is_chapter_99_candidate("סיוע באסון"))
+    def test_candidate_coffin(self):
+        self.assertTrue(_is_chapter_99_candidate("coffin containing remains repatriation"))
+    def test_candidate_chapter_99_ref(self):
+        self.assertTrue(_is_chapter_99_candidate("chapter 99 temporary provision"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_99_candidate("steel wire industrial"))
+
+class TestChapter99Decision(unittest.TestCase):
+    def test_decide_disaster_relief(self):
+        product = _make_product(name="disaster relief supplies humanitarian aid", essence="emergency supplies")
+        result = _decide_chapter_99(product)
+        self.assertEqual(result["chapter"], 99)
+        self.assertTrue(len(result["candidates"]) > 0)
+        self.assertEqual(result["candidates"][0]["heading"], "99.01")
+    def test_decide_coffin_remains(self):
+        product = _make_product(name="coffin containing remains of deceased repatriation", essence="coffin remains")
+        result = _decide_chapter_99(product)
+        self.assertEqual(result["chapter"], 99)
+        self.assertEqual(result["candidates"][0]["heading"], "99.02")
+    def test_decide_coffin_hebrew(self):
+        product = _make_product(name="ארון קבורה עם גופה", essence="ארון קבורה")
+        result = _decide_chapter_99(product)
+        self.assertEqual(result["chapter"], 99)
+        self.assertEqual(result["candidates"][0]["heading"], "99.02")
+    def test_decide_general_ch99(self):
+        product = _make_product(name="chapter 99 special provision", essence="special provision")
+        result = _decide_chapter_99(product)
+        self.assertEqual(result["chapter"], 99)
+        self.assertTrue(len(result["questions_needed"]) > 0)
+    def test_decide_humanitarian_hebrew(self):
+        product = _make_product(name="סיוע הומניטרי חירום", essence="humanitarian aid")
+        result = _decide_chapter_99(product)
+        self.assertEqual(result["chapter"], 99)
+        self.assertEqual(result["candidates"][0]["heading"], "99.01")
+
+
+# ============================================================================
+# Cross-chapter integration tests (98-99)
+# ============================================================================
+
+class TestChapters98to99Integration(unittest.TestCase):
+    def test_available_chapters_includes_98_99(self):
+        chapters = available_chapters()
+        self.assertIn(98, chapters)
+        self.assertIn(99, chapters)
+        self.assertNotIn(77, chapters)  # reserved
+
+    def test_decide_chapter_detects_returning_resident(self):
+        product = _make_product(name="תושב חוזר רהיטים furniture", essence="furniture returning resident")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 98)
+
+    def test_decide_chapter_detects_disaster_relief(self):
+        product = _make_product(name="disaster relief humanitarian supplies", essence="disaster relief")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 99)
+
+    def test_decide_chapter_detects_coffin(self):
+        product = _make_product(name="coffin containing remains repatriation", essence="coffin remains")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 99)
 
 
 if __name__ == "__main__":

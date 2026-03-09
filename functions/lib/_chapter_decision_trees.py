@@ -12456,6 +12456,245 @@ def _decide_chapter_97(product):
 
 
 # ============================================================================
+# CHAPTER 98: Israeli personal import exemptions (not in WCO HS)
+# ============================================================================
+
+_CH98_RETURNING_RESIDENT = re.compile(
+    r'(?:תושב\s*חוזר|returning\s*resident|relocat(?:ing|ion)\s*(?:to\s*)?israel|'
+    r'חוזר\s*(?:לישראל|ארצה)|moving\s*(?:back\s*)?(?:to\s*)?israel)',
+    re.IGNORECASE
+)
+_CH98_NEW_IMMIGRANT = re.compile(
+    r'(?:עולה\s*חדש|עולים\s*חדשים|new\s*immigrant|oleh?\s*(?:chadash|hadash)|'
+    r'aliyah|עלייה|making\s*aliyah|nefesh\s*b)',
+    re.IGNORECASE
+)
+_CH98_GIFT = re.compile(
+    r'(?:מתנה|מתנות|חבילת\s*מתנה|\bgift\b|gift\s*package|gift\s*parcel|'
+    r'present\s*(?:from\s*abroad|shipment))',
+    re.IGNORECASE
+)
+_CH98_VEHICLE_RELOCATION = re.compile(
+    r'(?:רכב\s*(?:בהעברת\s*מגורים|אישי|של\s*עולה)|'
+    r'vehicle\s*(?:relocation|personal\s*import|transfer)|'
+    r'car\s*(?:import|shipment|relocation)\s*(?:personal|oleh|immigrant)|'
+    r'העברת\s*(?:רכב|מגורים\s*רכב))',
+    re.IGNORECASE
+)
+_CH98_PROFESSIONAL_EQUIPMENT = re.compile(
+    r'(?:ציוד\s*מקצועי|כלי\s*עבודה\s*(?:אישי|מקצועי)|'
+    r'professional\s*(?:equipment|tools|instruments)|'
+    r'tools?\s*of\s*(?:the\s*)?trade)',
+    re.IGNORECASE
+)
+_CH98_PERSONAL_IMPORT = re.compile(
+    r'(?:יבוא\s*אישי|שימוש\s*אישי|personal\s*(?:import|use\s*goods|effects|belongings)|'
+    r'household\s*(?:effects|goods)\s*(?:personal|import)|'
+    r'תכולת\s*(?:דירה|בית|מעבר)|unaccompanied\s*(?:baggage|effects)|'
+    r'lift(?:ing)?\s*(?:van|shipment))',
+    re.IGNORECASE
+)
+_CH98_STUDENT = re.compile(
+    r'(?:סטודנט\s*חוזר|student\s*return(?:ing)?|returning\s*student)',
+    re.IGNORECASE
+)
+_CH98_DIPLOMAT = re.compile(
+    r'(?:דיפלומט|diplomat(?:ic)?|diplomatic\s*(?:goods|import|shipment)|'
+    r'embassy\s*(?:import|shipment))',
+    re.IGNORECASE
+)
+_CH98_TOURIST = re.compile(
+    r'(?:תייר|tourist\s*(?:import|goods)|tourist)',
+    re.IGNORECASE
+)
+_CH98_GENERAL = re.compile(
+    r'(?:פרק\s*98|chapter\s*98|סעיף\s*129|section\s*129|'
+    r'פטור\s*(?:מכס|ממכס)|duty\s*exempt(?:ion)?\s*(?:personal|immigrant)|'
+    r'תושב\s*(?:חוץ|זר)\s*(?:יבוא|מביא))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_98_candidate(text):
+    return bool(
+        _CH98_RETURNING_RESIDENT.search(text) or _CH98_NEW_IMMIGRANT.search(text)
+        or _CH98_GIFT.search(text) or _CH98_VEHICLE_RELOCATION.search(text)
+        or _CH98_PROFESSIONAL_EQUIPMENT.search(text) or _CH98_PERSONAL_IMPORT.search(text)
+        or _CH98_STUDENT.search(text) or _CH98_DIPLOMAT.search(text)
+        or _CH98_TOURIST.search(text) or _CH98_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_98(product):
+    """Chapter 98: Israeli personal import exemptions (not in WCO HS).
+
+    Headings:
+        98.01 — Personal use goods for entry-entitled persons (s.129) — textiles, footwear, cosmetics, furniture, kitchen, jewelry, musical instruments, food, other
+        98.02 — Gift packages up to $130
+        98.03 — Personal use goods up to $500 + vehicle spare parts
+    """
+    text = _product_text(product)
+    result = {"chapter": 98, "candidates": [], "redirect": None, "questions_needed": []}
+
+    # --- Vehicle relocation is always a separate procedure ---
+    if _CH98_VEHICLE_RELOCATION.search(text):
+        result["candidates"].append({"heading": "98.03", "subheading_hint": "9803200000",
+            "confidence": 0.80, "reasoning": "Vehicle on relocation / personal vehicle import → 98.03 (separate procedure, requires customs agent).",
+            "rule_applied": "Israeli tariff — Chapter 98 vehicle provisions"})
+        result["questions_needed"].append("Vehicle relocation requires customs agent. Is the person a returning resident or new immigrant?")
+        return result
+
+    # --- Gift packages ---
+    if _CH98_GIFT.search(text):
+        result["candidates"].append({"heading": "98.02", "subheading_hint": "9802100000",
+            "confidence": 0.85, "reasoning": "Gift package / present from abroad → 98.02 (up to $130 exempt).",
+            "rule_applied": "Israeli tariff — heading 98.02"})
+        return result
+
+    # --- Professional equipment ---
+    if _CH98_PROFESSIONAL_EQUIPMENT.search(text):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801900000",
+            "confidence": 0.75, "reasoning": "Professional equipment / tools of trade → 98.01.90 (other personal use goods, subject to conditions).",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        result["questions_needed"].append("Professional equipment exemption requires proof of profession and prior ownership.")
+        return result
+
+    # --- Route by person category for item-type sub-routing ---
+    person_category = None
+    if _CH98_NEW_IMMIGRANT.search(text):
+        person_category = "oleh_chadash"
+    elif _CH98_RETURNING_RESIDENT.search(text) or _CH98_STUDENT.search(text):
+        person_category = "toshav_chozer"
+    elif _CH98_DIPLOMAT.search(text):
+        person_category = "diplomat"
+    elif _CH98_TOURIST.search(text):
+        person_category = "tourist"
+
+    # --- Route by item type within 98.01 ---
+    if re.search(r'(?:textil|clothing|הלבשה|טקסטיל|בגד|shirt|dress|pants|jacket)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801100000",
+            "confidence": 0.85, "reasoning": f"Textiles/clothing for personal import ({person_category or 'entry-entitled person'}) → 98.01.10 (chapters 60-63).",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:footwear|shoe|boot|sandal|הנעלה|נעל)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801200000",
+            "confidence": 0.85, "reasoning": f"Footwear for personal import ({person_category or 'entry-entitled person'}) → 98.01.20 (chapter 64).",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:cosmetic|toiletri|תמרוקים|קוסמטיקה|perfume|makeup)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801300000",
+            "confidence": 0.85, "reasoning": f"Cosmetics/toiletries for personal import ({person_category or 'entry-entitled person'}) → 98.01.30.",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:furniture|רהיט|sofa|table|desk|bed|armchair|כיסא|שולחן|מיטה|ספה)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801400000",
+            "confidence": 0.85, "reasoning": f"Furniture for personal import ({person_category or 'entry-entitled person'}) → 98.01.40 (chapter 94).",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:kitchen|dining|כלי\s*מטבח|כלי\s*אוכל|pot|pan|plate|cutlery|סיר|מחבת|צלחת)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801500000",
+            "confidence": 0.85, "reasoning": f"Kitchen/dining utensils for personal import ({person_category or 'entry-entitled person'}) → 98.01.50.",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:jewel|gold\s*item|תכשיט|זהב|ring|necklace|bracelet|טבעת|שרשרת|צמיד)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801600000",
+            "confidence": 0.85, "reasoning": f"Jewelry/gold items for personal import ({person_category or 'entry-entitled person'}) → 98.01.60.",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:musical\s*instrument|כלי\s*נגינה|guitar|piano|violin|גיטרה|פסנתר|כינור)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801700000",
+            "confidence": 0.85, "reasoning": f"Musical instrument for personal import ({person_category or 'entry-entitled person'}) → 98.01.70.",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+    if re.search(r'(?:food|מזון|groceries|מכולת)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "98.01", "subheading_hint": "9801800000",
+            "confidence": 0.80, "reasoning": f"Food items for personal import ({person_category or 'entry-entitled person'}) → 98.01.80 (up to 15 kg).",
+            "rule_applied": "Israeli tariff — heading 98.01"})
+        return result
+
+    # --- Default: personal use goods (other) ---
+    if person_category or _CH98_PERSONAL_IMPORT.search(text) or _CH98_GENERAL.search(text):
+        # Check value threshold for 98.03 vs 98.01
+        if re.search(r'(?:up\s*to\s*\$?\s*500|עד\s*500|under\s*500)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "98.03", "subheading_hint": "9803100000",
+                "confidence": 0.80, "reasoning": f"Personal goods up to $500 ({person_category or 'entry-entitled person'}) → 98.03.10.",
+                "rule_applied": "Israeli tariff — heading 98.03"})
+        else:
+            result["candidates"].append({"heading": "98.01", "subheading_hint": "9801900000",
+                "confidence": 0.70, "reasoning": f"Personal use goods ({person_category or 'entry-entitled person'}) → 98.01.90 (other).",
+                "rule_applied": "Israeli tariff — heading 98.01"})
+        if not person_category:
+            result["questions_needed"].append("Who is the importer? Returning resident (תושב חוזר), new immigrant (עולה חדש), diplomat, tourist, or student?")
+        return result
+
+    # Fallback
+    result["candidates"].append({"heading": "98.01", "subheading_hint": "9801900000",
+        "confidence": 0.50, "reasoning": "Possible personal import — item type and person category unclear → 98.01.90.",
+        "rule_applied": "Israeli tariff — Chapter 98"})
+    result["questions_needed"].append("Is this a personal import? Who is the importer (returning resident, new immigrant, tourist, diplomat)?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 99: Israeli temporary provisions and special quotas
+# ============================================================================
+
+_CH99_DISASTER_RELIEF = re.compile(
+    r'(?:סיוע\s*(?:באסון|חירום)|disaster\s*relief|humanitarian\s*(?:aid|relief)|'
+    r'emergency\s*(?:aid|relief|supplies)|סיוע\s*הומניטרי)',
+    re.IGNORECASE
+)
+_CH99_COFFIN_REMAINS = re.compile(
+    r'(?:ארון\s*קבורה|coffin\s*(?:with|containing)\s*(?:remains|body|deceased)|'
+    r'repatriation\s*(?:of\s*)?remains|גופה|הובלת\s*נפטר|'
+    r'funeral\s*(?:casket|coffin)\s*(?:import|shipment))',
+    re.IGNORECASE
+)
+_CH99_GENERAL = re.compile(
+    r'(?:פרק\s*99|chapter\s*99|temporary\s*(?:provision|suspension|quota)|'
+    r'special\s*(?:israeli\s*)?(?:quota|provision|tariff)|'
+    r'השעיית\s*מכס|מכסת\s*(?:יבוא|מכס)|temporary\s*duty\s*(?:suspension|reduction))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_99_candidate(text):
+    return bool(
+        _CH99_DISASTER_RELIEF.search(text) or _CH99_COFFIN_REMAINS.search(text)
+        or _CH99_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_99(product):
+    """Chapter 99: Israeli temporary provisions, special quotas, and special-purpose goods.
+
+    Headings:
+        99.01 — Disaster relief goods (duty exempt by special order)
+        99.02 — Coffins containing remains of the deceased
+    """
+    text = _product_text(product)
+    result = {"chapter": 99, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH99_COFFIN_REMAINS.search(text):
+        result["candidates"].append({"heading": "99.02", "subheading_hint": "9902100000",
+            "confidence": 0.90, "reasoning": "Coffin containing remains / repatriation of deceased → 99.02 (exempt).",
+            "rule_applied": "Israeli tariff — heading 99.02"})
+        return result
+    if _CH99_DISASTER_RELIEF.search(text):
+        result["candidates"].append({"heading": "99.01", "subheading_hint": "9901100000",
+            "confidence": 0.85, "reasoning": "Disaster relief / humanitarian aid goods → 99.01 (exempt by special order).",
+            "rule_applied": "Israeli tariff — heading 99.01"})
+        return result
+
+    # General ch.99 reference
+    result["candidates"].append({"heading": "99.01", "subheading_hint": None,
+        "confidence": 0.50, "reasoning": "Chapter 99 reference — specific provision unclear → 99.01.",
+        "rule_applied": "Israeli tariff — Chapter 99"})
+    result["questions_needed"].append("Which Chapter 99 provision? Disaster relief or coffin with remains?")
+    return result
+
+
+# ============================================================================
 # PUBLIC API — dispatches to the right chapter tree
 # ============================================================================
 
@@ -12557,6 +12796,8 @@ _CHAPTER_TREES = {
     95: _decide_chapter_95,
     96: _decide_chapter_96,
     97: _decide_chapter_97,
+    98: _decide_chapter_98,
+    99: _decide_chapter_99,
 }
 
 
@@ -12607,7 +12848,10 @@ def _is_chapter_03_candidate(text):
 # → leather/wood/paper (41-49) → plastics/rubber (39-40) → chemicals (28-38)
 # → raw textiles (50-55) → minerals (25-27).
 _CHAPTER_DETECT_ORDER = [
-    # --- Manufactured goods / machinery / vehicles / instruments (FIRST) ---
+    # --- Israeli special chapters (FIRST — explicit personal import / exemption context) ---
+    (98, _is_chapter_98_candidate, _decide_chapter_98),   # Personal import exemptions (תושב חוזר, עולה חדש)
+    (99, _is_chapter_99_candidate, _decide_chapter_99),   # Disaster relief, coffins with remains
+    # --- Manufactured goods / machinery / vehicles / instruments ---
     # "steel cabinet" is ch.94 not ch.72; "car engine" is ch.87 not ch.84
     (97, _is_chapter_97_candidate, _decide_chapter_97),   # Works of art — very specific
     (93, _is_chapter_93_candidate, _decide_chapter_93),   # Arms & ammunition — very specific
