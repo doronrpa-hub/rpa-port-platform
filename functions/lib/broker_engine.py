@@ -450,7 +450,29 @@ def _check_spare_part(item, text, db):
 #  PHASE 3-6: Build candidates + eliminate
 # ---------------------------------------------------------------------------
 
-def _smart_tariff_search(item, db):
+def _filter_by_vocab_chapters(candidates, vocab_chapters, item_name=""):
+    """Filter candidates to vocab-identified chapters when available.
+
+    Only filters if at least one candidate survives inside the vocab chapters.
+    This prevents empty results when vocab is right about the chapter but the
+    search didn't find any codes there.
+    """
+    if not vocab_chapters or not candidates:
+        return candidates
+    inside = [c for c in candidates
+              if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+              in vocab_chapters]
+    if inside:
+        dropped = len(candidates) - len(inside)
+        if dropped:
+            print(f"    Vocab chapter filter: kept {len(inside)}, "
+                  f"dropped {dropped} outside {','.join(sorted(vocab_chapters))} "
+                  f"for '{(item_name or '')[:40]}'")
+        return inside
+    return candidates
+
+
+def _smart_tariff_search(item, db, vocab_chapters=None):
     """FIX 5: Smart search — unified index first, pre_classify fallback.
 
     Priority:
@@ -459,6 +481,11 @@ def _smart_tariff_search(item, db):
 
     Runs BOTH Hebrew and English searches, merges results.
     When both agree on chapter → boost confidence.
+
+    Args:
+        vocab_chapters: optional set of 2-digit chapter codes from smart_classify
+                        vocabulary lookup. When provided, candidates outside these
+                        chapters are filtered out (if any inside remain).
     """
     _ensure_unified()
 
@@ -481,6 +508,8 @@ def _smart_tariff_search(item, db):
     if _UNIFIED_AVAILABLE:
         unified_candidates = _search_via_unified(desc_he, desc_en, item)
         if unified_candidates:
+            unified_candidates = _filter_by_vocab_chapters(
+                unified_candidates, vocab_chapters, name_he)
             print(f"    Unified index: {len(unified_candidates)} candidates for '{name_he[:40]}'")
             return {"candidates": unified_candidates}
 
@@ -518,6 +547,7 @@ def _smart_tariff_search(item, db):
             c["confidence"] = min(100, (c.get("confidence") or 50) + 15)
         merged.append(c)
 
+    merged = _filter_by_vocab_chapters(merged, vocab_chapters, name_he)
     result_he["candidates"] = merged
     return result_he
 
@@ -590,16 +620,17 @@ def _unified_to_candidate(result, source_label):
     }
 
 
-def _build_candidates_for_item(item, db):
+def _build_candidates_for_item(item, db, vocab_chapters=None):
     """Search tariff DB for candidate HS codes matching item description.
 
     Returns:
         pre_classify result dict with candidates list.
     """
-    return _smart_tariff_search(item, db)
+    return _smart_tariff_search(item, db, vocab_chapters=vocab_chapters)
 
 
-def classify_single_item(item, operation_context, db, spare_chapter=None):
+def classify_single_item(item, operation_context, db, spare_chapter=None,
+                         vocab_chapters=None):
     """Classify one item via pre_classify -> eliminate (GIR 1-6).
 
     Args:
@@ -607,6 +638,7 @@ def classify_single_item(item, operation_context, db, spare_chapter=None):
         operation_context: dict with direction, legal_category, origin_country
         db: Firestore client
         spare_chapter: optional parent chapter code for spare parts
+        vocab_chapters: optional set of 2-digit chapter codes from smart_classify
 
     Returns:
         dict with hs_code, confidence, description, duty_rate, elimination_result,
@@ -615,7 +647,7 @@ def classify_single_item(item, operation_context, db, spare_chapter=None):
     _ensure_elimination()
 
     # Build candidates from tariff search
-    pre_result = _build_candidates_for_item(item, db)
+    pre_result = _build_candidates_for_item(item, db, vocab_chapters=vocab_chapters)
     if not pre_result or not pre_result.get("candidates"):
         return None
 
@@ -1853,7 +1885,8 @@ def _generate_clarification_questions(errors, item, result):
 #  MASTER ORCHESTRATOR
 # ---------------------------------------------------------------------------
 
-def process_case(email_text, attachments_text, db, get_secret_func):
+def process_case(email_text, attachments_text, db, get_secret_func,
+                  vocab_chapters=None):
     """Main entry point. Classify all items in an email deterministically.
 
     Phases:
@@ -1864,6 +1897,10 @@ def process_case(email_text, attachments_text, db, get_secret_func):
         7: Chapter 98 mapping — personal import codes
         8: _post_classification_cascade() — FIO + FTA + discount + valuation
         9: verify_and_loop() — 3-iteration self-check
+
+    Args:
+        vocab_chapters: optional set of 2-digit chapter codes from smart_classify.
+                        Constrains tariff search to these chapters when provided.
 
     Returns:
         dict with: status, operation, items[], ordinance_articles,
@@ -1942,7 +1979,8 @@ def process_case(email_text, attachments_text, db, get_secret_func):
 
         # PHASES 3-6: Classify via elimination engine
         result = classify_single_item(item, operation_context, db,
-                                      spare_chapter=spare_chapter)
+                                      spare_chapter=spare_chapter,
+                                      vocab_chapters=vocab_chapters)
 
         if not result:
             classified_items.append({

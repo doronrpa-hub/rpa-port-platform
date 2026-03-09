@@ -1141,6 +1141,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
             logger.warning(f"Sub-intent detection error: {e}")
 
     # 1a. Try smart classify (Session 97) — synonym expansion + tariff tree
+    _sc_vocab_chapters = None  # chapters identified by vocabulary lookup
     if USE_SMART_CLASSIFY and SMART_CLASSIFY_AVAILABLE and template_type != "live_shipment":
         try:
             _sc_text = subject + "\n" + body_text
@@ -1148,6 +1149,17 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                 _sc_text = thread_context["original_question"] + "\n" + _sc_text
             print(f"    Smart Classify: synonym expansion + tariff tree")
             sc_result = smart_classify_product(_sc_text, db)
+            if sc_result:
+                # Extract vocab chapters — pass to broker even on MEDIUM confidence
+                for r in (sc_result.reasoning or []):
+                    if r.startswith("Vocabulary lookup → chapters "):
+                        _ch_part = r.split("chapters ")[1].split(",")[0]
+                        _sc_vocab_chapters = {
+                            ch.strip() for ch in _ch_part.split(", ") if ch.strip()
+                        }
+                        if _sc_vocab_chapters:
+                            print(f"    Smart Classify: vocab chapters {_sc_vocab_chapters} → passing to broker")
+                        break
             if sc_result and sc_result.confidence == "HIGH" and sc_result.hs_candidates:
                 top = sc_result.hs_candidates[0]
                 second_score = sc_result.hs_candidates[1].get("combined_score", 0) if len(sc_result.hs_candidates) >= 2 else 0
@@ -1180,6 +1192,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
             print(f"    Broker Engine: deterministic classification")
             broker_result = broker_process_case(
                 _broker_text, "", db, get_secret_func,
+                vocab_chapters=_sc_vocab_chapters,
             )
             if broker_result and broker_result.get("status") == "completed":
                 items = broker_result.get("items", [])
