@@ -170,6 +170,54 @@ from lib._chapter_decision_trees import (
     _is_chapter_70_candidate,
     _is_chapter_71_candidate,
     _is_chapter_72_candidate,
+    _decide_chapter_73,
+    _decide_chapter_74,
+    _decide_chapter_75,
+    _decide_chapter_76,
+    _decide_chapter_78,
+    _decide_chapter_79,
+    _decide_chapter_80,
+    _decide_chapter_81,
+    _decide_chapter_82,
+    _decide_chapter_83,
+    _decide_chapter_84,
+    _decide_chapter_85,
+    _decide_chapter_86,
+    _decide_chapter_87,
+    _decide_chapter_88,
+    _decide_chapter_89,
+    _decide_chapter_90,
+    _decide_chapter_91,
+    _decide_chapter_92,
+    _decide_chapter_93,
+    _decide_chapter_94,
+    _decide_chapter_95,
+    _decide_chapter_96,
+    _decide_chapter_97,
+    _is_chapter_73_candidate,
+    _is_chapter_74_candidate,
+    _is_chapter_75_candidate,
+    _is_chapter_76_candidate,
+    _is_chapter_78_candidate,
+    _is_chapter_79_candidate,
+    _is_chapter_80_candidate,
+    _is_chapter_81_candidate,
+    _is_chapter_82_candidate,
+    _is_chapter_83_candidate,
+    _is_chapter_84_candidate,
+    _is_chapter_85_candidate,
+    _is_chapter_86_candidate,
+    _is_chapter_87_candidate,
+    _is_chapter_88_candidate,
+    _is_chapter_89_candidate,
+    _is_chapter_90_candidate,
+    _is_chapter_91_candidate,
+    _is_chapter_92_candidate,
+    _is_chapter_93_candidate,
+    _is_chapter_94_candidate,
+    _is_chapter_95_candidate,
+    _is_chapter_96_candidate,
+    _is_chapter_97_candidate,
     available_chapters,
 )
 
@@ -940,7 +988,7 @@ class TestPublicAPIAllChapters(unittest.TestCase):
         chapters = available_chapters()
         for ch in range(1, 16):
             self.assertIn(ch, chapters)
-        self.assertEqual(len(chapters), 72)
+        self.assertEqual(len(chapters), 96)
 
     def test_decide_chapter_routes_to_ch01(self):
         product = _make_product(name="live cattle", essence="bovine animal",
@@ -3884,6 +3932,691 @@ class TestChapters56to72Integration(unittest.TestCase):
         result = decide_chapter(product)
         self.assertIsNotNone(result)
         self.assertEqual(result["chapter"], 72)
+
+
+# ============================================================================
+# CHAPTERS 73-83: Base metals and articles thereof
+# ============================================================================
+
+class TestChapter73IronSteelArticles(unittest.TestCase):
+    def test_candidate_steel_pipe(self):
+        self.assertTrue(_is_chapter_73_candidate("steel pipe seamless"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_73_candidate("צינור פלדה"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_73_candidate("cotton fabric"))
+    def test_decide_tube(self):
+        product = _make_product(name="seamless steel tube pipe", essence="steel tube")
+        result = _decide_chapter_73(product)
+        self.assertEqual(result["chapter"], 73)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_nails(self):
+        product = _make_product(name="iron nails screws bolts", essence="nails bolts")
+        result = _decide_chapter_73(product)
+        self.assertEqual(result["chapter"], 73)
+    def test_decide_stove(self):
+        product = _make_product(name="cast iron stove radiator", essence="iron stove heating")
+        result = _decide_chapter_73(product)
+        self.assertEqual(result["chapter"], 73)
+    def test_decide_wire(self):
+        product = _make_product(name="steel wire barbed wire fencing", essence="wire steel barbed")
+        result = _decide_chapter_73(product)
+        self.assertEqual(result["chapter"], 73)
+    def test_decide_structure(self):
+        product = _make_product(name="steel structure bridge beam", essence="iron structure beam")
+        result = _decide_chapter_73(product)
+        self.assertEqual(result["chapter"], 73)
+
+
+class TestChapter74Copper(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_74_candidate("copper wire refined"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_74_candidate("נחושת"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_74_candidate("plastic bottle"))
+    def test_decide_wire(self):
+        product = _make_product(name="copper wire cable", essence="copper wire")
+        result = _decide_chapter_74(product)
+        self.assertEqual(result["chapter"], 74)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_tube(self):
+        product = _make_product(name="copper tube fitting plumbing", essence="copper tube")
+        result = _decide_chapter_74(product)
+        self.assertEqual(result["chapter"], 74)
+
+
+class TestChapter75Nickel(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_75_candidate("nickel unwrought"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_75_candidate("ניקל"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_75_candidate("wooden chair"))
+    def test_decide(self):
+        product = _make_product(name="nickel bar rod profile", essence="nickel bar")
+        result = _decide_chapter_75(product)
+        self.assertEqual(result["chapter"], 75)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_tube(self):
+        product = _make_product(name="nickel tube pipe", essence="nickel tube")
+        result = _decide_chapter_75(product)
+        self.assertEqual(result["chapter"], 75)
+
+
+class TestChapter76Aluminium(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_76_candidate("aluminium foil sheet"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_76_candidate("אלומיניום"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_76_candidate("glass bottle"))
+    def test_decide_foil(self):
+        product = _make_product(name="aluminium foil kitchen wrap", essence="aluminium foil")
+        result = _decide_chapter_76(product)
+        self.assertEqual(result["chapter"], 76)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_structure(self):
+        product = _make_product(name="aluminium window frame structure", essence="aluminium structure")
+        result = _decide_chapter_76(product)
+        self.assertEqual(result["chapter"], 76)
+
+
+class TestChapter78Lead(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_78_candidate("lead unwrought ingot"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_78_candidate("עופרת"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_78_candidate("leather bag"))
+    def test_decide(self):
+        product = _make_product(name="lead plate sheet strip", essence="lead sheet")
+        result = _decide_chapter_78(product)
+        self.assertEqual(result["chapter"], 78)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_unwrought(self):
+        product = _make_product(name="unwrought lead ingot", essence="lead unwrought")
+        result = _decide_chapter_78(product)
+        self.assertEqual(result["chapter"], 78)
+
+
+class TestChapter79Zinc(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_79_candidate("zinc alloy ingot"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_79_candidate("אבץ"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_79_candidate("silk fabric"))
+    def test_decide(self):
+        product = _make_product(name="zinc dust powder flakes", essence="zinc dust")
+        result = _decide_chapter_79(product)
+        self.assertEqual(result["chapter"], 79)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_unwrought(self):
+        product = _make_product(name="zinc unwrought ingot slab", essence="zinc unwrought")
+        result = _decide_chapter_79(product)
+        self.assertEqual(result["chapter"], 79)
+
+
+class TestChapter80Tin(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_80_candidate("tin unwrought ingot"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_80_candidate("בדיל"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_80_candidate("rubber tyre"))
+    def test_decide(self):
+        product = _make_product(name="tin bar rod profile", essence="tin bar")
+        result = _decide_chapter_80(product)
+        self.assertEqual(result["chapter"], 80)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_unwrought(self):
+        product = _make_product(name="tin unwrought alloy", essence="tin unwrought")
+        result = _decide_chapter_80(product)
+        self.assertEqual(result["chapter"], 80)
+
+
+class TestChapter81OtherBaseMetals(unittest.TestCase):
+    def test_candidate_tungsten(self):
+        self.assertTrue(_is_chapter_81_candidate("tungsten carbide"))
+    def test_candidate_titanium(self):
+        self.assertTrue(_is_chapter_81_candidate("titanium alloy"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_81_candidate("טיטניום"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_81_candidate("cotton shirt"))
+    def test_decide_tungsten(self):
+        product = _make_product(name="tungsten bar rod", essence="tungsten")
+        result = _decide_chapter_81(product)
+        self.assertEqual(result["chapter"], 81)
+        self.assertTrue(len(result["candidates"]) > 0)
+
+
+class TestChapter82ToolsCutlery(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_82_candidate("kitchen knife blade"))
+    def test_candidate_saw(self):
+        self.assertTrue(_is_chapter_82_candidate("hand saw blade"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_82_candidate("סכין"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_82_candidate("ceramic tile"))
+    def test_decide_knife(self):
+        product = _make_product(name="kitchen knife chef blade stainless", essence="knife blade")
+        result = _decide_chapter_82(product)
+        self.assertEqual(result["chapter"], 82)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_spoon(self):
+        product = _make_product(name="stainless steel spoon fork set", essence="cutlery spoon fork")
+        result = _decide_chapter_82(product)
+        self.assertEqual(result["chapter"], 82)
+    def test_decide_saw(self):
+        product = _make_product(name="hand saw wood cutting blade", essence="saw blade")
+        result = _decide_chapter_82(product)
+        self.assertEqual(result["chapter"], 82)
+
+
+class TestChapter83MiscBaseMetal(unittest.TestCase):
+    def test_candidate_lock(self):
+        self.assertTrue(_is_chapter_83_candidate("padlock key lock"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_83_candidate("מנעול"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_83_candidate("paper notebook"))
+    def test_decide_lock(self):
+        product = _make_product(name="padlock brass key lock", essence="padlock key")
+        result = _decide_chapter_83(product)
+        self.assertEqual(result["chapter"], 83)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_hinge(self):
+        product = _make_product(name="door hinge steel mounting hardware", essence="hinge mounting")
+        result = _decide_chapter_83(product)
+        self.assertEqual(result["chapter"], 83)
+
+
+# ============================================================================
+# CHAPTERS 84-85: Machinery and electrical
+# ============================================================================
+
+class TestChapter84Machinery(unittest.TestCase):
+    def test_candidate_pump(self):
+        self.assertTrue(_is_chapter_84_candidate("centrifugal pump industrial"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_84_candidate("משאבה תעשייתית"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_84_candidate("silk scarf"))
+    def test_decide_boiler(self):
+        product = _make_product(name="steam boiler industrial", essence="boiler steam")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_pump(self):
+        product = _make_product(name="centrifugal pump water industrial", essence="pump centrifugal")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+    def test_decide_compressor(self):
+        product = _make_product(name="air compressor piston industrial", essence="compressor air")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+    def test_decide_washing_machine(self):
+        product = _make_product(name="washing machine automatic laundry", essence="washing machine")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+    def test_decide_computer(self):
+        product = _make_product(name="laptop computer portable data processing", essence="computer laptop")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+    def test_decide_bearing(self):
+        product = _make_product(name="ball bearing roller bearing", essence="bearing roller ball")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+    def test_decide_air_conditioning(self):
+        product = _make_product(name="air conditioning unit split system", essence="air conditioner")
+        result = _decide_chapter_84(product)
+        self.assertEqual(result["chapter"], 84)
+
+
+class TestChapter85Electrical(unittest.TestCase):
+    def test_candidate_motor(self):
+        self.assertTrue(_is_chapter_85_candidate("electric motor generator"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_85_candidate("מנוע חשמלי"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_85_candidate("wooden table"))
+    def test_decide_motor(self):
+        product = _make_product(name="electric motor AC induction", essence="electric motor")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_transformer(self):
+        product = _make_product(name="electrical transformer power supply", essence="transformer")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+    def test_decide_battery(self):
+        product = _make_product(name="lithium-ion battery rechargeable", essence="battery lithium-ion")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+    def test_decide_phone(self):
+        product = _make_product(name="smartphone mobile telephone", essence="telephone smartphone")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+    def test_decide_semiconductor(self):
+        product = _make_product(name="semiconductor integrated circuit chip", essence="IC chip semiconductor")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+    def test_decide_cable(self):
+        product = _make_product(name="electric cable wire insulated copper", essence="electric cable wire")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+    def test_decide_solar_panel(self):
+        product = _make_product(name="solar panel photovoltaic module", essence="solar panel photovoltaic")
+        result = _decide_chapter_85(product)
+        self.assertEqual(result["chapter"], 85)
+
+
+# ============================================================================
+# CHAPTERS 86-89: Transport
+# ============================================================================
+
+class TestChapter86Railway(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_86_candidate("railway locomotive diesel"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_86_candidate("קטר רכבת"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_86_candidate("leather shoes"))
+    def test_decide_locomotive(self):
+        product = _make_product(name="diesel locomotive railway engine", essence="locomotive diesel")
+        result = _decide_chapter_86(product)
+        self.assertEqual(result["chapter"], 86)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_wagon(self):
+        product = _make_product(name="railway freight wagon car", essence="railway wagon freight")
+        result = _decide_chapter_86(product)
+        self.assertEqual(result["chapter"], 86)
+
+
+class TestChapter87Vehicles(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_87_candidate("passenger automobile sedan"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_87_candidate("רכב נוסעים"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_87_candidate("ceramic plate"))
+    def test_decide_car(self):
+        product = _make_product(name="passenger car sedan petrol engine 1500cc", essence="automobile car petrol")
+        result = _decide_chapter_87(product)
+        self.assertEqual(result["chapter"], 87)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_truck(self):
+        product = _make_product(name="cargo truck diesel 10 ton", essence="truck diesel cargo")
+        result = _decide_chapter_87(product)
+        self.assertEqual(result["chapter"], 87)
+    def test_decide_bicycle(self):
+        product = _make_product(name="bicycle mountain bike pedal", essence="bicycle pedal")
+        result = _decide_chapter_87(product)
+        self.assertEqual(result["chapter"], 87)
+    def test_decide_motorcycle(self):
+        product = _make_product(name="motorcycle 250cc engine", essence="motorcycle")
+        result = _decide_chapter_87(product)
+        self.assertEqual(result["chapter"], 87)
+    def test_decide_electric_vehicle(self):
+        product = _make_product(name="electric vehicle BEV passenger", essence="electric car vehicle")
+        result = _decide_chapter_87(product)
+        self.assertEqual(result["chapter"], 87)
+
+
+class TestChapter88Aircraft(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_88_candidate("aeroplane aircraft passenger"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_88_candidate("מטוס"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_88_candidate("sugar candy"))
+    def test_decide_helicopter(self):
+        product = _make_product(name="helicopter rotorcraft", essence="helicopter")
+        result = _decide_chapter_88(product)
+        self.assertEqual(result["chapter"], 88)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_drone(self):
+        product = _make_product(name="unmanned aerial vehicle drone UAV", essence="drone UAV")
+        result = _decide_chapter_88(product)
+        self.assertEqual(result["chapter"], 88)
+
+
+class TestChapter89Ships(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_89_candidate("cargo ship vessel"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_89_candidate("ספינה"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_89_candidate("glass window"))
+    def test_decide_yacht(self):
+        product = _make_product(name="sailing yacht pleasure boat", essence="yacht sailing")
+        result = _decide_chapter_89(product)
+        self.assertEqual(result["chapter"], 89)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_cargo(self):
+        product = _make_product(name="cargo vessel bulk carrier ship", essence="cargo ship vessel")
+        result = _decide_chapter_89(product)
+        self.assertEqual(result["chapter"], 89)
+
+
+# ============================================================================
+# CHAPTERS 90-92: Instruments and clocks
+# ============================================================================
+
+class TestChapter90Instruments(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_90_candidate("microscope optical"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_90_candidate("מיקרוסקופ"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_90_candidate("cotton fabric"))
+    def test_decide_lens(self):
+        product = _make_product(name="optical lens eyeglass spectacle", essence="lens optical")
+        result = _decide_chapter_90(product)
+        self.assertEqual(result["chapter"], 90)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_medical(self):
+        product = _make_product(name="medical surgical instrument scalpel", essence="surgical instrument")
+        result = _decide_chapter_90(product)
+        self.assertEqual(result["chapter"], 90)
+    def test_decide_xray(self):
+        product = _make_product(name="X-ray apparatus medical imaging", essence="X-ray apparatus")
+        result = _decide_chapter_90(product)
+        self.assertEqual(result["chapter"], 90)
+    def test_decide_thermometer(self):
+        product = _make_product(name="thermometer temperature measuring instrument", essence="thermometer measuring")
+        result = _decide_chapter_90(product)
+        self.assertEqual(result["chapter"], 90)
+    def test_decide_spectacles(self):
+        product = _make_product(name="spectacles eyeglasses corrective prescription", essence="spectacles eyeglasses")
+        result = _decide_chapter_90(product)
+        self.assertEqual(result["chapter"], 90)
+
+
+class TestChapter91Clocks(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_91_candidate("wrist watch mechanical"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_91_candidate("שעון יד"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_91_candidate("rubber tube"))
+    def test_decide_wristwatch(self):
+        product = _make_product(name="wrist watch mechanical automatic", essence="wrist watch")
+        result = _decide_chapter_91(product)
+        self.assertEqual(result["chapter"], 91)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_clock(self):
+        product = _make_product(name="wall clock pendulum", essence="clock wall")
+        result = _decide_chapter_91(product)
+        self.assertEqual(result["chapter"], 91)
+
+
+class TestChapter92Musical(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_92_candidate("piano grand acoustic"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_92_candidate("פסנתר"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_92_candidate("steel plate"))
+    def test_decide_piano(self):
+        product = _make_product(name="grand piano acoustic upright", essence="piano acoustic")
+        result = _decide_chapter_92(product)
+        self.assertEqual(result["chapter"], 92)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_guitar(self):
+        product = _make_product(name="acoustic guitar string instrument", essence="guitar acoustic")
+        result = _decide_chapter_92(product)
+        self.assertEqual(result["chapter"], 92)
+    def test_decide_drum(self):
+        product = _make_product(name="drum kit percussion snare", essence="drum percussion")
+        result = _decide_chapter_92(product)
+        self.assertEqual(result["chapter"], 92)
+
+
+# ============================================================================
+# CHAPTERS 93-97: Arms, furniture, toys, misc, art
+# ============================================================================
+
+class TestChapter93Arms(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_93_candidate("rifle sporting hunting"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_93_candidate("רובה"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_93_candidate("coffee beans"))
+    def test_decide_pistol(self):
+        product = _make_product(name="revolver pistol handgun", essence="pistol revolver")
+        result = _decide_chapter_93(product)
+        self.assertEqual(result["chapter"], 93)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_ammunition(self):
+        product = _make_product(name="ammunition cartridge bullet round", essence="ammunition cartridge")
+        result = _decide_chapter_93(product)
+        self.assertEqual(result["chapter"], 93)
+
+
+class TestChapter94Furniture(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_94_candidate("wooden chair office"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_94_candidate("כיסא"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_94_candidate("aluminium foil"))
+    def test_decide_chair(self):
+        product = _make_product(name="office chair swivel ergonomic", essence="chair office")
+        result = _decide_chapter_94(product)
+        self.assertEqual(result["chapter"], 94)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_mattress(self):
+        product = _make_product(name="spring mattress foam bed", essence="mattress")
+        result = _decide_chapter_94(product)
+        self.assertEqual(result["chapter"], 94)
+    def test_decide_lamp(self):
+        product = _make_product(name="table lamp desk lighting fixture", essence="lamp lighting")
+        result = _decide_chapter_94(product)
+        self.assertEqual(result["chapter"], 94)
+    def test_decide_sofa(self):
+        product = _make_product(name="leather sofa couch upholstered", essence="sofa couch")
+        result = _decide_chapter_94(product)
+        self.assertEqual(result["chapter"], 94)
+
+
+class TestChapter95Toys(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_95_candidate("children toy doll"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_95_candidate("צעצוע"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_95_candidate("copper wire"))
+    def test_decide_doll(self):
+        product = _make_product(name="doll toy plastic children", essence="doll toy")
+        result = _decide_chapter_95(product)
+        self.assertEqual(result["chapter"], 95)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_board_game(self):
+        product = _make_product(name="board game puzzle chess", essence="board game puzzle")
+        result = _decide_chapter_95(product)
+        self.assertEqual(result["chapter"], 95)
+    def test_decide_sports(self):
+        product = _make_product(name="tennis racket sports equipment", essence="racket tennis sports")
+        result = _decide_chapter_95(product)
+        self.assertEqual(result["chapter"], 95)
+
+
+class TestChapter96MiscManufactured(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_96_candidate("ballpoint pen writing"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_96_candidate("עט כדורי"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_96_candidate("salmon fish"))
+    def test_decide_pen(self):
+        product = _make_product(name="ballpoint pen writing instrument", essence="pen ballpoint")
+        result = _decide_chapter_96(product)
+        self.assertEqual(result["chapter"], 96)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_button(self):
+        product = _make_product(name="button snap fastener plastic", essence="button fastener")
+        result = _decide_chapter_96(product)
+        self.assertEqual(result["chapter"], 96)
+    def test_decide_zipper(self):
+        product = _make_product(name="slide fastener zipper metal", essence="zipper fastener")
+        result = _decide_chapter_96(product)
+        self.assertEqual(result["chapter"], 96)
+    def test_decide_brush(self):
+        product = _make_product(name="paint brush bristle artist", essence="brush painting")
+        result = _decide_chapter_96(product)
+        self.assertEqual(result["chapter"], 96)
+    def test_decide_lighter(self):
+        product = _make_product(name="cigarette lighter disposable gas", essence="lighter")
+        result = _decide_chapter_96(product)
+        self.assertEqual(result["chapter"], 96)
+
+
+class TestChapter97Art(unittest.TestCase):
+    def test_candidate(self):
+        self.assertTrue(_is_chapter_97_candidate("oil painting canvas original"))
+    def test_candidate_hebrew(self):
+        self.assertTrue(_is_chapter_97_candidate("ציור שמן"))
+    def test_negative(self):
+        self.assertFalse(_is_chapter_97_candidate("steel pipe"))
+    def test_decide_painting(self):
+        product = _make_product(name="original oil painting canvas artwork", essence="painting oil canvas")
+        result = _decide_chapter_97(product)
+        self.assertEqual(result["chapter"], 97)
+        self.assertTrue(len(result["candidates"]) > 0)
+    def test_decide_sculpture(self):
+        product = _make_product(name="bronze sculpture statue original", essence="sculpture statue")
+        result = _decide_chapter_97(product)
+        self.assertEqual(result["chapter"], 97)
+    def test_decide_antique(self):
+        product = _make_product(name="antique furniture 150 years old", essence="antique")
+        result = _decide_chapter_97(product)
+        self.assertEqual(result["chapter"], 97)
+
+
+# ============================================================================
+# Cross-chapter integration tests (73-97)
+# ============================================================================
+
+class TestChapters73to97Integration(unittest.TestCase):
+    def test_available_chapters_includes_73_to_97(self):
+        chapters = available_chapters()
+        for ch in [73, 74, 75, 76, 78, 79, 80, 81, 82, 83, 84, 85,
+                   86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97]:
+            self.assertIn(ch, chapters)
+        self.assertNotIn(77, chapters)  # reserved
+
+    def test_decide_chapter_detects_steel_pipe(self):
+        product = _make_product(name="seamless steel tube pipe", essence="steel pipe tube")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 73)
+
+    def test_decide_chapter_detects_copper_wire(self):
+        product = _make_product(name="refined copper wire cable", essence="copper wire")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 74)
+
+    def test_decide_chapter_detects_aluminium_foil(self):
+        product = _make_product(name="aluminium foil household kitchen", essence="aluminium foil")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 76)
+
+    def test_decide_chapter_detects_knife(self):
+        product = _make_product(name="kitchen knife stainless steel chef", essence="knife blade stainless")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 82)
+
+    def test_decide_chapter_detects_padlock(self):
+        product = _make_product(name="padlock brass combination", essence="padlock lock")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 83)
+
+    def test_decide_chapter_detects_pump(self):
+        product = _make_product(name="centrifugal water pump industrial", essence="pump centrifugal")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 84)
+
+    def test_decide_chapter_detects_electric_motor(self):
+        product = _make_product(name="AC electric motor induction", essence="electric motor AC")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 85)
+
+    def test_decide_chapter_detects_car(self):
+        product = _make_product(name="passenger car sedan petrol 2000cc", essence="automobile car")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 87)
+
+    def test_decide_chapter_detects_aircraft(self):
+        product = _make_product(name="aeroplane passenger aircraft", essence="aeroplane aircraft")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 88)
+
+    def test_decide_chapter_detects_ship(self):
+        product = _make_product(name="cargo ship bulk carrier vessel", essence="cargo ship vessel")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 89)
+
+    def test_decide_chapter_detects_microscope(self):
+        product = _make_product(name="optical microscope laboratory", essence="microscope optical")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 90)
+
+    def test_decide_chapter_detects_wristwatch(self):
+        product = _make_product(name="wrist watch automatic mechanical", essence="wrist watch")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 91)
+
+    def test_decide_chapter_detects_piano(self):
+        product = _make_product(name="grand piano acoustic upright", essence="piano acoustic")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 92)
+
+    def test_decide_chapter_detects_rifle(self):
+        product = _make_product(name="hunting rifle sporting firearm", essence="rifle sporting")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 93)
+
+    def test_decide_chapter_detects_chair(self):
+        product = _make_product(name="office chair ergonomic swivel", essence="chair office")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 94)
+
+    def test_decide_chapter_detects_toy(self):
+        product = _make_product(name="children plastic toy doll", essence="toy doll")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 95)
+
+    def test_decide_chapter_detects_pen(self):
+        product = _make_product(name="ballpoint pen writing instrument", essence="pen ballpoint")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 96)
+
+    def test_decide_chapter_detects_painting(self):
+        product = _make_product(name="original oil painting canvas fine art", essence="painting oil canvas")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 97)
 
 
 if __name__ == "__main__":

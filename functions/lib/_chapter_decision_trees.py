@@ -3199,7 +3199,7 @@ _CH22_CIDER = re.compile(
 
 _CH22_SPIRITS = re.compile(
     r'(?:וודקה|וויסקי|ג\'ין|רום|טקילה|ברנדי|קוניאק|ליקר|ערק|עראק|'
-    r'vodka|whisky|whiskey|gin|rum|tequila|brandy|cognac|liqueur|'
+    r'vodka|whisky|whiskey|\bgin\b|\brum\b|tequila|brandy|cognac|liqueur|'
     r'arak|ouzo|grappa|absinthe|mezcal|sambuca|schnapps|'
     r'spirit|distilled|ethyl\s*alcohol)',
     re.IGNORECASE
@@ -6928,8 +6928,8 @@ _CH56_NONWOVEN = re.compile(
     re.IGNORECASE
 )
 _CH56_TWINE = re.compile(
-    r'(?:חבל|חוט\s*קשירה|שזור|twine|cordage|rope|cable|'
-    r'binder\s*twine|baler\s*twine|string|net(?:ting)?)',
+    r'(?:חבל|חוט\s*קשירה|שזור|twine|cordage|(?:textile|fibre|nylon|hemp|sisal)\s*(?:rope|cable)|'
+    r'binder\s*twine|baler\s*twine|\bstring\b|net(?:ting)?)',
     re.IGNORECASE
 )
 _CH56_SPECIAL_YARN = re.compile(
@@ -8818,6 +8818,3644 @@ def _decide_chapter_72(product):
 
 
 # ============================================================================
+# CHAPTER 73: Articles of iron or steel
+# ============================================================================
+
+_CH73_TUBE_PIPE = re.compile(
+    r'(?:צינור\s*(?:ברזל|פלדה)|iron\s*\bpipe\b|steel\s*\bpipe\b|'
+    r'iron\s*tube|steel\s*tube|line\s*\bpipe\b|casing\s*\bpipe\b|'
+    r'tube\s*fitting|pipe\s*fitting|flange|elbow\s*(?:pipe|fitting)|'
+    r'(?:welded|seamless|riveted)\s*(?:tube|pipe))',
+    re.IGNORECASE
+)
+_CH73_STRUCTURE = re.compile(
+    r'(?:מבנה\s*(?:פלדה|ברזל)|steel\s*structure|iron\s*structure|'
+    r'bridge\s*(?:part|section|steel)|tower\s*(?:steel|iron)|'
+    r'lattice\s*mast|steel\s*frame(?:work)?|door\s*(?:iron|steel)|'
+    r'window\s*(?:iron|steel)|gate\s*(?:iron|steel)|railing|balustrade)',
+    re.IGNORECASE
+)
+_CH73_WIRE_PRODUCT = re.compile(
+    r'(?:רשת\s*(?:ברזל|פלדה)|barbed\s*wire|wire\s*mesh|wire\s*netting|'
+    r'chain.?link\s*fence|wire\s*fence|wire\s*cloth|woven\s*wire|'
+    r'expanded\s*metal|grill|wire\s*rope|cable\s*(?:of\s*)?(?:iron|steel))',
+    re.IGNORECASE
+)
+_CH73_FASTENER = re.compile(
+    r'(?:בורג|אום|מסמר|screw|bolt|nut\b|nail|washer|rivet|'
+    r'cotter\s*\bpin\b|split\s*\bpin\b|spring\s*washer|'
+    r'self.?tapping\s*screw|wood\s*screw|coach\s*screw)',
+    re.IGNORECASE
+)
+_CH73_STOVE_RADIATOR = re.compile(
+    r'(?:תנור\s*(?:ברזל|פלדה)|כירה|רדיאטור|stove|radiator|'
+    r'space\s*heater|cooking\s*(?:stove|range)\s*(?:iron|steel)|'
+    r'central\s*heating\s*(?:boiler|radiator)|grate|fireplace)',
+    re.IGNORECASE
+)
+_CH73_TABLE_KITCHEN = re.compile(
+    r'(?:כלי\s*(?:מטבח|שולחן)\s*(?:ברזל|פלדה|נירוסטה)|'
+    r'stainless\s*steel\s*(?:pot|pan|bowl|sink|tray|dish|cutlery|kitchenware|cookware)|'
+    r'iron\s*(?:pot|pan|skillet|griddle|wok|cauldron|kettle)|'
+    r'steel\s*(?:pot|pan|bowl|sink|tray|dish|cutlery|kitchenware|cookware)|'
+    r'cast\s*iron\s*(?:pot|pan|skillet|griddle|wok|cauldron))',
+    re.IGNORECASE
+)
+_CH73_SANITARY = re.compile(
+    r'(?:כיור\s*(?:פלדה|נירוסטה)|אמבטיה\s*(?:ברזל|פלדה)|'
+    r'steel\s*(?:sink|bath|shower\s*tray)|iron\s*bath(?:tub)?|'
+    r'sanitary\s*ware\s*(?:iron|steel))',
+    re.IGNORECASE
+)
+_CH73_CONTAINER = re.compile(
+    r'(?:מכל\s*(?:פלדה|ברזל)|חבית\s*(?:פלדה|ברזל)|steel\s*(?:drum|barrel|tank|cylinder|canister)|'
+    r'iron\s*(?:drum|barrel|tank|cylinder)|gas\s*cylinder\s*(?:steel|iron)|'
+    r'compressed\s*gas\s*cylinder|steel\s*container)',
+    re.IGNORECASE
+)
+_CH73_CHAIN = re.compile(
+    r'(?:שרשרת\s*(?:ברזל|פלדה)|chain\s*(?:iron|steel)|'
+    r'iron\s*chain|steel\s*chain|anchor\s*chain|'
+    r'roller\s*chain|link\s*chain|stud.?link)',
+    re.IGNORECASE
+)
+_CH73_GENERAL = re.compile(
+    r'(?:(?:מוצר|פריט)\s*(?:ברזל|פלדה|נירוסטה)|article\s*(?:of\s*)?(?:iron|steel)|'
+    r'(?:iron|steel)\s*(?:article|product|item|ware)|ironmongery|hardware\s*(?:iron|steel))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_73_candidate(text):
+    return bool(
+        _CH73_TUBE_PIPE.search(text) or _CH73_STRUCTURE.search(text)
+        or _CH73_WIRE_PRODUCT.search(text) or _CH73_FASTENER.search(text)
+        or _CH73_STOVE_RADIATOR.search(text) or _CH73_TABLE_KITCHEN.search(text)
+        or _CH73_SANITARY.search(text) or _CH73_CONTAINER.search(text)
+        or _CH73_CHAIN.search(text) or _CH73_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_73(product):
+    """Chapter 73: Articles of iron or steel.
+
+    Headings:
+        73.01 — Sheet piling of iron or steel
+        73.02 — Railway/tramway track construction material
+        73.03 — Tubes, pipes and hollow profiles of cast iron
+        73.04 — Tubes, pipes and hollow profiles, seamless, of iron/steel
+        73.05 — Other tubes and pipes (welded), circular cross-section, external diameter > 406.4 mm
+        73.06 — Other tubes, pipes and hollow profiles of iron/steel (welded, riveted)
+        73.07 — Tube or pipe fittings of iron or steel (couplings, elbows, sleeves)
+        73.08 — Structures and parts of structures of iron or steel
+        73.09 — Reservoirs, tanks, vats, of iron/steel, capacity > 300 litres
+        73.10 — Tanks, casks, drums, cans, boxes, of iron/steel, capacity ≤ 300 litres
+        73.11 — Containers for compressed/liquefied gas, of iron or steel
+        73.12 — Stranded wire, ropes, cables, plaited bands, slings, of iron/steel
+        73.13 — Barbed wire; twisted hoop/single flat wire for fencing, of iron/steel
+        73.14 — Cloth, grill, netting, fencing of iron/steel wire; expanded metal
+        73.15 — Chain and parts thereof, of iron or steel
+        73.16 — Anchors, grapnels and parts thereof, of iron or steel
+        73.17 — Nails, tacks, drawing pins, corrugated nails, staples
+        73.18 — Screws, bolts, nuts, coach screws, hooks, rivets, washers
+        73.19 — Sewing/knitting needles, bodkins, crochet hooks, embroidery stilettos
+        73.20 — Springs and leaves for springs, of iron or steel
+        73.21 — Stoves, ranges, grates, cookers, barbecues, braziers, gas-rings
+        73.22 — Radiators for central heating; air heaters
+        73.23 — Table, kitchen or other household articles; iron/steel wool
+        73.24 — Sanitary ware and parts thereof, of iron or steel
+        73.25 — Other cast articles of iron or steel
+        73.26 — Other articles of iron or steel
+    """
+    text = _product_text(product)
+    result = {"chapter": 73, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH73_TUBE_PIPE.search(text):
+        if re.search(r'(?:fitting|flange|elbow|coupling|sleeve|tee\b|reducer)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.07", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Tube/pipe fitting (elbow, flange, coupling) → 73.07.",
+                "rule_applied": "GIR 1 — heading 73.07"})
+        elif re.search(r'(?:cast\s*iron)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Cast iron tube/pipe → 73.03.",
+                "rule_applied": "GIR 1 — heading 73.03"})
+        elif re.search(r'(?:seamless)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Seamless steel tube/pipe → 73.04.",
+                "rule_applied": "GIR 1 — heading 73.04"})
+        else:
+            result["candidates"].append({"heading": "73.06", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Welded/riveted steel tube/pipe → 73.06.",
+                "rule_applied": "GIR 1 — heading 73.06"})
+        return result
+
+    if _CH73_STRUCTURE.search(text):
+        result["candidates"].append({"heading": "73.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Iron/steel structure (bridge, tower, frame, door, window) → 73.08.",
+            "rule_applied": "GIR 1 — heading 73.08"})
+        return result
+
+    if _CH73_WIRE_PRODUCT.search(text):
+        if re.search(r'(?:barbed)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.13", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Barbed wire → 73.13.",
+                "rule_applied": "GIR 1 — heading 73.13"})
+        elif re.search(r'(?:rope|cable|strand|sling)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.12", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wire rope / cable / stranded wire → 73.12.",
+                "rule_applied": "GIR 1 — heading 73.12"})
+        else:
+            result["candidates"].append({"heading": "73.14", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wire mesh / netting / cloth / expanded metal → 73.14.",
+                "rule_applied": "GIR 1 — heading 73.14"})
+        return result
+
+    if _CH73_FASTENER.search(text):
+        if re.search(r'(?:nail|tack|drawing\s*\bpin\b|staple|corrugated\s*nail)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.17", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Nail / tack / staple → 73.17.",
+                "rule_applied": "GIR 1 — heading 73.17"})
+        else:
+            result["candidates"].append({"heading": "73.18", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Screw / bolt / nut / washer / rivet → 73.18.",
+                "rule_applied": "GIR 1 — heading 73.18"})
+        return result
+
+    if _CH73_CHAIN.search(text):
+        result["candidates"].append({"heading": "73.15", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Iron/steel chain → 73.15.",
+            "rule_applied": "GIR 1 — heading 73.15"})
+        return result
+
+    if _CH73_STOVE_RADIATOR.search(text):
+        if re.search(r'(?:radiator|central\s*heating|air\s*heater)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.22", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Radiator / central heating → 73.22.",
+                "rule_applied": "GIR 1 — heading 73.22"})
+        else:
+            result["candidates"].append({"heading": "73.21", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Stove / range / cooker / barbecue → 73.21.",
+                "rule_applied": "GIR 1 — heading 73.21"})
+        return result
+
+    if _CH73_TABLE_KITCHEN.search(text):
+        result["candidates"].append({"heading": "73.23", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Table/kitchen/household articles of iron or steel → 73.23.",
+            "rule_applied": "GIR 1 — heading 73.23"})
+        return result
+
+    if _CH73_SANITARY.search(text):
+        result["candidates"].append({"heading": "73.24", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Sanitary ware of iron/steel (sink, bath) → 73.24.",
+            "rule_applied": "GIR 1 — heading 73.24"})
+        return result
+
+    if _CH73_CONTAINER.search(text):
+        if re.search(r'(?:compress|liquefied?\s*gas|gas\s*cylinder|CNG|LPG)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.11", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Container for compressed/liquefied gas → 73.11.",
+                "rule_applied": "GIR 1 — heading 73.11"})
+        elif re.search(r'(?:reservoir|vat|capacity\s*>\s*300|over\s*300)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "73.09", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Reservoir/tank/vat >300L → 73.09.",
+                "rule_applied": "GIR 1 — heading 73.09"})
+        else:
+            result["candidates"].append({"heading": "73.10", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Steel drum/barrel/canister ≤300L → 73.10.",
+                "rule_applied": "GIR 1 — heading 73.10"})
+        return result
+
+    # Residual
+    result["candidates"].append({"heading": "73.26", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of iron or steel → 73.26.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 74: Copper and articles thereof
+# ============================================================================
+
+_CH74_REFINED = re.compile(
+    r'(?:נחושת\s*(?:מזוקקת|מטוהרת|גולמית)|refined\s*copper|'
+    r'copper\s*cathode|copper\s*anode|electrolytic\s*copper|'
+    r'unwrought\s*copper|copper\s*billet)',
+    re.IGNORECASE
+)
+_CH74_ALLOY = re.compile(
+    r'(?:סגסוגת\s*נחושת|פליז|ברונזה|brass|bronze|copper\s*alloy|'
+    r'copper.?zinc|copper.?tin|copper.?nickel|cupronickel|'
+    r'gun\s*metal|phosphor\s*bronze)',
+    re.IGNORECASE
+)
+_CH74_WIRE = re.compile(
+    r'(?:חוט\s*נחושת|copper\s*wire|wire\s*(?:of\s*)?copper|'
+    r'brass\s*wire|bronze\s*wire)',
+    re.IGNORECASE
+)
+_CH74_TUBE = re.compile(
+    r'(?:צינור\s*נחושת|copper\s*(?:tube|pipe)|brass\s*(?:tube|pipe)|'
+    r'tube\s*(?:of\s*)?copper|pipe\s*(?:of\s*)?copper)',
+    re.IGNORECASE
+)
+_CH74_FITTING = re.compile(
+    r'(?:אביזר\s*נחושת|copper\s*(?:fitting|coupling|elbow|flange)|'
+    r'brass\s*(?:fitting|coupling|elbow|valve))',
+    re.IGNORECASE
+)
+_CH74_STRANDED = re.compile(
+    r'(?:כבל\s*נחושת|copper\s*(?:cable|strand|rope)|'
+    r'stranded\s*(?:copper|brass)|copper\s*conductor)',
+    re.IGNORECASE
+)
+_CH74_GENERAL = re.compile(
+    r'(?:נחושת|פליז|ברונזה|copper|brass|bronze)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_74_candidate(text):
+    return bool(
+        _CH74_REFINED.search(text) or _CH74_ALLOY.search(text)
+        or _CH74_WIRE.search(text) or _CH74_TUBE.search(text)
+        or _CH74_FITTING.search(text) or _CH74_STRANDED.search(text)
+        or _CH74_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_74(product):
+    """Chapter 74: Copper and articles thereof.
+
+    Headings:
+        74.01 — Copper mattes; cement copper (precipitated copper)
+        74.02 — Unrefined copper; copper anodes for electrolytic refining
+        74.03 — Refined copper and copper alloys, unwrought
+        74.04 — Copper waste and scrap
+        74.05 — Master alloys of copper
+        74.06 — Copper powders and flakes
+        74.07 — Copper bars, rods and profiles
+        74.08 — Copper wire
+        74.09 — Copper plates, sheets and strip, of a thickness > 0.15 mm
+        74.10 — Copper foil, of a thickness ≤ 0.15 mm
+        74.11 — Copper tubes and pipes
+        74.12 — Copper tube or pipe fittings
+        74.13 — Stranded wire, cables, plaited bands, of copper (not electrically insulated)
+        74.15 — Nails, tacks, staples, screws, bolts, nuts, of copper
+        74.18 — Table, kitchen or household articles; pot scourers, of copper
+        74.19 — Other articles of copper
+    """
+    text = _product_text(product)
+    result = {"chapter": 74, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH74_STRANDED.search(text):
+        result["candidates"].append({"heading": "74.13", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Stranded copper wire / cable → 74.13.",
+            "rule_applied": "GIR 1 — heading 74.13"})
+        return result
+    if _CH74_FITTING.search(text):
+        result["candidates"].append({"heading": "74.12", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Copper tube/pipe fitting → 74.12.",
+            "rule_applied": "GIR 1 — heading 74.12"})
+        return result
+    if _CH74_TUBE.search(text):
+        result["candidates"].append({"heading": "74.11", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Copper tube/pipe → 74.11.",
+            "rule_applied": "GIR 1 — heading 74.11"})
+        return result
+    if _CH74_WIRE.search(text):
+        result["candidates"].append({"heading": "74.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Copper wire → 74.08.",
+            "rule_applied": "GIR 1 — heading 74.08"})
+        return result
+    if re.search(r'(?:waste|scrap|גרוטאות)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "74.04", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Copper waste/scrap → 74.04.",
+            "rule_applied": "GIR 1 — heading 74.04"})
+        return result
+    if _CH74_REFINED.search(text):
+        result["candidates"].append({"heading": "74.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Refined copper / copper alloy unwrought → 74.03.",
+            "rule_applied": "GIR 1 — heading 74.03"})
+        return result
+    if re.search(r'(?:\bbar\b|\brod\b|profile|מוט)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "74.07", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Copper bar/rod/profile → 74.07.",
+            "rule_applied": "GIR 1 — heading 74.07"})
+        return result
+    if re.search(r'(?:plate|sheet|strip|גיליון)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "74.09", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Copper plate/sheet/strip → 74.09.",
+            "rule_applied": "GIR 1 — heading 74.09"})
+        return result
+    if re.search(r'(?:foil|פויל)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "74.10", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Copper foil → 74.10.",
+            "rule_applied": "GIR 1 — heading 74.10"})
+        return result
+    if re.search(r'(?:nail|screw|bolt|\bnut\b|tack|staple|בורג|מסמר)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "74.15", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Copper nails/screws/bolts → 74.15.",
+            "rule_applied": "GIR 1 — heading 74.15"})
+        return result
+    if re.search(r'(?:table|kitchen|household|כלי\s*(?:מטבח|בית))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "74.18", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Copper table/kitchen/household articles → 74.18.",
+            "rule_applied": "GIR 1 — heading 74.18"})
+        return result
+
+    result["candidates"].append({"heading": "74.19", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of copper → 74.19.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 75: Nickel and articles thereof
+# ============================================================================
+
+_CH75_UNWROUGHT = re.compile(
+    r'(?:ניקל\s*(?:גולמי|לא\s*מעובד)|unwrought\s*nickel|nickel\s*cathode|'
+    r'nickel\s*(?:ingot|billet|pellet)|electrolytic\s*nickel)',
+    re.IGNORECASE
+)
+_CH75_BAR_WIRE = re.compile(
+    r'(?:מוט\s*ניקל|חוט\s*ניקל|nickel\s*(?:\bbar\b|\brod\b|wire|profile)|'
+    r'(?:\bbar\b|\brod\b|wire)\s*(?:of\s*)?nickel)',
+    re.IGNORECASE
+)
+_CH75_TUBE = re.compile(
+    r'(?:צינור\s*ניקל|nickel\s*(?:tube|pipe)|tube\s*(?:of\s*)?nickel)',
+    re.IGNORECASE
+)
+_CH75_GENERAL = re.compile(
+    r'(?:ניקל|nickel)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_75_candidate(text):
+    return bool(
+        _CH75_UNWROUGHT.search(text) or _CH75_BAR_WIRE.search(text)
+        or _CH75_TUBE.search(text) or _CH75_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_75(product):
+    """Chapter 75: Nickel and articles thereof.
+
+    Headings:
+        75.01 — Nickel mattes, nickel oxide sinters, other intermediate products
+        75.02 — Unwrought nickel
+        75.04 — Nickel powders and flakes
+        75.05 — Nickel bars, rods, profiles and wire
+        75.06 — Nickel plates, sheets, strip and foil
+        75.07 — Nickel tubes, pipes and tube/pipe fittings
+        75.08 — Other articles of nickel
+    """
+    text = _product_text(product)
+    result = {"chapter": 75, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if re.search(r'(?:matte|sinter|intermediate)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "75.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Nickel matte / sinter / intermediate product → 75.01.",
+            "rule_applied": "GIR 1 — heading 75.01"})
+        return result
+    if _CH75_UNWROUGHT.search(text):
+        result["candidates"].append({"heading": "75.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Unwrought nickel → 75.02.",
+            "rule_applied": "GIR 1 — heading 75.02"})
+        return result
+    if _CH75_TUBE.search(text):
+        result["candidates"].append({"heading": "75.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Nickel tube/pipe → 75.07.",
+            "rule_applied": "GIR 1 — heading 75.07"})
+        return result
+    if _CH75_BAR_WIRE.search(text):
+        result["candidates"].append({"heading": "75.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Nickel bar/rod/wire/profile → 75.05.",
+            "rule_applied": "GIR 1 — heading 75.05"})
+        return result
+    if re.search(r'(?:plate|sheet|strip|foil|גיליון|פויל)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "75.06", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Nickel plate/sheet/strip/foil → 75.06.",
+            "rule_applied": "GIR 1 — heading 75.06"})
+        return result
+    if re.search(r'(?:powder|flake|אבקה)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "75.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Nickel powder/flakes → 75.04.",
+            "rule_applied": "GIR 1 — heading 75.04"})
+        return result
+
+    result["candidates"].append({"heading": "75.08", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of nickel → 75.08.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 76: Aluminium and articles thereof
+# ============================================================================
+
+_CH76_UNWROUGHT = re.compile(
+    r'(?:אלומיניום\s*(?:גולמי|לא\s*מעובד)|unwrought\s*alumin(?:i)?um|'
+    r'alumin(?:i)?um\s*(?:ingot|billet|slab|T.?bar))',
+    re.IGNORECASE
+)
+_CH76_BAR_ROD = re.compile(
+    r'(?:מוט\s*אלומיניום|alumin(?:i)?um\s*(?:\bbar\b|\brod\b|profile|extrusion)|'
+    r'extruded\s*alumin(?:i)?um)',
+    re.IGNORECASE
+)
+_CH76_PLATE_SHEET = re.compile(
+    r'(?:גיליון\s*אלומיניום|לוח\s*אלומיניום|alumin(?:i)?um\s*(?:plate|sheet|strip|coil)|'
+    r'(?:plate|sheet|strip|coil)\s*(?:of\s*)?alumin(?:i)?um)',
+    re.IGNORECASE
+)
+_CH76_FOIL = re.compile(
+    r'(?:פויל\s*אלומיניום|נייר\s*כסף|alumin(?:i)?um\s*foil|'
+    r'\btin\s*foil\b|kitchen\s*foil|wrapping\s*foil)',
+    re.IGNORECASE
+)
+_CH76_TUBE = re.compile(
+    r'(?:צינור\s*אלומיניום|alumin(?:i)?um\s*(?:tube|pipe)|'
+    r'(?:tube|pipe)\s*(?:of\s*)?alumin(?:i)?um)',
+    re.IGNORECASE
+)
+_CH76_STRUCTURE = re.compile(
+    r'(?:מבנה\s*אלומיניום|alumin(?:i)?um\s*(?:structure|frame|door|window|'
+    r'partition|railing|balustrade|bridge|tower)|'
+    r'(?:door|window|curtain\s*wall)\s*(?:of\s*)?alumin(?:i)?um)',
+    re.IGNORECASE
+)
+_CH76_CONTAINER = re.compile(
+    r'(?:מכל\s*אלומיניום|alumin(?:i)?um\s*(?:\bcan\b|drum|barrel|tank|cask|container|cylinder)|'
+    r'beverage\s*\bcan\b|beer\s*\bcan\b|soda\s*\bcan\b|'
+    r'aerosol\s*\bcan\b\s*(?:alumin|metal))',
+    re.IGNORECASE
+)
+_CH76_TABLE_KITCHEN = re.compile(
+    r'(?:כלי\s*(?:מטבח|שולחן)\s*אלומיניום|alumin(?:i)?um\s*(?:pot|\bpan\b|tray|dish|foil\s*tray|cookware)|'
+    r'(?:pot|\bpan\b|tray)\s*(?:of\s*)?alumin(?:i)?um)',
+    re.IGNORECASE
+)
+_CH76_GENERAL = re.compile(
+    r'(?:אלומיניום|alumin(?:i)?um)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_76_candidate(text):
+    return bool(
+        _CH76_UNWROUGHT.search(text) or _CH76_BAR_ROD.search(text)
+        or _CH76_PLATE_SHEET.search(text) or _CH76_FOIL.search(text)
+        or _CH76_TUBE.search(text) or _CH76_STRUCTURE.search(text)
+        or _CH76_CONTAINER.search(text) or _CH76_TABLE_KITCHEN.search(text)
+        or _CH76_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_76(product):
+    """Chapter 76: Aluminium and articles thereof.
+
+    Headings:
+        76.01 — Unwrought aluminium
+        76.02 — Aluminium waste and scrap
+        76.03 — Aluminium powders and flakes
+        76.04 — Aluminium bars, rods and profiles
+        76.05 — Aluminium wire
+        76.06 — Aluminium plates, sheets and strip, thickness > 0.2 mm
+        76.07 — Aluminium foil, thickness ≤ 0.2 mm
+        76.08 — Aluminium tubes and pipes
+        76.09 — Aluminium tube or pipe fittings
+        76.10 — Aluminium structures and parts of structures
+        76.11 — Aluminium reservoirs, tanks, vats, capacity > 300 litres
+        76.12 — Aluminium casks, drums, cans, boxes, capacity ≤ 300 litres
+        76.13 — Aluminium containers for compressed or liquefied gas
+        76.14 — Stranded wire, cables, plaited bands, of aluminium
+        76.15 — Table, kitchen or other household articles of aluminium
+        76.16 — Other articles of aluminium
+    """
+    text = _product_text(product)
+    result = {"chapter": 76, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH76_FOIL.search(text):
+        result["candidates"].append({"heading": "76.07", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Aluminium foil → 76.07.",
+            "rule_applied": "GIR 1 — heading 76.07"})
+        return result
+    if _CH76_STRUCTURE.search(text):
+        result["candidates"].append({"heading": "76.10", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aluminium structure (door/window/frame) → 76.10.",
+            "rule_applied": "GIR 1 — heading 76.10"})
+        return result
+    if _CH76_CONTAINER.search(text):
+        if re.search(r'(?:compress|liquefied?\s*gas|gas\s*cylinder)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "76.13", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Aluminium container for compressed/liquefied gas → 76.13.",
+                "rule_applied": "GIR 1 — heading 76.13"})
+        else:
+            result["candidates"].append({"heading": "76.12", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Aluminium can/drum/barrel → 76.12.",
+                "rule_applied": "GIR 1 — heading 76.12"})
+        return result
+    if _CH76_TABLE_KITCHEN.search(text):
+        result["candidates"].append({"heading": "76.15", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aluminium table/kitchen/household articles → 76.15.",
+            "rule_applied": "GIR 1 — heading 76.15"})
+        return result
+    if _CH76_TUBE.search(text):
+        if re.search(r'(?:fitting|coupling|elbow|flange)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "76.09", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Aluminium tube/pipe fitting → 76.09.",
+                "rule_applied": "GIR 1 — heading 76.09"})
+        else:
+            result["candidates"].append({"heading": "76.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Aluminium tube/pipe → 76.08.",
+                "rule_applied": "GIR 1 — heading 76.08"})
+        return result
+    if re.search(r'(?:waste|scrap|גרוטאות)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "76.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Aluminium waste/scrap → 76.02.",
+            "rule_applied": "GIR 1 — heading 76.02"})
+        return result
+    if _CH76_UNWROUGHT.search(text):
+        result["candidates"].append({"heading": "76.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Unwrought aluminium → 76.01.",
+            "rule_applied": "GIR 1 — heading 76.01"})
+        return result
+    if _CH76_BAR_ROD.search(text):
+        result["candidates"].append({"heading": "76.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aluminium bar/rod/profile → 76.04.",
+            "rule_applied": "GIR 1 — heading 76.04"})
+        return result
+    if _CH76_PLATE_SHEET.search(text):
+        result["candidates"].append({"heading": "76.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aluminium plate/sheet/strip → 76.06.",
+            "rule_applied": "GIR 1 — heading 76.06"})
+        return result
+    if re.search(r'(?:wire|חוט)', text, re.IGNORECASE):
+        if re.search(r'(?:strand|cable|rope|כבל)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "76.14", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Stranded aluminium wire/cable → 76.14.",
+                "rule_applied": "GIR 1 — heading 76.14"})
+        else:
+            result["candidates"].append({"heading": "76.05", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Aluminium wire → 76.05.",
+                "rule_applied": "GIR 1 — heading 76.05"})
+        return result
+    if re.search(r'(?:powder|flake|אבקה)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "76.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aluminium powder/flakes → 76.03.",
+            "rule_applied": "GIR 1 — heading 76.03"})
+        return result
+
+    result["candidates"].append({"heading": "76.16", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of aluminium → 76.16.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 78: Lead and articles thereof
+# ============================================================================
+
+_CH78_UNWROUGHT = re.compile(
+    r'(?:עופרת\s*(?:גולמי|לא\s*מעובד)|unwrought\s*lead|\blead\b\s*(?:unwrought|ingot|pig|bullion)|'
+    r'refined\s*lead|antimonial\s*lead)',
+    re.IGNORECASE
+)
+_CH78_WASTE = re.compile(
+    r'(?:גרוטאות?\s*עופרת|lead\s*(?:waste|scrap)|waste\s*lead|scrap\s*lead)',
+    re.IGNORECASE
+)
+_CH78_GENERAL = re.compile(
+    r'(?:עופרת|lead\s*(?:plate|sheet|strip|foil|tube|pipe|\bbar\b|\brod\b|wire|powder|article)|'
+    r'(?:plate|sheet|tube)\s*(?:of\s*)?lead)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_78_candidate(text):
+    return bool(
+        _CH78_UNWROUGHT.search(text) or _CH78_WASTE.search(text)
+        or _CH78_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_78(product):
+    """Chapter 78: Lead and articles thereof.
+
+    Headings:
+        78.01 — Unwrought lead
+        78.02 — Lead waste and scrap
+        78.04 — Lead plates, sheets, strip, foil; lead powders and flakes
+        78.06 — Other articles of lead
+    """
+    text = _product_text(product)
+    result = {"chapter": 78, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH78_WASTE.search(text):
+        result["candidates"].append({"heading": "78.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Lead waste/scrap → 78.02.",
+            "rule_applied": "GIR 1 — heading 78.02"})
+        return result
+    if _CH78_UNWROUGHT.search(text):
+        result["candidates"].append({"heading": "78.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Unwrought lead → 78.01.",
+            "rule_applied": "GIR 1 — heading 78.01"})
+        return result
+    if re.search(r'(?:plate|sheet|strip|foil|powder|flake)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "78.04", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Lead plate/sheet/strip/foil/powder → 78.04.",
+            "rule_applied": "GIR 1 — heading 78.04"})
+        return result
+
+    result["candidates"].append({"heading": "78.06", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of lead → 78.06.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 79: Zinc and articles thereof
+# ============================================================================
+
+_CH79_UNWROUGHT = re.compile(
+    r'(?:אבץ\s*(?:גולמי|לא\s*מעובד)|unwrought\s*zinc|zinc\s*(?:ingot|slab|billet)|'
+    r'spelter)',
+    re.IGNORECASE
+)
+_CH79_DUST = re.compile(
+    r'(?:אבקת?\s*אבץ|zinc\s*(?:dust|powder|flake)|zinc\s*oxide\s*powder)',
+    re.IGNORECASE
+)
+_CH79_GENERAL = re.compile(
+    r'(?:אבץ|zinc)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_79_candidate(text):
+    return bool(
+        _CH79_UNWROUGHT.search(text) or _CH79_DUST.search(text)
+        or _CH79_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_79(product):
+    """Chapter 79: Zinc and articles thereof.
+
+    Headings:
+        79.01 — Unwrought zinc
+        79.02 — Zinc waste and scrap
+        79.03 — Zinc dust, powders and flakes
+        79.04 — Zinc bars, rods, profiles and wire
+        79.05 — Zinc plates, sheets, strip and foil
+        79.07 — Other articles of zinc
+    """
+    text = _product_text(product)
+    result = {"chapter": 79, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if re.search(r'(?:waste|scrap|גרוטאות)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "79.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Zinc waste/scrap → 79.02.",
+            "rule_applied": "GIR 1 — heading 79.02"})
+        return result
+    if _CH79_UNWROUGHT.search(text):
+        result["candidates"].append({"heading": "79.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Unwrought zinc → 79.01.",
+            "rule_applied": "GIR 1 — heading 79.01"})
+        return result
+    if _CH79_DUST.search(text):
+        result["candidates"].append({"heading": "79.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Zinc dust/powder/flakes → 79.03.",
+            "rule_applied": "GIR 1 — heading 79.03"})
+        return result
+    if re.search(r'(?:\bbar\b|\brod\b|profile|wire|מוט|חוט)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "79.04", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Zinc bar/rod/wire/profile → 79.04.",
+            "rule_applied": "GIR 1 — heading 79.04"})
+        return result
+    if re.search(r'(?:plate|sheet|strip|foil|גיליון)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "79.05", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Zinc plate/sheet/strip/foil → 79.05.",
+            "rule_applied": "GIR 1 — heading 79.05"})
+        return result
+
+    result["candidates"].append({"heading": "79.07", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of zinc → 79.07.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 80: Tin and articles thereof
+# ============================================================================
+
+_CH80_UNWROUGHT = re.compile(
+    r'(?:בדיל\s*(?:גולמי|לא\s*מעובד)|unwrought\s*\btin\b|\btin\b\s*(?:unwrought|ingot|slab|billet)|'
+    r'refined\s*\btin\b)',
+    re.IGNORECASE
+)
+_CH80_WASTE = re.compile(
+    r'(?:גרוטאות?\s*בדיל|\btin\b\s*(?:waste|scrap)|waste\s*\btin\b|scrap\s*\btin\b)',
+    re.IGNORECASE
+)
+_CH80_GENERAL = re.compile(
+    r'(?:בדיל|\btin\b\s*(?:plate|sheet|foil|\bbar\b|\brod\b|wire|tube|pipe|powder|article)|'
+    r'(?:plate|sheet|tube)\s*(?:of\s*)?\btin\b)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_80_candidate(text):
+    return bool(
+        _CH80_UNWROUGHT.search(text) or _CH80_WASTE.search(text)
+        or _CH80_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_80(product):
+    """Chapter 80: Tin and articles thereof.
+
+    Headings:
+        80.01 — Unwrought tin
+        80.02 — Tin waste and scrap
+        80.03 — Tin bars, rods, profiles and wire
+        80.07 — Other articles of tin
+    """
+    text = _product_text(product)
+    result = {"chapter": 80, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH80_WASTE.search(text):
+        result["candidates"].append({"heading": "80.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Tin waste/scrap → 80.02.",
+            "rule_applied": "GIR 1 — heading 80.02"})
+        return result
+    if _CH80_UNWROUGHT.search(text):
+        result["candidates"].append({"heading": "80.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Unwrought tin → 80.01.",
+            "rule_applied": "GIR 1 — heading 80.01"})
+        return result
+    if re.search(r'(?:\bbar\b|\brod\b|profile|wire|מוט|חוט)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "80.03", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Tin bar/rod/wire/profile → 80.03.",
+            "rule_applied": "GIR 1 — heading 80.03"})
+        return result
+
+    result["candidates"].append({"heading": "80.07", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other articles of tin → 80.07.",
+        "rule_applied": "GIR 1 — residual heading"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 81: Other base metals; cermets; articles thereof
+# ============================================================================
+
+_CH81_TUNGSTEN = re.compile(
+    r'(?:טונגסטן|וולפרם|tungsten|wolfram)',
+    re.IGNORECASE
+)
+_CH81_MOLYBDENUM = re.compile(
+    r'(?:מוליבדן|molybdenum)',
+    re.IGNORECASE
+)
+_CH81_TANTALUM = re.compile(
+    r'(?:טנטל|tantalum)',
+    re.IGNORECASE
+)
+_CH81_MAGNESIUM = re.compile(
+    r'(?:מגנזיום|magnesium)',
+    re.IGNORECASE
+)
+_CH81_TITANIUM = re.compile(
+    r'(?:טיטניום|טיטאניום|titanium)',
+    re.IGNORECASE
+)
+_CH81_ZIRCONIUM = re.compile(
+    r'(?:זירקוניום|zirconium)',
+    re.IGNORECASE
+)
+_CH81_OTHER_METALS = re.compile(
+    r'(?:אנטימון|מנגן|בריליום|כרום|גרמניום|ונדיום|גליום|הפניום|אינדיום|ניוביום|רניום|תליום|'
+    r'antimony|manganese|beryllium|chromium|germanium|vanadium|gallium|hafnium|'
+    r'indium|niobium|columbium|rhenium|thallium|cadmium|cobalt|bismuth|cermet)',
+    re.IGNORECASE
+)
+_CH81_GENERAL = re.compile(
+    r'(?:tungsten|wolfram|molybdenum|tantalum|magnesium|titanium|zirconium|'
+    r'antimony|beryllium|chromium|germanium|vanadium|gallium|hafnium|'
+    r'indium|niobium|rhenium|thallium|cadmium|cobalt|bismuth|cermet)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_81_candidate(text):
+    return bool(
+        _CH81_TUNGSTEN.search(text) or _CH81_MOLYBDENUM.search(text)
+        or _CH81_TANTALUM.search(text) or _CH81_MAGNESIUM.search(text)
+        or _CH81_TITANIUM.search(text) or _CH81_ZIRCONIUM.search(text)
+        or _CH81_OTHER_METALS.search(text)
+    )
+
+
+def _decide_chapter_81(product):
+    """Chapter 81: Other base metals; cermets; articles thereof.
+
+    Headings:
+        81.01 — Tungsten (wolfram) and articles thereof
+        81.02 — Molybdenum and articles thereof
+        81.03 — Tantalum and articles thereof
+        81.04 — Magnesium and articles thereof
+        81.05 — Cobalt mattes and other intermediate products; cobalt and articles thereof
+        81.06 — Bismuth and articles thereof
+        81.07 — Cadmium and articles thereof
+        81.08 — Titanium and articles thereof
+        81.09 — Zirconium and articles thereof
+        81.10 — Antimony and articles thereof
+        81.11 — Manganese and articles thereof
+        81.12 — Beryllium, chromium, germanium, vanadium, gallium, hafnium, indium, niobium, rhenium, thallium
+        81.13 — Cermets and articles thereof
+    """
+    text = _product_text(product)
+    result = {"chapter": 81, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH81_TUNGSTEN.search(text):
+        result["candidates"].append({"heading": "81.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Tungsten (wolfram) → 81.01.",
+            "rule_applied": "GIR 1 — heading 81.01"})
+        return result
+    if _CH81_MOLYBDENUM.search(text):
+        result["candidates"].append({"heading": "81.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Molybdenum → 81.02.",
+            "rule_applied": "GIR 1 — heading 81.02"})
+        return result
+    if _CH81_TANTALUM.search(text):
+        result["candidates"].append({"heading": "81.03", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Tantalum → 81.03.",
+            "rule_applied": "GIR 1 — heading 81.03"})
+        return result
+    if _CH81_MAGNESIUM.search(text):
+        result["candidates"].append({"heading": "81.04", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Magnesium → 81.04.",
+            "rule_applied": "GIR 1 — heading 81.04"})
+        return result
+    if _CH81_TITANIUM.search(text):
+        result["candidates"].append({"heading": "81.08", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Titanium → 81.08.",
+            "rule_applied": "GIR 1 — heading 81.08"})
+        return result
+    if _CH81_ZIRCONIUM.search(text):
+        result["candidates"].append({"heading": "81.09", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Zirconium → 81.09.",
+            "rule_applied": "GIR 1 — heading 81.09"})
+        return result
+    if re.search(r'(?:cobalt|קובלט)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "81.05", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Cobalt → 81.05.",
+            "rule_applied": "GIR 1 — heading 81.05"})
+        return result
+    if re.search(r'(?:bismuth|ביסמוט)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "81.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Bismuth → 81.06.",
+            "rule_applied": "GIR 1 — heading 81.06"})
+        return result
+    if re.search(r'(?:cadmium|קדמיום)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "81.07", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Cadmium → 81.07.",
+            "rule_applied": "GIR 1 — heading 81.07"})
+        return result
+    if re.search(r'(?:antimony|אנטימון)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "81.10", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Antimony → 81.10.",
+            "rule_applied": "GIR 1 — heading 81.10"})
+        return result
+    if re.search(r'(?:manganese|מנגן)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "81.11", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Manganese → 81.11.",
+            "rule_applied": "GIR 1 — heading 81.11"})
+        return result
+    if re.search(r'(?:cermet|קרמט)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "81.13", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Cermet → 81.13.",
+            "rule_applied": "GIR 1 — heading 81.13"})
+        return result
+
+    # Beryllium, chromium, germanium, vanadium, gallium, hafnium, indium, niobium, rhenium, thallium
+    result["candidates"].append({"heading": "81.12", "subheading_hint": None,
+        "confidence": 0.80, "reasoning": "Other base metal (beryllium/chromium/germanium/vanadium/gallium/hafnium/indium/niobium/rhenium/thallium) → 81.12.",
+        "rule_applied": "GIR 1 — heading 81.12"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 82: Tools, implements, cutlery, spoons and forks, of base metal
+# ============================================================================
+
+_CH82_SPADE_SHOVEL = re.compile(
+    r'(?:את\b|מעדר|מגרפה|spade|shovel|\bhoe\b|rake|mattock|fork\s*(?:garden|pitch)|'
+    r'pickaxe|\baxe\b|machete|billhook)',
+    re.IGNORECASE
+)
+_CH82_SAW = re.compile(
+    r'(?:מסור|\bsaw\b|saw\s*blade|hacksaw|band\s*\bsaw\b|chain\s*\bsaw\b\s*(?:blade|chain)|'
+    r'circular\s*\bsaw\b\s*blade|jigsaw\s*blade)',
+    re.IGNORECASE
+)
+_CH82_HAND_TOOL = re.compile(
+    r'(?:כלי\s*(?:עבודה|יד)|plier|wrench|spanner|screwdriver|hammer|chisel|'
+    r'\bvise\b|\bvice\b|clamp|file\s*(?:tool|metal|rasp)|rasp|'
+    r'punch|drill\s*\bbit\b|tap\s*(?:and\s*)?die|'
+    r'pipe\s*cutter|bolt\s*cutter|wire\s*stripper|crimping\s*tool|'
+    r'hand\s*tool|allen\s*key|hex\s*key|torque\s*wrench|socket\s*(?:set|wrench))',
+    re.IGNORECASE
+)
+_CH82_INTERCHANGEABLE = re.compile(
+    r'(?:ראש\s*(?:מקדח|כלי)|interchangeable\s*tool|drill\s*\bbit\b|'
+    r'milling\s*cutter|turning\s*tool|boring\s*\bbar\b|'
+    r'cutting\s*insert|carbide\s*(?:insert|tip)|'
+    r'tool\s*(?:bit|insert|holder)|die\s*(?:for\s*)?(?:drawing|threading))',
+    re.IGNORECASE
+)
+_CH82_KNIFE = re.compile(
+    r'(?:סכין|להב|knife|blade|penknife|pocket\s*knife|utility\s*knife|'
+    r'craft\s*knife|scalpel|razor\s*blade)',
+    re.IGNORECASE
+)
+_CH82_SCISSORS = re.compile(
+    r'(?:מספריים|scissors|shears|pruning\s*shears|tailor.?s?\s*shears|'
+    r'garden\s*shears|hedge\s*shears)',
+    re.IGNORECASE
+)
+_CH82_TABLE_CUTLERY = re.compile(
+    r'(?:סכו"ם|כף\s*(?:מתכת|נירוסטה)|מזלג\s*(?:מתכת|נירוסטה)|'
+    r'spoon\s*(?:metal|stainless|silver)|fork\s*(?:metal|stainless|silver)|'
+    r'table\s*knife|steak\s*knife|cutlery\s*set|flatware|'
+    r'(?:stainless\s*steel|silver)\s*(?:spoon|fork|knife|cutlery))',
+    re.IGNORECASE
+)
+_CH82_GENERAL = re.compile(
+    r'(?:כלי\s*(?:עבודה|חיתוך)|tool|cutlery|knife|blade|scissors|spanner|wrench|'
+    r'plier|screwdriver|hammer|chisel)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_82_candidate(text):
+    return bool(
+        _CH82_SPADE_SHOVEL.search(text) or _CH82_SAW.search(text)
+        or _CH82_HAND_TOOL.search(text) or _CH82_INTERCHANGEABLE.search(text)
+        or _CH82_KNIFE.search(text) or _CH82_SCISSORS.search(text)
+        or _CH82_TABLE_CUTLERY.search(text)
+    )
+
+
+def _decide_chapter_82(product):
+    """Chapter 82: Tools, implements, cutlery, spoons and forks, of base metal.
+
+    Headings:
+        82.01 — Hand tools: spades, shovels, mattocks, picks, hoes, forks, rakes, axes, billhooks
+        82.02 — Hand saws; blades for saws of all kinds
+        82.03 — Files, rasps, pliers, pincers, tweezers, metal cutting shears, pipe-cutters, bolt croppers
+        82.04 — Hand-operated spanners and wrenches; interchangeable spanner sockets
+        82.05 — Hand tools n.e.s. (drills, vises, clamps, anvils, blowtorches, bench vises)
+        82.06 — Tools of two or more of 82.02-82.05, put up in sets for retail sale
+        82.07 — Interchangeable tools for hand/machine tools (drilling, boring, milling, turning, tapping)
+        82.08 — Knives and cutting blades, for machines or mechanical appliances
+        82.09 — Plates, sticks, tips for tools, unmounted, of cermets
+        82.10 — Hand-operated mechanical appliances weighing ≤ 10 kg, for food preparation
+        82.11 — Knives with cutting blades (incl. pruning knives), other than knives of 82.08
+        82.12 — Razors, razor blades (including razor blade blanks in strips)
+        82.13 — Scissors, tailors' shears, and similar shears, and blades therefor
+        82.14 — Other articles of cutlery (hair clippers, manicure/pedicure sets)
+        82.15 — Spoons, forks, ladles, skimmers, cake-servers, fish-knives, sugar tongs
+    """
+    text = _product_text(product)
+    result = {"chapter": 82, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH82_TABLE_CUTLERY.search(text):
+        result["candidates"].append({"heading": "82.15", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Spoons/forks/table cutlery of base metal → 82.15.",
+            "rule_applied": "GIR 1 — heading 82.15"})
+        return result
+    if _CH82_SCISSORS.search(text):
+        result["candidates"].append({"heading": "82.13", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Scissors / shears → 82.13.",
+            "rule_applied": "GIR 1 — heading 82.13"})
+        return result
+    if _CH82_KNIFE.search(text):
+        if re.search(r'(?:machine|mechanical|industrial)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "82.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Machine knife / cutting blade → 82.08.",
+                "rule_applied": "GIR 1 — heading 82.08"})
+        elif re.search(r'(?:razor|גילוח)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "82.12", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Razor / razor blade → 82.12.",
+                "rule_applied": "GIR 1 — heading 82.12"})
+        else:
+            result["candidates"].append({"heading": "82.11", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Knife with cutting blade → 82.11.",
+                "rule_applied": "GIR 1 — heading 82.11"})
+        return result
+    if _CH82_INTERCHANGEABLE.search(text):
+        if re.search(r'(?:cermet|carbide\s*(?:insert|tip)|unmounted\s*(?:plate|tip))', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "82.09", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Cermet / carbide insert for tools → 82.09.",
+                "rule_applied": "GIR 1 — heading 82.09"})
+        else:
+            result["candidates"].append({"heading": "82.07", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Interchangeable tool (drill bit, milling cutter, insert) → 82.07.",
+                "rule_applied": "GIR 1 — heading 82.07"})
+        return result
+    if _CH82_SPADE_SHOVEL.search(text):
+        result["candidates"].append({"heading": "82.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Spade / shovel / hoe / axe / rake → 82.01.",
+            "rule_applied": "GIR 1 — heading 82.01"})
+        return result
+    if _CH82_SAW.search(text):
+        result["candidates"].append({"heading": "82.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Hand saw / saw blade → 82.02.",
+            "rule_applied": "GIR 1 — heading 82.02"})
+        return result
+    if _CH82_HAND_TOOL.search(text):
+        if re.search(r'(?:plier|pincer|tweezer|pipe\s*cutter|bolt\s*cutter|wire\s*stripper|crimp|file\s*(?:tool|metal)|rasp)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "82.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Pliers / pincers / file / rasp / pipe cutter → 82.03.",
+                "rule_applied": "GIR 1 — heading 82.03"})
+        elif re.search(r'(?:spanner|wrench|socket)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "82.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Spanner / wrench / socket → 82.04.",
+                "rule_applied": "GIR 1 — heading 82.04"})
+        elif re.search(r'(?:\bset\b|retail\s*sale|assort)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "82.06", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Tool set for retail sale → 82.06.",
+                "rule_applied": "GIR 1 — heading 82.06"})
+        else:
+            result["candidates"].append({"heading": "82.05", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Hand tool n.e.s. (drill, vise, clamp, hammer) → 82.05.",
+                "rule_applied": "GIR 1 — heading 82.05"})
+        return result
+
+    result["candidates"].append({"heading": "82.05", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Tool type unclear → 82.05.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Spade/shovel, saw, hand tool, interchangeable, knife, scissors, or cutlery?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 83: Miscellaneous articles of base metal
+# ============================================================================
+
+_CH83_LOCK = re.compile(
+    r'(?:מנעול|מפתח\s*(?:מנעול|צילינדר)|lock|padlock|dead.?bolt|cylinder\s*lock|'
+    r'clasp\s*(?:with|incorp)\s*lock|key\s*(?:blank|for\s*lock))',
+    re.IGNORECASE
+)
+_CH83_HINGE = re.compile(
+    r'(?:ציר|hinge|mounting|fitting|castor|hasp|latch|'
+    r'door\s*(?:closer|handle|knob|stop)|'
+    r'cabinet\s*(?:hinge|handle|knob)|drawer\s*(?:slide|runner))',
+    re.IGNORECASE
+)
+_CH83_SAFE = re.compile(
+    r'(?:כספת|safe\b|strongbox|strong.?room\s*door|armoured\s*door|'
+    r'cash\s*box|deed\s*box|safe\s*deposit)',
+    re.IGNORECASE
+)
+_CH83_FILING = re.compile(
+    r'(?:ארונית\s*תיוק|filing\s*cabinet|card.?index\s*cabinet|'
+    r'letter\s*tray|paper\s*tray|desk\s*organiser)',
+    re.IGNORECASE
+)
+_CH83_CLASP = re.compile(
+    r'(?:אבזם|clasp|buckle|hook\s*and\s*eye|snap\s*fastener|'
+    r'press\s*stud|rivet\s*(?:tubular|bifurcated))',
+    re.IGNORECASE
+)
+_CH83_SIGN = re.compile(
+    r'(?:שלט\s*(?:מתכת|מספר)|sign\s*plate|name\s*plate|number\s*plate|'
+    r'address\s*plate|letter\s*(?:of\s*)?metal|digit\s*(?:of\s*)?metal)',
+    re.IGNORECASE
+)
+_CH83_BELL = re.compile(
+    r'(?:פעמון|bell\b|gong\b|door\s*bell)',
+    re.IGNORECASE
+)
+_CH83_GENERAL = re.compile(
+    r'(?:lock|padlock|hinge|safe\b|clasp|buckle|sign\s*plate|'
+    r'base\s*metal\s*(?:article|fitting|mounting))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_83_candidate(text):
+    return bool(
+        _CH83_LOCK.search(text) or _CH83_HINGE.search(text)
+        or _CH83_SAFE.search(text) or _CH83_FILING.search(text)
+        or _CH83_CLASP.search(text) or _CH83_SIGN.search(text)
+        or _CH83_BELL.search(text)
+    )
+
+
+def _decide_chapter_83(product):
+    """Chapter 83: Miscellaneous articles of base metal.
+
+    Headings:
+        83.01 — Padlocks, locks (key/combination/electric), clasps with locks, keys
+        83.02 — Base metal mountings, fittings (for furniture, doors, vehicles); castors; hat-racks; brackets
+        83.03 — Armoured/reinforced safes, strong-boxes, cash/deed boxes
+        83.04 — Filing cabinets, card-index cabinets, paper trays, desk organizers
+        83.05 — Fittings for loose-leaf binders; letter clips; staples in strips; paper clips
+        83.06 — Bells, gongs and the like (non-electric), statuettes, frames, mirrors
+        83.07 — Flexible tubing of base metal, with or without fittings
+        83.08 — Clasps, buckles, hooks, eyes, eyelets; beads and spangles of base metal
+        83.09 — Stoppers, caps, lids; sealing plugs; capsules for bottles
+        83.10 — Sign-plates, name-plates, address-plates, number-plates, of base metal
+        83.11 — Wire, rods, tubes, plates, electrodes, of base metal (for soldering/welding/metal spraying/deposition)
+    """
+    text = _product_text(product)
+    result = {"chapter": 83, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH83_LOCK.search(text):
+        result["candidates"].append({"heading": "83.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Lock / padlock / key → 83.01.",
+            "rule_applied": "GIR 1 — heading 83.01"})
+        return result
+    if _CH83_SAFE.search(text):
+        result["candidates"].append({"heading": "83.03", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Safe / strongbox / cash box → 83.03.",
+            "rule_applied": "GIR 1 — heading 83.03"})
+        return result
+    if _CH83_FILING.search(text):
+        result["candidates"].append({"heading": "83.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Filing cabinet / paper tray → 83.04.",
+            "rule_applied": "GIR 1 — heading 83.04"})
+        return result
+    if _CH83_SIGN.search(text):
+        result["candidates"].append({"heading": "83.10", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Sign / name / number plate of base metal → 83.10.",
+            "rule_applied": "GIR 1 — heading 83.10"})
+        return result
+    if _CH83_CLASP.search(text):
+        result["candidates"].append({"heading": "83.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Clasp / buckle / hook and eye / snap fastener → 83.08.",
+            "rule_applied": "GIR 1 — heading 83.08"})
+        return result
+    if _CH83_BELL.search(text):
+        result["candidates"].append({"heading": "83.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Bell / gong (non-electric) → 83.06.",
+            "rule_applied": "GIR 1 — heading 83.06"})
+        return result
+    if re.search(r'(?:stopper|\bcap\b|\blid\b|capsule|crown\s*cork|bottle\s*\bcap\b)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "83.09", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Stopper / cap / lid / capsule for bottles → 83.09.",
+            "rule_applied": "GIR 1 — heading 83.09"})
+        return result
+    if re.search(r'(?:welding\s*(?:rod|wire|electrode)|solder|brazing|metal\s*spray)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "83.11", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Welding rod / electrode / solder → 83.11.",
+            "rule_applied": "GIR 1 — heading 83.11"})
+        return result
+    if re.search(r'(?:flexible\s*tub|metal\s*hose|corrugated\s*tub)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "83.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Flexible metal tubing → 83.07.",
+            "rule_applied": "GIR 1 — heading 83.07"})
+        return result
+    if re.search(r'(?:paper\s*clip|letter\s*clip|staple\s*strip|loose.?leaf|binder\s*fitting)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "83.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Letter clips / paper clips / staples / binder fittings → 83.05.",
+            "rule_applied": "GIR 1 — heading 83.05"})
+        return result
+    if _CH83_HINGE.search(text):
+        result["candidates"].append({"heading": "83.02", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Base metal mountings / fittings / hinges / castors → 83.02.",
+            "rule_applied": "GIR 1 — heading 83.02"})
+        return result
+
+    result["candidates"].append({"heading": "83.02", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Miscellaneous base metal article type unclear → 83.02.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Lock, hinge/fitting, safe, sign plate, clasp, bell, cap/stopper, or welding rod?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 84: Nuclear reactors, boilers, machinery, mechanical appliances
+# ============================================================================
+
+_CH84_NUCLEAR = re.compile(
+    r'(?:כור\s*גרעיני|nuclear\s*reactor|fuel\s*element\s*(?:nuclear|reactor))',
+    re.IGNORECASE
+)
+_CH84_BOILER = re.compile(
+    r'(?:דוד\s*(?:קיטור|חימום)|boiler|steam\s*generator|super.?heated\s*water\s*boiler|'
+    r'central\s*heating\s*boiler|auxiliary\s*plant\s*(?:for\s*)?boiler|condenser)',
+    re.IGNORECASE
+)
+_CH84_ENGINE_SPARK = re.compile(
+    r'(?:מנוע\s*(?:בנזין|ניצוץ)|spark\s*ignition|petrol\s*engine|gasoline\s*engine|'
+    r'reciprocating\s*piston\s*engine(?!.*compress)|rotary\s*engine|wankel)',
+    re.IGNORECASE
+)
+_CH84_ENGINE_DIESEL = re.compile(
+    r'(?:מנוע\s*דיזל|diesel\s*engine|compression\s*ignition|CI\s*engine|'
+    r'semi.?diesel)',
+    re.IGNORECASE
+)
+_CH84_TURBINE = re.compile(
+    r'(?:טורבינה|turbine|steam\s*turbine|gas\s*turbine|hydraulic\s*turbine|'
+    r'wind\s*turbine|turbo.?jet|turbo.?prop|turbo.?fan|turbo.?shaft)',
+    re.IGNORECASE
+)
+_CH84_PUMP = re.compile(
+    r'(?:משאבה|pump\b|liquid\s*pump|fuel\s*pump|water\s*pump|'
+    r'centrifugal\s*pump|reciprocating\s*pump|rotary\s*pump|'
+    r'submersible\s*pump|vacuum\s*pump|air\s*pump|'
+    r'liquid\s*elevator|compressor|air\s*compressor|'
+    r'gas\s*compressor|refrigerat(?:or|ing)\s*compressor)',
+    re.IGNORECASE
+)
+_CH84_AC_REFRIG = re.compile(
+    r'(?:מזגן|מקרר|מקפיא|air\s*condition(?:er|ing)|heat\s*pump\s*(?:unit|system)|'
+    r'refrigerat(?:or|ing)|freezer|chiller|ice\s*machine|'
+    r'cool(?:er|ing)\s*(?:unit|system|tower))',
+    re.IGNORECASE
+)
+_CH84_WASHING = re.compile(
+    r'(?:מכונת?\s*כביסה|מייבש\s*כביסה|washing\s*machine|laundry\s*machine|'
+    r'clothes\s*dryer|tumble\s*dryer|dry.?cleaning\s*machine|'
+    r'dishwasher|dish\s*washing)',
+    re.IGNORECASE
+)
+_CH84_SEWING = re.compile(
+    r'(?:מכונת?\s*תפירה|sewing\s*machine|overlock|serger)',
+    re.IGNORECASE
+)
+_CH84_COMPUTER = re.compile(
+    r'(?:מחשב|שרת|computer|laptop|notebook\s*(?:computer|PC)|desktop\s*(?:computer|PC)|'
+    r'server|data\s*processing|automatic\s*data|'
+    r'storage\s*unit|hard\s*(?:disk|drive)|SSD|solid\s*state\s*drive|'
+    r'printer|scanner\s*(?:computer|digital)|3D\s*printer|'
+    r'monitor\s*(?:computer|display)|keyboard\s*(?:computer)|mouse\s*(?:computer))',
+    re.IGNORECASE
+)
+_CH84_BEARING = re.compile(
+    r'(?:מיסב|bearing|ball\s*bearing|roller\s*bearing|needle\s*bearing|'
+    r'tapered\s*roller|spherical\s*roller|thrust\s*bearing|'
+    r'plain\s*shaft\s*bearing|bearing\s*housing)',
+    re.IGNORECASE
+)
+_CH84_GEAR = re.compile(
+    r'(?:גלגל\s*שיניים|transmission\s*shaft|crank\s*shaft|cam\s*shaft|'
+    r'gear\s*(?:box|wheel|train|unit)|clutch\s*(?:plate|disc|assembly|mechanism)|coupling|'
+    r'flywheel|pulley|chain\s*sprocket)',
+    re.IGNORECASE
+)
+_CH84_LIFTING = re.compile(
+    r'(?:מנוף|עגורן|מלגזה|crane|derrick|hoist|winch|forklift|'
+    r'fork.?lift|lift\s*truck|elevator|escalator|conveyor|'
+    r'bucket\s*elevator|overhead\s*crane|gantry\s*crane|'
+    r'jib\s*crane|tower\s*crane)',
+    re.IGNORECASE
+)
+_CH84_EARTH_MOVING = re.compile(
+    r'(?:דחפור|מחפרון|בולדוזר|bulldozer|excavator|backhoe|loader|'
+    r'grader|scraper|tamper|pile\s*driver|snow.?plough|'
+    r'earth.?mov(?:er|ing))',
+    re.IGNORECASE
+)
+_CH84_AGRICULTURAL = re.compile(
+    r'(?:מחרשה|קומביין|combine\s*harvester|plough|plow|harrow|'
+    r'seed\s*drill|transplanter|mower|harvester|thresher|'
+    r'milking\s*machine|incubator\s*(?:poultry|egg)|'
+    r'agricultural\s*(?:machine|equipment|tractor))',
+    re.IGNORECASE
+)
+_CH84_FOOD_PROCESS = re.compile(
+    r'(?:מכונת?\s*(?:מזון|אריזה)|food\s*processing\s*machine|bakery\s*machine|'
+    r'confectionery\s*machine|sugar\s*(?:manufactur|refin)|'
+    r'brewery\s*machine|bottling\s*machine|'
+    r'meat\s*(?:mincer|grinder|slicer)|pasta\s*machine)',
+    re.IGNORECASE
+)
+_CH84_PRINTING = re.compile(
+    r'(?:מכונת?\s*דפוס|printing\s*machine|offset\s*press|letterpress|'
+    r'flexograph|gravure|screen\s*printing\s*machine|typesetting)',
+    re.IGNORECASE
+)
+_CH84_TEXTILE_MACH = re.compile(
+    r'(?:מכונת?\s*(?:טוויה|אריגה)|textile\s*machine|spinning\s*machine|'
+    r'weaving\s*machine|loom|knitting\s*machine|'
+    r'felting\s*machine|textile\s*finishing)',
+    re.IGNORECASE
+)
+_CH84_CENTRIFUGE = re.compile(
+    r'(?:צנטריפוגה|centrifuge|filter(?:ing)?\s*machine|'
+    r'separator\s*(?:centrifugal|cream|oil.?water)|'
+    r'purif(?:y|ier|ication)\s*(?:machine|apparatus)|'
+    r'distill(?:ation|ing)\s*(?:machine|apparatus))',
+    re.IGNORECASE
+)
+_CH84_PACKING = re.compile(
+    r'(?:מכונת?\s*אריזה|packing\s*machine|packaging\s*machine|'
+    r'filling\s*machine|labelling\s*machine|sealing\s*machine|'
+    r'wrapping\s*machine|weighing\s*machine(?:ry)?|'
+    r'industrial\s*scale)',
+    re.IGNORECASE
+)
+_CH84_VALVE = re.compile(
+    r'(?:שסתום|ברז\s*(?:תעשייתי|מתכת)|valve\s*(?:industrial|metal|gate|globe|ball|butterfly|check|relief|pressure)|'
+    r'\btap\b\s*(?:industrial|metal|cock)|cock\s*(?:valve|industrial))',
+    re.IGNORECASE
+)
+_CH84_GENERAL = re.compile(
+    r'(?:מכונה|machinery|machine\s*(?:tool|shop|industrial|automatic|CNC|lathe)|'
+    r'mechanical\s*appliance|'
+    r'engine(?!\s*(?:oil|mount|cover))|motor\s*(?:combustion|piston|diesel)|'
+    r'pump|compressor|'
+    r'turbine|boiler|refrigerat|air\s*condition|washing\s*machine|'
+    r'computer|laptop|printer|bearing|\bgear\b|crane|conveyor|'
+    r'bulldozer|excavator|forklift)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_84_candidate(text):
+    return bool(
+        _CH84_NUCLEAR.search(text) or _CH84_BOILER.search(text)
+        or _CH84_ENGINE_SPARK.search(text) or _CH84_ENGINE_DIESEL.search(text)
+        or _CH84_TURBINE.search(text) or _CH84_PUMP.search(text)
+        or _CH84_AC_REFRIG.search(text) or _CH84_WASHING.search(text)
+        or _CH84_SEWING.search(text) or _CH84_COMPUTER.search(text)
+        or _CH84_BEARING.search(text) or _CH84_GEAR.search(text)
+        or _CH84_LIFTING.search(text) or _CH84_EARTH_MOVING.search(text)
+        or _CH84_AGRICULTURAL.search(text) or _CH84_FOOD_PROCESS.search(text)
+        or _CH84_PRINTING.search(text) or _CH84_TEXTILE_MACH.search(text)
+        or _CH84_CENTRIFUGE.search(text) or _CH84_PACKING.search(text)
+        or _CH84_VALVE.search(text) or _CH84_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_84(product):
+    """Chapter 84: Nuclear reactors, boilers, machinery and mechanical appliances; parts thereof.
+
+    Headings:
+        84.01 — Nuclear reactors; fuel elements (cartridges), non-irradiated
+        84.02 — Steam or other vapour generating boilers
+        84.03 — Central heating boilers (other than of 84.02)
+        84.04 — Auxiliary plant for use with boilers of 84.02/84.03
+        84.05 — Producer gas/water gas generators; acetylene gas generators
+        84.06 — Steam turbines and other vapour turbines
+        84.07 — Spark-ignition reciprocating/rotary internal combustion piston engines
+        84.08 — Compression-ignition internal combustion piston engines (diesel/semi-diesel)
+        84.09 — Parts for engines of 84.07/84.08
+        84.10 — Hydraulic turbines, water wheels, regulators therefor
+        84.11 — Turbo-jets, turbo-propellers, other gas turbines
+        84.12 — Other engines and motors (reaction, hydraulic, pneumatic, spring, wind)
+        84.13 — Pumps for liquids; liquid elevators
+        84.14 — Air or vacuum pumps, air or gas compressors, fans, blowers, ventilating hoods
+        84.15 — Air conditioning machines
+        84.16 — Furnace burners; mechanical stokers, grates, ash dischargers
+        84.17 — Non-electric industrial or laboratory furnaces and ovens
+        84.18 — Refrigerators, freezers, ice machines, heat pumps
+        84.19 — Machinery for treatment of materials by temperature change (heating, cooking, pasteurising)
+        84.20 — Calendering/rolling machines; cylinders therefor
+        84.21 — Centrifuges; filtering/purifying machinery for liquids/gases
+        84.22 — Dish washing machines; machinery for cleaning/drying/filling/sealing/labelling bottles/cans
+        84.23 — Weighing machinery; weighing machine weights
+        84.24 — Mechanical appliances for projecting/dispersing/spraying liquids/powders
+        84.25 — Pulley tackle and hoists (other than skip hoists); winches and capstans; jacks
+        84.26 — Ships' derricks; cranes; mobile lifting frames; straddle carriers; works trucks with crane
+        84.27 — Fork-lift trucks; other works trucks fitted with lifting/handling equipment
+        84.28 — Other lifting/handling/loading/unloading machinery (lifts, escalators, conveyors)
+        84.29 — Self-propelled bulldozers, graders, levellers, scrapers, excavators, shovel loaders
+        84.30 — Earth/ore/mineral moving/levelling/scraping/excavating/tamping/compacting/extracting machinery
+        84.31 — Parts for machinery of 84.25-84.30
+        84.32 — Agricultural/horticultural/forestry machinery for soil preparation/cultivation
+        84.33 — Harvesting/threshing machinery; straw/fodder balers; grass mowers
+        84.34 — Milking machines and dairy machinery
+        84.35 — Presses, crushers for wine/cider/fruit juice/similar beverage manufacture
+        84.36 — Other agricultural/horticultural/forestry/poultry/bee-keeping machinery; incubators/brooders
+        84.37 — Machines for cleaning/sorting/grading seed/grain/dried leguminous vegetables
+        84.38 — Machinery for industrial food/drink preparation (not for fats/oils/animal/vegetable)
+        84.39 — Machinery for making pulp/paper/paperboard
+        84.40 — Book-binding machinery; machines for type-setting
+        84.41 — Other machinery for making up paper pulp/paper/paperboard (cutting, ruling)
+        84.42 — Machinery/apparatus/equipment for type-founding/type-setting/preparing printing blocks
+        84.43 — Printing machinery; ink-jet printing machines; machines ancillary to printing; printers (84.71)
+        84.44 — Machines for extruding/drawing/texturing/cutting man-made textile materials
+        84.45 — Machines for preparing textile fibres; spinning/doubling/twisting machines
+        84.46 — Weaving machines (looms)
+        84.47 — Knitting machines; stitch-bonding machines; machines for tufting/making lace/braid/net
+        84.48 — Auxiliary machinery for textile machines; parts and accessories
+        84.49 — Machinery for manufacture/finishing of felt or nonwovens
+        84.50 — Household/laundry-type washing machines (including machines which both wash and dry)
+        84.51 — Machinery for washing/cleaning/wringing/drying/ironing/pressing textile/fabrics/leather
+        84.52 — Sewing machines (other than book-sewing machines of 84.40)
+        84.53 — Machinery for preparing/tanning/working hides/skins/leather; shoe-making machines
+        84.54 — Converters, ladles, ingot moulds, casting machines for metallurgy/metal foundries
+        84.55 — Metal-rolling mills and rolls therefor
+        84.56 — Machine-tools for working any material by removal (laser, ultrasonic, electro-discharge, plasma)
+        84.57 — Machining centres, unit construction machines (single station) for working metal
+        84.58 — Lathes for removing metal
+        84.59 — Machine-tools for drilling/boring/milling/threading/tapping metal
+        84.60 — Machine-tools for deburring/sharpening/grinding/honing/lapping/polishing metal
+        84.61 — Machine-tools for planing/shaping/slotting/broaching/cutting/sawing metal
+        84.62 — Machine-tools for forging/hammering/die-stamping metal; hydraulic presses
+        84.63 — Other machine-tools for working metal/cermets without removing material
+        84.64 — Machine-tools for working stone/ceramics/concrete/asbestos-cement/glass
+        84.65 — Machine-tools for working wood/cork/bone/hard rubber/plastics
+        84.66 — Parts and accessories for machine-tools of 84.56-84.65
+        84.67 — Tools for working in the hand, pneumatic, hydraulic, or with built-in electric/non-electric motor
+        84.68 — Machinery and apparatus for soldering/brazing/welding
+        84.69 — Word-processing machines and typewriters (not printers of 84.43)
+        84.70 — Calculating machines and pocket-size data recording/reproducing/displaying machines
+        84.71 — Automatic data processing machines (computers); readers, transcribers, processing units
+        84.72 — Other office machines (hectograph/stencil duplicating, addressing, coin sorting, pencil sharpeners)
+        84.73 — Parts and accessories for machines of 84.69-84.72
+        84.74 — Machinery for sorting/screening/separating/washing/crushing/grinding/mixing earth/stone/ores/minerals
+        84.75 — Machines for assembling electric/electronic lamps/tubes/valves/flashbulbs in glass envelopes
+        84.76 — Automatic goods-vending machines (postage stamps, beverages, food)
+        84.77 — Machinery for working rubber or plastics (moulding, forming, vulcanising)
+        84.78 — Machinery for preparing/making up tobacco
+        84.79 — Machines with individual functions, n.e.s. in this chapter
+        84.80 — Moulding boxes; mould bases; moulding patterns; moulds for metal/carbides/glass/mineral/rubber/plastics
+        84.81 — Taps, cocks, valves for pipes/boiler shells/tanks/vats (incl. pressure-reducing, thermostatically controlled)
+        84.82 — Ball or roller bearings
+        84.83 — Transmission shafts, cranks; bearing housings; gears/gearing; ball/roller screws; gear boxes; flywheels; pulleys; clutches; shaft couplings
+        84.84 — Gaskets and similar joints of metal sheeting combined with other material; mechanical seals
+        84.85 — Machinery parts, not containing connectors/insulators/coils/contacts/switching devices, n.e.s.
+        84.86 — Machines for manufacture of semiconductor boules/wafers/devices/ICs/flat panel displays
+    """
+    text = _product_text(product)
+    result = {"chapter": 84, "candidates": [], "redirect": None, "questions_needed": []}
+
+    # Very specific first
+    if _CH84_NUCLEAR.search(text):
+        result["candidates"].append({"heading": "84.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Nuclear reactor / fuel element → 84.01.",
+            "rule_applied": "GIR 1 — heading 84.01"})
+        return result
+    if _CH84_COMPUTER.search(text):
+        if re.search(r'(?:printer|3D\s*printer|inkjet|laser\s*printer)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.43", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Printer → 84.43.",
+                "rule_applied": "GIR 1 — heading 84.43"})
+        elif re.search(r'(?:monitor|display\s*(?:unit|screen))', text, re.IGNORECASE):
+            result["redirect"] = {"chapter": 85, "reason": "Computer monitor/display → Ch.85 (85.28).",
+                "rule_applied": "Section XVI Note — monitors classified as display units"}
+            result["candidates"].append({"heading": "85.28", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Monitor/display unit → 85.28.",
+                "rule_applied": "GIR 1 — heading 85.28"})
+        else:
+            result["candidates"].append({"heading": "84.71", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Computer / laptop / server / data processing machine → 84.71.",
+                "rule_applied": "GIR 1 — heading 84.71"})
+        return result
+    if _CH84_SEWING.search(text):
+        result["candidates"].append({"heading": "84.52", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Sewing machine → 84.52.",
+            "rule_applied": "GIR 1 — heading 84.52"})
+        return result
+    if _CH84_WASHING.search(text):
+        if re.search(r'(?:dishwasher|dish\s*wash)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.22", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Dishwasher → 84.22.",
+                "rule_applied": "GIR 1 — heading 84.22"})
+        else:
+            result["candidates"].append({"heading": "84.50", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Washing machine / clothes dryer → 84.50.",
+                "rule_applied": "GIR 1 — heading 84.50"})
+        return result
+
+    # Engines
+    if _CH84_ENGINE_SPARK.search(text):
+        result["candidates"].append({"heading": "84.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Spark-ignition piston engine (petrol/gasoline) → 84.07.",
+            "rule_applied": "GIR 1 — heading 84.07"})
+        return result
+    if _CH84_ENGINE_DIESEL.search(text):
+        result["candidates"].append({"heading": "84.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Compression-ignition (diesel) engine → 84.08.",
+            "rule_applied": "GIR 1 — heading 84.08"})
+        return result
+    if _CH84_TURBINE.search(text):
+        if re.search(r'(?:steam|vapour)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.06", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Steam turbine → 84.06.",
+                "rule_applied": "GIR 1 — heading 84.06"})
+        elif re.search(r'(?:hydraulic|water\s*wheel)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.10", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Hydraulic turbine / water wheel → 84.10.",
+                "rule_applied": "GIR 1 — heading 84.10"})
+        elif re.search(r'(?:turbo.?jet|turbo.?prop|turbo.?fan|turbo.?shaft|gas\s*turbine)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.11", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Gas turbine / turbojet / turboprop → 84.11.",
+                "rule_applied": "GIR 1 — heading 84.11"})
+        elif re.search(r'(?:wind\s*turbine)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.12", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wind turbine (other engine) → 84.12.",
+                "rule_applied": "GIR 1 — heading 84.12"})
+        else:
+            result["candidates"].append({"heading": "84.11", "subheading_hint": None,
+                "confidence": 0.75, "reasoning": "Turbine type unclear → 84.11.",
+                "rule_applied": "GIR 1 — heading 84.11"})
+        return result
+
+    # Boilers
+    if _CH84_BOILER.search(text):
+        if re.search(r'(?:steam|vapour)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Steam boiler → 84.02.",
+                "rule_applied": "GIR 1 — heading 84.02"})
+        elif re.search(r'(?:auxiliary|condenser)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Auxiliary plant for boilers / condenser → 84.04.",
+                "rule_applied": "GIR 1 — heading 84.04"})
+        else:
+            result["candidates"].append({"heading": "84.03", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Central heating boiler → 84.03.",
+                "rule_applied": "GIR 1 — heading 84.03"})
+        return result
+
+    # Pumps & compressors
+    if _CH84_PUMP.search(text):
+        if re.search(r'(?:compressor|air\s*compressor|gas\s*compressor|refrigerat)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.14", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Air/gas compressor → 84.14.",
+                "rule_applied": "GIR 1 — heading 84.14"})
+        else:
+            result["candidates"].append({"heading": "84.13", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Liquid pump → 84.13.",
+                "rule_applied": "GIR 1 — heading 84.13"})
+        return result
+
+    # AC & refrigeration
+    if _CH84_AC_REFRIG.search(text):
+        if re.search(r'(?:air\s*condition|מזגן)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.15", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Air conditioning machine → 84.15.",
+                "rule_applied": "GIR 1 — heading 84.15"})
+        else:
+            result["candidates"].append({"heading": "84.18", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Refrigerator / freezer / ice machine → 84.18.",
+                "rule_applied": "GIR 1 — heading 84.18"})
+        return result
+
+    # Heavy machinery
+    if _CH84_EARTH_MOVING.search(text):
+        result["candidates"].append({"heading": "84.29", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Bulldozer / excavator / loader / grader → 84.29.",
+            "rule_applied": "GIR 1 — heading 84.29"})
+        return result
+    if _CH84_LIFTING.search(text):
+        if re.search(r'(?:forklift|fork.?lift|lift\s*truck|מלגזה)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.27", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Fork-lift truck → 84.27.",
+                "rule_applied": "GIR 1 — heading 84.27"})
+        elif re.search(r'(?:crane|derrick|עגורן|מנוף)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.26", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Crane / derrick → 84.26.",
+                "rule_applied": "GIR 1 — heading 84.26"})
+        elif re.search(r'(?:elevator|escalator|conveyor)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.28", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Elevator / escalator / conveyor → 84.28.",
+                "rule_applied": "GIR 1 — heading 84.28"})
+        else:
+            result["candidates"].append({"heading": "84.25", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Hoist / winch / jack → 84.25.",
+                "rule_applied": "GIR 1 — heading 84.25"})
+        return result
+
+    # Agricultural
+    if _CH84_AGRICULTURAL.search(text):
+        if re.search(r'(?:plough|plow|harrow|cultivat|seed\s*drill|transplant|מחרשה)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.32", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Agricultural soil preparation machinery → 84.32.",
+                "rule_applied": "GIR 1 — heading 84.32"})
+        elif re.search(r'(?:harvest|thresh|mower|combine|קומביין)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.33", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Harvesting / threshing / mowing machinery → 84.33.",
+                "rule_applied": "GIR 1 — heading 84.33"})
+        elif re.search(r'(?:milking|dairy)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.34", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Milking / dairy machinery → 84.34.",
+                "rule_applied": "GIR 1 — heading 84.34"})
+        elif re.search(r'(?:incubator|brooder|poultry)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.36", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Poultry incubator / other agricultural machinery → 84.36.",
+                "rule_applied": "GIR 1 — heading 84.36"})
+        else:
+            result["candidates"].append({"heading": "84.32", "subheading_hint": None,
+                "confidence": 0.75, "reasoning": "Agricultural machine type unclear → 84.32.",
+                "rule_applied": "GIR 1 — heading 84.32"})
+        return result
+
+    # Processing machinery
+    if _CH84_FOOD_PROCESS.search(text):
+        result["candidates"].append({"heading": "84.38", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Food/drink processing machinery → 84.38.",
+            "rule_applied": "GIR 1 — heading 84.38"})
+        return result
+    if _CH84_PRINTING.search(text):
+        result["candidates"].append({"heading": "84.43", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Printing machine → 84.43.",
+            "rule_applied": "GIR 1 — heading 84.43"})
+        return result
+    if _CH84_TEXTILE_MACH.search(text):
+        if re.search(r'(?:spinning|twisting|doubling)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.45", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Textile spinning/twisting machine → 84.45.",
+                "rule_applied": "GIR 1 — heading 84.45"})
+        elif re.search(r'(?:weaving|loom)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.46", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Weaving machine / loom → 84.46.",
+                "rule_applied": "GIR 1 — heading 84.46"})
+        elif re.search(r'(?:knitting|stitch)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.47", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Knitting machine → 84.47.",
+                "rule_applied": "GIR 1 — heading 84.47"})
+        else:
+            result["candidates"].append({"heading": "84.45", "subheading_hint": None,
+                "confidence": 0.75, "reasoning": "Textile machine type unclear → 84.45.",
+                "rule_applied": "GIR 1 — heading 84.45"})
+        return result
+    if _CH84_CENTRIFUGE.search(text):
+        result["candidates"].append({"heading": "84.21", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Centrifuge / filter / separator / purifier → 84.21.",
+            "rule_applied": "GIR 1 — heading 84.21"})
+        return result
+    if _CH84_PACKING.search(text):
+        if re.search(r'(?:weigh|scale|מאזניים)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.23", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Weighing machine / scale → 84.23.",
+                "rule_applied": "GIR 1 — heading 84.23"})
+        else:
+            result["candidates"].append({"heading": "84.22", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Packing / filling / labelling / sealing machine → 84.22.",
+                "rule_applied": "GIR 1 — heading 84.22"})
+        return result
+
+    # Mechanical components
+    if _CH84_BEARING.search(text):
+        result["candidates"].append({"heading": "84.82", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Ball/roller bearing → 84.82.",
+            "rule_applied": "GIR 1 — heading 84.82"})
+        return result
+    if _CH84_GEAR.search(text):
+        result["candidates"].append({"heading": "84.83", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Gear / gearbox / clutch / coupling / flywheel / pulley → 84.83.",
+            "rule_applied": "GIR 1 — heading 84.83"})
+        return result
+    if _CH84_VALVE.search(text):
+        result["candidates"].append({"heading": "84.81", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Valve / tap / cock for pipes → 84.81.",
+            "rule_applied": "GIR 1 — heading 84.81"})
+        return result
+
+    # Mould
+    if re.search(r'(?:mould|mold|die\s*cast|injection\s*mould)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "84.80", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Mould / moulding pattern → 84.80.",
+            "rule_applied": "GIR 1 — heading 84.80"})
+        return result
+
+    # Residual
+    result["candidates"].append({"heading": "84.79", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Machine/mechanical appliance type unclear → 84.79 (machines n.e.s.).",
+        "rule_applied": "GIR 1 — residual heading"})
+    result["questions_needed"].append("What type of machine: engine, pump, compressor, AC, washing, computer, crane, agricultural, food processing, bearing, valve, or other?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 85: Electrical machinery and equipment; sound recorders; TV; parts
+# ============================================================================
+
+_CH85_MOTOR_GENERATOR = re.compile(
+    r'(?:מנוע\s*חשמלי|גנרטור|electric\s*motor|DC\s*motor|AC\s*motor|'
+    r'generator\s*(?:electric|power|diesel)|generating\s*set|'
+    r'dynamo|alternator)',
+    re.IGNORECASE
+)
+_CH85_TRANSFORMER = re.compile(
+    r'(?:שנאי|transformer|static\s*converter|inverter|'
+    r'rectifier|power\s*supply\s*(?:unit|adapter)|UPS|'
+    r'uninterruptible\s*power)',
+    re.IGNORECASE
+)
+_CH85_BATTERY = re.compile(
+    r'(?:סוללה|מצבר|battery|accumulator|lithium.?ion|li.?ion|'
+    r'lead.?acid|nickel.?cadmium|NiCd|NiMH|nickel.?metal\s*hydride|'
+    r'alkaline\s*(?:cell|battery)|zinc.?carbon|primary\s*cell|'
+    r'dry\s*cell|button\s*cell|fuel\s*cell)',
+    re.IGNORECASE
+)
+_CH85_VACUUM = re.compile(
+    r'(?:שואב\s*אבק|vacuum\s*cleaner|floor\s*polisher)',
+    re.IGNORECASE
+)
+_CH85_SHAVER = re.compile(
+    r'(?:מכונת?\s*גילוח|electric\s*shaver|electric\s*razor|'
+    r'hair\s*clipper\s*(?:electric)|epilator)',
+    re.IGNORECASE
+)
+_CH85_TELEPHONE = re.compile(
+    r'(?:טלפון|סמארטפון|smartphone|mobile\s*phone|cell\s*phone|'
+    r'cellular\s*phone|telephone|handset|'
+    r'base\s*station|antenna\s*(?:telecom|mobile)|'
+    r'router|modem|network\s*(?:switch|equipment)|'
+    r'transceiver|walkie.?talkie)',
+    re.IGNORECASE
+)
+_CH85_SPEAKER_MIC = re.compile(
+    r'(?:רמקול|מיקרופון|אוזניות|speaker|loudspeaker|microphone|'
+    r'headphone|earphone|earbuds?|headset|'
+    r'amplifier\s*(?:audio|sound)|sound\s*bar|subwoofer)',
+    re.IGNORECASE
+)
+_CH85_SOUND_VIDEO = re.compile(
+    r'(?:מקליט|media\s*player|video\s*recorder|set.?top\s*box|'
+    r'streaming\s*device|DVD\s*player|Blu.?ray|'
+    r'video\s*camera|camcorder)',
+    re.IGNORECASE
+)
+_CH85_TV = re.compile(
+    r'(?:טלוויזיה|television|\bTV\b|LCD\s*\bTV\b|LED\s*\bTV\b|OLED\s*\bTV\b|'
+    r'plasma\s*\bTV\b|flat\s*screen\s*\bTV\b|monitor\s*(?:display|video))',
+    re.IGNORECASE
+)
+_CH85_SEMICONDUCTOR = re.compile(
+    r'(?:מוליך\s*למחצה|שבב|semiconductor|integrated\s*circuit|\bIC\b|'
+    r'microprocessor|microcontroller|CPU|GPU|FPGA|ASIC|'
+    r'transistor|diode|thyristor|\bLED\b|'
+    r'photovoltaic\s*cell|solar\s*cell|solar\s*panel|'
+    r'solar\s*module|photo.?diode|photo.?transistor)',
+    re.IGNORECASE
+)
+_CH85_WIRE_CABLE = re.compile(
+    r'(?:כבל\s*חשמל|חוט\s*חשמל|electric\s*(?:wire|cable)|'
+    r'power\s*cable|coaxial\s*cable|fibre\s*optic\s*cable|'
+    r'wiring\s*harness|insulated\s*(?:wire|cable|conductor))',
+    re.IGNORECASE
+)
+_CH85_LAMP = re.compile(
+    r'(?:נורה|LED\s*(?:lamp|bulb|strip|module)|fluorescent\s*(?:lamp|tube)|'
+    r'halogen\s*(?:lamp|bulb)|incandescent\s*(?:lamp|bulb)|'
+    r'discharge\s*(?:lamp|tube)|arc\s*lamp|'
+    r'UV\s*lamp|infrared\s*lamp)',
+    re.IGNORECASE
+)
+_CH85_IGNITION = re.compile(
+    r'(?:הצתה|starter\s*motor|ignition\s*(?:coil|plug)|spark\s*plug|'
+    r'glow\s*plug|magneto|distributor\s*(?:ignition))',
+    re.IGNORECASE
+)
+_CH85_INSULATOR = re.compile(
+    r'(?:מבודד\s*חשמל|insulator\s*(?:electric|ceramic|glass)|'
+    r'bushing\s*(?:electric|insulating)|insulating\s*fitting)',
+    re.IGNORECASE
+)
+_CH85_GENERAL = re.compile(
+    r'(?:חשמלי|electrical|electric\s*(?:motor|generator|apparatus)|'
+    r'transformer|battery|accumulator|solar\s*panel|'
+    r'semiconductor|\bIC\b|\bLED\b|television|\bTV\b|'
+    r'telephone|smartphone|speaker|microphone|'
+    r'cable\s*(?:electric|power)|vacuum\s*cleaner)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_85_candidate(text):
+    return bool(
+        _CH85_MOTOR_GENERATOR.search(text) or _CH85_TRANSFORMER.search(text)
+        or _CH85_BATTERY.search(text) or _CH85_VACUUM.search(text)
+        or _CH85_SHAVER.search(text) or _CH85_TELEPHONE.search(text)
+        or _CH85_SPEAKER_MIC.search(text) or _CH85_SOUND_VIDEO.search(text)
+        or _CH85_TV.search(text) or _CH85_SEMICONDUCTOR.search(text)
+        or _CH85_WIRE_CABLE.search(text) or _CH85_LAMP.search(text)
+        or _CH85_IGNITION.search(text) or _CH85_INSULATOR.search(text)
+        or _CH85_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_85(product):
+    """Chapter 85: Electrical machinery and equipment and parts thereof; sound recorders/reproducers; TV.
+
+    Headings:
+        85.01 — Electric motors and generators (excluding generating sets)
+        85.02 — Electric generating sets and rotary converters
+        85.03 — Parts suitable for use solely/principally with machines of 85.01/85.02
+        85.04 — Electrical transformers, static converters (rectifiers), inductors
+        85.05 — Electromagnets; electromagnetic couplings/clutches/brakes; electromagnetic lifting heads
+        85.06 — Primary cells and primary batteries
+        85.07 — Electric accumulators (incl. separators), lead-acid, nickel-cadmium, lithium-ion
+        85.08 — Vacuum cleaners
+        85.09 — Electro-mechanical domestic appliances with self-contained electric motor (food grinders, juice extractors)
+        85.10 — Shavers, hair clippers, hair-removing appliances, with self-contained electric motor
+        85.11 — Electrical ignition/starting equipment for spark/compression engines; generators/cut-outs
+        85.12 — Electrical lighting/signalling equipment for vehicles; windscreen wipers/defrosters
+        85.13 — Portable electric lamps (torches, flashlights, miners' lamps)
+        85.14 — Industrial/laboratory electric furnaces and ovens; induction/dielectric heating equipment
+        85.15 — Electric/laser/ultrasonic/electron beam/plasma arc soldering/brazing/welding machines
+        85.16 — Electric water heaters, immersion heaters; space heating apparatus; hair dryers/curlers; irons
+        85.17 — Telephone sets; smartphones; apparatus for transmission/reception of voice/images/data
+        85.18 — Microphones; loudspeakers; headphones; sound amplifying sets
+        85.19 — Sound recording/reproducing apparatus
+        85.20 — (Reserved)
+        85.21 — Video recording/reproducing apparatus
+        85.23 — Discs, tapes, solid-state storage, smart cards, for recording
+        85.25 — Transmission apparatus for radio/TV/digital cameras/video cameras
+        85.27 — Reception apparatus for radio-broadcasting
+        85.28 — Monitors and projectors, not incorporating TV reception apparatus; TV receivers
+        85.29 — Parts for apparatus of 85.25-85.28
+        85.30 — Electrical signalling/safety/traffic control equipment for railways/roads/waterways/parking
+        85.31 — Electric sound/visual signalling apparatus (bells, sirens, indicator panels, burglar/fire alarms)
+        85.32 — Electrical capacitors (fixed, variable, adjustable)
+        85.33 — Electrical resistors (including rheostats and potentiometers), other than heating resistors
+        85.34 — Printed circuits
+        85.35 — Electrical apparatus for switching/protecting circuits, > 1,000 V (switches, fuses, surge protectors)
+        85.36 — Electrical apparatus for switching/protecting circuits, ≤ 1,000 V (switches, relays, plugs, sockets)
+        85.37 — Boards, panels, consoles, desks, cabinets for electric control/distribution (≤ 1,000 V)
+        85.38 — Parts for apparatus of 85.35-85.37
+        85.39 — Electric filament/discharge lamps, incl. sealed beam; UV/IR lamps; LED lamps
+        85.41 — Semiconductor devices (diodes, transistors, thyristors); photovoltaic cells; LEDs; mounted piezoelectric crystals
+        85.42 — Electronic integrated circuits
+        85.43 — Electrical machines having individual functions, n.e.s. (signal generators, metal detectors)
+        85.44 — Insulated wire/cable/conductors; optical fibre cables
+        85.45 — Carbon electrodes, carbon brushes, lamp carbons, battery carbons
+        85.46 — Electrical insulators of any material
+        85.47 — Insulating fittings for electrical machines/appliances (conduit tubing)
+        85.48 — Waste and scrap of primary cells/batteries/electric accumulators; spent primary cells; electrical parts n.e.s.
+    """
+    text = _product_text(product)
+    result = {"chapter": 85, "candidates": [], "redirect": None, "questions_needed": []}
+
+    # Semiconductor / solar first — very specific
+    if _CH85_SEMICONDUCTOR.search(text):
+        if re.search(r'(?:integrated\s*circuit|\bIC\b|microprocessor|microcontroller|CPU|GPU|FPGA|ASIC)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.42", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Integrated circuit / IC / microprocessor → 85.42.",
+                "rule_applied": "GIR 1 — heading 85.42"})
+        elif re.search(r'(?:solar\s*(?:cell|panel|module)|photovoltaic)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.41", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Solar cell / panel / photovoltaic → 85.41.",
+                "rule_applied": "GIR 1 — heading 85.41"})
+        elif re.search(r'(?:LED\b)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.41", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "LED (semiconductor device) → 85.41.",
+                "rule_applied": "GIR 1 — heading 85.41"})
+        else:
+            result["candidates"].append({"heading": "85.41", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Semiconductor device (diode/transistor/thyristor) → 85.41.",
+                "rule_applied": "GIR 1 — heading 85.41"})
+        return result
+
+    # Telecom
+    if _CH85_TELEPHONE.search(text):
+        result["candidates"].append({"heading": "85.17", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Telephone / smartphone / base station / router / transceiver → 85.17.",
+            "rule_applied": "GIR 1 — heading 85.17"})
+        return result
+    if _CH85_TV.search(text):
+        result["candidates"].append({"heading": "85.28", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Television / monitor / projector → 85.28.",
+            "rule_applied": "GIR 1 — heading 85.28"})
+        return result
+    if _CH85_SPEAKER_MIC.search(text):
+        result["candidates"].append({"heading": "85.18", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Speaker / microphone / headphone / amplifier → 85.18.",
+            "rule_applied": "GIR 1 — heading 85.18"})
+        return result
+    if _CH85_SOUND_VIDEO.search(text):
+        if re.search(r'(?:video|camcorder|camera)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.25", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Video camera / camcorder → 85.25.",
+                "rule_applied": "GIR 1 — heading 85.25"})
+        else:
+            result["candidates"].append({"heading": "85.19", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Sound/media recording/reproducing apparatus → 85.19.",
+                "rule_applied": "GIR 1 — heading 85.19"})
+        return result
+
+    # Power
+    if _CH85_BATTERY.search(text):
+        if re.search(r'(?:accumulator|recharg|li.?ion|lithium.?ion|lead.?acid|NiCd|NiMH|מצבר)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.07", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Rechargeable battery / accumulator (Li-ion, lead-acid, NiCd) → 85.07.",
+                "rule_applied": "GIR 1 — heading 85.07"})
+        elif re.search(r'(?:fuel\s*cell)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.07", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Fuel cell → 85.07.",
+                "rule_applied": "GIR 1 — heading 85.07"})
+        else:
+            result["candidates"].append({"heading": "85.06", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Primary cell / battery (alkaline, zinc-carbon, button) → 85.06.",
+                "rule_applied": "GIR 1 — heading 85.06"})
+        return result
+    if _CH85_MOTOR_GENERATOR.search(text):
+        if re.search(r'(?:generating\s*set|genset|diesel\s*generator|power\s*generator)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Electric generating set → 85.02.",
+                "rule_applied": "GIR 1 — heading 85.02"})
+        else:
+            result["candidates"].append({"heading": "85.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Electric motor / generator → 85.01.",
+                "rule_applied": "GIR 1 — heading 85.01"})
+        return result
+    if _CH85_TRANSFORMER.search(text):
+        result["candidates"].append({"heading": "85.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Transformer / inverter / rectifier / power supply / UPS → 85.04.",
+            "rule_applied": "GIR 1 — heading 85.04"})
+        return result
+
+    # Appliances
+    if _CH85_VACUUM.search(text):
+        result["candidates"].append({"heading": "85.08", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Vacuum cleaner → 85.08.",
+            "rule_applied": "GIR 1 — heading 85.08"})
+        return result
+    if _CH85_SHAVER.search(text):
+        result["candidates"].append({"heading": "85.10", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Electric shaver / hair clipper → 85.10.",
+            "rule_applied": "GIR 1 — heading 85.10"})
+        return result
+
+    # Wire/cable, lamps, insulators
+    if _CH85_WIRE_CABLE.search(text):
+        result["candidates"].append({"heading": "85.44", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Insulated wire / cable / optical fibre cable → 85.44.",
+            "rule_applied": "GIR 1 — heading 85.44"})
+        return result
+    if _CH85_LAMP.search(text):
+        result["candidates"].append({"heading": "85.39", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Electric lamp (LED, fluorescent, halogen, incandescent) → 85.39.",
+            "rule_applied": "GIR 1 — heading 85.39"})
+        return result
+    if _CH85_IGNITION.search(text):
+        result["candidates"].append({"heading": "85.11", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Ignition / starting equipment / spark plug → 85.11.",
+            "rule_applied": "GIR 1 — heading 85.11"})
+        return result
+    if _CH85_INSULATOR.search(text):
+        result["candidates"].append({"heading": "85.46", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Electrical insulator → 85.46.",
+            "rule_applied": "GIR 1 — heading 85.46"})
+        return result
+
+    # Switches/circuit protection
+    if re.search(r'(?:switch|fuse|circuit\s*breaker|relay|socket|plug\s*(?:electric)|contactor|surge\s*protect)', text, re.IGNORECASE):
+        if re.search(r'(?:>.*1000\s*V|high\s*voltage|medium\s*voltage|HV\b|MV\b)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "85.35", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Switching/protection apparatus >1000V → 85.35.",
+                "rule_applied": "GIR 1 — heading 85.35"})
+        else:
+            result["candidates"].append({"heading": "85.36", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Switching/protection apparatus ≤1000V (switch, relay, plug, socket) → 85.36.",
+                "rule_applied": "GIR 1 — heading 85.36"})
+        return result
+    if re.search(r'(?:capacitor|condenser\s*(?:electric))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "85.32", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Electrical capacitor → 85.32.",
+            "rule_applied": "GIR 1 — heading 85.32"})
+        return result
+    if re.search(r'(?:resistor|rheostat|potentiometer|varistor)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "85.33", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Electrical resistor / potentiometer → 85.33.",
+            "rule_applied": "GIR 1 — heading 85.33"})
+        return result
+    if re.search(r'(?:printed\s*circuit|PCB|\bPCBA\b)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "85.34", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Printed circuit board (PCB) → 85.34.",
+            "rule_applied": "GIR 1 — heading 85.34"})
+        return result
+    if re.search(r'(?:electric\s*(?:iron|water\s*heater|heater|hair\s*dryer|curler)|immersion\s*heater)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "85.16", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Electric heater / iron / hair dryer → 85.16.",
+            "rule_applied": "GIR 1 — heading 85.16"})
+        return result
+
+    # Residual
+    result["candidates"].append({"heading": "85.48", "subheading_hint": None,
+        "confidence": 0.50, "reasoning": "Electrical equipment type unclear → 85.48 (parts n.e.s.).",
+        "rule_applied": "GIR 1 — residual heading"})
+    result["questions_needed"].append("What type: motor/generator, transformer, battery, telephone, TV, semiconductor/IC, solar panel, cable, lamp, switch, or other?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 86: Railway/tramway locomotives, rolling-stock, track fixtures
+# ============================================================================
+
+_CH86_LOCOMOTIVE = re.compile(
+    r'(?:קטר|קרון\s*רכבת|locomotive|rail\s*locomotive|'
+    r'diesel\s*locomotive|electric\s*locomotive|'
+    r'rail\s*motor\s*coach|railcar|tramway\s*(?:car|coach))',
+    re.IGNORECASE
+)
+_CH86_ROLLING = re.compile(
+    r'(?:קרון\s*(?:משא|נוסעים)|rolling\s*stock|railway\s*(?:coach|wagon|car|van|tank\s*car)|'
+    r'freight\s*(?:wagon|car)|passenger\s*(?:coach|car)\s*(?:railway|rail)|'
+    r'hopper\s*(?:wagon|car)|flat\s*(?:wagon|car)\s*(?:rail))',
+    re.IGNORECASE
+)
+_CH86_TRACK = re.compile(
+    r'(?:פסי?\s*רכבת|מסילה|railway\s*(?:track|rail|sleeper|tie)|'
+    r'\brail\b\s*(?:track|steel)|check.?rail|switch\s*(?:blade|rail)|'
+    r'crossing\s*(?:rail|piece)|rail\s*clip|rail\s*fastening|'
+    r'fishplate|sole\s*plate\s*rail)',
+    re.IGNORECASE
+)
+_CH86_SIGNAL = re.compile(
+    r'(?:railway\s*signal|traffic\s*control\s*(?:rail|railway)|'
+    r'mechanical\s*signal\s*(?:rail)|train\s*(?:signal|control))',
+    re.IGNORECASE
+)
+_CH86_CONTAINER = re.compile(
+    r'(?:מכולה|container\s*(?:transport|shipping|freight|intermodal|ISO)|'
+    r'intermodal\s*container)',
+    re.IGNORECASE
+)
+_CH86_GENERAL = re.compile(
+    r'(?:railway|railroad|tramway|locomotive|rail\s*(?:car|coach|wagon)|'
+    r'rolling\s*stock|railcar)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_86_candidate(text):
+    return bool(
+        _CH86_LOCOMOTIVE.search(text) or _CH86_ROLLING.search(text)
+        or _CH86_TRACK.search(text) or _CH86_SIGNAL.search(text)
+        or _CH86_CONTAINER.search(text) or _CH86_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_86(product):
+    """Chapter 86: Railway or tramway locomotives, rolling-stock and parts; track fixtures; signalling.
+
+    Headings:
+        86.01 — Rail locomotives powered from external source of electricity or by electric accumulators
+        86.02 — Other rail locomotives; locomotive tenders
+        86.03 — Self-propelled railway/tramway coaches, vans, trucks (not of 86.04)
+        86.04 — Railway/tramway maintenance/service vehicles
+        86.05 — Railway/tramway passenger coaches (not self-propelled)
+        86.06 — Railway/tramway goods vans/wagons (not self-propelled)
+        86.07 — Parts of railway/tramway locomotives or rolling-stock
+        86.08 — Railway/tramway track fixtures and fittings; signalling/safety/traffic control equipment
+        86.09 — Containers specially designed for carriage by one or more modes of transport
+    """
+    text = _product_text(product)
+    result = {"chapter": 86, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH86_CONTAINER.search(text):
+        result["candidates"].append({"heading": "86.09", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Shipping / intermodal container → 86.09.",
+            "rule_applied": "GIR 1 — heading 86.09"})
+        return result
+    if _CH86_LOCOMOTIVE.search(text):
+        if re.search(r'(?:electric|battery|accumulator)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "86.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Electric rail locomotive → 86.01.",
+                "rule_applied": "GIR 1 — heading 86.01"})
+        elif re.search(r'(?:self.?propelled|motor\s*coach|railcar|tramway)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "86.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Self-propelled rail coach / railcar → 86.03.",
+                "rule_applied": "GIR 1 — heading 86.03"})
+        else:
+            result["candidates"].append({"heading": "86.02", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Diesel/other rail locomotive → 86.02.",
+                "rule_applied": "GIR 1 — heading 86.02"})
+        return result
+    if _CH86_ROLLING.search(text):
+        if re.search(r'(?:passenger|coach|נוסעים)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "86.05", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Railway passenger coach → 86.05.",
+                "rule_applied": "GIR 1 — heading 86.05"})
+        elif re.search(r'(?:freight|goods|wagon|tank\s*car|hopper|משא)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "86.06", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Railway freight wagon → 86.06.",
+                "rule_applied": "GIR 1 — heading 86.06"})
+        elif re.search(r'(?:maintenance|service)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "86.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Railway maintenance vehicle → 86.04.",
+                "rule_applied": "GIR 1 — heading 86.04"})
+        else:
+            result["candidates"].append({"heading": "86.06", "subheading_hint": None,
+                "confidence": 0.75, "reasoning": "Railway rolling stock → 86.06.",
+                "rule_applied": "GIR 1 — heading 86.06"})
+        return result
+    if _CH86_TRACK.search(text) or _CH86_SIGNAL.search(text):
+        result["candidates"].append({"heading": "86.08", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Railway track fixture / signal equipment → 86.08.",
+            "rule_applied": "GIR 1 — heading 86.08"})
+        return result
+    if re.search(r'(?:part|חלק)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "86.07", "subheading_hint": None,
+            "confidence": 0.75, "reasoning": "Parts of railway rolling stock → 86.07.",
+            "rule_applied": "GIR 1 — heading 86.07"})
+        return result
+
+    result["candidates"].append({"heading": "86.06", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Railway equipment type unclear → 86.06.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Locomotive, passenger coach, freight wagon, track fixture, container, or part?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 87: Vehicles other than railway/tramway rolling-stock, and parts
+# ============================================================================
+
+_CH87_CAR = re.compile(
+    r'(?:מכונית|רכב\s*(?:נוסעים|פרטי)|automobile|\bcar\b\s*(?:vehicle|passenger|sedan|hatchback|SUV)|'
+    r'sedan|hatchback|\bSUV\b|sport\s*utility|station\s*wagon|'
+    r'coupe|cabriolet|convertible|limousine|crossover|'
+    r'passenger\s*(?:car|vehicle)|motor\s*\bcar\b)',
+    re.IGNORECASE
+)
+_CH87_TRUCK = re.compile(
+    r'(?:משאית|רכב\s*(?:משא|מסחרי)|truck|lorry|\bvan\b\s*(?:cargo|freight|commercial)|'
+    r'cargo\s*vehicle|goods\s*vehicle|pickup\s*truck|'
+    r'dump\s*truck|tipper|flatbed\s*truck|tanker\s*truck|'
+    r'refrigerated\s*truck|concrete\s*mixer\s*truck|'
+    r'GVW|gross\s*vehicle\s*weight)',
+    re.IGNORECASE
+)
+_CH87_BUS = re.compile(
+    r'(?:אוטובוס|מיניבוס|\bbus\b|minibus|coach\s*(?:bus|vehicle)|'
+    r'public\s*transport\s*vehicle|passenger\s*transport\s*vehicle)',
+    re.IGNORECASE
+)
+_CH87_MOTORCYCLE = re.compile(
+    r'(?:אופנוע|קטנוע|motorcycle(?!\s*(?:helmet|glove|jacket|boot|gear|accessori))|'
+    r'motorbike(?!\s*(?:helmet|glove|jacket|boot|gear|accessori))|'
+    r'moped|scooter\s*(?:motor|petrol|electric)|side.?car)',
+    re.IGNORECASE
+)
+_CH87_BICYCLE = re.compile(
+    r'(?:אופניים|bicycle|bike\s*(?:pedal|cycle)|tricycle\s*(?:pedal|delivery)|'
+    r'e.?bike|electric\s*bicycle|pedelec|cycling)',
+    re.IGNORECASE
+)
+_CH87_TRACTOR = re.compile(
+    r'(?:טרקטור|tractor\s*(?:agricultural|road|semi)|'
+    r'road\s*tractor|semi.?trailer\s*tractor|'
+    r'tractor\s*unit)',
+    re.IGNORECASE
+)
+_CH87_TRAILER = re.compile(
+    r'(?:נגרר|גרור|trailer|semi.?trailer|caravan|mobile\s*home|'
+    r'horse\s*(?:float|trailer)|boat\s*trailer)',
+    re.IGNORECASE
+)
+_CH87_PARTS = re.compile(
+    r'(?:חלקי?\s*(?:רכב|מכונית)|vehicle\s*part|auto\s*part|'
+    r'bumper\s*(?:car|vehicle)|fender|mudguard|hood\s*(?:car|bonnet)|'
+    r'body\s*(?:panel|shell)\s*(?:car|vehicle)|'
+    r'brake\s*(?:pad|disc|drum|lining)|'
+    r'clutch\s*(?:disc|plate|assembly)\s*(?:vehicle)?|'
+    r'shock\s*absorber|suspension\s*(?:spring|arm|strut)|'
+    r'steering\s*(?:wheel|column|rack)|'
+    r'exhaust\s*(?:pipe|muffler|silencer)|catalytic\s*converter|'
+    r'radiator\s*(?:car|vehicle)|wheel\s*rim|alloy\s*wheel|'
+    r'axle|drive\s*shaft|CV\s*joint|prop\s*shaft)',
+    re.IGNORECASE
+)
+_CH87_SPECIAL = re.compile(
+    r'(?:רכב\s*(?:מיוחד|כיבוי|הצלה|חילוץ)|fire\s*engine|ambulance|'
+    r'wrecker|breakdown\s*(?:lorry|truck)|crane\s*(?:lorry|truck)|'
+    r'concrete\s*mixer\s*(?:vehicle|truck)|'
+    r'road\s*sweeper|spraying\s*vehicle|mobile\s*(?:crane|workshop))',
+    re.IGNORECASE
+)
+_CH87_GENERAL = re.compile(
+    r'(?:רכב|vehicle|automobile|\bcar\b|truck|lorry|\bbus\b|'
+    r'motorcycle(?!\s*(?:helmet|glove|jacket|boot|gear|accessori))|'
+    r'bicycle(?!\s*(?:helmet|glove|lock|light|pump))|'
+    r'tractor|trailer)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_87_candidate(text):
+    return bool(
+        _CH87_CAR.search(text) or _CH87_TRUCK.search(text)
+        or _CH87_BUS.search(text) or _CH87_MOTORCYCLE.search(text)
+        or _CH87_BICYCLE.search(text) or _CH87_TRACTOR.search(text)
+        or _CH87_TRAILER.search(text) or _CH87_PARTS.search(text)
+        or _CH87_SPECIAL.search(text) or _CH87_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_87(product):
+    """Chapter 87: Vehicles other than railway or tramway rolling-stock, and parts/accessories thereof.
+
+    Headings:
+        87.01 — Tractors (other than tractors of 87.09)
+        87.02 — Motor vehicles for transport of ≥ 10 persons (buses)
+        87.03 — Motor cars and other motor vehicles principally designed for transport of persons
+        87.04 — Motor vehicles for transport of goods
+        87.05 — Special purpose motor vehicles (crane lorries, fire engines, concrete mixers, sweepers)
+        87.06 — Chassis fitted with engines, for motor vehicles of 87.01-87.05
+        87.07 — Bodies (including cabs), for motor vehicles of 87.01-87.05
+        87.08 — Parts and accessories of motor vehicles of 87.01-87.05
+        87.09 — Works trucks, self-propelled (not fitted with lifting equipment); tractors for railway station platforms
+        87.10 — Tanks and other armoured fighting vehicles, motorised
+        87.11 — Motorcycles and cycles fitted with auxiliary motor, with or without side-cars; side-cars
+        87.12 — Bicycles and other cycles (including delivery tricycles), not motorised
+        87.13 — Invalid carriages (wheelchairs), motorised or not
+        87.14 — Parts and accessories of vehicles of 87.11-87.13
+        87.15 — Baby carriages (prams) and parts thereof
+        87.16 — Trailers and semi-trailers; other vehicles, not mechanically propelled
+    """
+    text = _product_text(product)
+    result = {"chapter": 87, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH87_CAR.search(text):
+        heading = "87.03"
+        hint = None
+        if re.search(r'(?:electric\s*(?:car|vehicle)|EV\b|BEV\b|battery\s*electric)', text, re.IGNORECASE):
+            hint = "8703.80"
+        elif re.search(r'(?:hybrid|PHEV|HEV|plug.?in)', text, re.IGNORECASE):
+            hint = "8703.60"
+        elif re.search(r'(?:diesel)', text, re.IGNORECASE):
+            hint = "8703.30"
+        elif re.search(r'(?:petrol|gasoline|spark|benzin|בנזין)', text, re.IGNORECASE):
+            hint = "8703.20"
+        result["candidates"].append({"heading": heading, "subheading_hint": hint,
+            "confidence": 0.85, "reasoning": f"Passenger motor car → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH87_TRUCK.search(text):
+        heading = "87.04"
+        hint = None
+        if re.search(r'(?:electric\s*truck|EV\s*truck|battery\s*electric)', text, re.IGNORECASE):
+            hint = "8704.90"
+        elif re.search(r'(?:GVW\s*(?:>|over|exceeding)\s*20|>20\s*t(?:on)?|above\s*20)', text, re.IGNORECASE):
+            hint = "8704.23"
+        elif re.search(r'(?:GVW\s*(?:>|over|exceeding)\s*5|5.?20\s*t(?:on)?)', text, re.IGNORECASE):
+            hint = "8704.22"
+        elif re.search(r'(?:GVW\s*(?:≤|under|below|up\s*to)\s*5|≤5\s*t(?:on)?)', text, re.IGNORECASE):
+            hint = "8704.21"
+        result["candidates"].append({"heading": heading, "subheading_hint": hint,
+            "confidence": 0.85, "reasoning": f"Motor vehicle for goods transport (truck) → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH87_BUS.search(text):
+        result["candidates"].append({"heading": "87.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Bus / coach (≥10 persons) → 87.02.",
+            "rule_applied": "GIR 1 — heading 87.02"})
+        return result
+    if _CH87_MOTORCYCLE.search(text):
+        result["candidates"].append({"heading": "87.11", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Motorcycle / moped / scooter → 87.11.",
+            "rule_applied": "GIR 1 — heading 87.11"})
+        return result
+    if _CH87_BICYCLE.search(text):
+        if re.search(r'(?:e.?bike|electric\s*bicycle|pedelec)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "87.11", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "E-bike with auxiliary motor → 87.11.",
+                "rule_applied": "GIR 1 — heading 87.11"})
+        else:
+            result["candidates"].append({"heading": "87.12", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Bicycle / non-motorised cycle → 87.12.",
+                "rule_applied": "GIR 1 — heading 87.12"})
+        return result
+    if _CH87_TRACTOR.search(text):
+        result["candidates"].append({"heading": "87.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Tractor (agricultural or road) → 87.01.",
+            "rule_applied": "GIR 1 — heading 87.01"})
+        return result
+    if _CH87_TRAILER.search(text):
+        result["candidates"].append({"heading": "87.16", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Trailer / semi-trailer / caravan → 87.16.",
+            "rule_applied": "GIR 1 — heading 87.16"})
+        return result
+    if _CH87_SPECIAL.search(text):
+        result["candidates"].append({"heading": "87.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Special purpose vehicle (fire engine, ambulance, crane truck) → 87.05.",
+            "rule_applied": "GIR 1 — heading 87.05"})
+        return result
+    if _CH87_PARTS.search(text):
+        if re.search(r'(?:body|cab\b|bonnet|hood\s*(?:car)|panel\s*(?:body))', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "87.07", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Vehicle body / cab → 87.07.",
+                "rule_applied": "GIR 1 — heading 87.07"})
+        elif re.search(r'(?:chassis)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "87.06", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Chassis fitted with engine → 87.06.",
+                "rule_applied": "GIR 1 — heading 87.06"})
+        else:
+            result["candidates"].append({"heading": "87.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Vehicle parts and accessories → 87.08.",
+                "rule_applied": "GIR 1 — heading 87.08"})
+        return result
+    if re.search(r'(?:wheelchair|invalid\s*carriage|כיסא\s*גלגלים)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "87.13", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Wheelchair / invalid carriage → 87.13.",
+            "rule_applied": "GIR 1 — heading 87.13"})
+        return result
+    if re.search(r'(?:baby\s*carriage|pram|stroller|עגלת?\s*(?:ילד|תינוק))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "87.15", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Baby carriage / pram / stroller → 87.15.",
+            "rule_applied": "GIR 1 — heading 87.15"})
+        return result
+
+    result["candidates"].append({"heading": "87.03", "subheading_hint": None,
+        "confidence": 0.50, "reasoning": "Vehicle type unclear → 87.03.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Car, truck, bus, motorcycle, bicycle, tractor, trailer, or parts?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 88: Aircraft, spacecraft, and parts thereof
+# ============================================================================
+
+_CH88_HELICOPTER = re.compile(
+    r'(?:מסוק|helicopter|chopper|rotorcraft|rotor\s*wing)',
+    re.IGNORECASE
+)
+_CH88_AEROPLANE = re.compile(
+    r'(?:מטוס|aeroplane|airplane|aircraft|jet\s*(?:aircraft|plane)|'
+    r'airliner|turboprop\s*aircraft|light\s*aircraft|cargo\s*aircraft|'
+    r'fighter\s*(?:jet|aircraft)|glider|sailplane)',
+    re.IGNORECASE
+)
+_CH88_DRONE = re.compile(
+    r'(?:רחפן|מזל"ט|drone|\bUAV\b|unmanned\s*(?:aerial|aircraft)|'
+    r'remotely\s*piloted|quadcopter|multirotor|UAS\b)',
+    re.IGNORECASE
+)
+_CH88_SPACECRAFT = re.compile(
+    r'(?:חללית|לוויין|spacecraft|satellite|space\s*vehicle|launch\s*vehicle|'
+    r'suborbital|orbital\s*vehicle)',
+    re.IGNORECASE
+)
+_CH88_PARTS = re.compile(
+    r'(?:חלקי?\s*(?:מטוס|מסוק)|aircraft\s*part|aeroplane\s*part|'
+    r'propeller\s*(?:aircraft)|landing\s*gear|fuselage|'
+    r'wing\s*(?:aircraft)|aileron|rudder\s*(?:aircraft)|'
+    r'undercarriage|flight\s*recorder)',
+    re.IGNORECASE
+)
+_CH88_PARACHUTE = re.compile(
+    r'(?:מצנח|parachute|paraglider|hang\s*glider)',
+    re.IGNORECASE
+)
+_CH88_GENERAL = re.compile(
+    r'(?:aircraft|aeroplane|airplane|helicopter|drone|\bUAV\b|spacecraft|'
+    r'satellite|parachute)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_88_candidate(text):
+    return bool(
+        _CH88_HELICOPTER.search(text) or _CH88_AEROPLANE.search(text)
+        or _CH88_DRONE.search(text) or _CH88_SPACECRAFT.search(text)
+        or _CH88_PARTS.search(text) or _CH88_PARACHUTE.search(text)
+        or _CH88_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_88(product):
+    """Chapter 88: Aircraft, spacecraft, and parts thereof.
+
+    Headings:
+        88.01 — Balloons and dirigibles; gliders, hang gliders, other non-powered aircraft
+        88.02 — Other aircraft (helicopters, aeroplanes); spacecraft (incl. satellites), suborbital/spacecraft launch vehicles
+        88.03 — Parts of goods of 88.01 or 88.02
+        88.04 — Parachutes (including dirigible parachutes), paragliders; rotochutes; parts/accessories
+        88.05 — Aircraft launching gear; deck-arrestor gear; ground flying trainers; parts
+        88.06 — Unmanned aircraft (drones, UAVs)
+    """
+    text = _product_text(product)
+    result = {"chapter": 88, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH88_DRONE.search(text):
+        result["candidates"].append({"heading": "88.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Drone / UAV / unmanned aircraft → 88.06.",
+            "rule_applied": "GIR 1 — heading 88.06"})
+        return result
+    if _CH88_PARACHUTE.search(text):
+        result["candidates"].append({"heading": "88.04", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Parachute / paraglider → 88.04.",
+            "rule_applied": "GIR 1 — heading 88.04"})
+        return result
+    if _CH88_SPACECRAFT.search(text):
+        result["candidates"].append({"heading": "88.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Spacecraft / satellite / launch vehicle → 88.02.",
+            "rule_applied": "GIR 1 — heading 88.02"})
+        return result
+    if _CH88_HELICOPTER.search(text):
+        result["candidates"].append({"heading": "88.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Helicopter / rotorcraft → 88.02.",
+            "rule_applied": "GIR 1 — heading 88.02"})
+        return result
+    if _CH88_AEROPLANE.search(text):
+        if re.search(r'(?:glider|sailplane|non.?powered|hang\s*glider)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "88.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Glider / non-powered aircraft → 88.01.",
+                "rule_applied": "GIR 1 — heading 88.01"})
+        else:
+            result["candidates"].append({"heading": "88.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Powered aircraft / aeroplane → 88.02.",
+                "rule_applied": "GIR 1 — heading 88.02"})
+        return result
+    if _CH88_PARTS.search(text):
+        result["candidates"].append({"heading": "88.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aircraft parts (fuselage, wing, landing gear, propeller) → 88.03.",
+            "rule_applied": "GIR 1 — heading 88.03"})
+        return result
+    if re.search(r'(?:launch\s*gear|catapult|arrester|flight\s*simulator|ground\s*flying\s*trainer)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "88.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Aircraft launch gear / flight trainer → 88.05.",
+            "rule_applied": "GIR 1 — heading 88.05"})
+        return result
+
+    result["candidates"].append({"heading": "88.02", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Aircraft type unclear → 88.02.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Helicopter, aeroplane, drone/UAV, spacecraft, glider, parachute, or parts?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 89: Ships, boats and floating structures
+# ============================================================================
+
+_CH89_CRUISE_CARGO = re.compile(
+    r'(?:אנייה|ספינה\s*(?:משא|מטען)|cruise\s*ship|cargo\s*(?:ship|vessel)|'
+    r'container\s*ship|bulk\s*carrier|tanker\s*(?:ship|vessel)|'
+    r'oil\s*tanker|LNG\s*(?:carrier|tanker)|'
+    r'general\s*cargo|ro.?ro|ferry|passenger\s*(?:ship|vessel))',
+    re.IGNORECASE
+)
+_CH89_FISHING = re.compile(
+    r'(?:ספינת?\s*דיג|fishing\s*(?:vessel|boat|trawler)|trawler|'
+    r'factory\s*ship\s*(?:fish))',
+    re.IGNORECASE
+)
+_CH89_YACHT = re.compile(
+    r'(?:יאכטה|סירת?\s*(?:מפרש|מנוע|גומי)|yacht|sailboat|sailing\s*(?:boat|vessel)|'
+    r'motor\s*boat|speedboat|inflatable\s*boat|'
+    r'rowing\s*boat|canoe|kayak|dinghy|catamaran|'
+    r'jet\s*ski|personal\s*watercraft|PWC)',
+    re.IGNORECASE
+)
+_CH89_TUG = re.compile(
+    r'(?:גוררת|tug\s*(?:boat)?|pusher\s*craft|push\s*boat)',
+    re.IGNORECASE
+)
+_CH89_FLOATING = re.compile(
+    r'(?:מבנה\s*צף|floating\s*(?:structure|dock|crane|platform|dredger)|'
+    r'dredger|light.?vessel|fire.?float|beacon)',
+    re.IGNORECASE
+)
+_CH89_GENERAL = re.compile(
+    r'(?:ship|vessel|boat|yacht|tug|barge|ferry|tanker\s*(?:ship|vessel)|'
+    r'ספינה|אנייה|סירה)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_89_candidate(text):
+    return bool(
+        _CH89_CRUISE_CARGO.search(text) or _CH89_FISHING.search(text)
+        or _CH89_YACHT.search(text) or _CH89_TUG.search(text)
+        or _CH89_FLOATING.search(text) or _CH89_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_89(product):
+    """Chapter 89: Ships, boats and floating structures.
+
+    Headings:
+        89.01 — Cruise ships, excursion boats, ferry-boats, cargo ships, barges
+        89.02 — Fishing vessels; factory ships for processing/preserving fishery products
+        89.03 — Yachts and other vessels for pleasure or sports; rowing boats and canoes
+        89.04 — Tugs and pusher craft
+        89.05 — Light-vessels, fire-floats, dredgers, floating cranes; floating docks; floating/submersible platforms
+        89.06 — Other vessels (warships, lifeboats, other than rowing boats)
+        89.07 — Other floating structures (rafts, tanks, cofferdams, landing stages, buoys, beacons)
+        89.08 — Vessels and other floating structures for breaking up (scrap)
+    """
+    text = _product_text(product)
+    result = {"chapter": 89, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if re.search(r'(?:breaking\s*up|scrap\s*(?:ship|vessel)|ship\s*scrap|demolition\s*(?:ship|vessel))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "89.08", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Vessel for breaking up (scrap) → 89.08.",
+            "rule_applied": "GIR 1 — heading 89.08"})
+        return result
+    if _CH89_FISHING.search(text):
+        result["candidates"].append({"heading": "89.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Fishing vessel / trawler → 89.02.",
+            "rule_applied": "GIR 1 — heading 89.02"})
+        return result
+    if _CH89_YACHT.search(text):
+        result["candidates"].append({"heading": "89.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Yacht / sailboat / motor boat / canoe / kayak / jet ski → 89.03.",
+            "rule_applied": "GIR 1 — heading 89.03"})
+        return result
+    if _CH89_TUG.search(text):
+        result["candidates"].append({"heading": "89.04", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Tugboat / pusher craft → 89.04.",
+            "rule_applied": "GIR 1 — heading 89.04"})
+        return result
+    if _CH89_FLOATING.search(text):
+        if re.search(r'(?:dredger|floating\s*(?:crane|dock)|platform)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "89.05", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Dredger / floating crane / floating dock / platform → 89.05.",
+                "rule_applied": "GIR 1 — heading 89.05"})
+        else:
+            result["candidates"].append({"heading": "89.07", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Other floating structure (raft, buoy, beacon) → 89.07.",
+                "rule_applied": "GIR 1 — heading 89.07"})
+        return result
+    if _CH89_CRUISE_CARGO.search(text):
+        result["candidates"].append({"heading": "89.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Cruise ship / cargo ship / ferry / barge → 89.01.",
+            "rule_applied": "GIR 1 — heading 89.01"})
+        return result
+    if re.search(r'(?:warship|lifeboat|rescue\s*(?:boat|vessel))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "89.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Warship / lifeboat / other vessel → 89.06.",
+            "rule_applied": "GIR 1 — heading 89.06"})
+        return result
+
+    result["candidates"].append({"heading": "89.01", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Vessel/ship type unclear → 89.01.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Cruise/cargo ship, fishing vessel, yacht, tugboat, floating structure, or scrap?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 90: Optical, photographic, measuring, medical instruments
+# ============================================================================
+
+_CH90_LENS_FIBRE = re.compile(
+    r'(?:עדשה|סיב\s*(?:אופטי|אור)|optical\s*fibre|fiber\s*optic|'
+    r'\blens\b|prism|mirror\s*(?:optical)|optical\s*element|'
+    r'contact\s*\blens\b)',
+    re.IGNORECASE
+)
+_CH90_SPECTACLES = re.compile(
+    r'(?:משקפיים|משקפי\s*(?:שמש|ראייה)|spectacle|eyeglass|sunglasses|'
+    r'goggle|frame\s*(?:spectacle|eyeglass)|optical\s*frame)',
+    re.IGNORECASE
+)
+_CH90_CAMERA = re.compile(
+    r'(?:מצלמה|camera\s*(?:digital|photo|still)|digital\s*camera|'
+    r'SLR|DSLR|mirrorless\s*camera|'
+    r'projector\s*(?:cinema|film|image|video|overhead))',
+    re.IGNORECASE
+)
+_CH90_MICROSCOPE = re.compile(
+    r'(?:מיקרוסקופ|microscope|electron\s*microscope|optical\s*microscope|'
+    r'stereo\s*microscope)',
+    re.IGNORECASE
+)
+_CH90_TELESCOPE = re.compile(
+    r'(?:טלסקופ|משקפת|telescope|binocular|monocular|'
+    r'astronomical\s*(?:telescope|instrument))',
+    re.IGNORECASE
+)
+_CH90_MEDICAL = re.compile(
+    r'(?:מכשיר\s*(?:רפואי|ניתוח)|medical\s*instrument|surgical\s*instrument|'
+    r'syringe|needle\s*(?:medical|surgical|hypodermic)|catheter|'
+    r'stethoscope|endoscope|scalpel\s*(?:surgical)|'
+    r'dental\s*(?:instrument|drill|chair)|orthopaedic\s*(?:appliance|device)|'
+    r'prosthes(?:is|es|tic)|artificial\s*(?:limb|joint|teeth|eye)|'
+    r'hearing\s*aid|pacemaker)',
+    re.IGNORECASE
+)
+_CH90_THERAPY = re.compile(
+    r'(?:ציוד\s*(?:טיפול|שיקום)|therapy\s*(?:apparatus|equipment)|'
+    r'massage\s*(?:apparatus|device)|ozone\s*therapy|'
+    r'oxygen\s*therapy|breathing\s*apparatus\s*(?:medical)|'
+    r'mechano.?therapy|psycho.?therapy\s*(?:apparatus))',
+    re.IGNORECASE
+)
+_CH90_XRAY = re.compile(
+    r'(?:רנטגן|x.?ray|CT\s*scan(?:ner)?|MRI|magnetic\s*resonance|'
+    r'ultrasound\s*(?:scanner|machine|diagnostic)|'
+    r'radiation\s*(?:therapy|apparatus)|linear\s*accelerator|'
+    r'gamma\s*(?:ray|camera))',
+    re.IGNORECASE
+)
+_CH90_MEASURING = re.compile(
+    r'(?:מכשיר\s*מדידה|measuring\s*instrument|gauge|meter\s*(?:measure|instrument)|'
+    r'thermometer|barometer|hygrometer|pyrometer|'
+    r'flow\s*meter|level\s*(?:gauge|indicator)|pressure\s*(?:gauge|sensor)|'
+    r'oscilloscope|multimeter|spectrum\s*analyser|'
+    r'surveying\s*instrument|theodolite|GPS\s*(?:receiver|device)|'
+    r'laser\s*(?:level|rangefinder|distance))',
+    re.IGNORECASE
+)
+_CH90_GENERAL = re.compile(
+    r'(?:optical\s*(?:instrument|device|apparatus|element|mirror|filter)|'
+    r'photographic\s*(?:camera|lens|flash|tripod|enlarger)|'
+    r'microscope|telescope|binocular|camera|'
+    r'medical\s*instrument|surgical|x.?ray|measuring|meter|gauge|'
+    r'spectacle|eyeglass|sunglasses|\blens\b|fiber\s*optic)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_90_candidate(text):
+    return bool(
+        _CH90_LENS_FIBRE.search(text) or _CH90_SPECTACLES.search(text)
+        or _CH90_CAMERA.search(text) or _CH90_MICROSCOPE.search(text)
+        or _CH90_TELESCOPE.search(text) or _CH90_MEDICAL.search(text)
+        or _CH90_THERAPY.search(text) or _CH90_XRAY.search(text)
+        or _CH90_MEASURING.search(text) or _CH90_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_90(product):
+    """Chapter 90: Optical, photographic, cinematographic, measuring, checking, precision, medical/surgical instruments.
+
+    Headings:
+        90.01 — Optical fibres and optical fibre bundles/cables; sheets/plates of polarising material; unmounted lenses/prisms/mirrors
+        90.02 — Lenses, prisms, mirrors and other optical elements, mounted
+        90.03 — Frames and mountings for spectacles, goggles or the like
+        90.04 — Spectacles, goggles and the like (corrective, protective, other)
+        90.05 — Binoculars, monoculars, other optical telescopes; mountings therefor; astronomical instruments
+        90.06 — Photographic cameras (other than cinematographic); photographic flashlight apparatus/flashbulbs
+        90.07 — Cinematographic cameras and projectors
+        90.08 — Image projectors; photographic enlargers/reducers
+        90.10 — Apparatus for processing exposed photographic plates/film/paper; photocopying apparatus
+        90.11 — Compound optical microscopes (including for photomicrography/microprojection)
+        90.12 — Microscopes other than optical; diffraction apparatus
+        90.13 — Liquid crystal devices n.e.s.; lasers (other than laser diodes); other optical appliances
+        90.14 — Direction finding compasses; other navigation instruments
+        90.15 — Surveying, hydrographic, oceanographic, hydrological, meteorological, geophysical instruments
+        90.16 — Balances of a sensitivity of 5 cg or better
+        90.17 — Drawing/marking-out/mathematical calculating instruments; measuring instruments for length
+        90.18 — Instruments and appliances used in medical, surgical, dental or veterinary sciences
+        90.19 — Mechano-therapy appliances; massage apparatus; psychological aptitude-testing apparatus
+        90.20 — Other breathing appliances and gas masks (excluding protective masks without mechanical parts)
+        90.21 — Orthopaedic appliances; splints; artificial parts of the body; hearing aids
+        90.22 — Apparatus based on use of X-rays/alpha/beta/gamma radiation; tubes
+        90.23 — Instruments and apparatus for physical or chemical analysis
+        90.24 — Machines and appliances for testing hardness/strength/compressibility/elasticity of materials
+        90.25 — Hydrometers, thermometers, pyrometers, barometers, hygrometers, psychrometers
+        90.26 — Instruments for measuring/checking flow/level/pressure/other variables of liquids/gases
+        90.27 — Instruments for physical/chemical analysis (spectrometers, spectrophotometers, gas/smoke analysers)
+        90.28 — Gas, liquid or electricity supply/production meters
+        90.29 — Revolution counters, production counters, taximeters, mileometers, pedometers
+        90.30 — Oscilloscopes, spectrum analysers; instruments for measuring electrical quantities
+        90.31 — Measuring or checking instruments n.e.s.; profile projectors
+        90.32 — Automatic regulating or controlling instruments and apparatus
+        90.33 — Parts and accessories n.e.s. for machines/instruments/apparatus of Chapter 90
+    """
+    text = _product_text(product)
+    result = {"chapter": 90, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH90_XRAY.search(text):
+        result["candidates"].append({"heading": "90.22", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "X-ray / CT scanner / MRI / radiation apparatus → 90.22.",
+            "rule_applied": "GIR 1 — heading 90.22"})
+        return result
+    if _CH90_MEDICAL.search(text):
+        if re.search(r'(?:prosthes|artificial\s*(?:limb|joint|teeth|eye)|orthopaedic|hearing\s*aid|pacemaker)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.21", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Orthopaedic appliance / prosthesis / hearing aid → 90.21.",
+                "rule_applied": "GIR 1 — heading 90.21"})
+        elif re.search(r'(?:dental)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.18", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Dental instrument/equipment → 90.18.",
+                "rule_applied": "GIR 1 — heading 90.18"})
+        else:
+            result["candidates"].append({"heading": "90.18", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Medical/surgical instrument → 90.18.",
+                "rule_applied": "GIR 1 — heading 90.18"})
+        return result
+    if _CH90_THERAPY.search(text):
+        result["candidates"].append({"heading": "90.19", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Therapy/massage apparatus → 90.19.",
+            "rule_applied": "GIR 1 — heading 90.19"})
+        return result
+    if _CH90_SPECTACLES.search(text):
+        if re.search(r'(?:frame|mounting|מסגרת)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Spectacle frame → 90.03.",
+                "rule_applied": "GIR 1 — heading 90.03"})
+        else:
+            result["candidates"].append({"heading": "90.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Spectacles / sunglasses / goggles → 90.04.",
+                "rule_applied": "GIR 1 — heading 90.04"})
+        return result
+    if _CH90_CAMERA.search(text):
+        if re.search(r'(?:projector|overhead)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Image projector → 90.08.",
+                "rule_applied": "GIR 1 — heading 90.08"})
+        elif re.search(r'(?:cinematograph|cinema|film\s*camera|movie\s*camera)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.07", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Cinematographic camera/projector → 90.07.",
+                "rule_applied": "GIR 1 — heading 90.07"})
+        else:
+            result["candidates"].append({"heading": "90.06", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Photographic / digital camera → 90.06.",
+                "rule_applied": "GIR 1 — heading 90.06"})
+        return result
+    if _CH90_MICROSCOPE.search(text):
+        if re.search(r'(?:electron|scanning\s*probe|ion\s*beam)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.12", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Electron / non-optical microscope → 90.12.",
+                "rule_applied": "GIR 1 — heading 90.12"})
+        else:
+            result["candidates"].append({"heading": "90.11", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Optical microscope → 90.11.",
+                "rule_applied": "GIR 1 — heading 90.11"})
+        return result
+    if _CH90_TELESCOPE.search(text):
+        result["candidates"].append({"heading": "90.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Telescope / binoculars / monocular → 90.05.",
+            "rule_applied": "GIR 1 — heading 90.05"})
+        return result
+    if _CH90_LENS_FIBRE.search(text):
+        if re.search(r'(?:optical\s*fibre|fiber\s*optic|סיב)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Optical fibre / fibre optic cable → 90.01.",
+                "rule_applied": "GIR 1 — heading 90.01"})
+        elif re.search(r'(?:mounted|assembled)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.02", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Mounted lens/prism/mirror → 90.02.",
+                "rule_applied": "GIR 1 — heading 90.02"})
+        else:
+            result["candidates"].append({"heading": "90.01", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Unmounted lens/prism/optical element → 90.01.",
+                "rule_applied": "GIR 1 — heading 90.01"})
+        return result
+    if _CH90_MEASURING.search(text):
+        if re.search(r'(?:thermometer|barometer|hygrometer|pyrometer)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.25", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Thermometer/barometer/hygrometer → 90.25.",
+                "rule_applied": "GIR 1 — heading 90.25"})
+        elif re.search(r'(?:flow\s*meter|level|pressure\s*(?:gauge|sensor|transducer))', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.26", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Flow/level/pressure measuring instrument → 90.26.",
+                "rule_applied": "GIR 1 — heading 90.26"})
+        elif re.search(r'(?:oscilloscope|spectrum\s*analy|multimeter|electrical\s*(?:measur|test))', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.30", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Oscilloscope / spectrum analyser / electrical measuring → 90.30.",
+                "rule_applied": "GIR 1 — heading 90.30"})
+        elif re.search(r'(?:surveying|theodolite|GPS|laser\s*(?:level|rangefinder))', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "90.15", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Surveying instrument / GPS → 90.15.",
+                "rule_applied": "GIR 1 — heading 90.15"})
+        else:
+            result["candidates"].append({"heading": "90.31", "subheading_hint": None,
+                "confidence": 0.75, "reasoning": "Measuring/checking instrument n.e.s. → 90.31.",
+                "rule_applied": "GIR 1 — heading 90.31"})
+        return result
+
+    result["candidates"].append({"heading": "90.31", "subheading_hint": None,
+        "confidence": 0.50, "reasoning": "Instrument type unclear → 90.31.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Optical, camera, microscope, telescope, medical, X-ray, measuring, or spectacles?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 91: Clocks and watches and parts thereof
+# ============================================================================
+
+_CH91_WRISTWATCH = re.compile(
+    r'(?:שעון\s*(?:יד|חכם)|wrist\s*watch|pocket\s*watch|smartwatch|smart\s*watch|'
+    r'watch\s*(?:automatic|quartz|mechanical|digital|analog))',
+    re.IGNORECASE
+)
+_CH91_CLOCK = re.compile(
+    r'(?:שעון\s*(?:קיר|שולחן|מעורר|עמידה)|clock|wall\s*clock|table\s*clock|'
+    r'alarm\s*clock|desk\s*clock|mantel\s*clock|cuckoo\s*clock|'
+    r'grandfather\s*clock|tower\s*clock)',
+    re.IGNORECASE
+)
+_CH91_MOVEMENT = re.compile(
+    r'(?:מנגנון\s*שעון|clock\s*movement|watch\s*movement|'
+    r'movement\s*(?:complete|assembled)|'
+    r'time\s*(?:of\s*day|recording|switch)\s*(?:clock|apparatus))',
+    re.IGNORECASE
+)
+_CH91_CASE = re.compile(
+    r'(?:קופסת?\s*שעון|watch\s*(?:case|strap|band|bracelet)|'
+    r'clock\s*case|watch\s*glass|dial\s*(?:watch|clock))',
+    re.IGNORECASE
+)
+_CH91_GENERAL = re.compile(
+    r'(?:שעון|watch|clock|horology|timepiece|chronograph|chronometer|stopwatch)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_91_candidate(text):
+    return bool(
+        _CH91_WRISTWATCH.search(text) or _CH91_CLOCK.search(text)
+        or _CH91_MOVEMENT.search(text) or _CH91_CASE.search(text)
+        or _CH91_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_91(product):
+    """Chapter 91: Clocks and watches and parts thereof.
+
+    Headings:
+        91.01 — Wrist-watches, pocket-watches (incl. stop-watches), with case of precious metal
+        91.02 — Wrist-watches, pocket-watches (incl. stop-watches), other than of 91.01
+        91.03 — Clocks with watch movements (excluding clocks of 91.04)
+        91.04 — Instrument panel clocks for vehicles/aircraft/vessels
+        91.05 — Other clocks (wall, table, alarm, mantel, cuckoo, grandfather)
+        91.06 — Time-of-day recording apparatus; time registers; time-stamps; parking meters
+        91.07 — Time switches with clock or watch movement or with synchronous motor
+        91.08 — Watch movements, complete and assembled
+        91.09 — Clock movements, complete and assembled
+        91.10 — Complete watch or clock movements, unassembled or partly assembled; rough movements
+        91.11 — Watch cases and parts of watch cases
+        91.12 — Clock cases and cases for time-of-day recording apparatus; parts
+        91.13 — Watch straps, watch bands, watch bracelets; parts thereof
+        91.14 — Other clock or watch parts
+    """
+    text = _product_text(product)
+    result = {"chapter": 91, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH91_WRISTWATCH.search(text):
+        if re.search(r'(?:precious\s*metal|gold|silver|platinum)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "91.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wrist-watch with precious metal case → 91.01.",
+                "rule_applied": "GIR 1 — heading 91.01"})
+        else:
+            result["candidates"].append({"heading": "91.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wrist-watch / pocket-watch / smartwatch → 91.02.",
+                "rule_applied": "GIR 1 — heading 91.02"})
+        return result
+    if _CH91_CLOCK.search(text):
+        if re.search(r'(?:instrument\s*panel|vehicle|aircraft|dashboard)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "91.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Instrument panel clock (vehicle/aircraft) → 91.04.",
+                "rule_applied": "GIR 1 — heading 91.04"})
+        else:
+            result["candidates"].append({"heading": "91.05", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wall clock / table clock / alarm clock → 91.05.",
+                "rule_applied": "GIR 1 — heading 91.05"})
+        return result
+    if _CH91_MOVEMENT.search(text):
+        if re.search(r'(?:watch\s*movement)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "91.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Watch movement → 91.08.",
+                "rule_applied": "GIR 1 — heading 91.08"})
+        elif re.search(r'(?:time\s*(?:of\s*day|recording|switch|register|stamp)|parking\s*meter)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "91.06", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Time recording / time switch / parking meter → 91.06.",
+                "rule_applied": "GIR 1 — heading 91.06"})
+        else:
+            result["candidates"].append({"heading": "91.09", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Clock movement → 91.09.",
+                "rule_applied": "GIR 1 — heading 91.09"})
+        return result
+    if _CH91_CASE.search(text):
+        if re.search(r'(?:strap|band|bracelet)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "91.13", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Watch strap / band / bracelet → 91.13.",
+                "rule_applied": "GIR 1 — heading 91.13"})
+        elif re.search(r'(?:watch\s*case|watch\s*glass|dial\s*watch)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "91.11", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Watch case / watch glass → 91.11.",
+                "rule_applied": "GIR 1 — heading 91.11"})
+        else:
+            result["candidates"].append({"heading": "91.12", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Clock case → 91.12.",
+                "rule_applied": "GIR 1 — heading 91.12"})
+        return result
+
+    result["candidates"].append({"heading": "91.02", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Clock/watch type unclear → 91.02.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Wrist watch, clock, movement, case/strap, or parts?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 92: Musical instruments; parts and accessories thereof
+# ============================================================================
+
+_CH92_PIANO = re.compile(
+    r'(?:פסנתר|piano|grand\s*piano|upright\s*piano|harpsichord|clavichord)',
+    re.IGNORECASE
+)
+_CH92_STRING = re.compile(
+    r'(?:גיטרה|כינור|ויולה|צ\'לו|קונטרבס|'
+    r'guitar|violin|viola|cello|double\s*bass|contrabass|'
+    r'\bharp\b|banjo|mandolin|ukulele|lute|sitar|'
+    r'string\s*(?:instrument|musical))',
+    re.IGNORECASE
+)
+_CH92_WIND = re.compile(
+    r'(?:חליל|חצוצרה|קלרינט|סקסופון|אבוב|'
+    r'flute|trumpet|trombone|clarinet|saxophone|oboe|bassoon|'
+    r'French\s*horn|tuba|harmonica|accordion|concertina|'
+    r'bagpipe|recorder\s*(?:musical)|organ\s*(?:pipe|keyboard)|'
+    r'wind\s*(?:instrument|musical))',
+    re.IGNORECASE
+)
+_CH92_PERCUSSION = re.compile(
+    r'(?:תוף|drum\s*(?:kit|set|musical|snare|bass)|snare\s*drum|'
+    r'xylophone|marimba|vibraphone|cymbal|tambourine|'
+    r'bongo|conga|djembe|percussion\s*instrument|castanet|'
+    r'triangle\s*(?:musical))',
+    re.IGNORECASE
+)
+_CH92_ELECTRONIC = re.compile(
+    r'(?:סינתסייזר|קלידים|synthesizer|synthesiser|keyboard\s*(?:musical|electronic|synth)|'
+    r'electronic\s*(?:organ|drum|instrument)|drum\s*machine|'
+    r'MIDI\s*(?:controller|instrument)|digital\s*piano)',
+    re.IGNORECASE
+)
+_CH92_GENERAL = re.compile(
+    r'(?:כלי\s*נגינה|musical\s*instrument|piano|guitar|violin|drum|'
+    r'flute|trumpet|saxophone|synthesizer|keyboard\s*(?:musical))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_92_candidate(text):
+    return bool(
+        _CH92_PIANO.search(text) or _CH92_STRING.search(text)
+        or _CH92_WIND.search(text) or _CH92_PERCUSSION.search(text)
+        or _CH92_ELECTRONIC.search(text) or _CH92_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_92(product):
+    """Chapter 92: Musical instruments; parts and accessories thereof.
+
+    Headings:
+        92.01 — Pianos; harpsichords and other keyboard stringed instruments
+        92.02 — Other string musical instruments (guitars, violins, harps)
+        92.05 — Wind musical instruments (clarinets, trumpets, bagpipes, keyboard pipe organs, harmoniums, accordions)
+        92.06 — Percussion musical instruments (drums, xylophones, cymbals, castanets, maracas)
+        92.07 — Musical instruments in which sound is produced or amplified electrically (electric guitars, synthesizers)
+        92.08 — Music boxes, fairground organs, mechanical singing birds, musical saws, instrument strings
+        92.09 — Parts and accessories of musical instruments; metronomes, tuning forks, pitch pipes
+    """
+    text = _product_text(product)
+    result = {"chapter": 92, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH92_ELECTRONIC.search(text):
+        result["candidates"].append({"heading": "92.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Electronic / electric musical instrument (synthesizer, digital piano) → 92.07.",
+            "rule_applied": "GIR 1 — heading 92.07"})
+        return result
+    if _CH92_PIANO.search(text):
+        result["candidates"].append({"heading": "92.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Piano / harpsichord → 92.01.",
+            "rule_applied": "GIR 1 — heading 92.01"})
+        return result
+    if _CH92_STRING.search(text):
+        if re.search(r'(?:electric\s*guitar|electric\s*bass|electric\s*violin)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "92.07", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Electric guitar/bass/violin → 92.07.",
+                "rule_applied": "GIR 1 — heading 92.07"})
+        else:
+            result["candidates"].append({"heading": "92.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "String instrument (guitar, violin, harp, banjo) → 92.02.",
+                "rule_applied": "GIR 1 — heading 92.02"})
+        return result
+    if _CH92_WIND.search(text):
+        result["candidates"].append({"heading": "92.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Wind instrument (flute, trumpet, saxophone, accordion) → 92.05.",
+            "rule_applied": "GIR 1 — heading 92.05"})
+        return result
+    if _CH92_PERCUSSION.search(text):
+        result["candidates"].append({"heading": "92.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Percussion instrument (drum, xylophone, cymbal) → 92.06.",
+            "rule_applied": "GIR 1 — heading 92.06"})
+        return result
+    if re.search(r'(?:metronome|tuning\s*fork|pitch\s*pipe|music\s*stand|instrument\s*(?:string|part|accessory))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "92.09", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Musical instrument part / accessory / metronome → 92.09.",
+            "rule_applied": "GIR 1 — heading 92.09"})
+        return result
+
+    result["candidates"].append({"heading": "92.07", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Musical instrument type unclear → 92.07.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Piano, string, wind, percussion, electronic, or parts/accessories?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 93: Arms and ammunition; parts and accessories thereof
+# ============================================================================
+
+_CH93_MILITARY = re.compile(
+    r'(?:נשק\s*(?:צבאי|מלחמה)|military\s*weapon|weapon\s*(?:of\s*)?war|'
+    r'artillery|howitzer|mortar\s*(?:weapon|launcher)|'
+    r'rocket\s*launcher|missile\s*launcher|machine\s*\bgun\b|'
+    r'submachine\s*\bgun\b|assault\s*rifle|grenade\s*launcher)',
+    re.IGNORECASE
+)
+_CH93_REVOLVER = re.compile(
+    r'(?:אקדח|רובה|revolver|pistol|handgun|firearm|'
+    r'rifle\s*(?:hunting|sporting|sniper|bolt.?action)|'
+    r'shotgun)',
+    re.IGNORECASE
+)
+_CH93_SPORTING = re.compile(
+    r'(?:נשק\s*(?:ספורט|ציד)|sporting\s*\bgun\b|hunting\s*\bgun\b|'
+    r'air\s*\bgun\b|air\s*rifle|air\s*pistol|'
+    r'paintball\s*\bgun\b|signal\s*pistol|'
+    r'spring\s*\bgun\b|BB\s*\bgun\b)',
+    re.IGNORECASE
+)
+_CH93_AMMUNITION = re.compile(
+    r'(?:תחמושת|כדור\s*(?:ירי|נשק)|ammunition|cartridge\s*(?:gun|rifle|pistol|shotgun)|'
+    r'bullet|shot\s*(?:gun\s*)?shell|projectile|'
+    r'bomb|grenade|torpedo|mine\s*(?:weapon)|'
+    r'missile\s*(?:weapon|guided))',
+    re.IGNORECASE
+)
+_CH93_PARTS = re.compile(
+    r'(?:חלקי?\s*נשק|\bgun\b\s*part|weapon\s*part|'
+    r'barrel\s*(?:gun|rifle)|trigger|magazine\s*(?:gun|firearm)|'
+    r'gun\s*stock|silencer\s*(?:firearm)|suppressor\s*(?:firearm)|'
+    r'gun\s*sight|scope\s*(?:rifle|gun))',
+    re.IGNORECASE
+)
+_CH93_GENERAL = re.compile(
+    r'(?:נשק|weapon|\bgun\b|firearm|ammunition|rifle|pistol|revolver|'
+    r'shotgun|cartridge\s*(?:gun|weapon))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_93_candidate(text):
+    return bool(
+        _CH93_MILITARY.search(text) or _CH93_REVOLVER.search(text)
+        or _CH93_SPORTING.search(text) or _CH93_AMMUNITION.search(text)
+        or _CH93_PARTS.search(text) or _CH93_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_93(product):
+    """Chapter 93: Arms and ammunition; parts and accessories thereof.
+
+    Headings:
+        93.01 — Military weapons (artillery, rocket launchers, torpedo tubes, machine guns)
+        93.02 — Revolvers and pistols (other than those of 93.03 or 93.04)
+        93.03 — Other firearms and similar devices (sporting/hunting rifles, shotguns, muzzle-loading, signal pistols)
+        93.04 — Other arms (spring/air/gas guns, truncheons), excluding those of 93.07
+        93.05 — Parts and accessories of articles of 93.01-93.04
+        93.06 — Bombs, grenades, torpedoes, mines, missiles, cartridges, ammunition and projectiles; parts
+        93.07 — Swords, cutlasses, bayonets, lances; parts thereof and scabbards/sheaths
+    """
+    text = _product_text(product)
+    result = {"chapter": 93, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH93_MILITARY.search(text):
+        result["candidates"].append({"heading": "93.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Military weapon (artillery, rocket launcher, machine gun) → 93.01.",
+            "rule_applied": "GIR 1 — heading 93.01"})
+        return result
+    if _CH93_AMMUNITION.search(text):
+        result["candidates"].append({"heading": "93.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Ammunition / cartridge / bomb / grenade / missile → 93.06.",
+            "rule_applied": "GIR 1 — heading 93.06"})
+        return result
+    if _CH93_REVOLVER.search(text):
+        if re.search(r'(?:revolver|pistol|handgun|אקדח)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "93.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Revolver / pistol / handgun → 93.02.",
+                "rule_applied": "GIR 1 — heading 93.02"})
+        else:
+            result["candidates"].append({"heading": "93.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Rifle / shotgun / other firearm → 93.03.",
+                "rule_applied": "GIR 1 — heading 93.03"})
+        return result
+    if _CH93_SPORTING.search(text):
+        if re.search(r'(?:air\s*(?:gun|rifle|pistol)|paintball|BB\s*\bgun\b|spring\s*\bgun\b)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "93.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Air gun / paintball gun / spring gun → 93.04.",
+                "rule_applied": "GIR 1 — heading 93.04"})
+        else:
+            result["candidates"].append({"heading": "93.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Sporting/hunting gun → 93.03.",
+                "rule_applied": "GIR 1 — heading 93.03"})
+        return result
+    if _CH93_PARTS.search(text):
+        result["candidates"].append({"heading": "93.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Firearm part (barrel, trigger, magazine, stock, scope) → 93.05.",
+            "rule_applied": "GIR 1 — heading 93.05"})
+        return result
+    if re.search(r'(?:sword|cutlass|bayonet|lance|scabbard|sheath\s*(?:sword))', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "93.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Sword / bayonet / lance → 93.07.",
+            "rule_applied": "GIR 1 — heading 93.07"})
+        return result
+
+    result["candidates"].append({"heading": "93.03", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Weapon type unclear → 93.03.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Military weapon, revolver/pistol, rifle/shotgun, air gun, ammunition, or parts?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 94: Furniture; bedding, mattresses; lamps; prefab buildings
+# ============================================================================
+
+_CH94_SEAT = re.compile(
+    r'(?:כיסא|כורסה|ספה|seat|chair|armchair|sofa|couch|bench\s*(?:seat|furniture)|'
+    r'stool|recliner|rocking\s*chair|office\s*chair|gaming\s*chair|'
+    r'\bcar\b\s*seat|baby\s*seat|child\s*seat|vehicle\s*seat)',
+    re.IGNORECASE
+)
+_CH94_MEDICAL_FURN = re.compile(
+    r'(?:ריהוט\s*(?:רפואי|בית\s*חולים)|medical\s*furniture|hospital\s*\bbed\b|'
+    r'operating\s*table|dental\s*chair|'
+    r'barber.?s?\s*chair|hairdress\s*chair)',
+    re.IGNORECASE
+)
+_CH94_OFFICE_FURN = re.compile(
+    r'(?:ריהוט\s*(?:משרדי|משרד)|office\s*furniture|office\s*desk|'
+    r'filing\s*cabinet\s*(?:wood|metal)|computer\s*desk|workstation)',
+    re.IGNORECASE
+)
+_CH94_KITCHEN_FURN = re.compile(
+    r'(?:ריהוט\s*(?:מטבח)|kitchen\s*(?:furniture|cabinet|cupboard|unit)|'
+    r'wardrobe|closet|cupboard|sideboard|bookcase|shelf\s*(?:unit|furniture)|'
+    r'dresser|chest\s*(?:of\s*drawers)|drawer\s*unit)',
+    re.IGNORECASE
+)
+_CH94_BEDROOM = re.compile(
+    r'(?:מיטה|ריהוט\s*(?:חדר\s*שינה)|bedroom\s*furniture|'
+    r'\bbed\b\s*(?:frame|stead|double|single|king|queen|bunk)|'
+    r'bunk\s*\bbed\b|divan|nightstand|night\s*table)',
+    re.IGNORECASE
+)
+_CH94_MATTRESS = re.compile(
+    r'(?:מזרן|מזרון|mattress|mattress\s*support|'
+    r'sleeping\s*\bbag\b|air\s*\bbed\b|air\s*mattress|'
+    r'cushion|pillow|duvet|quilt|comforter|eiderdown)',
+    re.IGNORECASE
+)
+_CH94_LAMP = re.compile(
+    r'(?:מנורה|נברשת|פנס\s*(?:רחוב|גינה)|lamp\s*(?:table|desk|floor|reading|pendant)|'
+    r'chandelier|ceiling\s*(?:lamp|light|fixture)|'
+    r'wall\s*(?:lamp|light|sconce)|pendant\s*(?:lamp|light)|'
+    r'spotlight|flood\s*light|street\s*(?:lamp|light)|'
+    r'garden\s*(?:lamp|light)|lantern\s*(?:decorat|outdoor)|'
+    r'lighting\s*fixture|luminaire)',
+    re.IGNORECASE
+)
+_CH94_PREFAB = re.compile(
+    r'(?:מבנה\s*(?:טרומי|יביל)|prefab(?:ricated)?\s*building|'
+    r'modular\s*building|portable\s*building|'
+    r'container\s*(?:house|office|building)|'
+    r'greenhouse\s*(?:prefab|structure))',
+    re.IGNORECASE
+)
+_CH94_GENERAL = re.compile(
+    r'(?:ריהוט|רהיט|furniture|seat|chair|table\s*(?:furniture|dining|coffee)|'
+    r'desk|sofa|couch|\bbed\b|mattress|lamp|chandelier|lighting\s*fixture|'
+    r'prefab)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_94_candidate(text):
+    return bool(
+        _CH94_SEAT.search(text) or _CH94_MEDICAL_FURN.search(text)
+        or _CH94_OFFICE_FURN.search(text) or _CH94_KITCHEN_FURN.search(text)
+        or _CH94_BEDROOM.search(text) or _CH94_MATTRESS.search(text)
+        or _CH94_LAMP.search(text) or _CH94_PREFAB.search(text)
+        or _CH94_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_94(product):
+    """Chapter 94: Furniture; bedding, mattresses, mattress supports, cushions; lamps; prefab buildings.
+
+    Headings:
+        94.01 — Seats (whether or not convertible into beds), and parts thereof
+        94.02 — Medical, surgical, dental or veterinary furniture; barbers' chairs; operating tables
+        94.03 — Other furniture and parts thereof
+        94.04 — Mattress supports; articles of bedding (mattresses, quilts, eiderdowns, cushions, pillows, sleeping bags)
+        94.05 — Lamps and lighting fittings; illuminated signs, name-plates; parts thereof
+        94.06 — Prefabricated buildings
+    """
+    text = _product_text(product)
+    result = {"chapter": 94, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH94_PREFAB.search(text):
+        result["candidates"].append({"heading": "94.06", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Prefabricated building / modular building → 94.06.",
+            "rule_applied": "GIR 1 — heading 94.06"})
+        return result
+    if _CH94_LAMP.search(text):
+        result["candidates"].append({"heading": "94.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Lamp / chandelier / lighting fixture / luminaire → 94.05.",
+            "rule_applied": "GIR 1 — heading 94.05"})
+        return result
+    if _CH94_MATTRESS.search(text):
+        result["candidates"].append({"heading": "94.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Mattress / pillow / cushion / sleeping bag / duvet → 94.04.",
+            "rule_applied": "GIR 1 — heading 94.04"})
+        return result
+    if _CH94_MEDICAL_FURN.search(text):
+        result["candidates"].append({"heading": "94.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Medical/surgical/dental furniture / barber chair → 94.02.",
+            "rule_applied": "GIR 1 — heading 94.02"})
+        return result
+    if _CH94_SEAT.search(text):
+        result["candidates"].append({"heading": "94.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Seat / chair / sofa / armchair / stool → 94.01.",
+            "rule_applied": "GIR 1 — heading 94.01"})
+        return result
+    if _CH94_OFFICE_FURN.search(text) or _CH94_KITCHEN_FURN.search(text) or _CH94_BEDROOM.search(text):
+        result["candidates"].append({"heading": "94.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Furniture (office/kitchen/bedroom/other) → 94.03.",
+            "rule_applied": "GIR 1 — heading 94.03"})
+        return result
+
+    result["candidates"].append({"heading": "94.03", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Furniture type unclear → 94.03.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Seat/chair, medical furniture, other furniture, mattress/bedding, lamp/lighting, or prefab building?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 95: Toys, games, sports equipment; parts and accessories
+# ============================================================================
+
+_CH95_TOY = re.compile(
+    r'(?:צעצוע|בובה|toy\b|doll|stuffed\s*(?:animal|toy)|plush\s*\btoy\b|'
+    r'action\s*figure|model\s*\bcar\b|toy\s*\bcar\b|'
+    r'toy\s*train|building\s*(?:block|brick)|LEGO|'
+    r'toy\s*\bgun\b|water\s*\bgun\b|toy\s*soldier|'
+    r'wheeled\s*\btoy\b|ride.?on\s*\btoy\b|pedal\s*\bcar\b|'
+    r'tricycle\s*(?:toy|child)|scooter\s*(?:toy|child|kick))',
+    re.IGNORECASE
+)
+_CH95_GAME = re.compile(
+    r'(?:משחק\s*(?:לוח|קלפים|חידה)|board\s*game|card\s*game|puzzle|'
+    r'jigsaw|chess|checkers|dominoes|backgammon|'
+    r'video\s*game\s*console|game\s*console|PlayStation|Xbox|'
+    r'Nintendo|gaming\s*(?:console|device))',
+    re.IGNORECASE
+)
+_CH95_SPORT = re.compile(
+    r'(?:ציוד\s*(?:ספורט|כושר)|sports?\s*equipment|'
+    r'ski\b|skiing|snowboard|ice\s*skate|roller\s*skate|'
+    r'tennis\s*racket|badminton|squash\s*racket|'
+    r'golf\s*(?:club|ball|bag)|cricket\s*\bbat\b|baseball\s*\bbat\b|'
+    r'football|soccer\s*ball|basketball|volleyball|'
+    r'swimming\s*pool|inflatable\s*pool|'
+    r'fishing\s*(?:rod|reel|tackle)|'
+    r'gymnasium\s*(?:equipment|apparatus)|'
+    r'treadmill|exercise\s*bike|dumbbell|barbell|'
+    r'surfboard|wakeboard|water\s*ski)',
+    re.IGNORECASE
+)
+_CH95_XMAS = re.compile(
+    r'(?:חג\s*(?:מולד|חנוכה)|christmas\s*(?:tree\s*(?:artificial)|ornament|decoration)|'
+    r'festive\s*(?:decoration|article)|carnival\s*(?:article|mask|costume)|'
+    r'magic\s*trick)',
+    re.IGNORECASE
+)
+_CH95_GENERAL = re.compile(
+    r'(?:toy\b|game|sport|doll|puzzle|console|fishing\s*(?:rod|reel)|'
+    r'ski\b|golf|tennis|football|basketball|treadmill|'
+    r'christmas\s*(?:tree|ornament))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_95_candidate(text):
+    return bool(
+        _CH95_TOY.search(text) or _CH95_GAME.search(text)
+        or _CH95_SPORT.search(text) or _CH95_XMAS.search(text)
+        or _CH95_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_95(product):
+    """Chapter 95: Toys, games and sports requisites; parts and accessories thereof.
+
+    Headings:
+        95.03 — Tricycles, scooters, pedal cars, wheeled toys; dolls; other toys; scale models; puzzles
+        95.04 — Video game consoles; articles for funfair/table/parlour games (chess, cards, darts, billiards)
+        95.05 — Festive, carnival, other entertainment articles (Christmas, magic tricks)
+        95.06 — Articles and equipment for sports, gymnastics, athletics, other sports, swimming pools
+        95.07 — Fishing rods, fish-hooks; fish landing nets; butterfly nets; decoy birds; hunting/shooting accessories
+        95.08 — Roundabouts, swings, shooting galleries, travelling circuses/menageries, travelling theatres
+    """
+    text = _product_text(product)
+    result = {"chapter": 95, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH95_XMAS.search(text):
+        result["candidates"].append({"heading": "95.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Christmas / festive / carnival articles → 95.05.",
+            "rule_applied": "GIR 1 — heading 95.05"})
+        return result
+    if _CH95_GAME.search(text):
+        if re.search(r'(?:video\s*game|console|PlayStation|Xbox|Nintendo|gaming)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "95.04", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Video game console → 95.04.",
+                "rule_applied": "GIR 1 — heading 95.04"})
+        else:
+            result["candidates"].append({"heading": "95.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Board game / card game / chess / puzzle → 95.04.",
+                "rule_applied": "GIR 1 — heading 95.04"})
+        return result
+    if _CH95_SPORT.search(text):
+        if re.search(r'(?:fishing\s*(?:rod|reel|tackle|hook)|fish.?hook|landing\s*\bnet\b)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "95.07", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Fishing rod / reel / tackle / hook → 95.07.",
+                "rule_applied": "GIR 1 — heading 95.07"})
+        else:
+            result["candidates"].append({"heading": "95.06", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Sports equipment (ski, tennis, golf, gym, pool) → 95.06.",
+                "rule_applied": "GIR 1 — heading 95.06"})
+        return result
+    if _CH95_TOY.search(text):
+        result["candidates"].append({"heading": "95.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Toy / doll / wheeled toy / building blocks → 95.03.",
+            "rule_applied": "GIR 1 — heading 95.03"})
+        return result
+
+    result["candidates"].append({"heading": "95.03", "subheading_hint": None,
+        "confidence": 0.55, "reasoning": "Toy/game/sport type unclear → 95.03.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Toy, game/console, sports equipment, festive article, or fishing tackle?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 96: Miscellaneous manufactured articles
+# ============================================================================
+
+_CH96_PEN = re.compile(
+    r'(?:עט|עיפרון|\bpen\b\s*(?:ball|fountain|felt|gel|marker|roller)|'
+    r'ballpoint|fountain\s*\bpen\b|pencil\s*(?:mechanical|lead|graphite)|'
+    r'marker\s*\bpen\b|felt.?tip|highlighter|'
+    r'crayon|pastel\s*(?:crayon)|chalk\s*(?:writing))',
+    re.IGNORECASE
+)
+_CH96_LIGHTER = re.compile(
+    r'(?:מצית|lighter\s*(?:cigarette|pocket|gas)|'
+    r'match\s*(?:safety|book))',
+    re.IGNORECASE
+)
+_CH96_COMB_BRUSH = re.compile(
+    r'(?:מסרק|מברשת|comb\s*(?:hair|plastic|metal)|hairbrush|'
+    r'tooth\s*brush|paint\s*brush|brush\s*(?:cleaning|paint|tooth|hair|nail|shoe)|'
+    r'broom|mop|squeegee|feather\s*duster)',
+    re.IGNORECASE
+)
+_CH96_BUTTON = re.compile(
+    r'(?:כפתור|button\s*(?:clothing|plastic|metal|press\s*stud)|'
+    r'press\s*fastener|snap\s*fastener\s*(?:button)|'
+    r'cuff.?link\s*(?:base\s*metal))',
+    re.IGNORECASE
+)
+_CH96_ZIPPER = re.compile(
+    r'(?:רוכסן|zipper|zip\s*fastener|slide\s*fastener)',
+    re.IGNORECASE
+)
+_CH96_PIPE = re.compile(
+    r'(?:מקטרת|smoking\s*\bpipe\b|cigar\s*holder|cigarette\s*holder)',
+    re.IGNORECASE
+)
+_CH96_GENERAL = re.compile(
+    r'(?:\bpen\b|pencil|lighter|comb\b|brush|button\s*(?:cloth)|zipper|'
+    r'umbrella|walking\s*stick|whip|'
+    r'vacuum\s*flask|thermos|'
+    r'tailor.?s?\s*dummy|mannequin)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_96_candidate(text):
+    return bool(
+        _CH96_PEN.search(text) or _CH96_LIGHTER.search(text)
+        or _CH96_COMB_BRUSH.search(text) or _CH96_BUTTON.search(text)
+        or _CH96_ZIPPER.search(text) or _CH96_PIPE.search(text)
+        or _CH96_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_96(product):
+    """Chapter 96: Miscellaneous manufactured articles.
+
+    Headings:
+        96.01 — Worked ivory, bone, tortoiseshell, horn, antlers, coral, mother-of-pearl, vegetable/mineral carving material
+        96.02 — Worked vegetable or mineral carving material and articles; moulded/carved candles; gel candles
+        96.03 — Brooms, brushes, hand-operated mechanical floor sweepers, mops, feather dusters; paint rollers
+        96.04 — Hand sieves and hand riddles
+        96.05 — Travel sets for personal toilet, sewing, shoe/clothes cleaning
+        96.06 — Buttons, press-fasteners, snap-fasteners; button moulds/blanks; button parts
+        96.07 — Slide fasteners (zippers) and parts thereof
+        96.08 — Ball point pens; felt/fibre tipped pens; fountain pens; duplicating stylos; propelling/sliding pencils
+        96.09 — Pencils (graphite, colour), pencil leads, pastels, drawing charcoals, writing/drawing chalks, tailors' chalks
+        96.10 — Slates and boards for writing/drawing (whether or not framed)
+        96.11 — Date, sealing or numbering stamps; composing sticks; hand printing sets
+        96.12 — Typewriter or similar ribbons, inked for impressions
+        96.13 — Cigarette lighters and other lighters; parts thereof (other than flints and wicks)
+        96.14 — Smoking pipes (including pipe bowls); cigar/cigarette holders; parts thereof
+        96.15 — Combs, hair-slides and the like; hairpins, curling pins, curling grips; hair-curler parts
+        96.16 — Scent sprayers; toilet sprayers, their mounts and heads; powder-puffs for cosmetics/toilet preparations
+        96.17 — Vacuum flasks and other vacuum vessels, complete; parts thereof (other than glass inners)
+        96.18 — Tailors' dummies; automata and other animated displays for shop window dressing
+        96.19 — Sanitary towels/pads, tampons, napkins/nappies, nappy liners (for babies, of any material)
+        96.20 — Monopods, bipods, tripods (for cameras, projectors, etc.)
+    """
+    text = _product_text(product)
+    result = {"chapter": 96, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH96_PEN.search(text):
+        if re.search(r'(?:pencil|crayon|pastel|chalk|graphite|עיפרון)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "96.09", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Pencil / crayon / pastel / chalk → 96.09.",
+                "rule_applied": "GIR 1 — heading 96.09"})
+        else:
+            result["candidates"].append({"heading": "96.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Pen (ballpoint, fountain, felt-tip, marker) → 96.08.",
+                "rule_applied": "GIR 1 — heading 96.08"})
+        return result
+    if _CH96_LIGHTER.search(text):
+        result["candidates"].append({"heading": "96.13", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Cigarette lighter / pocket lighter → 96.13.",
+            "rule_applied": "GIR 1 — heading 96.13"})
+        return result
+    if _CH96_PIPE.search(text):
+        result["candidates"].append({"heading": "96.14", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Smoking pipe / cigar holder → 96.14.",
+            "rule_applied": "GIR 1 — heading 96.14"})
+        return result
+    if _CH96_ZIPPER.search(text):
+        result["candidates"].append({"heading": "96.07", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Zipper / slide fastener → 96.07.",
+            "rule_applied": "GIR 1 — heading 96.07"})
+        return result
+    if _CH96_BUTTON.search(text):
+        result["candidates"].append({"heading": "96.06", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Button / press-fastener / snap-fastener → 96.06.",
+            "rule_applied": "GIR 1 — heading 96.06"})
+        return result
+    if _CH96_COMB_BRUSH.search(text):
+        if re.search(r'(?:comb|hair.?slide|hair.?pin|curling\s*pin|מסרק)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "96.15", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Comb / hair slide / hairpin → 96.15.",
+                "rule_applied": "GIR 1 — heading 96.15"})
+        else:
+            result["candidates"].append({"heading": "96.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Brush / broom / mop / duster → 96.03.",
+                "rule_applied": "GIR 1 — heading 96.03"})
+        return result
+    if re.search(r'(?:vacuum\s*flask|thermos|vacuum\s*vessel)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "96.17", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Vacuum flask / thermos → 96.17.",
+            "rule_applied": "GIR 1 — heading 96.17"})
+        return result
+    if re.search(r'(?:sanitary\s*(?:towel|pad)|tampon|napp(?:y|ies)|diaper)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "96.19", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Sanitary pads / tampons / nappies / diapers → 96.19.",
+            "rule_applied": "GIR 1 — heading 96.19"})
+        return result
+    if re.search(r'(?:tripod|monopod|bipod|חצובה)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "96.20", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Tripod / monopod / bipod → 96.20.",
+            "rule_applied": "GIR 1 — heading 96.20"})
+        return result
+    if re.search(r'(?:mannequin|dummy|tailor.?s?\s*dummy|display\s*figure)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "96.18", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Mannequin / tailor's dummy → 96.18.",
+            "rule_applied": "GIR 1 — heading 96.18"})
+        return result
+    if re.search(r'(?:umbrella|parasol|sun\s*umbrella|walking\s*stick|מטרייה)', text, re.IGNORECASE):
+        result["redirect"] = {"chapter": 66, "reason": "Umbrella / walking stick → Ch.66.",
+            "rule_applied": "Section note — umbrellas in Chapter 66"}
+        return result
+
+    result["candidates"].append({"heading": "96.03", "subheading_hint": None,
+        "confidence": 0.50, "reasoning": "Miscellaneous manufactured article type unclear → 96.03.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Pen, pencil, lighter, brush, button, zipper, smoking pipe, comb, or other?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 97: Works of art, collectors' pieces and antiques
+# ============================================================================
+
+_CH97_PAINTING = re.compile(
+    r'(?:ציור|painting|watercolour|pastel\s*(?:painting)|'
+    r'drawing\s*(?:original)|collage|decorative\s*plaque\s*(?:hand.?paint))',
+    re.IGNORECASE
+)
+_CH97_ENGRAVING = re.compile(
+    r'(?:תחריט|חריטה|engraving|etching|lithograph|print\s*(?:original|artist|limited\s*edition))',
+    re.IGNORECASE
+)
+_CH97_SCULPTURE = re.compile(
+    r'(?:פסל|sculpture|statue|statuary|casting\s*(?:original|bronze)|'
+    r'carving\s*(?:original|artistic))',
+    re.IGNORECASE
+)
+_CH97_STAMP = re.compile(
+    r'(?:בול\s*(?:דואר|אספנות)|postage\s*stamp|revenue\s*stamp|'
+    r'stamp\s*(?:collection|philatelic)|first\s*day\s*cover)',
+    re.IGNORECASE
+)
+_CH97_COLLECTION = re.compile(
+    r'(?:אוסף|collection\s*(?:zoological|botanical|anatomical|historical|archaeological|'
+    r'ethnographic|numismatic|palaeontological)|'
+    r'collector.?s?\s*piece|museum\s*piece)',
+    re.IGNORECASE
+)
+_CH97_ANTIQUE = re.compile(
+    r'(?:עתיקה|antique\s*(?:over\s*100|more\s*than\s*100)|antique)',
+    re.IGNORECASE
+)
+_CH97_GENERAL = re.compile(
+    r'(?:work\s*(?:of\s*)?\bart\b|fine\s*\bart\b|painting\s*(?:original|hand)|'
+    r'sculpture|statue|engraving|lithograph|antique|collector)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_97_candidate(text):
+    return bool(
+        _CH97_PAINTING.search(text) or _CH97_ENGRAVING.search(text)
+        or _CH97_SCULPTURE.search(text) or _CH97_STAMP.search(text)
+        or _CH97_COLLECTION.search(text) or _CH97_ANTIQUE.search(text)
+        or _CH97_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_97(product):
+    """Chapter 97: Works of art, collectors' pieces and antiques.
+
+    Headings:
+        97.01 — Paintings, drawings and pastels, executed entirely by hand (other than technical drawings, hand-decorated manufactured articles); collages
+        97.02 — Original engravings, prints and lithographs
+        97.03 — Original sculptures and statuary, in any material
+        97.04 — Postage or revenue stamps, stamp-postmarks, first-day covers, postal stationery; banknotes
+        97.05 — Collections and collectors' pieces of zoological, botanical, mineralogical, anatomical, historical, archaeological, palaeontological, ethnographic or numismatic interest
+        97.06 — Antiques of an age exceeding one hundred years
+    """
+    text = _product_text(product)
+    result = {"chapter": 97, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH97_STAMP.search(text):
+        result["candidates"].append({"heading": "97.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Postage stamp / revenue stamp / first-day cover → 97.04.",
+            "rule_applied": "GIR 1 — heading 97.04"})
+        return result
+    if _CH97_ANTIQUE.search(text):
+        result["candidates"].append({"heading": "97.06", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Antique (over 100 years old) → 97.06.",
+            "rule_applied": "GIR 1 — heading 97.06"})
+        return result
+    if _CH97_COLLECTION.search(text):
+        result["candidates"].append({"heading": "97.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Collector's piece / collection → 97.05.",
+            "rule_applied": "GIR 1 — heading 97.05"})
+        return result
+    if _CH97_SCULPTURE.search(text):
+        result["candidates"].append({"heading": "97.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Original sculpture / statue → 97.03.",
+            "rule_applied": "GIR 1 — heading 97.03"})
+        return result
+    if _CH97_ENGRAVING.search(text):
+        result["candidates"].append({"heading": "97.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Original engraving / print / lithograph → 97.02.",
+            "rule_applied": "GIR 1 — heading 97.02"})
+        return result
+    if _CH97_PAINTING.search(text):
+        result["candidates"].append({"heading": "97.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Painting / drawing / pastel / collage (hand-executed) → 97.01.",
+            "rule_applied": "GIR 1 — heading 97.01"})
+        return result
+
+    result["candidates"].append({"heading": "97.01", "subheading_hint": None,
+        "confidence": 0.50, "reasoning": "Art/collectible type unclear → 97.01.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Painting, engraving, sculpture, stamp, collection, or antique?")
+    return result
+
+
+# ============================================================================
 # PUBLIC API — dispatches to the right chapter tree
 # ============================================================================
 
@@ -8895,6 +12533,30 @@ _CHAPTER_TREES = {
     70: _decide_chapter_70,
     71: _decide_chapter_71,
     72: _decide_chapter_72,
+    73: _decide_chapter_73,
+    74: _decide_chapter_74,
+    75: _decide_chapter_75,
+    76: _decide_chapter_76,
+    78: _decide_chapter_78,
+    79: _decide_chapter_79,
+    80: _decide_chapter_80,
+    81: _decide_chapter_81,
+    82: _decide_chapter_82,
+    83: _decide_chapter_83,
+    84: _decide_chapter_84,
+    85: _decide_chapter_85,
+    86: _decide_chapter_86,
+    87: _decide_chapter_87,
+    88: _decide_chapter_88,
+    89: _decide_chapter_89,
+    90: _decide_chapter_90,
+    91: _decide_chapter_91,
+    92: _decide_chapter_92,
+    93: _decide_chapter_93,
+    94: _decide_chapter_94,
+    95: _decide_chapter_95,
+    96: _decide_chapter_96,
+    97: _decide_chapter_97,
 }
 
 
@@ -8914,7 +12576,15 @@ def decide_chapter(product):
     # Check each chapter's candidate detection in order
     for ch_num, detect_fn, tree_fn in _CHAPTER_DETECT_ORDER:
         if detect_fn(text):
-            return tree_fn(product)
+            result = tree_fn(product)
+            # Follow redirects: if tree says "go to chapter X", run that tree
+            if result and result.get("redirect") and not result.get("candidates"):
+                target_ch = result["redirect"].get("chapter")
+                if target_ch and target_ch in _CHAPTER_TREES:
+                    redirected = _CHAPTER_TREES[target_ch](product)
+                    if redirected and redirected.get("candidates"):
+                        return redirected
+            return result
 
     return None
 
@@ -8932,10 +12602,24 @@ def _is_chapter_03_candidate(text):
 
 # Ordered detection list — checked sequentially, first match wins.
 # Priority: finished goods before raw materials to prevent substring collisions.
-# Food/agri (1-24) → finished textiles/apparel (56-65) → stone/ceramic (66-72)
+# Manufactured goods (84-97) → Food/agri (1-24) → finished textiles/apparel (56-65)
+# → stone/ceramic (66-72) → base metal articles (73-83)
 # → leather/wood/paper (41-49) → plastics/rubber (39-40) → chemicals (28-38)
 # → raw textiles (50-55) → minerals (25-27).
 _CHAPTER_DETECT_ORDER = [
+    # --- Manufactured goods / machinery / vehicles / instruments (FIRST) ---
+    # "steel cabinet" is ch.94 not ch.72; "car engine" is ch.87 not ch.84
+    (97, _is_chapter_97_candidate, _decide_chapter_97),   # Works of art — very specific
+    (93, _is_chapter_93_candidate, _decide_chapter_93),   # Arms & ammunition — very specific
+    (91, _is_chapter_91_candidate, _decide_chapter_91),   # Clocks & watches — very specific
+    (92, _is_chapter_92_candidate, _decide_chapter_92),   # Musical instruments — very specific
+    (90, _is_chapter_90_candidate, _decide_chapter_90),   # Optical / medical instruments
+    (88, _is_chapter_88_candidate, _decide_chapter_88),   # Aircraft
+    (89, _is_chapter_89_candidate, _decide_chapter_89),   # Ships & boats
+    (86, _is_chapter_86_candidate, _decide_chapter_86),   # Railway rolling stock
+    (87, _is_chapter_87_candidate, _decide_chapter_87),   # Vehicles
+    (85, _is_chapter_85_candidate, _decide_chapter_85),   # Electrical machinery (before ch.84)
+    (84, _is_chapter_84_candidate, _decide_chapter_84),   # Mechanical machinery (broad — last in group)
     # --- Food / agriculture (very specific names, low false-positive) ---
     (1, _is_chapter_01_candidate, _decide_chapter_01),
     (2, _is_chapter_02_candidate, _decide_chapter_02),
@@ -8974,6 +12658,10 @@ _CHAPTER_DETECT_ORDER = [
     (59, _is_chapter_59_candidate, _decide_chapter_59),
     (60, _is_chapter_60_candidate, _decide_chapter_60),
     (56, _is_chapter_56_candidate, _decide_chapter_56),
+    # --- Furniture / toys / misc manufactured (after textiles — "quilt" is ch.94 but "blanket" is ch.63) ---
+    (94, _is_chapter_94_candidate, _decide_chapter_94),   # Furniture, bedding, lighting
+    (95, _is_chapter_95_candidate, _decide_chapter_95),   # Toys & games
+    (96, _is_chapter_96_candidate, _decide_chapter_96),   # Miscellaneous manufactured articles
     # --- Minerals / ores (before metals — "iron ore" is ch.26 not ch.72) ---
     (25, _is_chapter_25_candidate, _decide_chapter_25),
     (26, _is_chapter_26_candidate, _decide_chapter_26),
@@ -8984,7 +12672,18 @@ _CHAPTER_DETECT_ORDER = [
     (69, _is_chapter_69_candidate, _decide_chapter_69),
     (70, _is_chapter_70_candidate, _decide_chapter_70),
     (71, _is_chapter_71_candidate, _decide_chapter_71),
-    (72, _is_chapter_72_candidate, _decide_chapter_72),
+    # --- Metal articles (tools/cutlery before raw metals — "steel knife" ch.82 not ch.72) ---
+    (82, _is_chapter_82_candidate, _decide_chapter_82),   # Tools of base metal — specific
+    (83, _is_chapter_83_candidate, _decide_chapter_83),   # Misc articles of base metal (locks, safes)
+    (73, _is_chapter_73_candidate, _decide_chapter_73),   # Articles of iron or steel
+    (72, _is_chapter_72_candidate, _decide_chapter_72),   # Iron and steel (raw)
+    (74, _is_chapter_74_candidate, _decide_chapter_74),   # Copper
+    (75, _is_chapter_75_candidate, _decide_chapter_75),   # Nickel
+    (76, _is_chapter_76_candidate, _decide_chapter_76),   # Aluminium
+    (78, _is_chapter_78_candidate, _decide_chapter_78),   # Lead
+    (79, _is_chapter_79_candidate, _decide_chapter_79),   # Zinc
+    (80, _is_chapter_80_candidate, _decide_chapter_80),   # Tin
+    (81, _is_chapter_81_candidate, _decide_chapter_81),   # Other base metals
     # --- Leather / wood / paper (finished articles) ---
     (41, _is_chapter_41_candidate, _decide_chapter_41),
     (42, _is_chapter_42_candidate, _decide_chapter_42),
