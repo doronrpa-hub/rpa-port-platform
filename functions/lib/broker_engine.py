@@ -24,6 +24,16 @@ except ImportError:
     from case_reasoning import analyze_case, get_discount_for_item, CasePlan
 
 try:
+    from lib._external_tariff_search import external_tariff_search
+    _EXTERNAL_SEARCH_AVAILABLE = True
+except ImportError:
+    try:
+        from _external_tariff_search import external_tariff_search
+        _EXTERNAL_SEARCH_AVAILABLE = True
+    except ImportError:
+        _EXTERNAL_SEARCH_AVAILABLE = False
+
+try:
     from lib._chapter98_data import (
         get_chapter98_code, get_chapter98_entry, CHAPTER_TO_98_MAP,
     )
@@ -649,7 +659,20 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     # Build candidates from tariff search
     pre_result = _build_candidates_for_item(item, db, vocab_chapters=vocab_chapters)
     if not pre_result or not pre_result.get("candidates"):
-        return None
+        # Rescue: try external tariff sources (UK API + Shaarolami)
+        if _EXTERNAL_SEARCH_AVAILABLE:
+            ext_results = external_tariff_search(
+                query_en=item.get("name", ""),
+                query_he=item.get("name_he", item.get("name", "")),
+                db=db,
+            )
+            if ext_results:
+                pre_result = {
+                    "candidates": ext_results,
+                    "rescue_source": "external_tariff_search",
+                }
+        if not pre_result or not pre_result.get("candidates"):
+            return None
 
     # If spare part, boost parent chapter candidates
     candidates = _candidates_from_pre_classify(pre_result)
