@@ -109,6 +109,27 @@ except ImportError:
         broker_process_case = None
         BROKER_ENGINE_AVAILABLE = False
 
+# Smart classify (Session 97) — synonym expansion + tariff tree lookup
+try:
+    from lib.smart_classify import classify_product as smart_classify_product
+    SMART_CLASSIFY_AVAILABLE = True
+except ImportError:
+    try:
+        from smart_classify import classify_product as smart_classify_product
+        SMART_CLASSIFY_AVAILABLE = True
+    except ImportError:
+        smart_classify_product = None
+        SMART_CLASSIFY_AVAILABLE = False
+
+# Feature flag — imported from classification_agents (same as other flags)
+try:
+    from lib.classification_agents import USE_SMART_CLASSIFY
+except ImportError:
+    try:
+        from classification_agents import USE_SMART_CLASSIFY
+    except ImportError:
+        USE_SMART_CLASSIFY = False
+
 
 # ═══════════════════════════════════════════
 #  PER-ITEM TARIFF LOOKUP (Fix: real HS codes)
@@ -1118,6 +1139,32 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                 print(f"    ⚠️  Sub-intent {sub_intent} low confidence ({sub_confidence:.2f}) → treating as consultation")
         except Exception as e:
             logger.warning(f"Sub-intent detection error: {e}")
+
+    # 1a. Try smart classify (Session 97) — synonym expansion + tariff tree
+    if USE_SMART_CLASSIFY and SMART_CLASSIFY_AVAILABLE and template_type != "live_shipment":
+        try:
+            _sc_text = subject + "\n" + body_text
+            if thread_context and thread_context.get("original_question"):
+                _sc_text = thread_context["original_question"] + "\n" + _sc_text
+            print(f"    Smart Classify: synonym expansion + tariff tree")
+            sc_result = smart_classify_product(_sc_text, db)
+            if sc_result and sc_result.confidence == "HIGH" and sc_result.hs_candidates:
+                top = sc_result.hs_candidates[0]
+                second_score = sc_result.hs_candidates[1].get("combined_score", 0) if len(sc_result.hs_candidates) >= 2 else 0
+                gap = top.get("combined_score", 0) - second_score
+                if gap >= 3:
+                    # Clear winner — use smart classify result directly
+                    print(f"    Smart Classify: HIGH confidence, gap={gap:.1f}, "
+                          f"top={top.get('hs_code', '?')} → feeding to broker engine")
+                    # Inject as pre-classification hint for broker engine
+                    msg["_smart_classify_result"] = sc_result
+                else:
+                    print(f"    Smart Classify: HIGH but gap={gap:.1f} too narrow → fall through")
+            else:
+                conf = sc_result.confidence if sc_result else "NONE"
+                print(f"    Smart Classify: confidence={conf} → fall through to broker")
+        except Exception as e:
+            print(f"    Smart Classify error: {e}")
 
     # 1b. Try broker engine (Session 90) — deterministic, no AI tool loop
     _broker_sent = False  # Guard: if broker sends, do NOT let legacy also send

@@ -562,6 +562,53 @@ def _check_chapter_notes_exclusion(candidate: dict, query_words: List[str],
 
 
 # ---------------------------------------------------------------------------
+#  Domain-context penalty: penalize candidates with narrowing terms absent
+#  from the query (e.g., "toilet seats" when query is about "sofa")
+# ---------------------------------------------------------------------------
+
+# Map: Hebrew term → penalty weight.  When a candidate's description (or
+# tree-path ancestor) contains one of these terms but the query does NOT,
+# the candidate is likely a false positive due to a shared generic word
+# (e.g. "מושבים" appears in both toilet seats and furniture seats).
+_DOMAIN_NARROWING: Dict[str, float] = {
+    # Bathroom / sanitary (ch 39.22, 69.10)
+    "אסלות": 4.0, "אמבטיות": 4.0, "מקלחונים": 4.0, "בידה": 3.0,
+    "קערות רחצה": 3.0,
+    # Aviation
+    "כלי טייס": 3.5, "לכלי טייס": 3.5,
+    # Automotive
+    "רכב מנועי": 3.5, "לרכב מנועי": 3.5,
+}
+
+
+def _score_domain_context(candidate: dict, query_words: List[str]) -> float:
+    """Return negative penalty when candidate contains domain-narrowing terms
+    that the query does NOT mention.
+
+    Takes the single largest penalty (not cumulative) so that a description
+    with multiple bathroom terms (אמבטיות + אסלות) is penalized only once.
+    """
+    desc_he = (candidate.get("description_he", "") or candidate.get("desc_he", "")).lower()
+    # Also check tree-path ancestor descriptions (available for tree candidates)
+    path_parts = candidate.get("tree_path", [])
+    path_text = " ".join(p.lower() for p in path_parts) if path_parts else ""
+    combined = f"{desc_he} {path_text}"
+
+    if not combined.strip():
+        return 0.0
+
+    query_text = " ".join(query_words)
+
+    max_penalty = 0.0
+    for term, weight in _DOMAIN_NARROWING.items():
+        if term in combined and term not in query_text:
+            if weight > max_penalty:
+                max_penalty = weight
+
+    return -max_penalty
+
+
+# ---------------------------------------------------------------------------
 #  GIR Rule 1: Most specific description wins
 # ---------------------------------------------------------------------------
 
@@ -819,6 +866,13 @@ def classify_product(query: str, db=None) -> ClassificationResult:
                 result.reasoning.append(
                     f"Chapter note inclusion for {c.get('hs_code', '?')}: {note_result}"
                 )
+
+    # --- Step 3b: Domain-context penalty ---
+    for c in all_candidates:
+        domain_penalty = _score_domain_context(c, query_words)
+        if domain_penalty < 0:
+            c["domain_penalty"] = domain_penalty
+            c["combined_score"] += domain_penalty
 
     # --- Step 4: Apply GIR Rule 1 scoring ---
     for c in all_candidates:

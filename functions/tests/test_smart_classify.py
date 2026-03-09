@@ -20,6 +20,7 @@ from lib.smart_classify import (
     _tokenize,
     _strip_prefixes,
     _score_specificity,
+    _score_domain_context,
     _check_chapter_notes_exclusion,
     _extract_official_terms_from_shaarolami,
 )
@@ -297,6 +298,53 @@ class TestVocabStats(unittest.TestCase):
         self.assertIn("en_words", stats)
         self.assertIsInstance(stats["he_words"], int)
         self.assertIsInstance(stats["en_words"], int)
+
+
+class TestDomainContextPenalty(unittest.TestCase):
+    """Test domain-narrowing penalty for false-positive matches."""
+
+    def test_bathroom_term_penalized(self):
+        """Toilet seats should be penalized when query is about sofas."""
+        candidate = {"description_he": "מושבים ומכסים לאסלות"}
+        penalty = _score_domain_context(candidate, ["ספה", "מרופדת"])
+        self.assertLess(penalty, 0, "Bathroom term should cause negative penalty")
+
+    def test_aviation_term_penalized(self):
+        candidate = {"description_he": "מושבים מהסוג המשמש לכלי טייס"}
+        penalty = _score_domain_context(candidate, ["ספה", "מרופדת"])
+        self.assertLess(penalty, 0)
+
+    def test_automotive_term_penalized(self):
+        candidate = {"description_he": "מושבים מהסוג המשמש לרכב מנועי"}
+        penalty = _score_domain_context(candidate, ["ספה", "מרופדת"])
+        self.assertLess(penalty, 0)
+
+    def test_no_penalty_for_generic_seats(self):
+        """Generic seats (chapter 94) should not be penalized."""
+        candidate = {"description_he": "מושבים אחרים"}
+        penalty = _score_domain_context(candidate, ["ספה", "מרופדת"])
+        self.assertEqual(penalty, 0.0)
+
+    def test_no_penalty_when_query_mentions_domain(self):
+        """No penalty if query itself mentions the narrowing term."""
+        candidate = {"description_he": "מושבים ומכסים לאסלות"}
+        penalty = _score_domain_context(candidate, ["אסלות", "פלסטיק"])
+        self.assertEqual(penalty, 0.0)
+
+    def test_tree_path_checked(self):
+        """Domain terms in tree_path ancestors should also trigger penalty."""
+        candidate = {
+            "description_he": "מושבים",
+            "tree_path": ["אמבטיות, מקלחונים, כיורים"],
+        }
+        penalty = _score_domain_context(candidate, ["ספה"])
+        self.assertLess(penalty, 0)
+
+    def test_shrimp_candidates_not_penalized(self):
+        """Fish/crustacean descriptions should not contain domain-narrowing terms."""
+        candidate = {"description_he": "סרטנים, אם בשריונם או לאו, חיים, טריים"}
+        penalty = _score_domain_context(candidate, ["שרימפס", "קפוא"])
+        self.assertEqual(penalty, 0.0)
 
 
 class TestResetCaches(unittest.TestCase):
