@@ -2296,6 +2296,1372 @@ def _decide_chapter_15(product):
 
 
 # ============================================================================
+# CHAPTER 16: Preparations of meat, fish, crustaceans, molluscs
+# ============================================================================
+
+_CH16_SAUSAGE = re.compile(
+    r'(?:נקניק|נקניקי|סלמי|פפרוני|מורטדלה|קבנוס|'
+    r'sausage|salami|pepperoni|mortadella|chorizo|frankfurter|hot\s*dog|'
+    r'bratwurst|bologna|wiener|kielbasa)',
+    re.IGNORECASE
+)
+
+_CH16_MEAT_EXTRACT = re.compile(
+    r'(?:תמצית\s*בשר|מרק\s*בשר|meat\s*extract|meat\s*juice|bouillon|'
+    r'broth\s*concentrate)',
+    re.IGNORECASE
+)
+
+_CH16_PREPARED_MEAT = re.compile(
+    r'(?:שימורי?\s*בשר|בשר\s*משומר|נתחי\s*בשר\s*מבושל|קורנד?\s*ביף|'
+    r'canned\s*meat|corned\s*beef|pâté|pate|tinned\s*meat|'
+    r'prepared\s*meat|preserved\s*meat|cooked\s*ham|luncheon\s*meat|spam)',
+    re.IGNORECASE
+)
+
+_CH16_PREPARED_FISH = re.compile(
+    r'(?:שימורי?\s*דג|דג\s*משומר|טונה\s*בשמן|סרדין\s*בשמן|'
+    r'canned\s*fish|canned\s*tuna|canned\s*salmon|canned\s*sardine|'
+    r'prepared\s*fish|preserved\s*fish|fish\s*stick|fish\s*finger|surimi|'
+    r'fish\s*paste|fish\s*ball|gefilte\s*fish)',
+    re.IGNORECASE
+)
+
+_CH16_PREPARED_CRUSTACEAN = re.compile(
+    r'(?:שימורי?\s*(?:שרימפס|סרטן|לובסטר)|'
+    r'canned\s*(?:shrimp|crab|lobster)|prepared\s*(?:shrimp|crab|lobster|crustacean)|'
+    r'shrimp\s*paste|crab\s*paste)',
+    re.IGNORECASE
+)
+
+_CH16_CAVIAR = re.compile(
+    r'(?:קוויאר|ביצי\s*דג|caviar|roe|fish\s*eggs)',
+    re.IGNORECASE
+)
+
+
+def _detect_ch16_product_type(text):
+    """Detect product type for Chapter 16 routing."""
+    if _CH16_CAVIAR.search(text):
+        return "caviar"
+    if _CH16_SAUSAGE.search(text):
+        return "sausage"
+    if _CH16_MEAT_EXTRACT.search(text):
+        return "meat_extract"
+    if _CH16_PREPARED_CRUSTACEAN.search(text):
+        return "prepared_crustacean"
+    if _CH16_PREPARED_FISH.search(text):
+        return "prepared_fish"
+    if _CH16_PREPARED_MEAT.search(text):
+        return "prepared_meat"
+    # Check general fish/meat signals for fallback
+    if _FISH_WORDS.search(text) or _CRUSTACEAN_WORDS.search(text) or _MOLLUSC_WORDS.search(text):
+        return "prepared_fish"
+    if _CH01_BOVINE.search(text) or _CH01_SWINE.search(text) or _CH01_POULTRY.search(text):
+        return "prepared_meat"
+    return "unknown"
+
+
+def _is_chapter_16_candidate(text):
+    """Check if product text suggests Chapter 16 (preparations of meat/fish)."""
+    return bool(
+        _CH16_SAUSAGE.search(text)
+        or _CH16_MEAT_EXTRACT.search(text)
+        or _CH16_PREPARED_MEAT.search(text)
+        or _CH16_PREPARED_FISH.search(text)
+        or _CH16_PREPARED_CRUSTACEAN.search(text)
+        or _CH16_CAVIAR.search(text)
+        or _COMPOUND_SIGNALS.search(text) and (
+            _FISH_WORDS.search(text) or _CRUSTACEAN_WORDS.search(text)
+            or _CH01_BOVINE.search(text) or _CH01_SWINE.search(text)
+            or _CH01_POULTRY.search(text)
+        )
+    )
+
+
+def _decide_chapter_16(product):
+    """Chapter 16 decision tree: Preparations of meat, fish, crustaceans, molluscs.
+
+    Headings:
+        16.01 — Sausages and similar; food preparations based thereon
+        16.02 — Other prepared or preserved meat, offal, blood
+        16.03 — Extracts and juices of meat, fish, crustaceans
+        16.04 — Prepared or preserved fish; caviar and caviar substitutes
+        16.05 — Crustaceans, molluscs etc. prepared or preserved
+    """
+    text = _product_text(product)
+    prod_type = _detect_ch16_product_type(text)
+
+    result = {
+        "chapter": 16,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    type_to_heading = {
+        "sausage": ("16.01", "Sausage/similar products → 16.01."),
+        "prepared_meat": ("16.02", "Prepared/preserved meat → 16.02."),
+        "meat_extract": ("16.03", "Meat/fish extract or juice → 16.03."),
+        "prepared_fish": ("16.04", "Prepared/preserved fish → 16.04."),
+        "caviar": ("16.04", "Caviar/fish roe → 16.04."),
+        "prepared_crustacean": ("16.05", "Prepared/preserved crustacean/mollusc → 16.05."),
+    }
+
+    if prod_type in type_to_heading:
+        heading, reasoning = type_to_heading[prod_type]
+        result["candidates"].append({
+            "heading": heading,
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}",
+        })
+        return result
+
+    # Unknown
+    result["candidates"].append({
+        "heading": "16.02",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Prepared meat/fish product type unknown → 16.02 (catch-all prepared meat).",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of preparation? (sausage, canned meat, canned fish, caviar, prepared crustacean)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 17: Sugars and sugar confectionery
+# ============================================================================
+
+_CH17_CANE_BEET = re.compile(
+    r'(?:סוכר\s*(?:קנה|סלק|לבן|גולמי|חום)|'
+    r'cane\s*sugar|beet\s*sugar|raw\s*sugar|refined\s*sugar|white\s*sugar|'
+    r'brown\s*sugar|granulated\s*sugar|icing\s*sugar|caster\s*sugar|sucrose)',
+    re.IGNORECASE
+)
+
+_CH17_MOLASSES = re.compile(
+    r'(?:מולסה|דבש\s*(?:קנה|סלק)|treacle|molasses|'
+    r'sugar\s*syrup\s*(?:colouring|coloring))',
+    re.IGNORECASE
+)
+
+_CH17_MAPLE_GLUCOSE = re.compile(
+    r'(?:מייפל|גלוקוז|פרוקטוז|לקטוז|מלטוז|'
+    r'maple\s*(?:syrup|sugar)|glucose|fructose|lactose|maltose|'
+    r'dextrose|invert\s*sugar|isoglucose|sugar\s*syrup)',
+    re.IGNORECASE
+)
+
+_CH17_CANDY = re.compile(
+    r'(?:סוכריה|סוכריות|ממתק|ממתקים|טופי|מרשמלו|גומי\s*דובים|מסטיק\s*סוכר|'
+    r'candy|candies|confectionery|sweet|toffee|caramel|fudge|nougat|'
+    r'marshmallow|gummy|jelly\s*bean|lollipop|bonbon|pastille|'
+    r'sugar\s*coated|dragee|chewing\s*gum\s*(?:sugar|not)|halva|halwa|halvah)',
+    re.IGNORECASE
+)
+
+_CH17_CHOCOLATE = re.compile(
+    r'(?:שוקולד|chocolate|cocoa\s*(?:preparation|drink))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_17_candidate(text):
+    """Check if product text suggests Chapter 17 (sugars/confectionery)."""
+    return bool(
+        _CH17_CANE_BEET.search(text)
+        or _CH17_MOLASSES.search(text)
+        or _CH17_MAPLE_GLUCOSE.search(text)
+        or _CH17_CANDY.search(text)
+    )
+
+
+def _decide_chapter_17(product):
+    """Chapter 17 decision tree: Sugars and sugar confectionery.
+
+    Headings:
+        17.01 — Cane or beet sugar (solid)
+        17.02 — Other sugars (lactose, maple, glucose, fructose, etc.)
+        17.03 — Molasses
+        17.04 — Sugar confectionery (not containing cocoa)
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 17,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    # Gate: Chocolate confectionery → Chapter 18
+    if _CH17_CHOCOLATE.search(text):
+        result["redirect"] = {
+            "chapter": 18,
+            "reason": "Contains chocolate/cocoa — sugar confectionery with cocoa → Chapter 18.",
+            "rule_applied": "Chapter 17 Note: excludes confectionery containing cocoa (→ 18.06)",
+        }
+        return result
+
+    if _CH17_CANDY.search(text):
+        result["candidates"].append({
+            "heading": "17.04",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Sugar confectionery (not containing cocoa) → 17.04.",
+            "rule_applied": "GIR 1 — heading 17.04",
+        })
+        return result
+
+    if _CH17_MOLASSES.search(text):
+        result["candidates"].append({
+            "heading": "17.03",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Molasses from sugar extraction → 17.03.",
+            "rule_applied": "GIR 1 — heading 17.03",
+        })
+        return result
+
+    if _CH17_MAPLE_GLUCOSE.search(text):
+        result["candidates"].append({
+            "heading": "17.02",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Other sugars (glucose/fructose/lactose/maple) → 17.02.",
+            "rule_applied": "GIR 1 — heading 17.02",
+        })
+        return result
+
+    if _CH17_CANE_BEET.search(text):
+        result["candidates"].append({
+            "heading": "17.01",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Cane or beet sugar in solid form → 17.01.",
+            "rule_applied": "GIR 1 — heading 17.01",
+        })
+        return result
+
+    # Unknown sugar product
+    result["candidates"].append({
+        "heading": "17.01",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Sugar product, type unclear → 17.01 (default).",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of sugar product? (cane/beet sugar, glucose/fructose, molasses, confectionery)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 18: Cocoa and cocoa preparations
+# ============================================================================
+
+_CH18_COCOA_BEAN = re.compile(
+    r'(?:פולי?\s*קקאו|cocoa\s*bean|cacao\s*bean|raw\s*cocoa)',
+    re.IGNORECASE
+)
+
+_CH18_COCOA_SHELL = re.compile(
+    r'(?:קליפת?\s*קקאו|cocoa\s*(?:shell|husk|skin|waste))',
+    re.IGNORECASE
+)
+
+_CH18_COCOA_PASTE = re.compile(
+    r'(?:משחת?\s*קקאו|ליקור\s*קקאו|cocoa\s*(?:paste|liquor|mass)|'
+    r'chocolate\s*liquor)',
+    re.IGNORECASE
+)
+
+_CH18_COCOA_BUTTER = re.compile(
+    r'(?:חמאת?\s*קקאו|שומן\s*קקאו|cocoa\s*butter|cocoa\s*fat|'
+    r'cocoa\s*oil)',
+    re.IGNORECASE
+)
+
+_CH18_COCOA_POWDER = re.compile(
+    r'(?:אבקת?\s*קקאו|cocoa\s*powder)',
+    re.IGNORECASE
+)
+
+_CH18_CHOCOLATE = re.compile(
+    r'(?:שוקולד|טבלת?\s*שוקולד|פרלין|'
+    r'chocolate|praline|chocolate\s*bar|couverture|'
+    r'chocolate\s*spread|chocolate\s*chip)',
+    re.IGNORECASE
+)
+
+_CH18_COCOA_GENERAL = re.compile(
+    r'(?:קקאו|cocoa|cacao)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_18_candidate(text):
+    """Check if product text suggests Chapter 18 (cocoa/chocolate)."""
+    return bool(
+        _CH18_COCOA_GENERAL.search(text)
+        or _CH18_CHOCOLATE.search(text)
+    )
+
+
+def _decide_chapter_18(product):
+    """Chapter 18 decision tree: Cocoa and cocoa preparations.
+
+    Headings:
+        18.01 — Cocoa beans, whole or broken, raw or roasted
+        18.02 — Cocoa shells, husks, skins, waste
+        18.03 — Cocoa paste, defatted or not
+        18.04 — Cocoa butter, fat, oil
+        18.05 — Cocoa powder (unsweetened)
+        18.06 — Chocolate and other food preparations containing cocoa
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 18,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    if _CH18_COCOA_BEAN.search(text):
+        result["candidates"].append({
+            "heading": "18.01",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Cocoa beans, whole or broken → 18.01.",
+            "rule_applied": "GIR 1 — heading 18.01",
+        })
+        return result
+
+    if _CH18_COCOA_SHELL.search(text):
+        result["candidates"].append({
+            "heading": "18.02",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Cocoa shells/husks/waste → 18.02.",
+            "rule_applied": "GIR 1 — heading 18.02",
+        })
+        return result
+
+    if _CH18_COCOA_PASTE.search(text):
+        result["candidates"].append({
+            "heading": "18.03",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Cocoa paste/liquor → 18.03.",
+            "rule_applied": "GIR 1 — heading 18.03",
+        })
+        return result
+
+    if _CH18_COCOA_BUTTER.search(text):
+        result["candidates"].append({
+            "heading": "18.04",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Cocoa butter/fat/oil → 18.04.",
+            "rule_applied": "GIR 1 — heading 18.04",
+        })
+        return result
+
+    if _CH18_COCOA_POWDER.search(text):
+        result["candidates"].append({
+            "heading": "18.05",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Cocoa powder (unsweetened) → 18.05.",
+            "rule_applied": "GIR 1 — heading 18.05",
+        })
+        return result
+
+    if _CH18_CHOCOLATE.search(text):
+        result["candidates"].append({
+            "heading": "18.06",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Chocolate/food preparation containing cocoa → 18.06.",
+            "rule_applied": "GIR 1 — heading 18.06",
+        })
+        return result
+
+    # General cocoa reference — need more info
+    result["candidates"].append({
+        "heading": "18.06",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Cocoa product, form unclear → 18.06 (most common).",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What form is the cocoa product? (beans, shells, paste, butter, powder, chocolate)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 19: Preparations of cereals, flour, starch, or milk; pastrycooks' products
+# ============================================================================
+
+_CH19_PASTA = re.compile(
+    r'(?:פסטה|אטריות|ספגטי|מקרוני|לזניה|רביולי|ניוקי|'
+    r'pasta|spaghetti|macaroni|noodle|lasagna|ravioli|tortellini|'
+    r'gnocchi|vermicelli|fettuccine|penne|fusilli|couscous)',
+    re.IGNORECASE
+)
+
+_CH19_BREAD = re.compile(
+    r'(?:לחם|חלה|פיתה|באגט|לחמניה|טוסט|'
+    r'bread|loaf|pita|baguette|roll|toast|flatbread|naan|ciabatta|'
+    r'sourdough|rye\s*bread|white\s*bread|whole\s*wheat\s*bread)',
+    re.IGNORECASE
+)
+
+_CH19_PASTRY = re.compile(
+    r'(?:עוגה|עוגות|מאפה|מאפים|קרואסון|דונאט|בורקס|'
+    r'cake|pastry|croissant|donut|doughnut|muffin|cookie|biscuit|'
+    r'wafer|pie|tart|danish|scone|brioche|strudel|baklava|'
+    r'puff\s*pastry|phyllo|filo)',
+    re.IGNORECASE
+)
+
+_CH19_BREAKFAST_CEREAL = re.compile(
+    r'(?:קורנפלקס|דגני\s*בוקר|גרנולה|מוזלי|שיבולת\s*שועל|'
+    r'cornflakes|corn\s*flakes|breakfast\s*cereal|granola|muesli|'
+    r'oat\s*flakes|puffed\s*rice|cereal\s*bar|ready.to.eat\s*cereal)',
+    re.IGNORECASE
+)
+
+_CH19_PIZZA = re.compile(
+    r'(?:פיצה|pizza|quiche|calzone)',
+    re.IGNORECASE
+)
+
+_CH19_INFANT_FOOD = re.compile(
+    r'(?:מזון\s*תינוקות|דייסת?\s*תינוקות|baby\s*food|infant\s*(?:food|cereal)|'
+    r'follow.on\s*formula)',
+    re.IGNORECASE
+)
+
+_CH19_MALT_EXTRACT = re.compile(
+    r'(?:תמצית\s*לתת|malt\s*extract|malt\s*preparation)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_19_candidate(text):
+    """Check if product text suggests Chapter 19 (cereal/flour preparations)."""
+    return bool(
+        _CH19_PASTA.search(text) or _CH19_BREAD.search(text)
+        or _CH19_PASTRY.search(text) or _CH19_BREAKFAST_CEREAL.search(text)
+        or _CH19_PIZZA.search(text) or _CH19_INFANT_FOOD.search(text)
+        or _CH19_MALT_EXTRACT.search(text)
+    )
+
+
+def _decide_chapter_19(product):
+    """Chapter 19 decision tree: Preparations of cereals, flour, starch, or milk.
+
+    Headings:
+        19.01 — Malt extract; food preparations of flour/starch/malt extract (infant food etc.)
+        19.02 — Pasta (uncooked, cooked, stuffed, couscous)
+        19.04 — Prepared foods from cereals (cornflakes, muesli, puffed rice, etc.)
+        19.05 — Bread, pastry, cakes, biscuits, pizza, wafers, etc.
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 19,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    if _CH19_PASTA.search(text):
+        result["candidates"].append({
+            "heading": "19.02",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Pasta/noodles/couscous → 19.02.",
+            "rule_applied": "GIR 1 — heading 19.02",
+        })
+        return result
+
+    if _CH19_BREAKFAST_CEREAL.search(text):
+        result["candidates"].append({
+            "heading": "19.04",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Breakfast cereal/granola/oat flakes → 19.04.",
+            "rule_applied": "GIR 1 — heading 19.04",
+        })
+        return result
+
+    if _CH19_INFANT_FOOD.search(text) or _CH19_MALT_EXTRACT.search(text):
+        result["candidates"].append({
+            "heading": "19.01",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Malt extract / infant food preparation → 19.01.",
+            "rule_applied": "GIR 1 — heading 19.01",
+        })
+        return result
+
+    if _CH19_BREAD.search(text) or _CH19_PASTRY.search(text) or _CH19_PIZZA.search(text):
+        result["candidates"].append({
+            "heading": "19.05",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Bread/pastry/cake/biscuit/pizza/wafer → 19.05.",
+            "rule_applied": "GIR 1 — heading 19.05",
+        })
+        return result
+
+    # Unknown cereal preparation
+    result["candidates"].append({
+        "heading": "19.05",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Cereal/flour preparation, type unclear → 19.05 (default).",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of cereal/flour preparation? (pasta, bread, pastry, breakfast cereal, infant food)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 20: Preparations of vegetables, fruit, nuts, or other parts of plants
+# ============================================================================
+
+_CH20_TOMATO_PREP = re.compile(
+    r'(?:רסק\s*עגבני|רוטב\s*עגבני|קטשופ|'
+    r'tomato\s*(?:paste|puree|purée|sauce|ketchup|concentrate)|ketchup)',
+    re.IGNORECASE
+)
+
+_CH20_JUICE = re.compile(
+    r'(?:מיץ\s*(?:תפוחים|תפוזים|ענבים|אשכולית|לימון|גזר|רימונים|פירות)|'
+    r'(?:apple|orange|grape|grapefruit|lemon|pineapple|tomato|mango|'
+    r'cranberry|pomegranate|guava|fruit)\s*juice|'
+    r'juice\s*(?:concentrate|not\s*fermented))',
+    re.IGNORECASE
+)
+
+_CH20_JAM = re.compile(
+    r'(?:ריבה|ריבת|מרמלדה|ג\'לי\s*פירות|'
+    r'jam|marmalade|jelly\s*(?:fruit|preserve)|fruit\s*(?:preserve|spread|butter))',
+    re.IGNORECASE
+)
+
+_CH20_PICKLED = re.compile(
+    r'(?:כבוש|כבושים|חמוצים|מלפפון\s*חמוץ|זית\s*(?:כבוש|מרינד)|'
+    r'pickle|pickled|gherkin|olive\s*(?:in\s*brine|pickled|marinated)|'
+    r'sauerkraut|kimchi|caper)',
+    re.IGNORECASE
+)
+
+_CH20_FROZEN_VEG = re.compile(
+    r'(?:ירקות\s*(?:קפואים|מוקפאים)|פירות\s*(?:קפואים|מוקפאים)|'
+    r'frozen\s*(?:vegetables|fruit|berries|peas|corn|spinach|mixed\s*veg))',
+    re.IGNORECASE
+)
+
+_CH20_CANNED_VEG = re.compile(
+    r'(?:שימורי?\s*(?:ירקות|פירות|תירס|אפונה|שעועית)|'
+    r'canned\s*(?:vegetables|fruit|corn|peas|beans|peach|pear|pineapple|'
+    r'mushroom|asparagus|artichoke)|tinned\s*(?:vegetables|fruit))',
+    re.IGNORECASE
+)
+
+_CH20_NUT_PREP = re.compile(
+    r'(?:חמאת?\s*(?:בוטנים|שקדים)|'
+    r'peanut\s*butter|almond\s*butter|nut\s*butter|nut\s*paste|'
+    r'roasted\s*(?:peanuts|cashews|almonds|nuts)\s*(?:salted|flavored|flavoured)?)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_20_candidate(text):
+    """Check if product text suggests Chapter 20 (veg/fruit preparations)."""
+    return bool(
+        _CH20_TOMATO_PREP.search(text) or _CH20_JUICE.search(text)
+        or _CH20_JAM.search(text) or _CH20_PICKLED.search(text)
+        or _CH20_FROZEN_VEG.search(text) or _CH20_CANNED_VEG.search(text)
+        or _CH20_NUT_PREP.search(text)
+    )
+
+
+def _decide_chapter_20(product):
+    """Chapter 20 decision tree: Preparations of vegetables, fruit, nuts.
+
+    Headings:
+        20.01 — Vegetables, fruit, nuts prepared by vinegar/acetic acid
+        20.02 — Tomatoes prepared or preserved (not by vinegar)
+        20.03 — Mushrooms, truffles prepared or preserved
+        20.04 — Other vegetables prepared or preserved (frozen)
+        20.05 — Other vegetables prepared or preserved (not frozen)
+        20.06 — Vegetables, fruit, nuts preserved by sugar (glacé)
+        20.07 — Jams, jellies, marmalades, purées, pastes
+        20.08 — Fruit, nuts otherwise prepared or preserved (peanut butter, etc.)
+        20.09 — Fruit/vegetable juices, unfermented, no added spirits
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 20,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    if _CH20_JUICE.search(text):
+        result["candidates"].append({
+            "heading": "20.09",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Fruit/vegetable juice (unfermented) → 20.09.",
+            "rule_applied": "GIR 1 — heading 20.09",
+        })
+        return result
+
+    if _CH20_TOMATO_PREP.search(text):
+        result["candidates"].append({
+            "heading": "20.02",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Tomato paste/puree/sauce/ketchup → 20.02.",
+            "rule_applied": "GIR 1 — heading 20.02",
+        })
+        return result
+
+    if _CH20_JAM.search(text):
+        result["candidates"].append({
+            "heading": "20.07",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Jam/marmalade/fruit jelly/fruit purée → 20.07.",
+            "rule_applied": "GIR 1 — heading 20.07",
+        })
+        return result
+
+    if _CH20_PICKLED.search(text):
+        result["candidates"].append({
+            "heading": "20.01",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Vegetables/fruit pickled or preserved by vinegar → 20.01.",
+            "rule_applied": "GIR 1 — heading 20.01",
+        })
+        return result
+
+    if _CH20_NUT_PREP.search(text):
+        result["candidates"].append({
+            "heading": "20.08",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Fruit/nuts otherwise prepared (peanut butter, roasted nuts) → 20.08.",
+            "rule_applied": "GIR 1 — heading 20.08",
+        })
+        return result
+
+    if _CH20_FROZEN_VEG.search(text):
+        result["candidates"].append({
+            "heading": "20.04",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Frozen vegetables/fruit prepared or preserved → 20.04.",
+            "rule_applied": "GIR 1 — heading 20.04",
+        })
+        return result
+
+    if _CH20_CANNED_VEG.search(text):
+        result["candidates"].append({
+            "heading": "20.05",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Canned/preserved vegetables (not frozen) → 20.05.",
+            "rule_applied": "GIR 1 — heading 20.05",
+        })
+        return result
+
+    # Unknown
+    result["candidates"].append({
+        "heading": "20.05",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Vegetable/fruit preparation, type unclear → 20.05.",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of veg/fruit preparation? (juice, tomato paste, jam, pickled, canned, frozen, nut butter)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 21: Miscellaneous edible preparations
+# ============================================================================
+
+_CH21_SOUP_BROTH = re.compile(
+    r'(?:מרק|ציר|soup|broth|stock\s*cube|bouillon\s*cube)',
+    re.IGNORECASE
+)
+
+_CH21_SAUCE_CONDIMENT = re.compile(
+    r'(?:רוטב|חרדל|מיונז|טחינה|חומוס|סויה|'
+    r'sauce|mustard|mayonnaise|tahini|hummus|soy\s*sauce|'
+    r'worcestershire|barbecue\s*sauce|hot\s*sauce|vinaigrette|'
+    r'salad\s*dressing|condiment)',
+    re.IGNORECASE
+)
+
+_CH21_ICE_CREAM = re.compile(
+    r'(?:גלידה|סורבה|שרבט\s*(?:קפוא|קרח)|'
+    r'ice\s*cream|gelato|sorbet|frozen\s*(?:yogurt|dessert)|sherbet)',
+    re.IGNORECASE
+)
+
+_CH21_YEAST = re.compile(
+    r'(?:שמרים|שמר|yeast|baking\s*powder|baking\s*soda)',
+    re.IGNORECASE
+)
+
+_CH21_PROTEIN_CONCENTRATE = re.compile(
+    r'(?:חלבון\s*(?:סויה|אפונה|מי\s*גבינה)|'
+    r'(?:soy|pea|whey)\s*protein\s*(?:concentrate|isolate)|'
+    r'textured\s*(?:vegetable|soy)\s*protein|TVP)',
+    re.IGNORECASE
+)
+
+_CH21_INSTANT_BEV = re.compile(
+    r'(?:קפה\s*(?:נמס|מיידי)|קקאו\s*(?:נמס|מיידי)|'
+    r'instant\s*(?:coffee|cocoa|tea)|coffee\s*(?:mix|substitute)|'
+    r'chicory\s*(?:roasted|extract))',
+    re.IGNORECASE
+)
+
+_CH21_FOOD_PREP_NES = re.compile(
+    r'(?:תוסף\s*(?:מזון|תזונה)|אבקת\s*(?:מזון|שייק)|'
+    r'food\s*(?:supplement|preparation)|meal\s*replacement|'
+    r'nutritional\s*(?:supplement|drink|shake))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_21_candidate(text):
+    """Check if product text suggests Chapter 21 (misc food preparations)."""
+    return bool(
+        _CH21_SOUP_BROTH.search(text) or _CH21_SAUCE_CONDIMENT.search(text)
+        or _CH21_ICE_CREAM.search(text) or _CH21_YEAST.search(text)
+        or _CH21_INSTANT_BEV.search(text) or _CH21_FOOD_PREP_NES.search(text)
+        or _CH21_PROTEIN_CONCENTRATE.search(text)
+    )
+
+
+def _decide_chapter_21(product):
+    """Chapter 21 decision tree: Miscellaneous edible preparations.
+
+    Headings:
+        21.01 — Extracts of coffee/tea/maté; chicory; concentrates
+        21.02 — Yeasts; baking powders
+        21.03 — Sauces, condiments, mustard, ketchup (prepared)
+        21.04 — Soups, broths, preparations therefor
+        21.05 — Ice cream and other edible ice
+        21.06 — Food preparations n.e.s. (protein concentrates, supplements, etc.)
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 21,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    if _CH21_ICE_CREAM.search(text):
+        result["candidates"].append({
+            "heading": "21.05",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Ice cream/gelato/sorbet/frozen dessert → 21.05.",
+            "rule_applied": "GIR 1 — heading 21.05",
+        })
+        return result
+
+    if _CH21_INSTANT_BEV.search(text):
+        result["candidates"].append({
+            "heading": "21.01",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Instant coffee/cocoa/tea/chicory → 21.01.",
+            "rule_applied": "GIR 1 — heading 21.01",
+        })
+        return result
+
+    if _CH21_YEAST.search(text):
+        result["candidates"].append({
+            "heading": "21.02",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Yeast/baking powder → 21.02.",
+            "rule_applied": "GIR 1 — heading 21.02",
+        })
+        return result
+
+    if _CH21_SAUCE_CONDIMENT.search(text):
+        result["candidates"].append({
+            "heading": "21.03",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Sauce/condiment/mustard/mayonnaise → 21.03.",
+            "rule_applied": "GIR 1 — heading 21.03",
+        })
+        return result
+
+    if _CH21_SOUP_BROTH.search(text):
+        result["candidates"].append({
+            "heading": "21.04",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Soup/broth/stock/bouillon → 21.04.",
+            "rule_applied": "GIR 1 — heading 21.04",
+        })
+        return result
+
+    if _CH21_PROTEIN_CONCENTRATE.search(text) or _CH21_FOOD_PREP_NES.search(text):
+        result["candidates"].append({
+            "heading": "21.06",
+            "subheading_hint": None,
+            "confidence": 0.80,
+            "reasoning": "Food preparation n.e.s. / protein concentrate / supplement → 21.06.",
+            "rule_applied": "GIR 1 — heading 21.06",
+        })
+        return result
+
+    # Unknown
+    result["candidates"].append({
+        "heading": "21.06",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Miscellaneous food preparation, type unclear → 21.06.",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of food preparation? (sauce, soup, ice cream, yeast, instant coffee, supplement)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 22: Beverages, spirits, and vinegar
+# ============================================================================
+
+_CH22_WATER = re.compile(
+    r'(?:מים\s*(?:מינרליים|מוגזים|שתייה)|'
+    r'mineral\s*water|sparkling\s*water|drinking\s*water|'
+    r'spring\s*water|soda\s*water|tonic\s*water)',
+    re.IGNORECASE
+)
+
+_CH22_SOFT_DRINK = re.compile(
+    r'(?:משקה\s*(?:קל|מוגז|ממותק)|'
+    r'soft\s*drink|carbonated\s*(?:drink|beverage)|cola|'
+    r'lemonade|energy\s*drink|sports\s*drink)',
+    re.IGNORECASE
+)
+
+_CH22_BEER = re.compile(
+    r'(?:בירה|beer|ale|lager|stout|porter|malt\s*beer)',
+    re.IGNORECASE
+)
+
+_CH22_WINE = re.compile(
+    r'(?:יין|wine|champagne|prosecco|cava|vermouth|'
+    r'grape\s*must|port\s*wine|sherry|marsala)',
+    re.IGNORECASE
+)
+
+_CH22_CIDER = re.compile(
+    r'(?:סיידר|מיד|perry|cider|mead)',
+    re.IGNORECASE
+)
+
+_CH22_SPIRITS = re.compile(
+    r'(?:וודקה|וויסקי|ג\'ין|רום|טקילה|ברנדי|קוניאק|ליקר|ערק|עראק|'
+    r'vodka|whisky|whiskey|gin|rum|tequila|brandy|cognac|liqueur|'
+    r'arak|ouzo|grappa|absinthe|mezcal|sambuca|schnapps|'
+    r'spirit|distilled|ethyl\s*alcohol)',
+    re.IGNORECASE
+)
+
+_CH22_VINEGAR = re.compile(
+    r'(?:חומץ|vinegar|acetic\s*acid\s*(?:for\s*food|edible))',
+    re.IGNORECASE
+)
+
+_CH22_FERMENTED = re.compile(
+    r'(?:מותסס|fermented|kombucha|kefir\s*drink|kvass)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_22_candidate(text):
+    """Check if product text suggests Chapter 22 (beverages/spirits/vinegar)."""
+    return bool(
+        _CH22_WATER.search(text) or _CH22_SOFT_DRINK.search(text)
+        or _CH22_BEER.search(text) or _CH22_WINE.search(text)
+        or _CH22_SPIRITS.search(text) or _CH22_VINEGAR.search(text)
+        or _CH22_CIDER.search(text) or _CH22_FERMENTED.search(text)
+    )
+
+
+def _decide_chapter_22(product):
+    """Chapter 22 decision tree: Beverages, spirits, and vinegar.
+
+    Headings:
+        22.01 — Waters (mineral, aerated, flavored)
+        22.02 — Sweetened/flavored waters; non-alcoholic beverages (excl. juices 20.09)
+        22.03 — Beer made from malt
+        22.04 — Wine of fresh grapes; grape must
+        22.05 — Vermouth and other wine of fresh grapes flavored
+        22.06 — Other fermented beverages (cider, perry, mead, sake)
+        22.07 — Undenatured ethyl alcohol ≥80%; denatured ethyl alcohol
+        22.08 — Undenatured ethyl alcohol <80%; spirits, liqueurs
+        22.09 — Vinegar and substitutes
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 22,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    # Gate: Fruit/veg juice (unfermented, no alcohol) → Ch.20
+    if _CH20_JUICE.search(text) and not _CH22_SPIRITS.search(text):
+        result["redirect"] = {
+            "chapter": 20,
+            "reason": "Unfermented fruit/vegetable juice without added spirits → Chapter 20 (heading 20.09).",
+            "rule_applied": "Chapter 22 exclusion — juices of 20.09 excluded",
+        }
+        return result
+
+    if _CH22_VINEGAR.search(text):
+        result["candidates"].append({
+            "heading": "22.09",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Vinegar → 22.09.",
+            "rule_applied": "GIR 1 — heading 22.09",
+        })
+        return result
+
+    if _CH22_SPIRITS.search(text):
+        result["candidates"].append({
+            "heading": "22.08",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Spirits/distilled alcoholic beverage/liqueur → 22.08.",
+            "rule_applied": "GIR 1 — heading 22.08",
+        })
+        return result
+
+    if _CH22_WINE.search(text):
+        # Vermouth check
+        if re.search(r'(?:ורמוט|vermouth)', text, re.IGNORECASE):
+            result["candidates"].append({
+                "heading": "22.05",
+                "subheading_hint": None,
+                "confidence": 0.85,
+                "reasoning": "Vermouth / flavored wine → 22.05.",
+                "rule_applied": "GIR 1 — heading 22.05",
+            })
+        else:
+            result["candidates"].append({
+                "heading": "22.04",
+                "subheading_hint": None,
+                "confidence": 0.85,
+                "reasoning": "Wine of fresh grapes / grape must → 22.04.",
+                "rule_applied": "GIR 1 — heading 22.04",
+            })
+        return result
+
+    if _CH22_BEER.search(text):
+        result["candidates"].append({
+            "heading": "22.03",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Beer made from malt → 22.03.",
+            "rule_applied": "GIR 1 — heading 22.03",
+        })
+        return result
+
+    if _CH22_CIDER.search(text) or _CH22_FERMENTED.search(text):
+        result["candidates"].append({
+            "heading": "22.06",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Fermented beverage (cider/perry/mead/kombucha/sake) → 22.06.",
+            "rule_applied": "GIR 1 — heading 22.06",
+        })
+        return result
+
+    if _CH22_SOFT_DRINK.search(text):
+        result["candidates"].append({
+            "heading": "22.02",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Non-alcoholic sweetened/flavored beverage → 22.02.",
+            "rule_applied": "GIR 1 — heading 22.02",
+        })
+        return result
+
+    if _CH22_WATER.search(text):
+        result["candidates"].append({
+            "heading": "22.01",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Mineral/sparkling/drinking water → 22.01.",
+            "rule_applied": "GIR 1 — heading 22.01",
+        })
+        return result
+
+    # Unknown beverage
+    result["candidates"].append({
+        "heading": "22.02",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Beverage type unclear → 22.02 (non-alcoholic beverages catch-all).",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of beverage? (water, soft drink, beer, wine, spirits, vinegar, fermented)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 23: Residues from food industries; prepared animal feed
+# ============================================================================
+
+_CH23_BRAN = re.compile(
+    r'(?:סובין|סובין\s*(?:חיטה|תירס|אורז|שעורה)|'
+    r'bran|sharps|middlings|screenings|'
+    r'residue\s*(?:of\s*)?(?:cereal|milling|sifting))',
+    re.IGNORECASE
+)
+
+_CH23_OILCAKE = re.compile(
+    r'(?:פסולת\s*(?:סויה|חמניות|כותנה|קנולה|דקלים)|עוגת\s*שמן|'
+    r'oilcake|oil.?cake|soybean\s*meal|soya\s*meal|sunflower\s*meal|'
+    r'rapeseed\s*meal|cottonseed\s*meal|palm\s*kernel\s*meal|'
+    r'expeller|extraction\s*residue)',
+    re.IGNORECASE
+)
+
+_CH23_BEET_PULP = re.compile(
+    r'(?:פסולת\s*(?:סלק|סוכר|בירה|יקב|זיקוק)|'
+    r'beet\s*pulp|bagasse|brew(?:ing|er)\s*(?:waste|grain|spent)|'
+    r'distiller\s*(?:grain|dregs|waste)|wine\s*lees)',
+    re.IGNORECASE
+)
+
+_CH23_PET_FOOD = re.compile(
+    r'(?:מזון\s*(?:כלבים|חתולים|ציפורים|דגים)|אוכל\s*(?:כלבים|חתולים)|'
+    r'pet\s*food|dog\s*food|cat\s*food|bird\s*(?:feed|food|seed)|'
+    r'fish\s*feed|aquarium\s*food)',
+    re.IGNORECASE
+)
+
+_CH23_ANIMAL_FEED = re.compile(
+    r'(?:מספוא|מזון\s*(?:בעלי\s*חיים|בהמות|עופות)|תערובת\s*מזון|'
+    r'animal\s*feed|cattle\s*feed|poultry\s*feed|livestock\s*feed|'
+    r'compound\s*feed|feed\s*(?:mix|supplement|premix|additive)|'
+    r'fodder|silage|hay\s*(?:pellet|cube))',
+    re.IGNORECASE
+)
+
+_CH23_FISH_MEAL = re.compile(
+    r'(?:קמח\s*(?:בשר|עצם|דם|דגים)|'
+    r'meat\s*meal|bone\s*meal|blood\s*meal|fish\s*meal|'
+    r'meat.?and.?bone\s*meal|MBM|feather\s*meal)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_23_candidate(text):
+    """Check if product text suggests Chapter 23 (food residues/animal feed)."""
+    return bool(
+        _CH23_BRAN.search(text) or _CH23_OILCAKE.search(text)
+        or _CH23_BEET_PULP.search(text) or _CH23_PET_FOOD.search(text)
+        or _CH23_ANIMAL_FEED.search(text) or _CH23_FISH_MEAL.search(text)
+    )
+
+
+def _decide_chapter_23(product):
+    """Chapter 23 decision tree: Residues from food industries; animal feed.
+
+    Headings:
+        23.01 — Flours/meals/pellets of meat/offal/fish; greaves (cracklings)
+        23.02 — Bran, sharps and other residues from cereals/legumes
+        23.03 — Residues of starch/sugar/brewing/distilling (beet pulp, spent grain)
+        23.04 — Oilcake and other solid residues from vegetable oil extraction (soya, etc.)
+        23.05 — Oilcake from groundnuts (peanut)
+        23.06 — Oilcake from other vegetable fats/oils
+        23.08 — Vegetable materials/waste used in animal feed n.e.s.
+        23.09 — Preparations for animal feeding (pet food, compound feed, premixes)
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 23,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    if _CH23_PET_FOOD.search(text) or _CH23_ANIMAL_FEED.search(text):
+        result["candidates"].append({
+            "heading": "23.09",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Pet food / compound animal feed / feed preparation → 23.09.",
+            "rule_applied": "GIR 1 — heading 23.09",
+        })
+        return result
+
+    if _CH23_FISH_MEAL.search(text):
+        result["candidates"].append({
+            "heading": "23.01",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Meat/bone/blood/fish meal/flour → 23.01.",
+            "rule_applied": "GIR 1 — heading 23.01",
+        })
+        return result
+
+    if _CH23_OILCAKE.search(text):
+        # Could be 23.04 (soya), 23.05 (peanut), or 23.06 (other)
+        if re.search(r'(?:סויה|soy|soya)', text, re.IGNORECASE):
+            heading, reasoning = "23.04", "Soybean oilcake/meal → 23.04."
+        elif re.search(r'(?:בוטנים|peanut|groundnut)', text, re.IGNORECASE):
+            heading, reasoning = "23.05", "Groundnut/peanut oilcake → 23.05."
+        else:
+            heading, reasoning = "23.06", "Oilcake from other vegetable oils → 23.06."
+        result["candidates"].append({
+            "heading": heading,
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}",
+        })
+        return result
+
+    if _CH23_BEET_PULP.search(text):
+        result["candidates"].append({
+            "heading": "23.03",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Sugar/brewing/distilling residue (beet pulp, spent grain) → 23.03.",
+            "rule_applied": "GIR 1 — heading 23.03",
+        })
+        return result
+
+    if _CH23_BRAN.search(text):
+        result["candidates"].append({
+            "heading": "23.02",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Bran/sharps/cereal milling residue → 23.02.",
+            "rule_applied": "GIR 1 — heading 23.02",
+        })
+        return result
+
+    # Unknown residue
+    result["candidates"].append({
+        "heading": "23.09",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Food industry residue/animal feed, type unclear → 23.09.",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What type of product? (bran, oilcake, beet pulp, pet food, compound feed, meat/fish meal)"
+    )
+    return result
+
+
+# ============================================================================
+# CHAPTER 24: Tobacco and manufactured tobacco substitutes
+# ============================================================================
+
+_CH24_TOBACCO_LEAF = re.compile(
+    r'(?:טבק\s*(?:גולמי|עלים|לא\s*מעובד)|עלי\s*טבק|'
+    r'tobacco\s*(?:leaf|leaves|unmanufactured|raw|stem|stalk|refuse|waste)|'
+    r'unstripped\s*tobacco|flue.cured|burley|oriental\s*tobacco)',
+    re.IGNORECASE
+)
+
+_CH24_CIGARETTE = re.compile(
+    r'(?:סיגריה|סיגריות|cigarette)',
+    re.IGNORECASE
+)
+
+_CH24_CIGAR = re.compile(
+    r'(?:סיגר|סיגרים|cigar|cheroot|cigarillo)',
+    re.IGNORECASE
+)
+
+_CH24_PIPE_TOBACCO = re.compile(
+    r'(?:טבק\s*(?:מקטרת|גלגול|לגלגול)|'
+    r'pipe\s*tobacco|smoking\s*tobacco|roll.your.own|'
+    r'loose\s*tobacco|shag)',
+    re.IGNORECASE
+)
+
+_CH24_HEATED_TOBACCO = re.compile(
+    r'(?:טבק\s*(?:מחומם|לחימום)|'
+    r'heated?\s*tobacco|heat.not.burn|HNB|IQOS\s*(?:stick|heets)|'
+    r'tobacco\s*(?:stick|plug)\s*(?:for\s*heating)?)',
+    re.IGNORECASE
+)
+
+_CH24_SNUFF_CHEW = re.compile(
+    r'(?:טבק\s*(?:הרחה|לעיסה)|'
+    r'snuff|chewing\s*tobacco|snus|smokeless\s*tobacco|'
+    r'tobacco\s*(?:for\s*chewing|for\s*snuffing))',
+    re.IGNORECASE
+)
+
+_CH24_ECIGARETTE = re.compile(
+    r'(?:סיגריה\s*אלקטרונית|ויייפ|'
+    r'e.cigarette|electronic\s*cigarette|vape|vaping|'
+    r'e.liquid|vape\s*(?:juice|liquid|pod)|nicotine\s*(?:liquid|salt))',
+    re.IGNORECASE
+)
+
+_CH24_TOBACCO_GENERAL = re.compile(
+    r'(?:טבק|tobacco|nicotine)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_24_candidate(text):
+    """Check if product text suggests Chapter 24 (tobacco)."""
+    return bool(
+        _CH24_TOBACCO_GENERAL.search(text)
+        or _CH24_CIGARETTE.search(text)
+        or _CH24_CIGAR.search(text)
+        or _CH24_ECIGARETTE.search(text)
+    )
+
+
+def _decide_chapter_24(product):
+    """Chapter 24 decision tree: Tobacco and manufactured tobacco substitutes.
+
+    Headings:
+        24.01 — Unmanufactured tobacco; tobacco refuse
+        24.02 — Cigars, cheroots, cigarillos; cigarettes
+        24.03 — Other manufactured tobacco; "homogenised"/"reconstituted" tobacco;
+                 tobacco extracts and essences; heated tobacco products
+        24.04 — Products containing tobacco/nicotine for inhalation without combustion (e-cig)
+    """
+    text = _product_text(product)
+
+    result = {
+        "chapter": 24,
+        "candidates": [],
+        "redirect": None,
+        "questions_needed": [],
+    }
+
+    if _CH24_CIGARETTE.search(text):
+        result["candidates"].append({
+            "heading": "24.02",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Cigarettes → 24.02.",
+            "rule_applied": "GIR 1 — heading 24.02",
+        })
+        return result
+
+    if _CH24_CIGAR.search(text):
+        result["candidates"].append({
+            "heading": "24.02",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Cigars/cheroots/cigarillos → 24.02.",
+            "rule_applied": "GIR 1 — heading 24.02",
+        })
+        return result
+
+    if _CH24_ECIGARETTE.search(text):
+        result["candidates"].append({
+            "heading": "24.04",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "E-cigarette/vape/nicotine liquid for inhalation without combustion → 24.04.",
+            "rule_applied": "GIR 1 — heading 24.04",
+        })
+        return result
+
+    if _CH24_HEATED_TOBACCO.search(text):
+        result["candidates"].append({
+            "heading": "24.03",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Heated tobacco product (HNB/IQOS sticks) → 24.03.",
+            "rule_applied": "GIR 1 — heading 24.03",
+        })
+        return result
+
+    if _CH24_PIPE_TOBACCO.search(text) or _CH24_SNUFF_CHEW.search(text):
+        result["candidates"].append({
+            "heading": "24.03",
+            "subheading_hint": None,
+            "confidence": 0.85,
+            "reasoning": "Pipe/smoking/chewing/snuff tobacco → 24.03.",
+            "rule_applied": "GIR 1 — heading 24.03",
+        })
+        return result
+
+    if _CH24_TOBACCO_LEAF.search(text):
+        result["candidates"].append({
+            "heading": "24.01",
+            "subheading_hint": None,
+            "confidence": 0.90,
+            "reasoning": "Unmanufactured tobacco leaf/refuse → 24.01.",
+            "rule_applied": "GIR 1 — heading 24.01",
+        })
+        return result
+
+    # General tobacco reference — need more info
+    result["candidates"].append({
+        "heading": "24.02",
+        "subheading_hint": None,
+        "confidence": 0.60,
+        "reasoning": "Tobacco product, form unclear → 24.02 (cigarettes/cigars most common).",
+        "rule_applied": "GIR 1",
+    })
+    result["questions_needed"].append(
+        "What form is the tobacco? (leaf/raw, cigarettes, cigars, pipe tobacco, heated, e-cigarette/vape)"
+    )
+    return result
+
+
+# ============================================================================
 # PUBLIC API — dispatches to the right chapter tree
 # ============================================================================
 
@@ -2316,6 +3682,15 @@ _CHAPTER_TREES = {
     13: _decide_chapter_13,
     14: _decide_chapter_14,
     15: _decide_chapter_15,
+    16: _decide_chapter_16,
+    17: _decide_chapter_17,
+    18: _decide_chapter_18,
+    19: _decide_chapter_19,
+    20: _decide_chapter_20,
+    21: _decide_chapter_21,
+    22: _decide_chapter_22,
+    23: _decide_chapter_23,
+    24: _decide_chapter_24,
 }
 
 
@@ -2369,6 +3744,15 @@ _CHAPTER_DETECT_ORDER = [
     (13, _is_chapter_13_candidate, _decide_chapter_13),
     (14, _is_chapter_14_candidate, _decide_chapter_14),
     (15, _is_chapter_15_candidate, _decide_chapter_15),
+    (16, _is_chapter_16_candidate, _decide_chapter_16),
+    (17, _is_chapter_17_candidate, _decide_chapter_17),
+    (18, _is_chapter_18_candidate, _decide_chapter_18),
+    (19, _is_chapter_19_candidate, _decide_chapter_19),
+    (20, _is_chapter_20_candidate, _decide_chapter_20),
+    (21, _is_chapter_21_candidate, _decide_chapter_21),
+    (22, _is_chapter_22_candidate, _decide_chapter_22),
+    (23, _is_chapter_23_candidate, _decide_chapter_23),
+    (24, _is_chapter_24_candidate, _decide_chapter_24),
 ]
 
 
