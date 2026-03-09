@@ -677,6 +677,46 @@ def classify_product(query: str, db=None) -> ClassificationResult:
         result.reasoning.append("Empty or unparseable query")
         return result
 
+    # --- Step 0: Customs vocabulary lookup (FIRST) ---
+    vocab_chapters = set()  # chapters hinted by vocabulary matches
+    vocab_official = []     # official terms found
+    try:
+        from lib._customs_vocabulary import CUSTOMS_VOCABULARY
+    except ImportError:
+        try:
+            from _customs_vocabulary import CUSTOMS_VOCABULARY
+        except ImportError:
+            CUSTOMS_VOCABULARY = {}
+
+    if CUSTOMS_VOCABULARY:
+        query_lower = query.lower().strip()
+        # Check multi-word phrases first (longer = more specific)
+        for phrase_len in range(min(len(query_words), 4), 0, -1):
+            for i in range(len(query_words) - phrase_len + 1):
+                phrase = " ".join(query_words[i:i + phrase_len])
+                if phrase in CUSTOMS_VOCABULARY:
+                    entry = CUSTOMS_VOCABULARY[phrase]
+                    for ch in entry.get("chapters", []):
+                        vocab_chapters.add(ch)
+                    vocab_official.append(entry.get("official", phrase))
+                    if entry.get("official_en"):
+                        vocab_official.append(entry["official_en"])
+        # Also check individual words (with prefix stripping)
+        for word in query_words:
+            for variant in _strip_prefixes(word):
+                if variant in CUSTOMS_VOCABULARY:
+                    entry = CUSTOMS_VOCABULARY[variant]
+                    for ch in entry.get("chapters", []):
+                        vocab_chapters.add(ch)
+                    if entry.get("confidence") == "HIGH":
+                        vocab_official.append(entry.get("official", variant))
+                    break
+        if vocab_chapters:
+            result.reasoning.append(
+                f"Vocabulary lookup → chapters {', '.join(sorted(vocab_chapters))}, "
+                f"official terms: {vocab_official[:3]}"
+            )
+
     # --- Step 1: Expand query ---
     expanded = expand_query(query)
     result.expanded_terms = expanded
@@ -690,6 +730,15 @@ def classify_product(query: str, db=None) -> ClassificationResult:
             search_terms_he.add(term)
         else:
             search_terms_en.add(term)
+
+    # Add official tariff terms from vocabulary to search terms
+    for official in vocab_official:
+        if any('\u0590' <= c <= '\u05FF' for c in official):
+            for w in _tokenize(official):
+                search_terms_he.add(w)
+        else:
+            for w in _tokenize(official):
+                search_terms_en.add(w)
 
     result.reasoning.append(
         f"Expanded {len(query_words)} query words → "
@@ -849,6 +898,17 @@ def classify_product(query: str, db=None) -> ClassificationResult:
             if key[:2] in agreed_chapters:
                 c["combined_score"] += 3
                 c["chapter_agreement"] = True
+
+    # --- Vocabulary chapter boost ---
+    # If customs vocabulary identified specific chapters, boost candidates in those chapters
+    if vocab_chapters:
+        for key, c in merged.items():
+            if key[:2] in vocab_chapters:
+                c["combined_score"] += 5
+                c["vocab_chapter_match"] = True
+        result.reasoning.append(
+            f"Vocabulary chapter boost (+5) for chapters: {', '.join(sorted(vocab_chapters))}"
+        )
 
     # --- Step 3: Cross-check chapter notes ---
     all_candidates = list(merged.values())
