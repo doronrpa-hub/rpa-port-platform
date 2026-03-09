@@ -940,6 +940,21 @@ def classify_product(query: str, db=None) -> ClassificationResult:
         c["specificity"] = specificity
         c["combined_score"] += specificity * 3
 
+    # --- Step 4b: Vocab chapter filter ---
+    # When vocabulary confidently identified chapters, restrict candidates to those
+    # chapters. This prevents unrelated chapters from outranking correct ones.
+    if vocab_chapters and all_candidates:
+        in_vocab = [c for c in all_candidates
+                    if c.get("hs_raw", c.get("hs_code", ""))[:2] in vocab_chapters]
+        if in_vocab:
+            dropped = len(all_candidates) - len(in_vocab)
+            all_candidates = in_vocab
+            if dropped:
+                result.reasoning.append(
+                    f"Vocab chapter filter: kept {len(in_vocab)}, "
+                    f"dropped {dropped} outside chapters {', '.join(sorted(vocab_chapters))}"
+                )
+
     # --- Sort by combined score ---
     all_candidates.sort(key=lambda c: c.get("combined_score", 0), reverse=True)
 
