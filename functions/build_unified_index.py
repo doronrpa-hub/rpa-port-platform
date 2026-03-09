@@ -394,7 +394,7 @@ def _pass1_firestore(db, word_index, heading_map, hs_meta):
 
             desc_he = data.get("description_he", data.get("description", ""))
             desc_en = data.get("description_en", "")
-            duty_rate = data.get("duty_rate", "")
+            duty_rate = data.get("customs_duty", data.get("duty_rate", ""))
             purchase_tax = data.get("purchase_tax", "")
 
             # Store metadata

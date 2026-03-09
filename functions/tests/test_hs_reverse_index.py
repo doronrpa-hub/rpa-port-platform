@@ -11,25 +11,33 @@ from lib._hs_reverse_index import (
     get_discount_codes,
     get_fta_rates,
     get_discount_index_stats,
-    _normalize_heading,
+    _to_heading,
     _HS_DOTTED_RE,
+    _extract_headings_from_text,
+    _keyword_chapters_from_text,
 )
 
 
-class TestNormalizeHeading(unittest.TestCase):
-    """Test heading normalization from various HS code formats."""
+class TestToHeading(unittest.TestCase):
+    """Test _to_heading — normalizes any HS format to 4-digit heading."""
 
     def test_dotted_4digit(self):
-        self.assertEqual(_normalize_heading("87.11"), "8711")
+        self.assertEqual(_to_heading("87.11"), "8711")
 
     def test_dotted_8digit(self):
-        self.assertEqual(_normalize_heading("07.12.9010"), "0712")
+        self.assertEqual(_to_heading("07.12.9010"), "0712")
 
     def test_dotted_6digit(self):
-        self.assertEqual(_normalize_heading("60.04.1000"), "6004")
+        self.assertEqual(_to_heading("60.04.1000"), "6004")
 
     def test_short_heading(self):
-        self.assertEqual(_normalize_heading("49.03"), "4903")
+        self.assertEqual(_to_heading("49.03"), "4903")
+
+    def test_raw_10digit(self):
+        self.assertEqual(_to_heading("8711300000"), "8711")
+
+    def test_israeli_format(self):
+        self.assertEqual(_to_heading("87.11.300000/9"), "8711")
 
 
 class TestHsDottedRegex(unittest.TestCase):
@@ -49,6 +57,47 @@ class TestHsDottedRegex(unittest.TestCase):
         self.assertIn("60.04", matches)
         self.assertIn("60.06", matches)
         self.assertIn("71.13", matches)
+
+
+class TestExtractHeadings(unittest.TestCase):
+    """Test multi-layer heading extraction from Hebrew descriptions."""
+
+    def test_dotted_codes(self):
+        headings = _extract_headings_from_text("שבפרט 87.11 ו-87.12")
+        self.assertIn("8711", headings)
+        self.assertIn("8712", headings)
+
+    def test_chapter_ref(self):
+        headings = _extract_headings_from_text("פרק 87")
+        self.assertIn("ch87", headings)
+
+    def test_chapter_list(self):
+        headings = _extract_headings_from_text("פרקים 84, 85, 88, 90")
+        for ch in ["ch84", "ch85", "ch88", "ch90"]:
+            self.assertIn(ch, headings)
+
+    def test_section_ref(self):
+        headings = _extract_headings_from_text("חלק XVI")
+        # Section XVI = chapters 84-85
+        self.assertIn("ch84", headings)
+        self.assertIn("ch85", headings)
+
+
+class TestKeywordChapters(unittest.TestCase):
+    """Test Hebrew keyword -> chapter matching."""
+
+    def test_vehicle_keyword(self):
+        chapters = _keyword_chapters_from_text("רכב נוסעים")
+        self.assertIn("ch87", chapters)
+
+    def test_pharmaceutical_keyword(self):
+        chapters = _keyword_chapters_from_text("תרופות")
+        self.assertIn("ch30", chapters)
+
+    def test_textile_keyword(self):
+        chapters = _keyword_chapters_from_text("טקסטיל")
+        self.assertIn("ch50", chapters)
+        self.assertIn("ch63", chapters)
 
 
 class TestGetDiscountCodes(unittest.TestCase):
@@ -100,6 +149,12 @@ class TestGetDiscountCodes(unittest.TestCase):
             for field in ("item", "group", "description", "customs_duty", "purchase_tax"):
                 self.assertIn(field, entry, f"Missing field: {field}")
 
+    def test_chapter_level_match(self):
+        """Keyword-based chapter matches should appear for headings in that chapter."""
+        # Chapter 87 keywords (רכב, אופנוע) should yield results for any ch87 heading
+        results = get_discount_codes("8703")
+        self.assertTrue(len(results) > 0, "Expected chapter-level discount codes for 8703")
+
 
 class TestGetFtaRates(unittest.TestCase):
     """Test FTA country info lookup."""
@@ -132,6 +187,7 @@ class TestDiscountIndexStats(unittest.TestCase):
         stats = get_discount_index_stats()
         self.assertIn("total_headings", stats)
         self.assertIn("total_entries", stats)
+        self.assertIn("sections_covered", stats)
         self.assertGreater(stats["total_headings"], 0, "Index should cover some headings")
         self.assertGreater(stats["total_entries"], 0, "Index should have entries")
 
@@ -142,6 +198,14 @@ class TestDiscountIndexStats(unittest.TestCase):
         # These are explicitly referenced in the data
         for h in ["8711", "8710", "4903", "3705"]:
             self.assertIn(h, headings, f"Heading {h} should be in index")
+
+    def test_section_coverage(self):
+        """Should cover many of the 22 tariff sections via keyword extraction."""
+        stats = get_discount_index_stats()
+        self.assertGreaterEqual(
+            stats["sections_covered"], 10,
+            f"Expected >= 10 sections covered, got {stats['sections_covered']}"
+        )
 
 
 if __name__ == "__main__":
