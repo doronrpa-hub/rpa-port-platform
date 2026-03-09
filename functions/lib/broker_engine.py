@@ -122,6 +122,24 @@ def _ensure_unified():
         print(f"    Unified index: not available ({e})")
 
 
+# Chapter decision trees (Session 98) — deterministic chapter routing
+_chapter_decision_trees = None
+
+
+def _ensure_decision_trees():
+    global _chapter_decision_trees
+    if _chapter_decision_trees is not None:
+        return
+    try:
+        try:
+            from lib._chapter_decision_trees import decide_chapter
+        except ImportError:
+            from _chapter_decision_trees import decide_chapter
+        _chapter_decision_trees = decide_chapter
+    except Exception:
+        _chapter_decision_trees = False  # Mark as attempted but unavailable
+
+
 # FTA country map (same as tool_executors — avoids importing the class)
 _FTA_COUNTRY_MAP = {
     "eu": "eu", "european union": "eu",
@@ -181,14 +199,62 @@ _SPARE_PART_RE = re.compile(
 )
 
 # Phase 1: item identification prompt (single AI call)
-_ITEM_ID_SYSTEM = """You are a customs classification expert. For each item below,
-identify: (1) physical composition/material, (2) essential character/nature,
-(3) primary function/use. Return JSON array. Be concise — 1-2 words each field.
-Example: [{"name":"sofa","physical":"wood frame, polyester fabric","essence":"seating furniture","function":"sitting"}]"""
+# Session 98 — deepened prompt extracts 6 classification attributes needed by
+# chapter decision trees and elimination engine.
+_ITEM_ID_SYSTEM = """\
+You are an Israeli customs broker (עמיל מכס) performing Phase 1 examination per \
+נוהל סיווג טובין #3. For each item, determine SIX classification attributes. \
+These feed directly into the tariff tree — accuracy here prevents misclassification.
 
-_ITEM_ID_USER = """Items to analyze:
+Return a JSON array. Each element MUST have these fields:
+{
+  "name": "original item name as given",
+  "physical": "dominant material(s) with estimated % if composite. Include form: \
+solid/liquid/powder/paste/fiber/sheet/whole/fillet/peeled/assembled etc.",
+  "essence": "what IS this product fundamentally — not brand, not marketing. \
+Example: 'pneumatic rubber tire for passenger vehicle' not 'Michelin Primacy'",
+  "function": "primary end-use or destination function",
+  "transformation_stage": ONE of: "raw", "semi_processed", "processed", "prepared", \
+"finished", "specialized".
+    raw = natural state (live animal, crude ore, raw cotton).
+    semi_processed = cleaned/cut/basic treatment (sawn wood, tanned leather, flour).
+    processed = significant transformation (steel sheet, woven fabric, refined oil).
+    prepared = food cooked/seasoned/preserved beyond basic (canned fish, sauces).
+    finished = ready-to-use end product (tire, garment, furniture).
+    specialized = professional/industrial/medical/military equipment.
+  "processing_state": ONE of: "live", "fresh", "chilled", "frozen", "dried", \
+"smoked", "salted", "cooked", "preserved", "compound", "fermented", "not_applicable".
+    live = living organism.
+    fresh = recently harvested, no preservation.
+    chilled = cooled 0-4°C.
+    frozen = below freezing.
+    dried = moisture removed.
+    smoked = smoke-cured.
+    salted = salt-preserved or brined.
+    cooked = heat-treated only (boiled/steamed/fried) — NO added ingredients.
+    preserved = canned, vacuum-packed, chemically preserved.
+    compound = MIXED with other ingredients: breaded, sauced, marinated, coated, stuffed.
+    fermented = fermentation-processed (cheese, wine, vinegar).
+    not_applicable = non-food/non-biological items.
+  "dominant_material_pct": integer 0-100 or null if single-material or not relevant.
+}
+
+CRITICAL:
+- "compound" = combined with OTHER ingredients. Breaded fish = compound. Plain frozen fish = frozen.
+- Fish FILLET vs WHOLE: state this in "physical" — it changes the heading.
+- For composites, dominant_material_pct determines essential character (GIR 3ב).
+
+Example: [{"name":"חסילון קפוא מקולף","physical":"crustacean meat 100%, peeled tail meat",\
+"essence":"langoustine meat, shell removed","function":"human consumption",\
+"transformation_stage":"semi_processed","processing_state":"frozen",\
+"dominant_material_pct":100}]"""
+
+_ITEM_ID_USER = """\
+Items to analyze:
 {items_list}
-Return ONLY a JSON array with fields: name, physical, essence, function."""
+
+Return ONLY a JSON array with the fields: name, physical, essence, function, \
+transformation_stage, processing_state, dominant_material_pct."""
 
 
 # ---------------------------------------------------------------------------
@@ -219,13 +285,17 @@ def _identify_items_with_ai(items, get_secret_func):
         ai_result = _call_ai_for_items(items_text, get_secret_func)
 
     if ai_result and isinstance(ai_result, list):
-        # Merge AI analysis back into items
+        # Merge AI analysis back into items — both legacy + new Layer 0 fields
         for i, item in enumerate(items):
             if i < len(ai_result):
                 ai_item = ai_result[i] if isinstance(ai_result[i], dict) else {}
                 item["physical"] = ai_item.get("physical", "")
                 item["essence"] = ai_item.get("essence", "")
                 item["function"] = ai_item.get("function", "")
+                # New Layer 0 fields (Session 98)
+                item["transformation_stage"] = ai_item.get("transformation_stage", "")
+                item["processing_state"] = ai_item.get("processing_state", "")
+                item["dominant_material_pct"] = ai_item.get("dominant_material_pct")
         return items
 
     # Fallback: regex-based extraction
@@ -246,7 +316,7 @@ def _call_ai_for_items(items_text, get_secret_func):
                 from lib.classification_agents import call_gemini
             except ImportError:
                 from classification_agents import call_gemini
-            text = call_gemini(gk, _ITEM_ID_SYSTEM, prompt_user, max_tokens=1000)
+            text = call_gemini(gk, _ITEM_ID_SYSTEM, prompt_user, max_tokens=2000)
             if text:
                 return _parse_json_array(text)
     except Exception:
@@ -260,7 +330,7 @@ def _call_ai_for_items(items_text, get_secret_func):
                 from lib.classification_agents import call_chatgpt
             except ImportError:
                 from classification_agents import call_chatgpt
-            text = call_chatgpt(ok, _ITEM_ID_SYSTEM, prompt_user, max_tokens=1000)
+            text = call_chatgpt(ok, _ITEM_ID_SYSTEM, prompt_user, max_tokens=2000)
             if text:
                 return _parse_json_array(text)
     except Exception:
@@ -286,26 +356,31 @@ def _parse_json_array(text):
 
 def _fallback_item_identification(items):
     """Regex-based item identification when AI is unavailable."""
+    # Each entry: (physical, essence, function, transformation_stage, processing_state)
     _MATERIAL_MAP = {
-        "furniture": ("wood, fabric, foam", "seating/storage furniture", "household use"),
-        "electronics": ("plastic, metal, circuits", "electronic device", "computing/entertainment"),
-        "vehicle": ("steel, rubber, glass", "motor vehicle", "transportation"),
-        "personal": ("mixed materials", "personal belongings", "personal use"),
-        "kitchen": ("ceramic, metal, glass", "kitchenware", "food preparation"),
-        "food": ("organic matter", "food product", "consumption"),
-        "textiles": ("fabric, cotton, polyester", "textile product", "household/clothing"),
-        "music": ("wood, metal, strings", "musical instrument", "music"),
-        "tools": ("metal, plastic, electric motor", "hand tool / power tool", "construction/repair"),
-        "safety": ("rubber, plastic, textile", "personal protective equipment", "safety/protection"),
-        "workwear": ("textile, polyester, cotton", "work clothing", "occupational use"),
-        "industrial": ("steel, metal, electric motor", "industrial equipment", "manufacturing/construction"),
+        "furniture": ("wood, fabric, foam", "seating/storage furniture", "household use", "finished", "not_applicable"),
+        "electronics": ("plastic, metal, circuits", "electronic device", "computing/entertainment", "finished", "not_applicable"),
+        "vehicle": ("steel, rubber, glass", "motor vehicle", "transportation", "finished", "not_applicable"),
+        "personal": ("mixed materials", "personal belongings", "personal use", "finished", "not_applicable"),
+        "kitchen": ("ceramic, metal, glass", "kitchenware", "food preparation", "finished", "not_applicable"),
+        "food": ("organic matter", "food product", "consumption", "prepared", "preserved"),
+        "textiles": ("fabric, cotton, polyester", "textile product", "household/clothing", "finished", "not_applicable"),
+        "music": ("wood, metal, strings", "musical instrument", "music", "finished", "not_applicable"),
+        "tools": ("metal, plastic, electric motor", "hand tool / power tool", "construction/repair", "finished", "not_applicable"),
+        "safety": ("rubber, plastic, textile", "personal protective equipment", "safety/protection", "finished", "not_applicable"),
+        "workwear": ("textile, polyester, cotton", "work clothing", "occupational use", "finished", "not_applicable"),
+        "industrial": ("steel, metal, electric motor", "industrial equipment", "manufacturing/construction", "specialized", "not_applicable"),
     }
     for item in items:
         cat = item.get("category", "personal")
-        phys, ess, func = _MATERIAL_MAP.get(cat, ("mixed", "general goods", "general use"))
+        phys, ess, func, t_stage, p_state = _MATERIAL_MAP.get(
+            cat, ("mixed", "general goods", "general use", "finished", "not_applicable"))
         item.setdefault("physical", phys)
         item.setdefault("essence", ess)
         item.setdefault("function", func)
+        item.setdefault("transformation_stage", t_stage)
+        item.setdefault("processing_state", p_state)
+        item.setdefault("dominant_material_pct", None)
     return items
 
 
@@ -641,10 +716,15 @@ def _build_candidates_for_item(item, db, vocab_chapters=None):
 
 def classify_single_item(item, operation_context, db, spare_chapter=None,
                          vocab_chapters=None):
-    """Classify one item via pre_classify -> eliminate (GIR 1-6).
+    """Classify one item via decision_tree -> pre_classify -> eliminate (GIR 1-6).
+
+    Decision tree path (Session 98): If a chapter decision tree exists for the
+    product, it provides focused candidates and may REDIRECT to a different
+    chapter. This runs BEFORE pre_classify and supplements (not replaces) it.
 
     Args:
-        item: dict with name, keywords, category, physical, essence, function
+        item: dict with name, keywords, category, physical, essence, function,
+              transformation_stage, processing_state, dominant_material_pct
         operation_context: dict with direction, legal_category, origin_country
         db: Firestore client
         spare_chapter: optional parent chapter code for spare parts
@@ -656,8 +736,40 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     """
     _ensure_elimination()
 
+    # --- Layer 1: Chapter decision tree (Session 98) ---
+    tree_result = None
+    _ensure_decision_trees()
+    if _chapter_decision_trees and _chapter_decision_trees is not False:
+        try:
+            tree_result = _chapter_decision_trees(item)
+        except Exception as e:
+            print(f"    Decision tree error: {e}")
+            tree_result = None
+
+    # If tree says REDIRECT, update vocab_chapters to the redirect target
+    if tree_result and tree_result.get("redirect"):
+        redirect_ch = tree_result["redirect"].get("chapter")
+        if redirect_ch:
+            redirect_ch_str = str(redirect_ch).zfill(2)
+            # Focus search on redirect target chapter
+            vocab_chapters = {redirect_ch_str}
+            print(f"    Decision tree REDIRECT: ch.{tree_result.get('chapter', '?')} → ch.{redirect_ch} "
+                  f"({tree_result['redirect'].get('reason', '')[:80]})")
+
     # Build candidates from tariff search
     pre_result = _build_candidates_for_item(item, db, vocab_chapters=vocab_chapters)
+
+    # Merge decision tree candidates into pre_classify results
+    if tree_result and tree_result.get("candidates") and not tree_result.get("redirect"):
+        tree_candidates = _convert_tree_candidates(tree_result["candidates"])
+        if tree_candidates:
+            existing = pre_result.get("candidates", []) if pre_result else []
+            # Tree candidates go FIRST (higher priority)
+            merged = tree_candidates + [c for c in existing
+                                         if c.get("hs_code") not in
+                                         {tc.get("hs_code") for tc in tree_candidates}]
+            pre_result = pre_result or {}
+            pre_result["candidates"] = merged[:15]  # Cap to avoid explosion
     if not pre_result or not pre_result.get("candidates"):
         # Rescue: try external tariff sources (UK API + Shaarolami)
         if _EXTERNAL_SEARCH_AVAILABLE:
@@ -686,9 +798,16 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     product_info = _make_product_info({
         "description": item.get("name", ""),
         "material": item.get("physical", ""),
+        "form": item.get("physical_form", ""),
         "use": item.get("function", ""),
         "origin_country": operation_context.get("origin_country", ""),
     })
+    # Attach Layer 0 fields for downstream use (tree result, logging)
+    product_info["transformation_stage"] = item.get("transformation_stage", "")
+    product_info["processing_state"] = item.get("processing_state", "")
+    product_info["dominant_material_pct"] = item.get("dominant_material_pct")
+    if tree_result:
+        product_info["_tree_result"] = tree_result
 
     # Run elimination engine (GIR 1-6, deterministic)
     elim_result = _eliminate(db, product_info, candidates)
@@ -716,6 +835,34 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
         "elimination_result": elim_result,
         "source": "elimination_engine",
     }
+
+
+def _convert_tree_candidates(tree_candidates):
+    """Convert chapter decision tree candidates to pre_classify candidate format.
+
+    Tree candidates have: heading, subheading_hint, confidence, reasoning.
+    pre_classify candidates have: hs_code, confidence, source, description, reasoning.
+    """
+    results = []
+    for tc in tree_candidates:
+        heading = tc.get("heading", "")
+        sub_hint = tc.get("subheading_hint", "")
+        # Use subheading_hint if available, else pad heading to 10 digits
+        if sub_hint:
+            hs = sub_hint.replace(".", "").ljust(10, "0")
+        elif heading:
+            hs = heading.replace(".", "").ljust(10, "0")
+        else:
+            continue
+        results.append({
+            "hs_code": hs,
+            "confidence": tc.get("confidence", 0.7),
+            "source": "decision_tree",
+            "description": tc.get("reasoning", ""),
+            "reasoning": tc.get("reasoning", ""),
+            "rule_applied": tc.get("rule_applied", ""),
+        })
+    return results
 
 
 # ---------------------------------------------------------------------------
