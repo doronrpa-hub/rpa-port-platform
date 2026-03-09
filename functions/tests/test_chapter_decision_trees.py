@@ -102,6 +102,40 @@ from lib._chapter_decision_trees import (
     _is_chapter_36_candidate,
     _is_chapter_37_candidate,
     _is_chapter_38_candidate,
+    _decide_chapter_39,
+    _decide_chapter_40,
+    _decide_chapter_41,
+    _decide_chapter_42,
+    _decide_chapter_43,
+    _decide_chapter_44,
+    _decide_chapter_45,
+    _decide_chapter_46,
+    _decide_chapter_47,
+    _decide_chapter_48,
+    _decide_chapter_49,
+    _decide_chapter_50,
+    _decide_chapter_51,
+    _decide_chapter_52,
+    _decide_chapter_53,
+    _decide_chapter_54,
+    _decide_chapter_55,
+    _is_chapter_39_candidate,
+    _is_chapter_40_candidate,
+    _is_chapter_41_candidate,
+    _is_chapter_42_candidate,
+    _is_chapter_43_candidate,
+    _is_chapter_44_candidate,
+    _is_chapter_45_candidate,
+    _is_chapter_46_candidate,
+    _is_chapter_47_candidate,
+    _is_chapter_48_candidate,
+    _is_chapter_49_candidate,
+    _is_chapter_50_candidate,
+    _is_chapter_51_candidate,
+    _is_chapter_52_candidate,
+    _is_chapter_53_candidate,
+    _is_chapter_54_candidate,
+    _is_chapter_55_candidate,
     available_chapters,
 )
 
@@ -872,7 +906,7 @@ class TestPublicAPIAllChapters(unittest.TestCase):
         chapters = available_chapters()
         for ch in range(1, 16):
             self.assertIn(ch, chapters)
-        self.assertEqual(len(chapters), 38)
+        self.assertEqual(len(chapters), 55)
 
     def test_decide_chapter_routes_to_ch01(self):
         product = _make_product(name="live cattle", essence="bovine animal",
@@ -2484,6 +2518,621 @@ class TestChapters25to38Integration(unittest.TestCase):
         result = decide_chapter(product)
         self.assertIsNotNone(result)
         self.assertEqual(result["chapter"], 38)
+
+
+# ========================================================================
+# CHAPTERS 39-55
+# ========================================================================
+
+class TestChapter39Plastics(unittest.TestCase):
+    def test_pe_granules_primary(self):
+        product = _make_product(name="polyethylene HDPE granules", essence="PE resin pellets")
+        result = _decide_chapter_39(product)
+        self.assertEqual(result["chapter"], 39)
+        self.assertTrue(any("39.01" in c["heading"] for c in result["candidates"]))
+
+    def test_pvc_pipe(self):
+        product = _make_product(name="PVC pipe 110mm", essence="polyvinyl chloride tube")
+        result = _decide_chapter_39(product)
+        self.assertTrue(any("39.17" in c["heading"] for c in result["candidates"]))
+
+    def test_plastic_bottle(self):
+        product = _make_product(name="plastic bottle 500ml PET", essence="plastic container")
+        result = _decide_chapter_39(product)
+        self.assertTrue(any("39.23" in c["heading"] for c in result["candidates"]))
+
+    def test_polystyrene_sheet(self):
+        product = _make_product(name="polystyrene foam sheet", essence="EPS cellular sheet")
+        result = _decide_chapter_39(product)
+        self.assertTrue(any("39.21" in c["heading"] for c in result["candidates"]))
+
+    def test_plastic_sanitary(self):
+        product = _make_product(name="plastic bath tub acrylic", essence="plastic sanitary ware")
+        result = _decide_chapter_39(product)
+        self.assertTrue(any("39.22" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_39_candidate("polyethylene resin"))
+        self.assertTrue(_is_chapter_39_candidate("פלסטיק"))
+        self.assertFalse(_is_chapter_39_candidate("live fish"))
+
+
+class TestChapter40Rubber(unittest.TestCase):
+    def test_new_tyre(self):
+        product = _make_product(name="pneumatic radial tyre 205/55R16", essence="new car tyre")
+        result = _decide_chapter_40(product)
+        self.assertEqual(result["chapter"], 40)
+        self.assertTrue(any("40.11" in c["heading"] for c in result["candidates"]))
+
+    def test_latex_glove(self):
+        product = _make_product(name="latex examination gloves", essence="rubber glove disposable")
+        result = _decide_chapter_40(product)
+        self.assertTrue(any("40.15" in c["heading"] for c in result["candidates"]))
+
+    def test_conveyor_belt(self):
+        product = _make_product(name="rubber conveyor belt", essence="transmission belt vulcanised")
+        result = _decide_chapter_40(product)
+        self.assertTrue(any("40.10" in c["heading"] for c in result["candidates"]))
+
+    def test_natural_rubber(self):
+        product = _make_product(name="natural rubber latex", essence="hevea rubber")
+        result = _decide_chapter_40(product)
+        self.assertTrue(any("40.01" in c["heading"] for c in result["candidates"]))
+
+    def test_synthetic_rubber(self):
+        product = _make_product(name="EPDM synthetic rubber", essence="synthetic rubber compound")
+        result = _decide_chapter_40(product)
+        self.assertTrue(any("40.02" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_40_candidate("rubber gasket"))
+        self.assertTrue(_is_chapter_40_candidate("צמיג חדש"))
+        self.assertFalse(_is_chapter_40_candidate("steel pipe"))
+
+
+class TestChapter41Leather(unittest.TestCase):
+    def test_raw_bovine_hide(self):
+        product = _make_product(name="raw cowhide salted", essence="raw hide bovine")
+        result = _decide_chapter_41(product)
+        self.assertEqual(result["chapter"], 41)
+        self.assertTrue(any("41.01" in c["heading"] for c in result["candidates"]))
+
+    def test_wet_blue_sheep(self):
+        product = _make_product(name="wet-blue sheepskin", essence="chrome tanned sheep skin")
+        result = _decide_chapter_41(product)
+        self.assertTrue(any("41.05" in c["heading"] for c in result["candidates"]))
+
+    def test_finished_leather(self):
+        product = _make_product(name="full grain finished leather", essence="finished leather bovine")
+        result = _decide_chapter_41(product)
+        self.assertTrue(any("41.07" in c["heading"] for c in result["candidates"]))
+
+    def test_composition_leather(self):
+        product = _make_product(name="reconstituted leather sheets", essence="composition leather")
+        result = _decide_chapter_41(product)
+        self.assertTrue(any("41.15" in c["heading"] for c in result["candidates"]))
+
+    def test_reptile_leather(self):
+        product = _make_product(name="crocodile leather finished", essence="reptile leather")
+        result = _decide_chapter_41(product)
+        self.assertTrue(any("41.13" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter42LeatherArticles(unittest.TestCase):
+    def test_handbag(self):
+        product = _make_product(name="leather handbag shoulder bag", essence="handbag leather")
+        result = _decide_chapter_42(product)
+        self.assertEqual(result["chapter"], 42)
+        self.assertTrue(any("42.02" in c["heading"] for c in result["candidates"]))
+
+    def test_leather_belt(self):
+        product = _make_product(name="leather belt men", essence="leather belt accessory")
+        result = _decide_chapter_42(product)
+        self.assertTrue(any("42.03" in c["heading"] for c in result["candidates"]))
+
+    def test_saddlery(self):
+        product = _make_product(name="horse saddle leather", essence="saddlery harness")
+        result = _decide_chapter_42(product)
+        self.assertTrue(any("42.01" in c["heading"] for c in result["candidates"]))
+
+    def test_suitcase(self):
+        product = _make_product(name="leather suitcase travel", essence="trunk suitcase")
+        result = _decide_chapter_42(product)
+        self.assertTrue(any("42.02" in c["heading"] for c in result["candidates"]))
+
+    def test_wallet(self):
+        product = _make_product(name="leather wallet billfold", essence="wallet card case")
+        result = _decide_chapter_42(product)
+        self.assertTrue(any("42.02" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter43Furskins(unittest.TestCase):
+    def test_raw_mink(self):
+        product = _make_product(name="raw mink pelt", essence="raw furskin mink undressed")
+        result = _decide_chapter_43(product)
+        self.assertEqual(result["chapter"], 43)
+        self.assertTrue(any("43.01" in c["heading"] for c in result["candidates"]))
+
+    def test_dressed_fox_fur(self):
+        product = _make_product(name="dressed fox furskin", essence="tanned fur dyed")
+        result = _decide_chapter_43(product)
+        self.assertTrue(any("43.02" in c["heading"] for c in result["candidates"]))
+
+    def test_fur_coat(self):
+        product = _make_product(name="fur coat mink", essence="fur garment")
+        result = _decide_chapter_43(product)
+        self.assertTrue(any("43.03" in c["heading"] for c in result["candidates"]))
+
+    def test_faux_fur(self):
+        product = _make_product(name="faux fur fabric", essence="artificial fur imitation")
+        result = _decide_chapter_43(product)
+        self.assertTrue(any("43.04" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_43_candidate("fur coat"))
+        self.assertTrue(_is_chapter_43_candidate("פרווה"))
+        self.assertFalse(_is_chapter_43_candidate("cotton shirt"))
+
+
+class TestChapter44Wood(unittest.TestCase):
+    def test_plywood(self):
+        product = _make_product(name="birch plywood 18mm", essence="plywood laminated")
+        result = _decide_chapter_44(product)
+        self.assertEqual(result["chapter"], 44)
+        self.assertTrue(any("44.12" in c["heading"] for c in result["candidates"]))
+
+    def test_mdf(self):
+        product = _make_product(name="MDF board 12mm", essence="medium density fibreboard")
+        result = _decide_chapter_44(product)
+        self.assertTrue(any("44.11" in c["heading"] for c in result["candidates"]))
+
+    def test_particleboard(self):
+        product = _make_product(name="OSB particleboard", essence="oriented strand board")
+        result = _decide_chapter_44(product)
+        self.assertTrue(any("44.10" in c["heading"] for c in result["candidates"]))
+
+    def test_wooden_door(self):
+        product = _make_product(name="wooden door interior", essence="door frame wood")
+        result = _decide_chapter_44(product)
+        self.assertTrue(any("44.18" in c["heading"] for c in result["candidates"]))
+
+    def test_sawn_lumber(self):
+        product = _make_product(name="sawn pine lumber boards", essence="sawn wood timber")
+        result = _decide_chapter_44(product)
+        self.assertTrue(any("44.07" in c["heading"] for c in result["candidates"]))
+
+    def test_furniture_parts_redirect(self):
+        product = _make_product(name="wooden furniture parts table top",
+                                essence="wooden furniture part")
+        result = _decide_chapter_44(product)
+        self.assertIsNotNone(result["redirect"])
+        self.assertEqual(result["redirect"]["chapter"], 94)
+
+
+class TestChapter45Cork(unittest.TestCase):
+    def test_wine_cork(self):
+        product = _make_product(name="wine cork stoppers natural", essence="cork stopper bottle")
+        result = _decide_chapter_45(product)
+        self.assertEqual(result["chapter"], 45)
+        self.assertTrue(any("45.03" in c["heading"] for c in result["candidates"]))
+
+    def test_cork_tiles(self):
+        product = _make_product(name="agglomerated cork floor tiles", essence="cork tile sheet")
+        result = _decide_chapter_45(product)
+        self.assertTrue(any("45.04" in c["heading"] for c in result["candidates"]))
+
+    def test_raw_cork(self):
+        product = _make_product(name="natural cork bark raw", essence="raw cork natural")
+        result = _decide_chapter_45(product)
+        self.assertTrue(any("45.01" in c["heading"] for c in result["candidates"]))
+
+    def test_cork_granules(self):
+        product = _make_product(name="crushed cork granules", essence="natural cork waste granule")
+        result = _decide_chapter_45(product)
+        self.assertTrue(any("45.01" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_45_candidate("cork stopper"))
+        self.assertTrue(_is_chapter_45_candidate("שעם טבעי"))
+        self.assertFalse(_is_chapter_45_candidate("rubber seal"))
+
+
+class TestChapter46Plaiting(unittest.TestCase):
+    def test_basket(self):
+        product = _make_product(name="wicker basket hamper", essence="basketware wicker")
+        result = _decide_chapter_46(product)
+        self.assertEqual(result["chapter"], 46)
+        self.assertTrue(any("46.02" in c["heading"] for c in result["candidates"]))
+
+    def test_bamboo_mat(self):
+        product = _make_product(name="bamboo plait mat", essence="bamboo plaiting")
+        result = _decide_chapter_46(product)
+        self.assertTrue(len(result["candidates"]) >= 1)
+
+    def test_rattan_article(self):
+        product = _make_product(name="rattan basket decorative", essence="rattan wickerwork")
+        result = _decide_chapter_46(product)
+        self.assertTrue(any("46.02" in c["heading"] for c in result["candidates"]))
+
+    def test_straw_plait(self):
+        product = _make_product(name="straw plait braid", essence="straw plaiting material")
+        result = _decide_chapter_46(product)
+        self.assertTrue(any("46.01" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_46_candidate("wicker basket"))
+        self.assertTrue(_is_chapter_46_candidate("במבוק"))
+        self.assertFalse(_is_chapter_46_candidate("steel wire"))
+
+
+class TestChapter47Pulp(unittest.TestCase):
+    def test_kraft_pulp(self):
+        product = _make_product(name="bleached kraft pulp", essence="chemical wood pulp sulphate")
+        result = _decide_chapter_47(product)
+        self.assertEqual(result["chapter"], 47)
+        self.assertTrue(any("47.03" in c["heading"] for c in result["candidates"]))
+
+    def test_mechanical_pulp(self):
+        product = _make_product(name="mechanical wood pulp groundwood", essence="TMP pulp")
+        result = _decide_chapter_47(product)
+        self.assertTrue(any("47.01" in c["heading"] for c in result["candidates"]))
+
+    def test_dissolving_pulp(self):
+        product = _make_product(name="dissolving grade pulp", essence="viscose pulp alpha cellulose")
+        result = _decide_chapter_47(product)
+        self.assertTrue(any("47.02" in c["heading"] for c in result["candidates"]))
+
+    def test_waste_paper(self):
+        product = _make_product(name="recovered waste paper", essence="recycled paper scrap")
+        result = _decide_chapter_47(product)
+        self.assertTrue(any("47.07" in c["heading"] for c in result["candidates"]))
+
+    def test_sulphite_pulp(self):
+        product = _make_product(name="chemical wood pulp sulphite", essence="sulphite pulp")
+        result = _decide_chapter_47(product)
+        self.assertTrue(any("47.04" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter48Paper(unittest.TestCase):
+    def test_newsprint(self):
+        product = _make_product(name="newsprint paper rolls", essence="newsprint")
+        result = _decide_chapter_48(product)
+        self.assertEqual(result["chapter"], 48)
+        self.assertTrue(any("48.01" in c["heading"] for c in result["candidates"]))
+
+    def test_tissue_toilet(self):
+        product = _make_product(name="toilet paper rolls", essence="tissue paper toilet")
+        result = _decide_chapter_48(product)
+        self.assertTrue(any("48.18" in c["heading"] for c in result["candidates"]))
+
+    def test_kraft_paper(self):
+        product = _make_product(name="kraft paper sack 80gsm", essence="kraft liner paper")
+        result = _decide_chapter_48(product)
+        self.assertTrue(any("48.04" in c["heading"] for c in result["candidates"]))
+
+    def test_corrugated_board(self):
+        product = _make_product(name="corrugated cardboard boxes", essence="corrugated paperboard")
+        result = _decide_chapter_48(product)
+        self.assertTrue(any("48.08" in c["heading"] for c in result["candidates"]))
+
+    def test_coated_art_paper(self):
+        product = _make_product(name="coated art paper glossy", essence="clay coated paper")
+        result = _decide_chapter_48(product)
+        self.assertTrue(any("48.10" in c["heading"] for c in result["candidates"]))
+
+    def test_wallpaper(self):
+        product = _make_product(name="wallpaper vinyl coated", essence="wallpaper wall covering")
+        result = _decide_chapter_48(product)
+        self.assertTrue(any("48.14" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter49Printed(unittest.TestCase):
+    def test_book(self):
+        product = _make_product(name="printed textbook hardcover", essence="book printed")
+        result = _decide_chapter_49(product)
+        self.assertEqual(result["chapter"], 49)
+        self.assertTrue(any("49.01" in c["heading"] for c in result["candidates"]))
+
+    def test_newspaper(self):
+        product = _make_product(name="daily newspaper edition", essence="newspaper journal")
+        result = _decide_chapter_49(product)
+        self.assertTrue(any("49.02" in c["heading"] for c in result["candidates"]))
+
+    def test_map(self):
+        product = _make_product(name="world map poster printed", essence="map chart printed")
+        result = _decide_chapter_49(product)
+        self.assertTrue(any("49.05" in c["heading"] for c in result["candidates"]))
+
+    def test_calendar(self):
+        product = _make_product(name="wall calendar 2026", essence="printed calendar")
+        result = _decide_chapter_49(product)
+        self.assertTrue(any("49.10" in c["heading"] for c in result["candidates"]))
+
+    def test_postcard(self):
+        product = _make_product(name="illustrated postcards set", essence="postcard greeting")
+        result = _decide_chapter_49(product)
+        self.assertTrue(any("49.09" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter50Silk(unittest.TestCase):
+    def test_silk_fabric(self):
+        product = _make_product(name="woven silk satin fabric", essence="silk fabric woven")
+        result = _decide_chapter_50(product)
+        self.assertEqual(result["chapter"], 50)
+        self.assertTrue(any("50.07" in c["heading"] for c in result["candidates"]))
+
+    def test_silk_yarn(self):
+        product = _make_product(name="silk yarn natural", essence="silk thread spun")
+        result = _decide_chapter_50(product)
+        self.assertTrue(any("50.04" in c["heading"] for c in result["candidates"]))
+
+    def test_raw_silk(self):
+        product = _make_product(name="raw silk not thrown", essence="raw silk hevea")
+        result = _decide_chapter_50(product)
+        self.assertTrue(any("50.02" in c["heading"] for c in result["candidates"]))
+
+    def test_silk_waste(self):
+        product = _make_product(name="silk waste noils", essence="silk waste raw")
+        result = _decide_chapter_50(product)
+        self.assertTrue(any("50.03" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_50_candidate("silk fabric"))
+        self.assertTrue(_is_chapter_50_candidate("משי"))
+        self.assertFalse(_is_chapter_50_candidate("cotton shirt"))
+
+
+class TestChapter51Wool(unittest.TestCase):
+    def test_raw_wool(self):
+        product = _make_product(name="greasy raw wool shorn", essence="raw wool sheep")
+        result = _decide_chapter_51(product)
+        self.assertEqual(result["chapter"], 51)
+        self.assertTrue(any("51.01" in c["heading"] for c in result["candidates"]))
+
+    def test_cashmere(self):
+        product = _make_product(name="cashmere fibre raw", essence="cashmere fine animal hair")
+        result = _decide_chapter_51(product)
+        self.assertTrue(any("51.02" in c["heading"] for c in result["candidates"]))
+
+    def test_wool_yarn(self):
+        product = _make_product(name="worsted wool yarn", essence="yarn of combed wool")
+        result = _decide_chapter_51(product)
+        self.assertTrue(any("51.07" in c["heading"] for c in result["candidates"]))
+
+    def test_wool_fabric(self):
+        product = _make_product(name="woven wool tweed fabric", essence="wool fabric woven")
+        result = _decide_chapter_51(product)
+        self.assertTrue(any("51.1" in c["heading"] for c in result["candidates"]))
+
+    def test_wool_tops(self):
+        product = _make_product(name="combed wool tops", essence="wool tops carded")
+        result = _decide_chapter_51(product)
+        self.assertTrue(any("51.05" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter52Cotton(unittest.TestCase):
+    def test_raw_cotton(self):
+        product = _make_product(name="raw cotton ginned", essence="raw cotton not carded")
+        result = _decide_chapter_52(product)
+        self.assertEqual(result["chapter"], 52)
+        self.assertTrue(any("52.01" in c["heading"] for c in result["candidates"]))
+
+    def test_cotton_yarn(self):
+        product = _make_product(name="cotton yarn 30Ne", essence="cotton yarn combed")
+        result = _decide_chapter_52(product)
+        self.assertTrue(any("52.05" in c["heading"] for c in result["candidates"]))
+
+    def test_denim_fabric(self):
+        product = _make_product(name="denim fabric 14oz", essence="denim woven cotton")
+        result = _decide_chapter_52(product)
+        self.assertTrue(any("52.09" in c["heading"] for c in result["candidates"]))
+
+    def test_cotton_waste(self):
+        product = _make_product(name="cotton waste linters", essence="cotton linter waste")
+        result = _decide_chapter_52(product)
+        self.assertTrue(any("52.02" in c["heading"] for c in result["candidates"]))
+
+    def test_sewing_thread(self):
+        product = _make_product(name="cotton sewing thread", essence="sewing thread cotton")
+        result = _decide_chapter_52(product)
+        self.assertTrue(any("52.04" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter53VegFibres(unittest.TestCase):
+    def test_raw_flax(self):
+        product = _make_product(name="raw flax fibre", essence="flax fibre raw")
+        result = _decide_chapter_53(product)
+        self.assertEqual(result["chapter"], 53)
+        self.assertTrue(any("53.01" in c["heading"] for c in result["candidates"]))
+
+    def test_jute_yarn(self):
+        product = _make_product(name="jute yarn spun", essence="jute bast fibre yarn")
+        result = _decide_chapter_53(product)
+        self.assertTrue(any("53.07" in c["heading"] for c in result["candidates"]))
+
+    def test_linen_fabric(self):
+        product = _make_product(name="woven linen fabric", essence="flax linen woven cloth")
+        result = _decide_chapter_53(product)
+        self.assertTrue(any("53.09" in c["heading"] for c in result["candidates"]))
+
+    def test_sisal_fibre(self):
+        product = _make_product(name="sisal fibre raw", essence="sisal agave fibre")
+        result = _decide_chapter_53(product)
+        self.assertTrue(any("53.05" in c["heading"] for c in result["candidates"]))
+
+    def test_hemp_fabric(self):
+        product = _make_product(name="hemp fabric woven", essence="hemp woven cloth")
+        result = _decide_chapter_53(product)
+        self.assertTrue(any("53.11" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter54ManMadeFilaments(unittest.TestCase):
+    def test_polyester_filament_yarn(self):
+        product = _make_product(name="polyester filament yarn", essence="PET filament yarn")
+        result = _decide_chapter_54(product)
+        self.assertEqual(result["chapter"], 54)
+        self.assertTrue(any("54.02" in c["heading"] for c in result["candidates"]))
+
+    def test_nylon_fabric(self):
+        product = _make_product(name="woven nylon fabric", essence="polyamide woven fabric synthetic")
+        result = _decide_chapter_54(product)
+        self.assertTrue(any("54.07" in c["heading"] for c in result["candidates"]))
+
+    def test_viscose_filament_yarn(self):
+        product = _make_product(name="viscose rayon filament yarn", essence="artificial filament viscose")
+        result = _decide_chapter_54(product)
+        self.assertTrue(any("54.03" in c["heading"] for c in result["candidates"]))
+
+    def test_sewing_thread_filament(self):
+        product = _make_product(name="sewing thread nylon filament", essence="synthetic filament sewing")
+        result = _decide_chapter_54(product)
+        self.assertTrue(any("54.01" in c["heading"] for c in result["candidates"]))
+
+    def test_viscose_fabric(self):
+        product = _make_product(name="woven fabric of viscose rayon filament", essence="viscose filament woven fabric synthetic")
+        result = _decide_chapter_54(product)
+        self.assertTrue(any("54.08" in c["heading"] for c in result["candidates"]))
+
+
+class TestChapter55ManMadeStaple(unittest.TestCase):
+    def test_polyester_staple(self):
+        product = _make_product(name="polyester staple fibre 1.4D", essence="PSF polyester staple")
+        result = _decide_chapter_55(product)
+        self.assertEqual(result["chapter"], 55)
+        self.assertTrue(any("55.03" in c["heading"] for c in result["candidates"]))
+
+    def test_viscose_staple(self):
+        product = _make_product(name="viscose staple fibre", essence="VSF viscose rayon staple")
+        result = _decide_chapter_55(product)
+        self.assertTrue(any("55.04" in c["heading"] for c in result["candidates"]))
+
+    def test_synthetic_staple_yarn(self):
+        product = _make_product(name="acrylic staple fibre yarn", essence="synthetic staple yarn")
+        result = _decide_chapter_55(product)
+        self.assertTrue(any("55.09" in c["heading"] for c in result["candidates"]))
+
+    def test_synthetic_staple_fabric(self):
+        product = _make_product(name="polyester staple woven fabric", essence="synthetic staple fibre fabric woven")
+        result = _decide_chapter_55(product)
+        self.assertTrue(any("55.12" in c["heading"] for c in result["candidates"]))
+
+    def test_fibre_waste(self):
+        product = _make_product(name="synthetic fibre waste scrap", essence="man-made fibre waste")
+        result = _decide_chapter_55(product)
+        self.assertTrue(any("55.05" in c["heading"] for c in result["candidates"]))
+
+    def test_candidate_detection(self):
+        self.assertTrue(_is_chapter_55_candidate("polyester staple fibre"))
+        self.assertTrue(_is_chapter_55_candidate("סיבי ויסקוזה"))
+        self.assertFalse(_is_chapter_55_candidate("cotton yarn"))
+
+
+# ========================================================================
+# INTEGRATION: CHAPTERS 39-55 via decide_chapter()
+# ========================================================================
+
+class TestChapters39to55Integration(unittest.TestCase):
+    def test_decide_chapter_detects_plastic(self):
+        product = _make_product(name="PVC plastic granules", essence="plastic polymer")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 39)
+
+    def test_decide_chapter_detects_tyre(self):
+        product = _make_product(name="new pneumatic tyre radial", essence="rubber tyre")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 40)
+
+    def test_decide_chapter_detects_leather(self):
+        product = _make_product(name="finished leather sheets", essence="tanned leather hide")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 41)
+
+    def test_decide_chapter_detects_handbag(self):
+        product = _make_product(name="handbag shoulder bag tote", essence="handbag purse clutch")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 42)
+
+    def test_decide_chapter_detects_fur(self):
+        product = _make_product(name="artificial fur fabric", essence="faux fur imitation")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 43)
+
+    def test_decide_chapter_detects_plywood(self):
+        product = _make_product(name="birch plywood 18mm sheets", essence="plywood wood")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 44)
+
+    def test_decide_chapter_detects_cork(self):
+        product = _make_product(name="natural cork stopper bottle plug", essence="cork stopper")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 45)
+
+    def test_decide_chapter_detects_basket(self):
+        product = _make_product(name="basketware manufactured", essence="basketware article")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 46)
+
+    def test_decide_chapter_detects_pulp(self):
+        product = _make_product(name="paper pulp kraft", essence="paper pulp")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 47)
+
+    def test_decide_chapter_detects_paper(self):
+        product = _make_product(name="toilet paper tissue", essence="tissue paper napkin")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 48)
+
+    def test_decide_chapter_detects_book(self):
+        product = _make_product(name="printed textbook hardcover", essence="book brochure")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 49)
+
+    def test_decide_chapter_detects_silk(self):
+        product = _make_product(name="woven silk satin fabric", essence="silk fabric")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 50)
+
+    def test_decide_chapter_detects_wool(self):
+        product = _make_product(name="greasy raw wool", essence="wool fibre greasy")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 51)
+
+    def test_decide_chapter_detects_cotton(self):
+        product = _make_product(name="raw cotton fibre not carded", essence="raw cotton")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 52)
+
+    def test_decide_chapter_detects_jute(self):
+        product = _make_product(name="raw jute fibre processed", essence="jute bast fibre")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 53)
+
+    def test_decide_chapter_detects_filament(self):
+        product = _make_product(name="man-made filament yarn 70D", essence="synthetic filament textile")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 54)
+
+    def test_decide_chapter_detects_staple_fibre(self):
+        product = _make_product(name="man-made staple fibres synthetic", essence="staple fibre")
+        result = decide_chapter(product)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chapter"], 55)
 
 
 if __name__ == "__main__":

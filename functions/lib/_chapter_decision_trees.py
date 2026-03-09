@@ -5155,6 +5155,1760 @@ def _decide_chapter_38(product):
 
 
 # ============================================================================
+# CHAPTER 39: Plastics and articles thereof
+# ============================================================================
+
+_CH39_PE = re.compile(
+    r'(?:פוליאתילן|polyethylene|PE[\s\-]?(?:HD|LD|LLD|UHM)|HDPE|LDPE|LLDPE|UHMWPE)',
+    re.IGNORECASE
+)
+_CH39_PP = re.compile(
+    r'(?:פוליפרופילן|polypropylene|PP\b)',
+    re.IGNORECASE
+)
+_CH39_PVC = re.compile(
+    r'(?:פי\.?וי\.?סי|PVC|polyvinyl\s*chloride|vinyl\s*chloride)',
+    re.IGNORECASE
+)
+_CH39_PET = re.compile(
+    r'(?:פוליאסטר|PET\b|polyethylene\s*terephthalate|PETE)',
+    re.IGNORECASE
+)
+_CH39_PS = re.compile(
+    r'(?:פוליסטירן|polystyrene|styrofoam|styrene|EPS|XPS)',
+    re.IGNORECASE
+)
+_CH39_PU = re.compile(
+    r'(?:פוליאורתן|polyurethane|PU\b|PUR\b)',
+    re.IGNORECASE
+)
+_CH39_PRIMARY = re.compile(
+    r'(?:גרגיר|גרנול|אבקה|פתיתי|שרף|בצורה\s*ראשונית|'
+    r'granule|pellet|resin|powder|flake|primary\s*form|in\s*primary|'
+    r'raw\s*material|virgin|compound\b)',
+    re.IGNORECASE
+)
+_CH39_PLATE_FILM = re.compile(
+    r'(?:לוח|יריע|סרט|פילם|גיליון|רדיד|'
+    r'plate|sheet|film|foil|strip|laminate|membrane|'
+    r'self.adhesive|cellular)',
+    re.IGNORECASE
+)
+_CH39_TUBE = re.compile(
+    r'(?:צינור|שפופרת|tube|pipe|hose|conduit|fitting|'
+    r'אביזר\s*צנרת|pipe\s*fitting|elbow|tee\b|coupling|valve)',
+    re.IGNORECASE
+)
+_CH39_ARTICLES = re.compile(
+    r'(?:מיכל|בקבוק|שקית|ארגז|מכסה|פקק|כלי\s*שולחן|'
+    r'container|bottle|bag|sack|box|cap|lid|closure|'
+    r'tableware|kitchenware|sanitary|bath|tank|barrel|'
+    r'carboy|jerry\s*can|packing|crate)',
+    re.IGNORECASE
+)
+_CH39_PLASTIC_GENERAL = re.compile(
+    r'(?:פלסטיק|פולימר|ניילון|אקריליק|סיליקון|פוליקרבונט|'
+    r'plastic|polymer|nylon|acrylic|silicone|polycarbonate|'
+    r'polyamide|ABS|polyacetal|epoxy|alkyd|phenolic|melamine|'
+    r'amino\s*resin|cellulose|poly)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_39_candidate(text):
+    return bool(
+        _CH39_PE.search(text) or _CH39_PP.search(text) or _CH39_PVC.search(text)
+        or _CH39_PET.search(text) or _CH39_PS.search(text) or _CH39_PU.search(text)
+        or _CH39_PLASTIC_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_39(product):
+    """Chapter 39: Plastics and articles thereof.
+
+    Key decision: polymer type → form (primary/plate-film/tube/articles).
+    Headings:
+        39.01-39.14 — Polymers in primary forms
+        39.15 — Waste, parings, scrap
+        39.16 — Monofilament; rods, sticks, profiles
+        39.17 — Tubes, pipes, hoses and fittings
+        39.18 — Floor coverings
+        39.19 — Self-adhesive plates/sheets/film/tape
+        39.20 — Other plates/sheets/film/foil (non-cellular, not reinforced)
+        39.21 — Other plates/sheets/film/foil (cellular or combined)
+        39.22 — Baths, showers, sinks, WC seats (sanitary ware)
+        39.23 — Articles for conveyance/packing (containers, bottles, bags)
+        39.24 — Tableware, kitchenware, household articles
+        39.25 — Builders' ware (tanks, doors, windows, shutters)
+        39.26 — Other articles of plastics
+    """
+    text = _product_text(product)
+    result = {"chapter": 39, "candidates": [], "redirect": None, "questions_needed": []}
+
+    # Step 1: Detect form — articles override polymer-type routing
+    if _CH39_TUBE.search(text):
+        result["candidates"].append({"heading": "39.17", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Plastic tube / pipe / hose / fitting → 39.17.",
+            "rule_applied": "GIR 1 — heading 39.17"})
+        return result
+    if re.search(r'(?:אמבט|כיור|אסלה|מקלחת|bath|shower|sink|WC|lavatory|bidet|sanitary)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "39.22", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Plastic sanitary ware (bath/sink/WC) → 39.22.",
+            "rule_applied": "GIR 1 — heading 39.22"})
+        return result
+    if _CH39_ARTICLES.search(text):
+        if re.search(r'(?:בקבוק|שקית|מיכל|bottle|bag|sack|container|packing|barrel|jerry|carboy|crate)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "39.23", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Plastic packing article (bottle/bag/container) → 39.23.",
+                "rule_applied": "GIR 1 — heading 39.23"})
+        elif re.search(r'(?:כלי\s*שולחן|tableware|kitchenware|cup|plate|bowl|tray)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "39.24", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Plastic tableware / kitchenware → 39.24.",
+                "rule_applied": "GIR 1 — heading 39.24"})
+        else:
+            result["candidates"].append({"heading": "39.26", "subheading_hint": None,
+                "confidence": 0.70, "reasoning": "Other plastic article → 39.26.",
+                "rule_applied": "GIR 1 — heading 39.26"})
+        return result
+
+    # Step 2: Plates/sheets/film
+    if _CH39_PLATE_FILM.search(text):
+        if re.search(r'(?:self.adhesive|דביק)', text, re.IGNORECASE):
+            heading = "39.19"
+        elif re.search(r'(?:cellular|קצף|foam)', text, re.IGNORECASE):
+            heading = "39.21"
+        else:
+            heading = "39.20"
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": f"Plastic plate/sheet/film → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    # Step 3: Primary forms — route by polymer type
+    if _CH39_PRIMARY.search(text) or not _CH39_ARTICLES.search(text):
+        if _CH39_PE.search(text):
+            heading = "39.01"
+            reasoning = "Polyethylene in primary forms → 39.01."
+        elif _CH39_PP.search(text):
+            heading = "39.02"
+            reasoning = "Polypropylene in primary forms → 39.02."
+        elif _CH39_PVC.search(text):
+            heading = "39.04"
+            reasoning = "PVC / vinyl chloride polymer in primary forms → 39.04."
+        elif _CH39_PS.search(text):
+            heading = "39.03"
+            reasoning = "Polystyrene in primary forms → 39.03."
+        elif _CH39_PET.search(text):
+            heading = "39.07"
+            reasoning = "PET / polyester in primary forms → 39.07."
+        elif _CH39_PU.search(text):
+            heading = "39.09"
+            reasoning = "Polyurethane in primary forms → 39.09."
+        else:
+            heading = "39.11"
+            reasoning = "Other polymer in primary forms → 39.11."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "39.26", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Plastic article n.e.s. → 39.26.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What form? (granules/pellets, sheet/film, tube/pipe, bottle/bag, tableware)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 40: Rubber and articles thereof
+# ============================================================================
+
+_CH40_NATURAL = re.compile(
+    r'(?:גומי\s*טבעי|לטקס\s*טבעי|natural\s*rubber|latex\s*natural|'
+    r'hevea|caoutchouc|balata|gutta.percha|guayule|chicle)',
+    re.IGNORECASE
+)
+_CH40_SYNTHETIC = re.compile(
+    r'(?:גומי\s*סינתטי|סינתטי|synthetic\s*rubber|SBR|NBR|EPDM|'
+    r'chloroprene|neoprene|butadiene|isoprene|nitrile\s*rubber|'
+    r'butyl\s*rubber|silicone\s*rubber)',
+    re.IGNORECASE
+)
+_CH40_TYRE = re.compile(
+    r'(?:צמיג|טייר|tyre|tire|pneumatic|radial\s*tyre|retreaded)',
+    re.IGNORECASE
+)
+_CH40_TUBE = re.compile(
+    r'(?:פנימית|inner\s*tube|tube\s*for\s*tyre|tube\s*for\s*tire)',
+    re.IGNORECASE
+)
+_CH40_BELT = re.compile(
+    r'(?:רצועת?\s*הינע|conveyor\s*belt|transmission\s*belt|V.belt|'
+    r'synchronous\s*belt|timing\s*belt|fan\s*belt)',
+    re.IGNORECASE
+)
+_CH40_HOSE = re.compile(
+    r'(?:צינור\s*גומי|צינור\s*גמיש|rubber\s*hose|flexible\s*hose|'
+    r'hydraulic\s*hose|reinforced\s*hose)',
+    re.IGNORECASE
+)
+_CH40_GLOVE = re.compile(
+    r'(?:כפפ|rubber\s*glove|latex\s*glove|nitrile\s*glove|'
+    r'surgical\s*glove|examination\s*glove|disposable\s*glove)',
+    re.IGNORECASE
+)
+_CH40_RUBBER_GENERAL = re.compile(
+    r'(?:גומי|rubber|vulcani[sz]ed|elastomer|gasket|seal|washer|'
+    r'O.ring|grommet|bumper|buffer|mat\s*rubber)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_40_candidate(text):
+    return bool(
+        _CH40_NATURAL.search(text) or _CH40_SYNTHETIC.search(text)
+        or _CH40_TYRE.search(text) or _CH40_RUBBER_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_40(product):
+    """Chapter 40: Rubber and articles thereof.
+
+    Key decision: natural vs synthetic → form (raw/vulcanised/articles).
+    Headings:
+        40.01 — Natural rubber latex
+        40.02 — Synthetic rubber and factice
+        40.05 — Compounded rubber, unvulcanised
+        40.06 — Other forms of unvulcanised rubber (rods, tubes, profiles)
+        40.07 — Vulcanised rubber thread and cord
+        40.08 — Plates, sheets, strip of vulcanised rubber
+        40.09 — Tubes, pipes, hoses of vulcanised rubber
+        40.10 — Conveyor/transmission belts of vulcanised rubber
+        40.11 — New pneumatic tyres
+        40.12 — Retreaded/used tyres; solid/cushion tyres; tyre flaps
+        40.13 — Inner tubes
+        40.14 — Hygienic/pharmaceutical articles (teats, gloves, etc.)
+        40.15 — Articles of apparel (gloves, aprons)
+        40.16 — Other articles of vulcanised rubber
+        40.17 — Hard rubber (ebonite) articles
+    """
+    text = _product_text(product)
+    result = {"chapter": 40, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH40_TYRE.search(text):
+        if re.search(r'(?:retreaded|משופדר|used|solid|cushion|flap)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "40.12", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Retreaded/used/solid tyre or flap → 40.12.",
+                "rule_applied": "GIR 1 — heading 40.12"})
+        else:
+            result["candidates"].append({"heading": "40.11", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "New pneumatic tyre → 40.11.",
+                "rule_applied": "GIR 1 — heading 40.11"})
+        return result
+    if _CH40_TUBE.search(text):
+        result["candidates"].append({"heading": "40.13", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Inner tube for tyre → 40.13.",
+            "rule_applied": "GIR 1 — heading 40.13"})
+        return result
+    if _CH40_GLOVE.search(text):
+        if re.search(r'(?:surgical|medical|examination|חד\s*פעמי|disposable|nitrile\s*glove|latex\s*glove)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "40.15", "subheading_hint": "4015.19",
+                "confidence": 0.85, "reasoning": "Rubber/latex/nitrile gloves → 40.15.",
+                "rule_applied": "GIR 1 — heading 40.15"})
+        else:
+            result["candidates"].append({"heading": "40.15", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Rubber gloves → 40.15.",
+                "rule_applied": "GIR 1 — heading 40.15"})
+        return result
+    if _CH40_BELT.search(text):
+        result["candidates"].append({"heading": "40.10", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Conveyor / transmission belt → 40.10.",
+            "rule_applied": "GIR 1 — heading 40.10"})
+        return result
+    if _CH40_HOSE.search(text):
+        result["candidates"].append({"heading": "40.09", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Rubber hose / flexible tube → 40.09.",
+            "rule_applied": "GIR 1 — heading 40.09"})
+        return result
+    # Raw rubber
+    if _CH40_NATURAL.search(text):
+        result["candidates"].append({"heading": "40.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Natural rubber / latex → 40.01.",
+            "rule_applied": "GIR 1 — heading 40.01"})
+        return result
+    if _CH40_SYNTHETIC.search(text):
+        result["candidates"].append({"heading": "40.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Synthetic rubber → 40.02.",
+            "rule_applied": "GIR 1 — heading 40.02"})
+        return result
+
+    # Fallback: vulcanised article
+    result["candidates"].append({"heading": "40.16", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Rubber article n.e.s. → 40.16.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What type? (tyre, glove, belt, hose, raw rubber, gasket/seal)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 41: Raw hides and skins (other than furskins) and leather
+# ============================================================================
+
+_CH41_RAW = re.compile(
+    r'(?:עור\s*גולמי|עור\s*ירוק|שלח|raw\s*hide|raw\s*skin|'
+    r'green\s*hide|salted\s*hide|dried\s*hide|pickled\s*hide|'
+    r'fresh\s*hide|limed\s*hide)',
+    re.IGNORECASE
+)
+_CH41_WET_BLUE = re.compile(
+    r'(?:ווט\s*בלו|wet.blue|chrome.tanned\s*(?:wet|semi)|'
+    r'wet.white|pre.tanned)',
+    re.IGNORECASE
+)
+_CH41_CRUST = re.compile(
+    r'(?:קראסט|crust\s*leather|crust\s*hide|tanned\s*(?:not|un)\s*finish|'
+    r're.tanned|vegetable.tanned\s*crust)',
+    re.IGNORECASE
+)
+_CH41_FINISHED = re.compile(
+    r'(?:עור\s*מעובד|עור\s*גמור|finished\s*leather|full.grain|'
+    r'split\s*leather|patent\s*leather|chamois|parchment\s*leather|'
+    r'nubuck|suede|composition\s*leather|reconstituted)',
+    re.IGNORECASE
+)
+_CH41_BOVINE = re.compile(
+    r'(?:בקר|שור|פרה|עגל|buffalo|bovine|cattle|cow|calf|bull|ox|'
+    r'buffalo\s*hide|kip)',
+    re.IGNORECASE
+)
+_CH41_SHEEP = re.compile(
+    r'(?:כבש|עז|sheep|lamb|goat|kid|ovine|caprine)',
+    re.IGNORECASE
+)
+_CH41_REPTILE = re.compile(
+    r'(?:זוחל|תנין|נחש|reptile|crocodile|alligator|snake|lizard|python)',
+    re.IGNORECASE
+)
+_CH41_LEATHER_GENERAL = re.compile(
+    r'(?:עור(?:\s|$)|leather|hide|skin|pelt|tanned|tanning)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_41_candidate(text):
+    return bool(
+        _CH41_RAW.search(text) or _CH41_WET_BLUE.search(text)
+        or _CH41_CRUST.search(text) or _CH41_FINISHED.search(text)
+        or _CH41_LEATHER_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_41(product):
+    """Chapter 41: Raw hides and skins (other than furskins) and leather.
+
+    Key decision: species + tanning state.
+    Headings:
+        41.01 — Raw hides/skins of bovine/equine (fresh/salted/dried/limed/pickled)
+        41.02 — Raw skins of sheep/lambs
+        41.03 — Raw hides/skins of other animals
+        41.04 — Tanned/crust hides of bovine/equine (no hair, not further prepared)
+        41.05 — Tanned/crust skins of sheep/lamb
+        41.06 — Tanned/crust hides of other animals
+        41.07 — Leather further prepared (bovine/equine) — finished
+        41.12 — Leather further prepared (sheep/lamb) — finished
+        41.13 — Leather further prepared (other animals) — finished
+        41.14 — Chamois leather; patent leather; laminated leather; metallised leather
+        41.15 — Composition leather (reconstituted)
+    """
+    text = _product_text(product)
+    result = {"chapter": 41, "candidates": [], "redirect": None, "questions_needed": []}
+
+    is_bovine = bool(_CH41_BOVINE.search(text))
+    is_sheep = bool(_CH41_SHEEP.search(text))
+    is_reptile = bool(_CH41_REPTILE.search(text))
+
+    # Composition/reconstituted leather
+    if re.search(r'(?:composition|reconstituted|שחזור)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "41.15", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Composition / reconstituted leather → 41.15.",
+            "rule_applied": "GIR 1 — heading 41.15"})
+        return result
+    # Chamois / patent
+    if re.search(r'(?:chamois|patent\s*leather|metallised|laminated\s*leather)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "41.14", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Chamois / patent / metallised leather → 41.14.",
+            "rule_applied": "GIR 1 — heading 41.14"})
+        return result
+
+    # Raw hides
+    if _CH41_RAW.search(text):
+        if is_bovine:
+            heading = "41.01"
+        elif is_sheep:
+            heading = "41.02"
+        else:
+            heading = "41.03"
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": f"Raw hide/skin → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    # Wet-blue / crust (tanned, not finished)
+    if _CH41_WET_BLUE.search(text) or _CH41_CRUST.search(text):
+        if is_bovine:
+            heading = "41.04"
+        elif is_sheep:
+            heading = "41.05"
+        else:
+            heading = "41.06"
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": f"Tanned/crust leather → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    # Finished leather
+    if _CH41_FINISHED.search(text) or _CH41_LEATHER_GENERAL.search(text):
+        if is_bovine:
+            heading = "41.07"
+        elif is_sheep:
+            heading = "41.12"
+        elif is_reptile:
+            heading = "41.13"
+        else:
+            heading = "41.07"  # default to bovine
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.75, "reasoning": f"Finished leather → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        if not is_bovine and not is_sheep and not is_reptile:
+            result["questions_needed"].append("What animal species? (bovine, sheep/goat, reptile, other)")
+        return result
+
+    result["candidates"].append({"heading": "41.07", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Leather type unclear → 41.07 (bovine default).",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Species? Tanning state? (raw, wet-blue, crust, finished)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 42: Articles of leather; saddlery; travel goods; handbags
+# ============================================================================
+
+_CH42_SADDLERY = re.compile(
+    r'(?:אוכף|רתם|רסן|saddlery|harness|saddle|bridle|stirrup|'
+    r'horse\s*tack|equestrian)',
+    re.IGNORECASE
+)
+_CH42_HANDBAG = re.compile(
+    r'(?:תיק\s*(?:יד|נשים|אופנה)|ארנק|handbag|purse|wallet|'
+    r'billfold|card\s*case|clutch\s*bag|tote\s*bag|shoulder\s*bag)',
+    re.IGNORECASE
+)
+_CH42_TRAVEL = re.compile(
+    r'(?:מזוודה|תיק\s*נסיעות|תיק\s*גב|trunk|suitcase|travel\s*bag|'
+    r'vanity\s*case|attache|briefcase|backpack|rucksack|knapsack|'
+    r'school\s*bag|duffel)',
+    re.IGNORECASE
+)
+_CH42_BELT = re.compile(
+    r'(?:חגורה|belt(?!\s*(?:conveyor|transmission|V[\s\-]|timing|fan)))',
+    re.IGNORECASE
+)
+_CH42_GLOVE = re.compile(
+    r'(?:כפפ.*עור|leather\s*glove|driving\s*glove|dress\s*glove)',
+    re.IGNORECASE
+)
+_CH42_LEATHER_ARTICLE = re.compile(
+    r'(?:תיק|ארנק|חגורה|כפפ|מזוודה|leather\s*(?:article|good|case|cover|pouch|strap)|'
+    r'leatherware|watch\s*(?:band|strap))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_42_candidate(text):
+    return bool(
+        _CH42_SADDLERY.search(text) or _CH42_HANDBAG.search(text)
+        or _CH42_TRAVEL.search(text) or _CH42_BELT.search(text)
+        or _CH42_GLOVE.search(text) or _CH42_LEATHER_ARTICLE.search(text)
+    )
+
+
+def _decide_chapter_42(product):
+    """Chapter 42: Articles of leather; saddlery and harness; travel goods; handbags.
+
+    Headings:
+        42.01 — Saddlery and harness for animals
+        42.02 — Trunks, suitcases, vanity cases, briefcases, school bags, spectacle cases
+        42.03 — Articles of apparel and clothing accessories of leather (belts, gloves)
+        42.05 — Other articles of leather or composition leather
+        42.06 — Articles of gut, goldbeater's skin, bladders, tendons
+    """
+    text = _product_text(product)
+    result = {"chapter": 42, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH42_SADDLERY.search(text):
+        result["candidates"].append({"heading": "42.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Saddlery / harness / equestrian gear → 42.01.",
+            "rule_applied": "GIR 1 — heading 42.01"})
+        return result
+    if _CH42_TRAVEL.search(text) or _CH42_HANDBAG.search(text):
+        result["candidates"].append({"heading": "42.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Handbag / wallet / suitcase / travel bag → 42.02.",
+            "rule_applied": "GIR 1 — heading 42.02"})
+        return result
+    if _CH42_BELT.search(text) or _CH42_GLOVE.search(text):
+        result["candidates"].append({"heading": "42.03", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Leather belt / glove / clothing accessory → 42.03.",
+            "rule_applied": "GIR 1 — heading 42.03"})
+        return result
+
+    result["candidates"].append({"heading": "42.05", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Other leather article → 42.05.",
+        "rule_applied": "GIR 1 — heading 42.05"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 43: Furskins and artificial fur; manufactures thereof
+# ============================================================================
+
+_CH43_RAW_FUR = re.compile(
+    r'(?:פרווה\s*גולמי|פרווה\s*גלם|raw\s*furskin|undressed\s*fur|'
+    r'mink\s*(?:raw|pelt)|fox\s*(?:raw|pelt)|chinchilla\s*pelt|sable\s*pelt|'
+    r'rabbit\s*(?:skin|pelt)|karakul|astrakhan\s*pelt)',
+    re.IGNORECASE
+)
+_CH43_DRESSED_FUR = re.compile(
+    r'(?:פרווה\s*מעובד|dressed\s*furskin|tanned\s*fur|dyed\s*fur|'
+    r'bleached\s*fur|dressed\s*mink|dressed\s*fox)',
+    re.IGNORECASE
+)
+_CH43_FUR_ARTICLE = re.compile(
+    r'(?:מעיל\s*פרווה|פרווה|fur\s*coat|fur\s*jacket|fur\s*trim|'
+    r'fur\s*hat|fur\s*collar|fur\s*garment|fur\s*article|'
+    r'artificial\s*fur|faux\s*fur|fake\s*fur|imitation\s*fur)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_43_candidate(text):
+    return bool(
+        _CH43_RAW_FUR.search(text) or _CH43_DRESSED_FUR.search(text)
+        or _CH43_FUR_ARTICLE.search(text)
+    )
+
+
+def _decide_chapter_43(product):
+    """Chapter 43: Furskins and artificial fur; manufactures thereof.
+
+    Headings:
+        43.01 — Raw furskins (mink, lamb, fox, etc.) including heads/tails/pieces
+        43.02 — Tanned/dressed furskins (assembled or not)
+        43.03 — Articles of apparel, accessories, and other articles of furskin
+        43.04 — Artificial fur and articles thereof
+    """
+    text = _product_text(product)
+    result = {"chapter": 43, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if re.search(r'(?:artificial|faux|fake|imitation|מלאכותי)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "43.04", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Artificial / faux fur → 43.04.",
+            "rule_applied": "GIR 1 — heading 43.04"})
+        return result
+    if _CH43_RAW_FUR.search(text):
+        result["candidates"].append({"heading": "43.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Raw furskin / undressed pelt → 43.01.",
+            "rule_applied": "GIR 1 — heading 43.01"})
+        return result
+    if _CH43_DRESSED_FUR.search(text):
+        result["candidates"].append({"heading": "43.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Dressed / tanned furskin → 43.02.",
+            "rule_applied": "GIR 1 — heading 43.02"})
+        return result
+
+    # Fur articles (coat, trim, etc.)
+    result["candidates"].append({"heading": "43.03", "subheading_hint": None,
+        "confidence": 0.80, "reasoning": "Fur garment / article of furskin → 43.03.",
+        "rule_applied": "GIR 1 — heading 43.03"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 44: Wood and articles of wood; wood charcoal
+# ============================================================================
+
+_CH44_LOG = re.compile(
+    r'(?:בול\s*עץ|גזע|כריתה|log|round\s*wood|rough\s*wood|'
+    r'fuel\s*wood|firewood|wood\s*chips|sawdust|wood\s*waste|'
+    r'wood\s*charcoal|פחם\s*עצים)',
+    re.IGNORECASE
+)
+_CH44_SAWN = re.compile(
+    r'(?:עץ\s*מנוסר|נסורת|קורה|sawn\s*wood|lumber|timber|'
+    r'planed|tongued|grooved|board|plank|beam|joist|scantling)',
+    re.IGNORECASE
+)
+_CH44_PLYWOOD = re.compile(
+    r'(?:דיקט|פלייווד|למינציה|plywood|laminated\s*wood|'
+    r'veneered\s*panel|veneer\s*sheet|blockboard)',
+    re.IGNORECASE
+)
+_CH44_FIBREBOARD = re.compile(
+    r'(?:סיבית|MDF|HDF|fibreboard|fiberboard|hardboard|'
+    r'medium\s*density|high\s*density\s*fibre)',
+    re.IGNORECASE
+)
+_CH44_PARTICLEBOARD = re.compile(
+    r'(?:שבבית|OSB|particle\s*board|chipboard|oriented\s*strand|'
+    r'waferboard|flaxboard)',
+    re.IGNORECASE
+)
+_CH44_DOOR_WINDOW = re.compile(
+    r'(?:דלת\s*עץ|חלון\s*עץ|משקוף|wooden\s*door|wooden\s*window|'
+    r'door\s*frame|window\s*frame|shutter)',
+    re.IGNORECASE
+)
+_CH44_FLOORING = re.compile(
+    r'(?:רצפה|פרקט|parquet|flooring|floor\s*panel|laminate\s*floor)',
+    re.IGNORECASE
+)
+_CH44_FURNITURE_PARTS = re.compile(
+    r'(?:חלקי\s*רהיט|wooden\s*furniture\s*part|table\s*top\s*wood|'
+    r'wooden\s*leg|wooden\s*shelf)',
+    re.IGNORECASE
+)
+_CH44_WOOD_GENERAL = re.compile(
+    r'(?:עץ|עצי|wooden|wood|timber|lumber|carpentry|joinery|'
+    r'marquetry|packing\s*case\s*wood|pallet\s*wood|cask|barrel\s*wood|'
+    r'wood\s*frame|moulding|dowel)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_44_candidate(text):
+    return bool(
+        _CH44_LOG.search(text) or _CH44_SAWN.search(text)
+        or _CH44_PLYWOOD.search(text) or _CH44_FIBREBOARD.search(text)
+        or _CH44_PARTICLEBOARD.search(text) or _CH44_WOOD_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_44(product):
+    """Chapter 44: Wood and articles of wood; wood charcoal.
+
+    Headings:
+        44.01 — Fuel wood; wood chips; sawdust
+        44.02 — Wood charcoal
+        44.03 — Wood in the rough (logs)
+        44.07 — Wood sawn/chipped lengthwise (lumber)
+        44.08 — Veneer sheets
+        44.09 — Wood continuously shaped (tongued, grooved, moulded)
+        44.10 — Particle board / OSB
+        44.11 — Fibreboard (MDF, HDF, hardboard)
+        44.12 — Plywood, veneered panels, laminated wood
+        44.18 — Builders' joinery (windows, doors, parquet)
+        44.19 — Tableware and kitchenware of wood
+        44.20 — Wood marquetry; caskets; statuettes
+        44.21 — Other articles of wood (hangers, tools, spools, pallets)
+    """
+    text = _product_text(product)
+    result = {"chapter": 44, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if re.search(r'(?:פחם\s*עצים|wood\s*charcoal|charcoal)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "44.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Wood charcoal → 44.02.",
+            "rule_applied": "GIR 1 — heading 44.02"})
+        return result
+    if _CH44_FIBREBOARD.search(text):
+        result["candidates"].append({"heading": "44.11", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Fibreboard / MDF / HDF → 44.11.",
+            "rule_applied": "GIR 1 — heading 44.11"})
+        return result
+    if _CH44_PARTICLEBOARD.search(text):
+        result["candidates"].append({"heading": "44.10", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Particleboard / OSB / chipboard → 44.10.",
+            "rule_applied": "GIR 1 — heading 44.10"})
+        return result
+    if _CH44_PLYWOOD.search(text):
+        result["candidates"].append({"heading": "44.12", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Plywood / veneered panel / laminated wood → 44.12.",
+            "rule_applied": "GIR 1 — heading 44.12"})
+        return result
+    if _CH44_DOOR_WINDOW.search(text) or _CH44_FLOORING.search(text):
+        result["candidates"].append({"heading": "44.18", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Builders' joinery (door/window/parquet) → 44.18.",
+            "rule_applied": "GIR 1 — heading 44.18"})
+        return result
+    if _CH44_LOG.search(text):
+        if re.search(r'(?:fuel\s*wood|firewood|chips|sawdust|waste|נסורת)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "44.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Fuel wood / chips / sawdust / waste → 44.01.",
+                "rule_applied": "GIR 1 — heading 44.01"})
+        else:
+            result["candidates"].append({"heading": "44.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Wood in the rough / logs → 44.03.",
+                "rule_applied": "GIR 1 — heading 44.03"})
+        return result
+    if _CH44_SAWN.search(text):
+        result["candidates"].append({"heading": "44.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Sawn wood / lumber / timber → 44.07.",
+            "rule_applied": "GIR 1 — heading 44.07"})
+        return result
+    if _CH44_FURNITURE_PARTS.search(text):
+        result["redirect"] = {"chapter": 94, "reason": "Wooden furniture parts → Chapter 94 (furniture).",
+            "rule_applied": "Section IX Note / GIR 1"}
+        return result
+
+    result["candidates"].append({"heading": "44.21", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Other article of wood → 44.21.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What form? (log, sawn, plywood, MDF, door/window, flooring)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 45: Cork and articles of cork
+# ============================================================================
+
+_CH45_NATURAL = re.compile(
+    r'(?:שעם\s*(?:טבעי|גולמי)|natural\s*cork|raw\s*cork|cork\s*bark|'
+    r'cork\s*waste|cork\s*granule|crushed\s*cork)',
+    re.IGNORECASE
+)
+_CH45_STOPPER = re.compile(
+    r'(?:פקק\s*שעם|cork\s*stopper|cork\s*plug|wine\s*cork|bottle\s*cork)',
+    re.IGNORECASE
+)
+_CH45_ARTICLE = re.compile(
+    r'(?:שעם|cork|agglomerated\s*cork|cork\s*tile|cork\s*sheet|'
+    r'cork\s*board|cork\s*roll|cork\s*disc|cork\s*gasket|'
+    r'cork\s*mat|cork\s*panel|cork\s*floor)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_45_candidate(text):
+    return bool(_CH45_ARTICLE.search(text))
+
+
+def _decide_chapter_45(product):
+    """Chapter 45: Cork and articles of cork.
+
+    Headings:
+        45.01 — Natural cork, raw or simply prepared; waste cork; crushed/granulated/ground cork
+        45.02 — Natural cork, debacked or roughly squared; blocks/plates/sheets/strip
+        45.03 — Articles of natural cork
+        45.04 — Agglomerated cork and articles thereof (tiles, stoppers, gaskets, discs)
+    """
+    text = _product_text(product)
+    result = {"chapter": 45, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH45_STOPPER.search(text):
+        # Natural cork stoppers → 45.03; agglomerated stoppers → 45.04
+        if re.search(r'(?:agglomerat|לחוץ)', text, re.IGNORECASE):
+            heading, reasoning = "45.04", "Agglomerated cork stopper → 45.04."
+        else:
+            heading, reasoning = "45.03", "Natural cork stopper / plug → 45.03."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH45_NATURAL.search(text):
+        if re.search(r'(?:waste|granul|crushed|ground|פסולת)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "45.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Cork waste / granulated / crushed cork → 45.01.",
+                "rule_applied": "GIR 1 — heading 45.01"})
+        else:
+            result["candidates"].append({"heading": "45.01", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Natural cork raw / bark → 45.01.",
+                "rule_applied": "GIR 1 — heading 45.01"})
+        return result
+    if re.search(r'(?:agglomerat|לחוץ|tile|sheet|board|panel|floor|disc|gasket)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "45.04", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Agglomerated cork article (tile/sheet/board) → 45.04.",
+            "rule_applied": "GIR 1 — heading 45.04"})
+        return result
+
+    result["candidates"].append({"heading": "45.03", "subheading_hint": None,
+        "confidence": 0.70, "reasoning": "Cork article → 45.03.",
+        "rule_applied": "GIR 1"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 46: Manufactures of straw, esparto or other plaiting materials;
+#              basketware and wickerwork
+# ============================================================================
+
+_CH46_PLAIT_MAT = re.compile(
+    r'(?:קש|קליע|ערב|במבוק|ראטן|נצרי|'
+    r'straw|esparto|raffia|bamboo|rattan|wicker|willow|'
+    r'cane|reed|rush|osier|palm\s*leaf|plait)',
+    re.IGNORECASE
+)
+_CH46_BASKET = re.compile(
+    r'(?:סל|basket|hamper|wickerwork|basketware|'
+    r'woven\s*(?:mat|seat|panel))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_46_candidate(text):
+    return bool(_CH46_PLAIT_MAT.search(text) or _CH46_BASKET.search(text))
+
+
+def _decide_chapter_46(product):
+    """Chapter 46: Manufactures of straw, esparto or other plaiting materials.
+
+    Headings:
+        46.01 — Plaits and similar products of plaiting materials (bound in parallel strands)
+        46.02 — Basketwork, wickerwork, and other articles made from plaiting materials
+    """
+    text = _product_text(product)
+    result = {"chapter": 46, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH46_BASKET.search(text):
+        result["candidates"].append({"heading": "46.02", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Basket / wickerwork / plaited article → 46.02.",
+            "rule_applied": "GIR 1 — heading 46.02"})
+        return result
+    # Raw plaiting materials / plaits
+    result["candidates"].append({"heading": "46.01", "subheading_hint": None,
+        "confidence": 0.80, "reasoning": "Plaiting material / plait / braid → 46.01.",
+        "rule_applied": "GIR 1 — heading 46.01"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 47: Pulp of wood or of other fibrous cellulosic material
+# ============================================================================
+
+_CH47_MECHANICAL = re.compile(
+    r'(?:עיסת\s*עץ\s*מכנית|mechanical\s*(?:wood\s*)?pulp|'
+    r'groundwood|thermo.?mechanical|TMP|CTMP)',
+    re.IGNORECASE
+)
+_CH47_CHEMICAL = re.compile(
+    r'(?:עיסה\s*כימית|chemical\s*(?:wood\s*)?pulp|'
+    r'sulphate|sulfate|kraft\s*pulp|sulphite|sulfite|'
+    r'soda\s*pulp|bleached\s*pulp|unbleached\s*pulp)',
+    re.IGNORECASE
+)
+_CH47_DISSOLVING = re.compile(
+    r'(?:עיסת?\s*המסה|dissolving\s*(?:grade\s*)?pulp|'
+    r'viscose\s*pulp|alpha.cellulose)',
+    re.IGNORECASE
+)
+_CH47_RECOVERED = re.compile(
+    r'(?:נייר\s*ממוחזר|waste\s*paper|recovered\s*paper|'
+    r'paper\s*scrap|recycled\s*paper\s*pulp|wastepaper)',
+    re.IGNORECASE
+)
+_CH47_PULP_GENERAL = re.compile(
+    r'(?:עיסת?\s*(?:עץ|נייר|תאית)|cellulose\s*pulp|wood\s*pulp|'
+    r'paper\s*pulp|pulp\s*(?:of\s*wood|board|sheet))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_47_candidate(text):
+    return bool(
+        _CH47_MECHANICAL.search(text) or _CH47_CHEMICAL.search(text)
+        or _CH47_DISSOLVING.search(text) or _CH47_RECOVERED.search(text)
+        or _CH47_PULP_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_47(product):
+    """Chapter 47: Pulp of wood or of other fibrous cellulosic material.
+
+    Headings:
+        47.01 — Mechanical wood pulp
+        47.02 — Chemical wood pulp, dissolving grades
+        47.03 — Chemical wood pulp, soda or sulphate (kraft), not dissolving
+        47.04 — Chemical wood pulp, sulphite, not dissolving
+        47.05 — Wood pulp obtained by combination of mechanical and chemical processes
+        47.06 — Pulps of fibres derived from recovered paper/paperboard or other
+        47.07 — Recovered (waste and scrap) paper or paperboard
+    """
+    text = _product_text(product)
+    result = {"chapter": 47, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH47_DISSOLVING.search(text):
+        result["candidates"].append({"heading": "47.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Dissolving grade chemical pulp → 47.02.",
+            "rule_applied": "GIR 1 — heading 47.02"})
+        return result
+    if _CH47_RECOVERED.search(text):
+        result["candidates"].append({"heading": "47.07", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Waste / recovered / recycled paper → 47.07.",
+            "rule_applied": "GIR 1 — heading 47.07"})
+        return result
+    if _CH47_CHEMICAL.search(text):
+        if re.search(r'(?:sulphite|sulfite)', text, re.IGNORECASE):
+            heading, reasoning = "47.04", "Chemical wood pulp, sulphite → 47.04."
+        else:
+            heading, reasoning = "47.03", "Chemical wood pulp, kraft/sulphate/soda → 47.03."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning, "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH47_MECHANICAL.search(text):
+        result["candidates"].append({"heading": "47.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Mechanical wood pulp / groundwood / TMP → 47.01.",
+            "rule_applied": "GIR 1 — heading 47.01"})
+        return result
+
+    result["candidates"].append({"heading": "47.06", "subheading_hint": None,
+        "confidence": 0.65, "reasoning": "Wood/cellulose pulp type unclear → 47.06 (other pulps).",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Pulp type? (mechanical, chemical kraft, chemical sulphite, dissolving, recovered)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 48: Paper and paperboard; articles of paper pulp/paper/paperboard
+# ============================================================================
+
+_CH48_NEWSPRINT = re.compile(
+    r'(?:נייר\s*עיתון|newsprint)',
+    re.IGNORECASE
+)
+_CH48_KRAFT = re.compile(
+    r'(?:קראפט|kraft\s*(?:paper|liner|board|sack)|'
+    r'uncoated\s*kraft|test\s*liner|linerboard)',
+    re.IGNORECASE
+)
+_CH48_TISSUE = re.compile(
+    r'(?:טישו|נייר\s*טואלט|מגבת\s*נייר|מפית|'
+    r'tissue|toilet\s*paper|paper\s*towel|napkin|'
+    r'facial\s*tissue|kitchen\s*roll|crepe\s*paper)',
+    re.IGNORECASE
+)
+_CH48_COATED = re.compile(
+    r'(?:נייר\s*מצופה|coated\s*paper|art\s*paper|'
+    r'glossy\s*paper|matt\s*paper|clay.coated|kaolin.coated|'
+    r'lightweight\s*coated|LWC)',
+    re.IGNORECASE
+)
+_CH48_CARTON = re.compile(
+    r'(?:קרטון|גלי|carton|cardboard|corrugated|'
+    r'paperboard|box\s*board|folding\s*box|container\s*board|'
+    r'fluting)',
+    re.IGNORECASE
+)
+_CH48_WALLPAPER = re.compile(
+    r'(?:טפט|wallpaper|wall\s*paper|wall\s*covering\s*paper)',
+    re.IGNORECASE
+)
+_CH48_PAPER_GENERAL = re.compile(
+    r'(?:נייר|paper(?!weight)|stationery|envelope|'
+    r'filter\s*paper|carbon\s*paper|wax\s*paper|'
+    r'parchment\s*paper|greaseproof|tracing\s*paper|'
+    r'cigarette\s*paper|label\s*paper|copy\s*paper|'
+    r'writing\s*paper|printing\s*paper)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_48_candidate(text):
+    return bool(
+        _CH48_NEWSPRINT.search(text) or _CH48_KRAFT.search(text)
+        or _CH48_TISSUE.search(text) or _CH48_COATED.search(text)
+        or _CH48_CARTON.search(text) or _CH48_WALLPAPER.search(text)
+        or _CH48_PAPER_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_48(product):
+    """Chapter 48: Paper and paperboard; articles of paper pulp, paper, or paperboard.
+
+    Headings:
+        48.01 — Newsprint
+        48.04 — Uncoated kraft paper and paperboard
+        48.05 — Other uncoated paper and paperboard
+        48.06 — Vegetable parchment, greaseproof, tracing, glassine
+        48.08 — Corrugated paper/paperboard (with or without flat surface sheets)
+        48.09 — Carbon paper, self-copy paper
+        48.10 — Paper/paperboard coated with kaolin/inorganic substances
+        48.11 — Paper/paperboard coated/impregnated/covered (excl. 48.03/48.09/48.10)
+        48.13 — Cigarette paper
+        48.14 — Wallpaper and similar wall coverings
+        48.17 — Envelopes, letter cards, boxes of paper stationery
+        48.18 — Toilet paper, tissues, towels, napkins, tablecloths
+        48.19 — Cartons, boxes, cases, bags of paper/paperboard
+        48.20 — Registers, notebooks, diaries, binders
+        48.21 — Paper labels; bobbins/spools/cops; paper pulp articles
+        48.23 — Other paper/paperboard cut to size; articles of paper n.e.s.
+    """
+    text = _product_text(product)
+    result = {"chapter": 48, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH48_NEWSPRINT.search(text):
+        result["candidates"].append({"heading": "48.01", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Newsprint → 48.01.",
+            "rule_applied": "GIR 1 — heading 48.01"})
+        return result
+    if _CH48_TISSUE.search(text):
+        result["candidates"].append({"heading": "48.18", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Toilet paper / tissue / paper towel / napkin → 48.18.",
+            "rule_applied": "GIR 1 — heading 48.18"})
+        return result
+    if _CH48_WALLPAPER.search(text):
+        result["candidates"].append({"heading": "48.14", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Wallpaper / wall covering paper → 48.14.",
+            "rule_applied": "GIR 1 — heading 48.14"})
+        return result
+    if _CH48_CARTON.search(text):
+        if re.search(r'(?:corrugated|גלי|fluting)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "48.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Corrugated paper / paperboard → 48.08.",
+                "rule_applied": "GIR 1 — heading 48.08"})
+        else:
+            result["candidates"].append({"heading": "48.19", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Carton / box / case of paperboard → 48.19.",
+                "rule_applied": "GIR 1 — heading 48.19"})
+        return result
+    if _CH48_KRAFT.search(text):
+        result["candidates"].append({"heading": "48.04", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Kraft paper / kraft liner / sack kraft → 48.04.",
+            "rule_applied": "GIR 1 — heading 48.04"})
+        return result
+    if _CH48_COATED.search(text):
+        result["candidates"].append({"heading": "48.10", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Coated paper / art paper / clay-coated → 48.10.",
+            "rule_applied": "GIR 1 — heading 48.10"})
+        return result
+
+    # Generic paper
+    if re.search(r'(?:envelope|מעטפ)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "48.17", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Envelope / letter card / stationery → 48.17.",
+            "rule_applied": "GIR 1 — heading 48.17"})
+        return result
+    if re.search(r'(?:filter\s*paper|carbon\s*paper)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "48.23", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Filter paper / carbon paper → 48.23.",
+            "rule_applied": "GIR 1 — heading 48.23"})
+        return result
+
+    result["candidates"].append({"heading": "48.23", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Paper/paperboard article n.e.s. → 48.23.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What type? (newsprint, kraft, tissue, coated, carton, wallpaper)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 49: Printed books, newspapers, pictures; other products of printing
+# ============================================================================
+
+_CH49_BOOK = re.compile(
+    r'(?:ספר|חוברת|book|brochure|pamphlet|booklet|leaflet|'
+    r'encyclop|dictionar|atlas|manual|textbook)',
+    re.IGNORECASE
+)
+_CH49_NEWSPAPER = re.compile(
+    r'(?:עיתון|newspaper|journal|periodical|magazine)',
+    re.IGNORECASE
+)
+_CH49_MAP = re.compile(
+    r'(?:מפה|map|chart|globe|hydrographic|topographic|'
+    r'wall\s*map|nautical\s*chart)',
+    re.IGNORECASE
+)
+_CH49_POSTCARD = re.compile(
+    r'(?:גלויה|גלוית|postcard|greeting\s*card|picture\s*card|'
+    r'illustrated\s*card)',
+    re.IGNORECASE
+)
+_CH49_CALENDAR = re.compile(
+    r'(?:לוח\s*שנה|יומן|calendar|diary|planner)',
+    re.IGNORECASE
+)
+_CH49_LABEL = re.compile(
+    r'(?:תווית|מדבקה|label|sticker|transfer|decal|decalcomania)',
+    re.IGNORECASE
+)
+_CH49_PRINTED = re.compile(
+    r'(?:דפוס|הדפס|מודפס|printed|print|poster|picture|'
+    r'photograph|plan|drawing|stamp|banknote)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_49_candidate(text):
+    return bool(
+        _CH49_BOOK.search(text) or _CH49_NEWSPAPER.search(text)
+        or _CH49_MAP.search(text) or _CH49_POSTCARD.search(text)
+        or _CH49_CALENDAR.search(text) or _CH49_LABEL.search(text)
+        or _CH49_PRINTED.search(text)
+    )
+
+
+def _decide_chapter_49(product):
+    """Chapter 49: Printed books, newspapers, pictures and other printing products.
+
+    Headings:
+        49.01 — Printed books, brochures, leaflets
+        49.02 — Newspapers, journals, periodicals
+        49.03 — Children's picture/drawing/colouring books
+        49.05 — Maps and hydrographic/similar charts (printed)
+        49.07 — Unused postage/revenue stamps; banknotes; cheque forms
+        49.08 — Transfers (decalcomanias)
+        49.09 — Printed/illustrated postcards; printed greeting cards
+        49.10 — Calendars (printed)
+        49.11 — Other printed matter (pictures, photographs, plans, posters, labels)
+    """
+    text = _product_text(product)
+    result = {"chapter": 49, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH49_BOOK.search(text):
+        if re.search(r'(?:children|colouring|coloring|ילד|צביעה)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "49.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Children's picture/colouring book → 49.03.",
+                "rule_applied": "GIR 1 — heading 49.03"})
+        else:
+            result["candidates"].append({"heading": "49.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Printed book / brochure / pamphlet → 49.01.",
+                "rule_applied": "GIR 1 — heading 49.01"})
+        return result
+    if _CH49_NEWSPAPER.search(text):
+        result["candidates"].append({"heading": "49.02", "subheading_hint": None,
+            "confidence": 0.90, "reasoning": "Newspaper / journal / periodical → 49.02.",
+            "rule_applied": "GIR 1 — heading 49.02"})
+        return result
+    if _CH49_MAP.search(text):
+        result["candidates"].append({"heading": "49.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Map / chart / globe → 49.05.",
+            "rule_applied": "GIR 1 — heading 49.05"})
+        return result
+    if _CH49_POSTCARD.search(text):
+        result["candidates"].append({"heading": "49.09", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Postcard / greeting card → 49.09.",
+            "rule_applied": "GIR 1 — heading 49.09"})
+        return result
+    if _CH49_CALENDAR.search(text):
+        result["candidates"].append({"heading": "49.10", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Calendar / diary → 49.10.",
+            "rule_applied": "GIR 1 — heading 49.10"})
+        return result
+    if _CH49_LABEL.search(text):
+        result["candidates"].append({"heading": "49.11", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Label / sticker / transfer → 49.11.",
+            "rule_applied": "GIR 1 — heading 49.11"})
+        return result
+
+    result["candidates"].append({"heading": "49.11", "subheading_hint": None,
+        "confidence": 0.65, "reasoning": "Other printed matter → 49.11.",
+        "rule_applied": "GIR 1"})
+    return result
+
+
+# ============================================================================
+# CHAPTER 50: Silk
+# ============================================================================
+
+_CH50_RAW_SILK = re.compile(
+    r'(?:משי\s*גולמי|גולם\s*משי|raw\s*silk|silk\s*worm|cocoon|'
+    r'silk\s*waste|noil|thrown\s*silk)',
+    re.IGNORECASE
+)
+_CH50_YARN = re.compile(
+    r'(?:חוט\s*משי|silk\s*yarn|spun\s*silk|silk\s*thread)',
+    re.IGNORECASE
+)
+_CH50_FABRIC = re.compile(
+    r'(?:בד\s*משי|אריג\s*משי|silk\s*fabric|woven\s*silk|silk\s*cloth|'
+    r'silk\s*textile|silk\s*satin|silk\s*chiffon|silk\s*taffeta|'
+    r'silk\s*organza|silk\s*crepe)',
+    re.IGNORECASE
+)
+_CH50_SILK_GENERAL = re.compile(
+    r'(?:משי|silk)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_50_candidate(text):
+    return bool(_CH50_SILK_GENERAL.search(text))
+
+
+def _decide_chapter_50(product):
+    """Chapter 50: Silk.
+
+    Headings:
+        50.01 — Silk-worm cocoons suitable for reeling
+        50.02 — Raw silk (not thrown)
+        50.03 — Silk waste (including cocoons unsuitable for reeling, yarn waste, noils)
+        50.04 — Silk yarn (not put up for retail sale)
+        50.05 — Yarn spun from silk waste (not put up for retail sale)
+        50.06 — Silk yarn and spun yarn put up for retail sale; silk-worm gut
+        50.07 — Woven fabrics of silk or silk waste
+    """
+    text = _product_text(product)
+    result = {"chapter": 50, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if re.search(r'(?:cocoon|גולם)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "50.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Silk-worm cocoons → 50.01.",
+            "rule_applied": "GIR 1 — heading 50.01"})
+        return result
+    if _CH50_FABRIC.search(text):
+        result["candidates"].append({"heading": "50.07", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Woven fabric of silk → 50.07.",
+            "rule_applied": "GIR 1 — heading 50.07"})
+        return result
+    if _CH50_YARN.search(text):
+        result["candidates"].append({"heading": "50.04", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Silk yarn → 50.04.",
+            "rule_applied": "GIR 1 — heading 50.04"})
+        return result
+    if _CH50_RAW_SILK.search(text):
+        if re.search(r'(?:waste|noil|פסולת)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "50.03", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Silk waste / noils → 50.03.",
+                "rule_applied": "GIR 1 — heading 50.03"})
+        else:
+            result["candidates"].append({"heading": "50.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Raw silk (not thrown) → 50.02.",
+                "rule_applied": "GIR 1 — heading 50.02"})
+        return result
+
+    result["candidates"].append({"heading": "50.07", "subheading_hint": None,
+        "confidence": 0.65, "reasoning": "Silk product → 50.07 (woven fabric default).",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What form? (raw silk, yarn, woven fabric)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 51: Wool, fine or coarse animal hair; horsehair yarn and woven fabric
+# ============================================================================
+
+_CH51_RAW_WOOL = re.compile(
+    r'(?:צמר\s*(?:גולמי|גזוז|רחוץ)|greasy\s*wool|shorn\s*wool|'
+    r'raw\s*wool|scoured\s*wool|wool\s*grease|lanolin|'
+    r'fine\s*animal\s*hair|coarse\s*animal\s*hair|'
+    r'cashmere|angora|mohair|alpaca|camel\s*hair|vicuna)',
+    re.IGNORECASE
+)
+_CH51_TOPS = re.compile(
+    r'(?:סרוק|טופס|wool\s*tops|combed\s*wool|carded\s*wool|'
+    r'wool\s*noils|carbonised|wool\s*waste)',
+    re.IGNORECASE
+)
+_CH51_YARN = re.compile(
+    r'(?:חוט\s*צמר|yarn\s*of\s*(?:wool|fine\s*animal|coarse\s*animal)|'
+    r'worsted\s*yarn|woollen\s*yarn|wool\s*yarn)',
+    re.IGNORECASE
+)
+_CH51_FABRIC = re.compile(
+    r'(?:בד\s*צמר|אריג\s*צמר|woven\s*(?:fabric|cloth)\s*of\s*(?:wool|fine\s*animal)|'
+    r'wool\s*fabric|tweed|flannel\s*wool|worsted\s*fabric)',
+    re.IGNORECASE
+)
+_CH51_WOOL_GENERAL = re.compile(
+    r'(?:צמר|wool|worsted|woollen|mohair|cashmere|alpaca|angora)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_51_candidate(text):
+    return bool(_CH51_WOOL_GENERAL.search(text))
+
+
+def _decide_chapter_51(product):
+    """Chapter 51: Wool, fine or coarse animal hair; horsehair yarn and woven fabric.
+
+    Headings:
+        51.01 — Wool, not carded or combed
+        51.02 — Fine animal hair (cashmere, angora, alpaca, camel), not carded/combed
+        51.03 — Waste of wool or fine/coarse animal hair (noils, yarn waste)
+        51.04 — Garnetted stock of wool or fine/coarse animal hair
+        51.05 — Wool and fine animal hair, carded or combed (tops)
+        51.06 — Yarn of carded wool (not for retail)
+        51.07 — Yarn of combed wool (not for retail)
+        51.08 — Yarn of fine animal hair (not for retail)
+        51.09 — Yarn of wool/fine animal hair for retail sale
+        51.10 — Yarn of coarse animal hair or of horsehair
+        51.11 — Woven fabrics of carded wool or fine animal hair
+        51.12 — Woven fabrics of combed wool or fine animal hair
+        51.13 — Woven fabrics of coarse animal hair or horsehair
+    """
+    text = _product_text(product)
+    result = {"chapter": 51, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH51_FABRIC.search(text):
+        if re.search(r'(?:combed|worsted|סרוק)', text, re.IGNORECASE):
+            heading = "51.12"
+        else:
+            heading = "51.11"
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": f"Woven fabric of wool → {heading}.",
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH51_YARN.search(text):
+        result["candidates"].append({"heading": "51.07", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Yarn of wool → 51.07.",
+            "rule_applied": "GIR 1 — heading 51.07"})
+        return result
+    if _CH51_TOPS.search(text):
+        result["candidates"].append({"heading": "51.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Wool tops / carded / combed wool → 51.05.",
+            "rule_applied": "GIR 1 — heading 51.05"})
+        return result
+    if _CH51_RAW_WOOL.search(text):
+        if re.search(r'(?:cashmere|angora|mohair|alpaca|camel|vicuna|קשמיר)', text, re.IGNORECASE):
+            heading, reasoning = "51.02", "Fine animal hair (cashmere/angora/alpaca) → 51.02."
+        elif re.search(r'(?:waste|noil|פסולת)', text, re.IGNORECASE):
+            heading, reasoning = "51.03", "Wool waste / noils → 51.03."
+        else:
+            heading, reasoning = "51.01", "Raw wool, not carded/combed → 51.01."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "51.12", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Wool product type unclear → 51.12.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What form? (raw wool, tops/combed, yarn, woven fabric)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 52: Cotton
+# ============================================================================
+
+_CH52_RAW = re.compile(
+    r'(?:כותנה\s*(?:גולמי|גלם)|raw\s*cotton|cotton\s*(?:not\s*carded|linter)|'
+    r'cotton\s*waste|ginned\s*cotton|unginned|seed\s*cotton)',
+    re.IGNORECASE
+)
+_CH52_YARN = re.compile(
+    r'(?:חוט\s*כותנה|cotton\s*yarn|cotton\s*thread|'
+    r'sewing\s*thread\s*cotton|carded\s*cotton\s*yarn|'
+    r'combed\s*cotton\s*yarn)',
+    re.IGNORECASE
+)
+_CH52_FABRIC = re.compile(
+    r'(?:בד\s*כותנה|אריג\s*כותנה|woven\s*(?:fabric|cloth)\s*(?:of\s*)?cotton|'
+    r'cotton\s*fabric|denim|canvas\s*cotton|poplin|'
+    r'cotton\s*gauze|muslin|cotton\s*twill)',
+    re.IGNORECASE
+)
+_CH52_COTTON_GENERAL = re.compile(
+    r'(?:כותנה|cotton|denim)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_52_candidate(text):
+    return bool(_CH52_COTTON_GENERAL.search(text))
+
+
+def _decide_chapter_52(product):
+    """Chapter 52: Cotton.
+
+    Headings:
+        52.01 — Cotton, not carded or combed
+        52.02 — Cotton waste (including yarn waste and garnetted stock)
+        52.03 — Cotton, carded or combed
+        52.04 — Cotton sewing thread
+        52.05 — Cotton yarn (not sewing thread), not for retail (≥85% cotton)
+        52.06 — Cotton yarn (not sewing thread), not for retail (<85% cotton)
+        52.07 — Cotton yarn for retail sale
+        52.08 — Woven cotton fabrics (≥85% cotton, ≤200 g/m²)
+        52.09 — Woven cotton fabrics (≥85% cotton, >200 g/m²)
+        52.10 — Woven cotton fabrics (<85% cotton, mixed with man-made fibres, ≤200 g/m²)
+        52.11 — Woven cotton fabrics (<85% cotton, mixed with man-made fibres, >200 g/m²)
+        52.12 — Other woven cotton fabrics
+    """
+    text = _product_text(product)
+    result = {"chapter": 52, "candidates": [], "redirect": None, "questions_needed": []}
+
+    if _CH52_FABRIC.search(text):
+        if re.search(r'(?:denim|ג\'ינס)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "52.09", "subheading_hint": "5209.42",
+                "confidence": 0.85, "reasoning": "Denim fabric (≥85% cotton, >200 g/m²) → 52.09.",
+                "rule_applied": "GIR 1 — heading 52.09"})
+        else:
+            result["candidates"].append({"heading": "52.08", "subheading_hint": None,
+                "confidence": 0.75, "reasoning": "Woven cotton fabric → 52.08 (≥85%, ≤200 g/m² default).",
+                "rule_applied": "GIR 1 — heading 52.08"})
+            result["questions_needed"].append("Cotton content ≥85%? Fabric weight ≤200 g/m² or >200?")
+        return result
+    if _CH52_YARN.search(text):
+        if re.search(r'(?:sewing|תפירה)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "52.04", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Cotton sewing thread → 52.04.",
+                "rule_applied": "GIR 1 — heading 52.04"})
+        else:
+            result["candidates"].append({"heading": "52.05", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Cotton yarn (not sewing thread) → 52.05.",
+                "rule_applied": "GIR 1 — heading 52.05"})
+        return result
+    if _CH52_RAW.search(text):
+        if re.search(r'(?:waste|פסולת|linter)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "52.02", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Cotton waste / linters → 52.02.",
+                "rule_applied": "GIR 1 — heading 52.02"})
+        else:
+            result["candidates"].append({"heading": "52.01", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Raw cotton, not carded/combed → 52.01.",
+                "rule_applied": "GIR 1 — heading 52.01"})
+        return result
+
+    result["candidates"].append({"heading": "52.08", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Cotton product type unclear → 52.08.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What form? (raw, yarn, woven fabric)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 53: Other vegetable textile fibres; paper yarn and woven fabrics
+# ============================================================================
+
+_CH53_FLAX = re.compile(
+    r'(?:פשתן|flax|linen)',
+    re.IGNORECASE
+)
+_CH53_JUTE = re.compile(
+    r'(?:יוטה|jute|kenaf)',
+    re.IGNORECASE
+)
+_CH53_SISAL = re.compile(
+    r'(?:סיסל|sisal|agave|henequen)',
+    re.IGNORECASE
+)
+_CH53_HEMP = re.compile(
+    r'(?:קנבוס|hemp|true\s*hemp|cannabis\s*sativa\s*fibre)',
+    re.IGNORECASE
+)
+_CH53_COIR = re.compile(
+    r'(?:קויר|סיבי\s*קוקוס|coir|coconut\s*fibre)',
+    re.IGNORECASE
+)
+_CH53_VEG_FIBRE = re.compile(
+    r'(?:פשתן|יוטה|סיסל|קנבוס|קויר|ramie|abaca|manila\s*hemp|'
+    r'flax|jute|sisal|hemp|coir|vegetable\s*(?:textile\s*)?fibre)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_53_candidate(text):
+    return bool(_CH53_VEG_FIBRE.search(text))
+
+
+def _decide_chapter_53(product):
+    """Chapter 53: Other vegetable textile fibres; paper yarn and woven fabrics of paper yarn.
+
+    Headings:
+        53.01 — Flax, raw or processed (not spun); flax tow and waste
+        53.02 — True hemp, raw or processed (not spun)
+        53.03 — Jute and other bast fibres, raw or processed (not spun)
+        53.05 — Coconut (coir), abaca, ramie and other vegetable fibres
+        53.06 — Flax yarn
+        53.07 — Yarn of jute or other bast fibres
+        53.08 — Yarn of other vegetable textile fibres; paper yarn
+        53.09 — Woven fabrics of flax
+        53.10 — Woven fabrics of jute or other bast fibres
+        53.11 — Woven fabrics of other vegetable textile fibres and paper yarn
+    """
+    text = _product_text(product)
+    result = {"chapter": 53, "candidates": [], "redirect": None, "questions_needed": []}
+
+    is_woven = bool(re.search(r'(?:בד|אריג|woven|fabric|cloth)', text, re.IGNORECASE))
+    is_yarn = bool(re.search(r'(?:חוט|yarn|thread|spun)', text, re.IGNORECASE))
+
+    if _CH53_FLAX.search(text):
+        if is_woven:
+            heading, reasoning = "53.09", "Woven fabric of flax/linen → 53.09."
+        elif is_yarn:
+            heading, reasoning = "53.06", "Flax/linen yarn → 53.06."
+        else:
+            heading, reasoning = "53.01", "Raw/processed flax → 53.01."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH53_JUTE.search(text):
+        if is_woven:
+            heading, reasoning = "53.10", "Woven fabric of jute → 53.10."
+        elif is_yarn:
+            heading, reasoning = "53.07", "Jute yarn → 53.07."
+        else:
+            heading, reasoning = "53.03", "Raw/processed jute → 53.03."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH53_HEMP.search(text):
+        if is_woven:
+            heading, reasoning = "53.11", "Woven fabric of hemp → 53.11."
+        elif is_yarn:
+            heading, reasoning = "53.08", "Hemp yarn → 53.08."
+        else:
+            heading, reasoning = "53.02", "Raw/processed hemp → 53.02."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if _CH53_SISAL.search(text) or _CH53_COIR.search(text):
+        if is_woven:
+            heading, reasoning = "53.11", "Woven fabric of sisal/coir/other veg fibre → 53.11."
+        elif is_yarn:
+            heading, reasoning = "53.08", "Sisal/coir yarn → 53.08."
+        else:
+            heading, reasoning = "53.05", "Sisal/coir/other vegetable fibre → 53.05."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+
+    result["candidates"].append({"heading": "53.11", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Other vegetable textile fibre → 53.11.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("What fibre? (flax, jute, sisal, hemp, coir)")
+    return result
+
+
+# ============================================================================
+# CHAPTER 54: Man-made filaments; strip of man-made textile materials
+# ============================================================================
+
+_CH54_POLYESTER_FIL = re.compile(
+    r'(?:פוליאסטר\s*(?:פילמנט|חוט)|polyester\s*(?:filament|yarn|thread|fibre)|'
+    r'PET\s*(?:yarn|filament|fibre))',
+    re.IGNORECASE
+)
+_CH54_NYLON_FIL = re.compile(
+    r'(?:ניילון\s*(?:פילמנט|חוט)|nylon\s*(?:filament|yarn|thread)|'
+    r'polyamide\s*(?:filament|yarn)|PA\s*6|PA\s*66)',
+    re.IGNORECASE
+)
+_CH54_ACRYLIC_FIL = re.compile(
+    r'(?:אקריליק\s*(?:פילמנט|חוט)|acrylic\s*(?:filament|yarn)|'
+    r'modacrylic\s*(?:filament|yarn))',
+    re.IGNORECASE
+)
+_CH54_FILAMENT_FABRIC = re.compile(
+    r'(?:בד\s*(?:פוליאסטר|ניילון|סינתטי)|'
+    r'woven\s*fabric.*(?:synthetic|filament|polyester|nylon|polyamide)|'
+    r'(?:polyester|nylon|polyamide)\s*(?:fabric|cloth|woven)|'
+    r'taffeta|organza\s*(?:polyester|nylon))',
+    re.IGNORECASE
+)
+_CH54_FILAMENT_GENERAL = re.compile(
+    r'(?:פילמנט\s*סינתטי|synthetic\s*filament|man.made\s*filament|'
+    r'artificial\s*filament|viscose\s*filament|rayon\s*filament|'
+    r'acetate\s*filament|cuprammonium|lyocell\s*filament)',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_54_candidate(text):
+    return bool(
+        _CH54_POLYESTER_FIL.search(text) or _CH54_NYLON_FIL.search(text)
+        or _CH54_ACRYLIC_FIL.search(text) or _CH54_FILAMENT_FABRIC.search(text)
+        or _CH54_FILAMENT_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_54(product):
+    """Chapter 54: Man-made filaments; strip and the like of man-made textile materials.
+
+    Key: synthetic vs artificial (regenerated); filament yarn vs woven fabric.
+    Headings:
+        54.01 — Sewing thread of man-made filaments
+        54.02 — Synthetic filament yarn (nylon, polyester, etc.) not for retail
+        54.03 — Artificial filament yarn (viscose, acetate) not for retail
+        54.04 — Synthetic monofilament (≥67 dtex); strip of synthetic
+        54.05 — Artificial monofilament; strip of artificial
+        54.06 — Man-made filament yarn for retail sale
+        54.07 — Woven fabrics of synthetic filament yarn
+        54.08 — Woven fabrics of artificial filament yarn
+    """
+    text = _product_text(product)
+    result = {"chapter": 54, "candidates": [], "redirect": None, "questions_needed": []}
+
+    is_artificial = bool(re.search(r'(?:viscose|rayon|acetate|cuprammonium|lyocell|ויסקוזה|ריון)', text, re.IGNORECASE))
+
+    if _CH54_FILAMENT_FABRIC.search(text):
+        if is_artificial:
+            heading, reasoning = "54.08", "Woven fabric of artificial filament yarn → 54.08."
+        else:
+            heading, reasoning = "54.07", "Woven fabric of synthetic filament yarn → 54.07."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    if re.search(r'(?:sewing|תפירה)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "54.01", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Sewing thread of man-made filament → 54.01.",
+            "rule_applied": "GIR 1 — heading 54.01"})
+        return result
+    if _CH54_NYLON_FIL.search(text) or _CH54_POLYESTER_FIL.search(text) or _CH54_ACRYLIC_FIL.search(text):
+        result["candidates"].append({"heading": "54.02", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Synthetic filament yarn (polyester/nylon/acrylic) → 54.02.",
+            "rule_applied": "GIR 1 — heading 54.02"})
+        return result
+    if is_artificial:
+        result["candidates"].append({"heading": "54.03", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Artificial filament yarn (viscose/rayon/acetate) → 54.03.",
+            "rule_applied": "GIR 1 — heading 54.03"})
+        return result
+
+    result["candidates"].append({"heading": "54.02", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Man-made filament type unclear → 54.02.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Synthetic (polyester/nylon) or artificial (viscose/rayon)? Yarn or fabric?")
+    return result
+
+
+# ============================================================================
+# CHAPTER 55: Man-made staple fibres
+# ============================================================================
+
+_CH55_POLYESTER_STAPLE = re.compile(
+    r'(?:סיבי?\s*פוליאסטר|polyester\s*staple|polyester\s*(?:fibre|fiber)\s*(?:staple)?|'
+    r'PET\s*staple|PSF\b|polyester\s*tow)',
+    re.IGNORECASE
+)
+_CH55_VISCOSE_STAPLE = re.compile(
+    r'(?:סיבי?\s*ויסקוזה|viscose\s*(?:staple|fibre|fiber)|'
+    r'viscose\s*rayon\s*(?:staple|fibre)|VSF\b|modal\s*fibre|'
+    r'lyocell\s*(?:staple|fibre))',
+    re.IGNORECASE
+)
+_CH55_ACRYLIC_STAPLE = re.compile(
+    r'(?:סיבי?\s*אקריליק|acrylic\s*(?:staple|fibre|fiber)|'
+    r'modacrylic\s*(?:staple|fibre))',
+    re.IGNORECASE
+)
+_CH55_NYLON_STAPLE = re.compile(
+    r'(?:סיבי?\s*ניילון|nylon\s*(?:staple|fibre|fiber)|'
+    r'polyamide\s*(?:staple|fibre))',
+    re.IGNORECASE
+)
+_CH55_STAPLE_YARN = re.compile(
+    r'(?:חוט\s*(?:סיבי|סינתטי|אקריליק|ויסקוזה)|'
+    r'yarn\s*of\s*(?:synthetic|artificial|man.made)\s*staple|'
+    r'(?:synthetic|artificial)\s*staple\s*(?:fibre\s*)?yarn|'
+    r'staple\s*fibre\s*yarn)',
+    re.IGNORECASE
+)
+_CH55_STAPLE_FABRIC = re.compile(
+    r'(?:בד\s*(?:סיבי|סינתטי\s*סטייפל)|'
+    r'woven\s*fabric.*(?:synthetic|artificial)\s*staple|'
+    r'(?:synthetic|artificial)\s*staple\s*(?:fibre\s*)?(?:fabric|woven)|'
+    r'staple\s*fibre\s*(?:fabric|woven))',
+    re.IGNORECASE
+)
+_CH55_STAPLE_GENERAL = re.compile(
+    r'(?:סיבי?\s*(?:סינתטי|מלאכותי)|staple\s*fibre|man.made\s*staple|'
+    r'synthetic\s*(?:staple|fibre|fiber)|artificial\s*(?:staple|fibre|fiber))',
+    re.IGNORECASE
+)
+
+
+def _is_chapter_55_candidate(text):
+    return bool(
+        _CH55_POLYESTER_STAPLE.search(text) or _CH55_VISCOSE_STAPLE.search(text)
+        or _CH55_ACRYLIC_STAPLE.search(text) or _CH55_NYLON_STAPLE.search(text)
+        or _CH55_STAPLE_YARN.search(text) or _CH55_STAPLE_FABRIC.search(text)
+        or _CH55_STAPLE_GENERAL.search(text)
+    )
+
+
+def _decide_chapter_55(product):
+    """Chapter 55: Man-made staple fibres.
+
+    Key: synthetic vs artificial + form (staple/tow → yarn → fabric).
+    Headings:
+        55.01 — Synthetic filament tow
+        55.02 — Artificial filament tow
+        55.03 — Synthetic staple fibres, not carded/combed/otherwise processed
+        55.04 — Artificial staple fibres, not carded/combed
+        55.05 — Waste of man-made fibres
+        55.06 — Synthetic staple fibres, carded/combed/otherwise processed
+        55.07 — Artificial staple fibres, carded/combed
+        55.08 — Sewing thread of man-made staple fibres
+        55.09 — Yarn of synthetic staple fibres (not for retail)
+        55.10 — Yarn of artificial staple fibres (not for retail)
+        55.11 — Yarn of man-made staple fibres for retail sale
+        55.12 — Woven fabrics of synthetic staple fibres (≥85%)
+        55.13 — Woven of synthetic staple (<85%, mixed with cotton, ≤170 g/m²)
+        55.14 — Woven of synthetic staple (<85%, mixed with cotton, >170 g/m²)
+        55.15 — Other woven fabrics of synthetic staple fibres
+        55.16 — Woven fabrics of artificial staple fibres
+    """
+    text = _product_text(product)
+    result = {"chapter": 55, "candidates": [], "redirect": None, "questions_needed": []}
+
+    is_artificial = bool(re.search(r'(?:viscose|rayon|modal|lyocell|ויסקוזה|ריון)', text, re.IGNORECASE))
+
+    # Fabric
+    if _CH55_STAPLE_FABRIC.search(text) or re.search(r'(?:woven|fabric|cloth|בד|אריג)', text, re.IGNORECASE):
+        if is_artificial or _CH55_VISCOSE_STAPLE.search(text):
+            heading, reasoning = "55.16", "Woven fabric of artificial staple fibre → 55.16."
+        else:
+            heading, reasoning = "55.12", "Woven fabric of synthetic staple fibre → 55.12."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.80, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    # Yarn
+    if _CH55_STAPLE_YARN.search(text) or re.search(r'(?:yarn|חוט)', text, re.IGNORECASE):
+        if re.search(r'(?:sewing|תפירה)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "55.08", "subheading_hint": None,
+                "confidence": 0.85, "reasoning": "Sewing thread of man-made staple → 55.08.",
+                "rule_applied": "GIR 1 — heading 55.08"})
+        elif is_artificial or _CH55_VISCOSE_STAPLE.search(text):
+            result["candidates"].append({"heading": "55.10", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Yarn of artificial staple fibre → 55.10.",
+                "rule_applied": "GIR 1 — heading 55.10"})
+        else:
+            result["candidates"].append({"heading": "55.09", "subheading_hint": None,
+                "confidence": 0.80, "reasoning": "Yarn of synthetic staple fibre → 55.09.",
+                "rule_applied": "GIR 1 — heading 55.09"})
+        return result
+    # Waste
+    if re.search(r'(?:waste|פסולת|scrap)', text, re.IGNORECASE):
+        result["candidates"].append({"heading": "55.05", "subheading_hint": None,
+            "confidence": 0.85, "reasoning": "Waste of man-made fibres → 55.05.",
+            "rule_applied": "GIR 1 — heading 55.05"})
+        return result
+    # Tow
+    if re.search(r'(?:tow\b|טאו)', text, re.IGNORECASE):
+        if is_artificial:
+            heading, reasoning = "55.02", "Artificial filament tow → 55.02."
+        else:
+            heading, reasoning = "55.01", "Synthetic filament tow → 55.01."
+        result["candidates"].append({"heading": heading, "subheading_hint": None,
+            "confidence": 0.85, "reasoning": reasoning,
+            "rule_applied": f"GIR 1 — heading {heading}"})
+        return result
+    # Raw staple fibres
+    if _CH55_POLYESTER_STAPLE.search(text) or _CH55_ACRYLIC_STAPLE.search(text) or _CH55_NYLON_STAPLE.search(text):
+        result["candidates"].append({"heading": "55.03", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Synthetic staple fibre → 55.03.",
+            "rule_applied": "GIR 1 — heading 55.03"})
+        return result
+    if _CH55_VISCOSE_STAPLE.search(text):
+        result["candidates"].append({"heading": "55.04", "subheading_hint": None,
+            "confidence": 0.80, "reasoning": "Artificial staple fibre (viscose/modal/lyocell) → 55.04.",
+            "rule_applied": "GIR 1 — heading 55.04"})
+        return result
+
+    result["candidates"].append({"heading": "55.03", "subheading_hint": None,
+        "confidence": 0.60, "reasoning": "Man-made staple fibre type unclear → 55.03.",
+        "rule_applied": "GIR 1"})
+    result["questions_needed"].append("Synthetic or artificial? What form? (staple fibre, yarn, woven fabric)")
+    return result
+
+
+# ============================================================================
 # PUBLIC API — dispatches to the right chapter tree
 # ============================================================================
 
@@ -5198,6 +6952,23 @@ _CHAPTER_TREES = {
     36: _decide_chapter_36,
     37: _decide_chapter_37,
     38: _decide_chapter_38,
+    39: _decide_chapter_39,
+    40: _decide_chapter_40,
+    41: _decide_chapter_41,
+    42: _decide_chapter_42,
+    43: _decide_chapter_43,
+    44: _decide_chapter_44,
+    45: _decide_chapter_45,
+    46: _decide_chapter_46,
+    47: _decide_chapter_47,
+    48: _decide_chapter_48,
+    49: _decide_chapter_49,
+    50: _decide_chapter_50,
+    51: _decide_chapter_51,
+    52: _decide_chapter_52,
+    53: _decide_chapter_53,
+    54: _decide_chapter_54,
+    55: _decide_chapter_55,
 }
 
 
@@ -5274,6 +7045,23 @@ _CHAPTER_DETECT_ORDER = [
     (36, _is_chapter_36_candidate, _decide_chapter_36),
     (37, _is_chapter_37_candidate, _decide_chapter_37),
     (38, _is_chapter_38_candidate, _decide_chapter_38),
+    (39, _is_chapter_39_candidate, _decide_chapter_39),
+    (40, _is_chapter_40_candidate, _decide_chapter_40),
+    (41, _is_chapter_41_candidate, _decide_chapter_41),
+    (42, _is_chapter_42_candidate, _decide_chapter_42),
+    (43, _is_chapter_43_candidate, _decide_chapter_43),
+    (44, _is_chapter_44_candidate, _decide_chapter_44),
+    (45, _is_chapter_45_candidate, _decide_chapter_45),
+    (46, _is_chapter_46_candidate, _decide_chapter_46),
+    (47, _is_chapter_47_candidate, _decide_chapter_47),
+    (48, _is_chapter_48_candidate, _decide_chapter_48),
+    (49, _is_chapter_49_candidate, _decide_chapter_49),
+    (50, _is_chapter_50_candidate, _decide_chapter_50),
+    (51, _is_chapter_51_candidate, _decide_chapter_51),
+    (52, _is_chapter_52_candidate, _decide_chapter_52),
+    (53, _is_chapter_53_candidate, _decide_chapter_53),
+    (54, _is_chapter_54_candidate, _decide_chapter_54),
+    (55, _is_chapter_55_candidate, _decide_chapter_55),
 ]
 
 
