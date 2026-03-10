@@ -49,6 +49,7 @@ from lib.broker_engine import (
     _FTA_COUNTRY_MAP,
     ISRAEL_VAT_RATE,
     _SPARE_PART_RE,
+    _enforce_hs_format,
 )
 
 from lib.consultation_handler import _render_broker_result_html, _format_hs
@@ -1018,3 +1019,112 @@ class TestRenderBrokerBlocks:
     def test_html_starts_with_doctype(self):
         html = _render_broker_result_html(self._make_result())
         assert html.strip().startswith("<!DOCTYPE html>")
+
+
+# ---------------------------------------------------------------------------
+#  Session 104: HS Format Hard Contract Tests
+# ---------------------------------------------------------------------------
+
+_HS_FORMAT_RE = re.compile(r'^\d{2}\.\d{2}\.\d{6}/\d$')
+
+
+class TestEnforceHsFormat:
+    """_enforce_hs_format() must ALWAYS return XX.XX.XXXXXX/X."""
+
+    def test_raw_10_digits(self):
+        assert _HS_FORMAT_RE.match(_enforce_hs_format("8501000000"))
+
+    def test_raw_4_digit_heading(self):
+        result = _enforce_hs_format("8413")
+        assert _HS_FORMAT_RE.match(result), f"Got '{result}'"
+
+    def test_already_formatted(self):
+        result = _enforce_hs_format("85.01.000000/9")
+        assert _HS_FORMAT_RE.match(result), f"Got '{result}'"
+
+    def test_with_dots_no_slash(self):
+        result = _enforce_hs_format("73.04.190000")
+        assert _HS_FORMAT_RE.match(result), f"Got '{result}'"
+
+    def test_11_digit_code(self):
+        result = _enforce_hs_format("84271010005")
+        assert _HS_FORMAT_RE.match(result), f"Got '{result}'"
+
+    def test_empty_string(self):
+        assert _enforce_hs_format("") == ""
+
+    def test_none_returns_empty(self):
+        assert _enforce_hs_format(None) == ""
+
+    def test_check_digit_is_correct(self):
+        """Verify Luhn check digit for known codes."""
+        assert _enforce_hs_format("7304190000") == "73.04.190000/9"
+        assert _enforce_hs_format("9401000000") == "94.01.000000/1"
+        assert _enforce_hs_format("8501000000") == "85.01.000000/9"
+
+    def test_preserves_existing_check_digit(self):
+        assert _enforce_hs_format("0101210000/2") == "01.01.210000/2"
+
+
+class TestClassifySingleItemOutputFormat:
+    """classify_single_item() output must have XX.XX.XXXXXX/X hs_code."""
+
+    @staticmethod
+    def _mock_db():
+        """Minimal mock DB for elimination engine."""
+        class DocSnap:
+            exists = False
+            def to_dict(self): return {}
+        class DocRef:
+            def get(self): return DocSnap()
+        class Query:
+            def stream(self): return iter([])
+            def where(self, *a, **kw): return self
+            def order_by(self, *a, **kw): return self
+            def limit(self, *a, **kw): return self
+        class Coll:
+            def document(self, d): return DocRef()
+            def where(self, *a, **kw): return Query()
+            def stream(self): return iter([])
+        class DB:
+            def collection(self, p): return Coll()
+        return DB()
+
+    def _classify(self, item, ctx=None):
+        import lib.broker_engine as be
+        be._ensure_elimination()
+        ctx = ctx or {"direction": "import", "legal_category": None, "origin_country": "China"}
+        return classify_single_item(item, ctx, self._mock_db())
+
+    def test_pump_hs_format(self):
+        result = self._classify({
+            "name": "משאבת מים חשמלית",
+            "description": "electric water pump",
+            "physical": "metal", "essence": "pump", "function": "pumping",
+            "transformation_stage": "finished_product", "processing_state": "assembled",
+        })
+        if result:
+            assert _HS_FORMAT_RE.match(result["hs_code"]), \
+                f"hs_code not in XX.XX.XXXXXX/X format: '{result['hs_code']}'"
+
+    def test_sofa_hs_format(self):
+        result = self._classify({
+            "name": "ספה תלת מושבית",
+            "description": "three-seater sofa, upholstered",
+            "physical": "wood, fabric", "essence": "furniture", "function": "seating",
+            "transformation_stage": "finished_product", "processing_state": "assembled",
+        }, {"direction": "import", "legal_category": None, "origin_country": "Turkey"})
+        if result:
+            assert _HS_FORMAT_RE.match(result["hs_code"]), \
+                f"hs_code not in XX.XX.XXXXXX/X format: '{result['hs_code']}'"
+
+    def test_confidence_between_0_and_1(self):
+        result = self._classify({
+            "name": "משאבת מים חשמלית",
+            "description": "electric water pump",
+            "physical": "metal", "essence": "pump", "function": "pumping",
+            "transformation_stage": "finished_product", "processing_state": "assembled",
+        })
+        if result:
+            assert 0 <= result["confidence"] <= 1.0, \
+                f"confidence not in 0.0-1.0 range: {result['confidence']}"

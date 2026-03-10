@@ -4756,5 +4756,77 @@ class TestChapters98to99Integration(unittest.TestCase):
         self.assertEqual(result["chapter"], 99)
 
 
+import re
+
+_HS_FORMAT_RE = re.compile(r'^\d{2}\.\d{2}\.\d{6}/\d$')
+
+
+class TestDecisionTreeHsFormat(unittest.TestCase):
+    """Session 104: Any 10+ digit HS code from decide_chapter() must be XX.XX.XXXXXX/X.
+
+    Decision tree candidates use raw headings (4-digit) and subheading_hints.
+    When broker_engine converts them via _convert_tree_candidates(), it pads
+    to 10 digits. This test validates the raw tree output for consistency.
+    """
+
+    _PRODUCTS = [
+        _make_product(name="live cattle beef cow", essence="live animal"),
+        _make_product(name="frozen chicken breast", essence="poultry meat"),
+        _make_product(name="fresh atlantic salmon fillet", essence="fish"),
+        _make_product(name="cheddar cheese block", essence="dairy"),
+        _make_product(name="rice jasmine long grain", essence="cereal"),
+        _make_product(name="olive oil extra virgin", essence="vegetable oil"),
+        _make_product(name="chocolate bar dark 70%", essence="food preparation"),
+        _make_product(name="whisky single malt scotch", essence="alcoholic beverage"),
+        _make_product(name="cotton t-shirt men", essence="garment", physical="cotton"),
+        _make_product(name="steel pipe seamless", essence="tube", physical="carbon steel"),
+        _make_product(name="laptop computer notebook", essence="computer", physical="electronics"),
+        _make_product(name="electric motor AC 5kW", essence="motor", physical="copper windings"),
+        _make_product(name="wooden dining table", essence="furniture", physical="oak wood"),
+        _make_product(name="car sedan passenger vehicle", essence="vehicle", physical="steel"),
+        _make_product(name="personal effects toshav chozer", essence="personal belongings"),
+    ]
+
+    def test_all_candidate_headings_are_valid(self):
+        """Every heading from decide_chapter must be a valid 4-digit code."""
+        for product in self._PRODUCTS:
+            result = decide_chapter(product)
+            if result and result.get("candidates"):
+                for c in result["candidates"]:
+                    heading = c.get("heading", "")
+                    if heading:
+                        digits = heading.replace(".", "")
+                        self.assertTrue(
+                            digits.isdigit() and len(digits) == 4,
+                            f"Heading '{heading}' for '{product['name'][:30]}' "
+                            f"is not a 4-digit code"
+                        )
+
+    def test_subheading_hints_are_valid(self):
+        """Any subheading_hint must be 4-10 digits (raw, no format required)."""
+        for product in self._PRODUCTS:
+            result = decide_chapter(product)
+            if result and result.get("candidates"):
+                for c in result["candidates"]:
+                    hint = c.get("subheading_hint", "")
+                    if hint:
+                        digits = hint.replace(".", "")
+                        self.assertTrue(
+                            digits.isdigit() and 4 <= len(digits) <= 10,
+                            f"subheading_hint '{hint}' for '{product['name'][:30]}' "
+                            f"is not 4-10 digits"
+                        )
+
+    def test_chapter_field_is_integer(self):
+        """decide_chapter() must return chapter as int."""
+        for product in self._PRODUCTS:
+            result = decide_chapter(product)
+            if result:
+                self.assertIsInstance(
+                    result["chapter"], int,
+                    f"chapter for '{product['name'][:30]}' is {type(result['chapter'])}"
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

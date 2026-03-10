@@ -58,6 +58,23 @@ try:
 except ImportError:
     from _discount_codes_data import get_sub_code, get_discount_code
 
+try:
+    from lib.librarian import get_israeli_hs_format
+except ImportError:
+    from librarian import get_israeli_hs_format
+
+
+def _enforce_hs_format(raw_code):
+    """Always returns XX.XX.XXXXXX/X — enforced at output boundary.
+
+    Every HS code leaving classify_single_item() passes through here.
+    This is the single enforcement point for the Israeli canonical format.
+    """
+    if not raw_code:
+        return ""
+    return get_israeli_hs_format(raw_code)
+
+
 # Elimination engine — heavy, lazy import in functions that need it
 _eliminate = None
 _make_product_info = None
@@ -848,7 +865,7 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
         top = pre_result["candidates"][0]
         raw_conf = top.get("confidence", 30)
         return {
-            "hs_code": top.get("hs_code", ""),
+            "hs_code": _enforce_hs_format(top.get("hs_code", "")),
             "confidence": raw_conf / 100.0 if raw_conf > 1.0 else raw_conf,
             "description": top.get("description", ""),
             "duty_rate": top.get("duty_rate", ""),
@@ -860,7 +877,7 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     best = max(survivors, key=lambda s: s.get("confidence", 0))
     raw_conf = best.get("confidence", 50)
     return {
-        "hs_code": best.get("hs_code", ""),
+        "hs_code": _enforce_hs_format(best.get("hs_code", "")),
         "confidence": raw_conf / 100.0 if raw_conf > 1.0 else raw_conf,
         "description": best.get("description", best.get("description_en", "")),
         "duty_rate": best.get("duty_rate", ""),
