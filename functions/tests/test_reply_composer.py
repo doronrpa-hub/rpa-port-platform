@@ -138,17 +138,22 @@ class TestBlockTariffTable:
     def test_with_candidates(self):
         html = _block_tariff_table([
             {"code": "39.01.100000", "description": "פוליאתילן",
-             "confidence": "high", "duty": "5%", "purchase_tax": "0%", "vat": "18%"},
+             "confidence": 0.85, "duty": "5%", "purchase_tax": "0%",
+             "supplement_rate": "12%", "statistical_unit": "ק״ג"},
         ])
         assert "39.01.100000" in html
         assert "5%" in html
         assert "פוליאתילן" in html
-        assert "גבוה" in html
+        assert "85%" in html  # confidence badge
+        assert "שיעור התוספות" in html  # column header
+        assert "יחידה סטטיסטית" in html  # column header
+        assert "12%" in html  # supplement rate value
+        assert "ק״ג" in html  # statistical unit value
 
     def test_multiple_candidates(self):
         html = _block_tariff_table([
-            {"code": "3901", "description": "A", "confidence": "high"},
-            {"code": "3902", "description": "B", "confidence": "low"},
+            {"code": "3901", "description": "A", "confidence": 0.9},
+            {"code": "3902", "description": "B", "confidence": 0.3},
         ])
         assert "3901" in html
         assert "3902" in html
@@ -156,6 +161,18 @@ class TestBlockTariffTable:
     def test_empty(self):
         html = _block_tariff_table(None)
         assert html == ""
+
+    def test_six_column_headers(self):
+        """Verify all 6 official columns are present."""
+        html = _block_tariff_table([
+            {"code": "8507.60", "description": "Li-ion", "confidence": 0.7},
+        ])
+        assert "פרט" in html
+        assert "תיאור" in html
+        assert "מכס כללי" in html
+        assert "מס קנייה" in html
+        assert "שיעור התוספות" in html
+        assert "יחידה סטטיסטית" in html
 
 
 # ---------------------------------------------------------------------------

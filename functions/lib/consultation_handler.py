@@ -585,6 +585,112 @@ _COLOR_WARN = "#f39c12"
 _LOGO_URL = "https://storage.googleapis.com/rpa-port-customs.appspot.com/logo/rpa_port_logo.png"
 
 
+def _render_elimination_audit(items):
+    """Render collapsible elimination audit trail for all classified items.
+
+    Shows which candidates were eliminated at each level and why.
+    Collapsed by default using <details><summary>.
+
+    Args:
+        items: list of item dicts from broker_result["items"], each with
+               classification.elimination_result containing steps/eliminated/survivors.
+
+    Returns:
+        HTML string or "" if no elimination data.
+    """
+    audit_parts = []
+    for ci in items:
+        cls = ci.get("classification", {})
+        if not cls:
+            continue
+        elim = cls.get("elimination_result", {})
+        if not elim:
+            continue
+
+        item_name = ci.get("item", {}).get("name", "?")
+        steps = elim.get("steps", [])
+        eliminated = elim.get("eliminated", [])
+        survivors = elim.get("survivors", [])
+        input_count = elim.get("input_count", 0)
+        survivor_count = elim.get("survivor_count", len(survivors))
+
+        if not steps and not eliminated:
+            continue
+
+        audit_parts.append(f'<div style="margin-bottom:12px;">')
+        audit_parts.append(f'<div style="font-weight:bold;font-size:13px;color:#2c3e50;margin-bottom:4px;">'
+                           f'{item_name} — {input_count} מועמדים → {survivor_count} שרדו</div>')
+
+        # Steps table
+        if steps:
+            audit_parts.append('<table width="100%" cellpadding="3" cellspacing="0" '
+                               'style="border:1px solid #ddd;border-collapse:collapse;font-size:11px;margin-bottom:6px;">')
+            audit_parts.append('<tr style="background:#f0f4f8;font-weight:bold;">'
+                               '<td style="border:1px solid #ddd;width:30%;">שלב</td>'
+                               '<td style="border:1px solid #ddd;width:15%;">לפני</td>'
+                               '<td style="border:1px solid #ddd;width:15%;">אחרי</td>'
+                               '<td style="border:1px solid #ddd;">הוסרו</td></tr>')
+            for step in steps:
+                level = step.get("level", "")
+                before = step.get("candidates_before", "")
+                after = step.get("candidates_after", "")
+                elim_codes = step.get("eliminated_codes", [])
+                elim_str = ", ".join(
+                    f'<span dir="ltr" style="font-family:monospace;unicode-bidi:embed;">{c[:10]}</span>'
+                    for c in elim_codes[:5]
+                ) if elim_codes else "—"
+                row_bg = "#fff5f5" if elim_codes else ""
+                audit_parts.append(f'<tr style="background:{row_bg};">'
+                                   f'<td style="border:1px solid #ddd;">{level}</td>'
+                                   f'<td style="border:1px solid #ddd;text-align:center;">{before}</td>'
+                                   f'<td style="border:1px solid #ddd;text-align:center;">{after}</td>'
+                                   f'<td style="border:1px solid #ddd;">{elim_str}</td></tr>')
+            audit_parts.append('</table>')
+
+        # Eliminated list
+        if eliminated:
+            audit_parts.append('<div style="font-size:11px;color:#888;margin-top:4px;">הוסרו: ')
+            elim_items = []
+            for e in eliminated[:10]:
+                hs = e.get("hs_code", "")[:10]
+                reason = e.get("elimination_reason", "")[:80]
+                at_level = e.get("eliminated_at_level", "")
+                elim_items.append(
+                    f'<span dir="ltr" style="font-family:monospace;unicode-bidi:embed;">{hs}</span>'
+                    f' ({at_level}: {reason})'
+                )
+            audit_parts.append("; ".join(elim_items))
+            audit_parts.append('</div>')
+
+        # Challenges (devil's advocate)
+        challenges = elim.get("challenges", [])
+        if challenges:
+            audit_parts.append('<div style="font-size:11px;color:#c0392b;margin-top:4px;">אתגרים: ')
+            for ch in challenges[:5]:
+                hs = ch.get("hs_code", "")[:10]
+                arg = ch.get("counter_argument", "")[:100]
+                sev = ch.get("severity", "")
+                sev_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(sev, "")
+                audit_parts.append(
+                    f'{sev_icon} <span dir="ltr" style="font-family:monospace;unicode-bidi:embed;">{hs}</span>: {arg}<br/>'
+                )
+            audit_parts.append('</div>')
+
+        audit_parts.append('</div>')
+
+    if not audit_parts:
+        return ""
+
+    return (
+        '<details style="margin-top:8px;">'
+        '<summary style="cursor:pointer;font-size:13px;font-weight:bold;color:#1a5276;'
+        'padding:8px 0;">פירוט סיווג — מסלול אלימינציה</summary>'
+        '<div style="padding:8px 0;font-size:12px;line-height:1.6;">'
+        + "\n".join(audit_parts)
+        + '</div></details>'
+    )
+
+
 def _render_broker_result_html(broker_result):
     """Render broker_engine.process_case() output into branded RTL HTML email.
 
@@ -653,7 +759,7 @@ def _render_broker_result_html(broker_result):
                     label = {"weight": "משקל", "dimensions": "מידות", "frequency": "תדר", "power": "הספק"}[field]
                     specs_found.append(f"{label}: {val}")
             parts.append(f"""<div style="font-size:13px;margin-bottom:6px;padding:8px;background:#eaf2f8;border-right:3px solid {_RPA_BLUE};">
-                ביקרתי באתר <a href="{source_url}" style="color:{_RPA_BLUE};">{source_url[:60]}</a>
+                ביקרתי באתר <a href="{source_url}" dir="ltr" style="color:{_RPA_BLUE};unicode-bidi:embed;">{source_url[:60]}</a>
                 {f' ומצאתי: <b>{", ".join(specs_found)}</b>' if specs_found else ' — לא נמצאו מפרטים טכניים'}
             </div>""")
     if not _has_url_visit:
@@ -709,9 +815,9 @@ def _render_broker_result_html(broker_result):
             desc = cls.get("description", "")
             conf_color = _COLOR_OK if conf_pct >= 70 else _COLOR_WARN if conf_pct >= 40 else "#c0392b"
 
-            # Recommended code highlight
+            # Recommended code highlight — HS code always LTR
             parts.append(f"""<div style="font-size:13px;margin-bottom:8px;">
-                <span style="font-size:18px;font-family:monospace;font-weight:bold;">{hs_fmt}</span>
+                <span dir="ltr" style="font-size:18px;font-family:monospace;font-weight:bold;unicode-bidi:embed;">{hs_fmt}</span>
                 <span style="background:{conf_color};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;margin-right:8px;">{conf_pct}%</span>
                 <span style="color:#555;font-size:12px;">{desc[:80]}</span>
             </div>""")
@@ -733,34 +839,52 @@ def _render_broker_result_html(broker_result):
                     sc_desc = sc.get("description", "") or sc.get("description_en", "")
                     sc_duty = sc.get("duty_rate", "")
                     sc_pt = sc.get("purchase_tax", "")
+                    sc_supp = sc.get("supplement_rate", "")
+                    sc_unit = sc.get("statistical_unit", "")
                     is_recommended = (str(sc.get("hs_code", "")).replace(".", "").replace("/", "") ==
                                       str(hs_code).replace(".", "").replace("/", ""))
                     row_style = f"background:#e8f8f5;border-right:4px solid {_COLOR_OK};" if is_recommended else ""
                     parts.append(f"""<tr style="{row_style}">
-                        <td style="border:1px solid #ddd;font-family:monospace;">{sc_hs}</td>
+                        <td style="border:1px solid #ddd;font-family:monospace;" dir="ltr">{sc_hs}</td>
                         <td style="border:1px solid #ddd;">{sc_desc[:100]}</td>
                         <td style="border:1px solid #ddd;text-align:center;">{sc_duty or '—'}</td>
                         <td style="border:1px solid #ddd;text-align:center;">{sc_pt or '—'}</td>
-                        <td style="border:1px solid #ddd;text-align:center;">—</td>
-                        <td style="border:1px solid #ddd;text-align:center;">—</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_supp or '—'}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_unit or '—'}</td>
                     </tr>""")
                 parts.append("</table>")
             else:
-                # Single-row table when no sub-codes available
+                # Single-row 6-column table when no sub-codes available
+                # Try to get supplement + unit from XML data
+                _sr = ""
+                _su = ""
+                try:
+                    from lib._tariff_supplements import get_supplement_rate, get_unit_for_hs
+                    _hs_raw = str(hs_code).replace(".", "").replace("/", "")
+                    _supp = get_supplement_rate(_hs_raw)
+                    if _supp:
+                        _sr = _supp.get("customs_en", "") or _supp.get("customs_rate", "")
+                    _unit = get_unit_for_hs(_hs_raw)
+                    if _unit:
+                        _su = _unit.get("he", "") or _unit.get("en", "")
+                except ImportError:
+                    pass
                 parts.append(f"""<table width="100%" cellpadding="5" cellspacing="0" style="border:1px solid #ccc;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
                 <tr style="background:#2c3e50;color:#fff;font-weight:bold;">
                     <td style="border:1px solid #555;">פרט</td>
                     <td style="border:1px solid #555;">תיאור</td>
                     <td style="border:1px solid #555;">מכס כללי</td>
                     <td style="border:1px solid #555;">מס קנייה</td>
-                    <td style="border:1px solid #555;">מע"מ</td>
+                    <td style="border:1px solid #555;">שיעור התוספות</td>
+                    <td style="border:1px solid #555;">יחידה סטטיסטית</td>
                 </tr>
                 <tr style="background:#e8f8f5;border-right:4px solid {_COLOR_OK};">
-                    <td style="border:1px solid #ddd;font-family:monospace;">{hs_fmt}</td>
+                    <td style="border:1px solid #ddd;font-family:monospace;" dir="ltr">{hs_fmt}</td>
                     <td style="border:1px solid #ddd;">{desc[:100]}</td>
                     <td style="border:1px solid #ddd;text-align:center;">{duty or '—'}</td>
                     <td style="border:1px solid #ddd;text-align:center;">{pt or '—'}</td>
-                    <td style="border:1px solid #ddd;text-align:center;">{vat}</td>
+                    <td style="border:1px solid #ddd;text-align:center;">{_sr or '—'}</td>
+                    <td style="border:1px solid #ddd;text-align:center;">{_su or '—'}</td>
                 </tr></table>""")
 
             # Chapter 98 + discount (if personal import)
@@ -772,7 +896,7 @@ def _render_broker_result_html(broker_result):
                 disc_desc = disc.get("discount_desc_he", "")
                 disc_duty = disc.get("discount_duty", "")
                 parts.append(f"""<div style="background:#e8f8f5;padding:8px;border-right:3px solid {_COLOR_OK};font-size:13px;margin-bottom:8px;">
-                    <b>פרק 98:</b> {_format_hs(ch98_code)} — {ch98_desc[:60] or disc_desc[:60]}
+                    <b>פרק 98:</b> <span dir="ltr" style="font-family:monospace;unicode-bidi:embed;">{_format_hs(ch98_code)}</span> — {ch98_desc[:60] or disc_desc[:60]}
                     <br/>מכס הנחה: <b>{disc_duty or ch98_duty or 'פטור'}</b>
                 </div>""")
 
@@ -947,10 +1071,17 @@ def _render_broker_result_html(broker_result):
     # --- Footer ---
     now_str = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
     parts.append(f"""<tr><td style="background:#f8f9fa;padding:12px 24px;font-size:11px;color:#999;text-align:center;">
-        RCB | RPA-PORT | {now_str} UTC | Broker Engine (deterministic)
+        <span dir="ltr" style="unicode-bidi:embed;">RCB | RPA-PORT | {now_str} UTC | Broker Engine</span>
         <br/>סיווג זה הוא הערכה מקצועית ואינו מהווה אישור רשמי של רשות המכס.
         <br/>מתודולוגיה: נוהל סיווג טובין #3 | כללי פרשנות GIR 1-6 | אלימינציה דטרמיניסטית
-    </td></tr></table></body></html>""")
+    </td></tr>""")
+
+    # --- Task 4: Elimination audit trail (collapsible) ---
+    _elim_html = _render_elimination_audit(items)
+    if _elim_html:
+        parts.append(f"""<tr><td style="padding:8px 24px;">{_elim_html}</td></tr>""")
+
+    parts.append("</table></body></html>")
 
     return "\n".join(parts)
 

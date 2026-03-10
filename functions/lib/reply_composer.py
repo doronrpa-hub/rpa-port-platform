@@ -204,11 +204,13 @@ def _block_diagnosis(diagnosis_data):
 # -----------------------------------------------------------------------
 
 def _block_tariff_table(hs_candidates):
-    """HS code candidates table with duty/PT/VAT.
+    """Official 6-column tariff table: פרט / תיאור / מכס כללי / מס קנייה / שיעור התוספות / יחידה.
+
+    Same schema as _render_broker_result_html() in consultation_handler.py.
 
     Args:
         hs_candidates: list of dicts with code, description, confidence,
-                       duty, purchase_tax, vat, source_ref
+                       duty, purchase_tax, supplement_rate, statistical_unit
     """
     if not hs_candidates:
         return ""
@@ -216,32 +218,40 @@ def _block_tariff_table(hs_candidates):
     rows = []
     for c in hs_candidates:
         conf = c.get("confidence", "")
-        conf_color = {
-            "high": _COLOR_OK, "medium": _COLOR_WARN, "low": _COLOR_ERR,
-        }.get(conf, _COLOR_PENDING)
-        conf_label = {"high": "גבוה", "medium": "בינוני", "low": "נמוך"}.get(conf, "—")
+        if isinstance(conf, (int, float)):
+            conf_pct = int(conf * 100) if conf <= 1 else int(conf)
+            conf_color = _COLOR_OK if conf_pct >= 70 else _COLOR_WARN if conf_pct >= 40 else _COLOR_ERR
+            conf_badge = (f'<span style="display:inline-block;padding:2px 6px;border-radius:8px;'
+                          f'font-size:10px;font-weight:bold;color:#fff;background:{conf_color};">'
+                          f'{conf_pct}%</span>')
+        else:
+            conf_badge = ""
+        hs_code = _esc(c.get('code', c.get('hs_code', '')))
+        desc = _esc(c.get('description', ''))
+        duty = _esc(c.get('duty', c.get('duty_rate', '')) or '—')
+        pt = _esc(c.get('purchase_tax', '') or '—')
+        supp = _esc(c.get('supplement_rate', '') or '—')
+        unit = _esc(c.get('statistical_unit', '') or '—')
 
         rows.append(f"""<tr>
-  <td class="hs-code">{_esc(c.get('code', ''))}</td>
-  <td>{_esc(c.get('description', ''))}</td>
-  <td style="text-align:center;">{_esc(c.get('duty', '—'))}</td>
-  <td style="text-align:center;">{_esc(c.get('purchase_tax', '—'))}</td>
-  <td style="text-align:center;">{_esc(c.get('vat', '18%'))}</td>
-  <td style="text-align:center;"><span style="display:inline-block;padding:2px 8px;
-    border-radius:8px;font-size:10px;font-weight:bold;color:#fff;
-    background:{conf_color};">{_esc(conf_label)}</span></td>
+  <td style="font-family:monospace;font-size:13px;" dir="ltr">{hs_code} {conf_badge}</td>
+  <td>{desc}</td>
+  <td style="text-align:center;">{duty}</td>
+  <td style="text-align:center;">{pt}</td>
+  <td style="text-align:center;">{supp}</td>
+  <td style="text-align:center;">{unit}</td>
 </tr>""")
 
     return f"""
 <div class="section-title">סיווג מכס — מועמדים</div>
 <table class="tariff-table">
 <thead><tr>
-  <th style="width:18%;">פרט מכס</th>
+  <th style="width:15%;">פרט</th>
   <th>תיאור</th>
-  <th style="width:10%;text-align:center;">מכס</th>
-  <th style="width:10%;text-align:center;">מס קניה</th>
-  <th style="width:8%;text-align:center;">מע"מ</th>
-  <th style="width:10%;text-align:center;">ביטחון</th>
+  <th style="width:10%;text-align:center;">מכס כללי</th>
+  <th style="width:10%;text-align:center;">מס קנייה</th>
+  <th style="width:13%;text-align:center;">שיעור התוספות</th>
+  <th style="width:12%;text-align:center;">יחידה סטטיסטית</th>
 </tr></thead>
 <tbody>
 {''.join(rows)}

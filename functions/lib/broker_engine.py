@@ -942,7 +942,7 @@ def _drill_to_subheading(hs_code, item, db):
     Returns:
         dict with:
             hs_code: str — best 10-digit code (or original if can't determine)
-            sub_codes: list — all sibling sub-codes found
+            sub_codes: list — all sibling sub-codes found (with supplement_rate, statistical_unit)
             description: str — description of matched code
             duty_rate: str — duty rate of matched code
             method: str — "spec_match" | "only_child" | "kram"
@@ -1014,6 +1014,9 @@ def _drill_to_subheading(hs_code, item, db):
     if not sub_codes:
         return None
 
+    # Enrich sub_codes with supplement rate + statistical unit from XML data
+    _enrich_subcodes_with_supplements(sub_codes)
+
     # Only one sub-code → use it directly
     if len(sub_codes) == 1:
         sc = sub_codes[0]
@@ -1057,6 +1060,32 @@ def _drill_to_subheading(hs_code, item, db):
         "method": "kram",
         "clarification_options": options,
     }
+
+
+def _enrich_subcodes_with_supplements(sub_codes):
+    """Enrich sub_codes with supplement_rate and statistical_unit from XML data.
+
+    Adds 'supplement_rate' and 'statistical_unit' keys to each sub-code dict.
+    Data comes from _tariff_supplements.py (parsed from XML tariff archives).
+    """
+    try:
+        from lib._tariff_supplements import get_supplement_rate, get_unit_for_hs
+    except ImportError:
+        try:
+            from _tariff_supplements import get_supplement_rate, get_unit_for_hs
+        except ImportError:
+            return  # Data file not available — columns stay "—"
+
+    for sc in sub_codes:
+        hs = str(sc.get("hs_code", "")).replace(".", "").replace("/", "")
+        # Supplement rate (שיעור התוספות)
+        supp = get_supplement_rate(hs)
+        if supp:
+            sc["supplement_rate"] = supp.get("customs_en", "") or supp.get("customs_rate", "")
+        # Statistical unit (יחידה סטטיסטית)
+        unit = get_unit_for_hs(hs)
+        if unit:
+            sc["statistical_unit"] = unit.get("he", "") or unit.get("en", "")
 
 
 def _match_subcode_by_specs(sub_codes, item):

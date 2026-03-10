@@ -568,6 +568,44 @@ COLLECTION_FIELDS = {
         "hs_fields": ["hs_codes"],
         "doc_type": "record",
     },
+    # Session 102: Knowledge Enrichment — Tier 2 heading enrichment
+    "heading_knowledge": {
+        "title_fields": ["description_en", "description_he"],
+        "keyword_fields": ["hs4", "hs4_raw", "synonym_candidates"],
+        "hs_fields": ["hs4_raw"],
+        "doc_type": "enrichment",
+    },
+    "enrichment_log": {
+        "title_fields": ["run_id", "status"],
+        "keyword_fields": ["cursor_before", "cursor_after"],
+        "hs_fields": [],
+        "doc_type": "log",
+    },
+    "enrichment_state": {
+        "title_fields": [],
+        "keyword_fields": ["last_hs4"],
+        "hs_fields": [],
+        "doc_type": "state",
+    },
+    # Session 102: Inbox Relearner — cc@ mailbox scan
+    "inbox_learning": {
+        "title_fields": ["subject"],
+        "keyword_fields": ["from_email", "bols", "containers", "document_types"],
+        "hs_fields": ["hs_codes"],
+        "doc_type": "learning",
+    },
+    "inbox_learning_log": {
+        "title_fields": ["run_id", "status"],
+        "keyword_fields": [],
+        "hs_fields": [],
+        "doc_type": "log",
+    },
+    "inbox_learning_state": {
+        "title_fields": [],
+        "keyword_fields": [],
+        "hs_fields": [],
+        "doc_type": "state",
+    },
     # ═══════════════════════════════════════════
     #  Session 79 C5: 70 missing collections added below
     # ═══════════════════════════════════════════
