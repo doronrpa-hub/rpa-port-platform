@@ -435,3 +435,196 @@ class TestSynonymExtraction:
         long_text = " ".join([f"Word{i}" for i in range(200)])
         result = _extract_synonyms(long_text, "")
         assert len(result) <= 50
+
+
+# ═══════════════════════════════════════════════════════════
+#  TEST 8: FIX 1 — CURSOR FORMAT CONVERSION
+# ═══════════════════════════════════════════════════════════
+
+class TestCursorFormatConversion:
+
+    def test_raw4_to_dotted_prefix_basic(self):
+        from lib.knowledge_enrichment import _raw4_to_dotted_prefix
+        assert _raw4_to_dotted_prefix("8411") == "84.11"
+        assert _raw4_to_dotted_prefix("0101") == "01.01"
+        assert _raw4_to_dotted_prefix("9905") == "99.05"
+
+    def test_raw4_to_dotted_prefix_padding(self):
+        from lib.knowledge_enrichment import _raw4_to_dotted_prefix
+        assert _raw4_to_dotted_prefix("84") == "84.00"
+        assert _raw4_to_dotted_prefix("1") == "10.00"
+
+    def test_raw4_to_dotted_prefix_truncation(self):
+        from lib.knowledge_enrichment import _raw4_to_dotted_prefix
+        assert _raw4_to_dotted_prefix("84130000") == "84.13"
+
+    def test_cursor_advances_past_heading(self):
+        """After cursor 8411, query should start at 84.12 (next heading)."""
+        from lib.knowledge_enrichment import _get_unenriched_headings
+
+        db = MagicMock()
+        # tariff returns empty (we just care about the query params)
+        query = MagicMock()
+        query.stream.return_value = iter([])
+        query.where.return_value = query
+        query.limit.return_value = query
+
+        tariff_coll = MagicMock()
+        tariff_coll.order_by.return_value = query
+        db.collection.return_value = tariff_coll
+
+        _get_unenriched_headings(db, "8411", 10)
+
+        # Verify the where() call used dotted format >= "84.12"
+        query.where.assert_called_once_with("hs_code", ">=", "84.12")
+
+    def test_cursor_chapter_boundary(self):
+        """After cursor 8499, should advance to 85.00."""
+        from lib.knowledge_enrichment import _get_unenriched_headings
+
+        db = MagicMock()
+        query = MagicMock()
+        query.stream.return_value = iter([])
+        query.where.return_value = query
+        query.limit.return_value = query
+
+        tariff_coll = MagicMock()
+        tariff_coll.order_by.return_value = query
+        db.collection.return_value = tariff_coll
+
+        _get_unenriched_headings(db, "8499", 10)
+        query.where.assert_called_once_with("hs_code", ">=", "85.00")
+
+    def test_empty_cursor_no_where(self):
+        """Empty cursor should not call where()."""
+        from lib.knowledge_enrichment import _get_unenriched_headings
+
+        db = MagicMock()
+        query = MagicMock()
+        query.stream.return_value = iter([])
+        query.limit.return_value = query
+
+        tariff_coll = MagicMock()
+        tariff_coll.order_by.return_value = query
+        db.collection.return_value = tariff_coll
+
+        _get_unenriched_headings(db, "", 10)
+        query.where.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════
+#  TEST 9: FIX 2 — ENSURE STR HELPER
+# ═══════════════════════════════════════════════════════════
+
+class TestEnsureStr:
+
+    def test_str_passthrough(self):
+        from lib.knowledge_enrichment import _ensure_str
+        assert _ensure_str("hello") == "hello"
+
+    def test_bytes_decoded(self):
+        from lib.knowledge_enrichment import _ensure_str
+        assert _ensure_str(b"hello") == "hello"
+
+    def test_hebrew_bytes(self):
+        from lib.knowledge_enrichment import _ensure_str
+        hebrew = "משאבות"
+        result = _ensure_str(hebrew.encode("utf-8"))
+        assert result == hebrew
+
+    def test_none_returns_empty(self):
+        from lib.knowledge_enrichment import _ensure_str
+        assert _ensure_str(None) == ""
+
+    def test_int_returns_str(self):
+        from lib.knowledge_enrichment import _ensure_str
+        assert _ensure_str(42) == "42"
+
+
+# ═══════════════════════════════════════════════════════════
+#  TEST 10: FIX 3 — TARIC GARBAGE DETECTION
+# ═══════════════════════════════════════════════════════════
+
+class TestTaricGarbageDetection:
+
+    @patch("lib.knowledge_enrichment.requests.get")
+    def test_garbage_html_falls_back_to_wiki(self, mock_get):
+        from lib.knowledge_enrichment import _fetch_taric_notes
+        resp = MagicMock()
+        resp.status_code = 200
+        # Simulate JS-rendered garbage (lots of HTML, very little text)
+        resp.text = "<html><head><script>var x = 1;</script></head><body></body></html>" * 20
+        mock_get.return_value = resp
+
+        result = _fetch_taric_notes("8413", wiki_en_fallback="Pumps are used to move liquids.")
+        assert result == "Pumps are used to move liquids."
+
+    @patch("lib.knowledge_enrichment.requests.get")
+    def test_short_response_falls_back(self, mock_get):
+        from lib.knowledge_enrichment import _fetch_taric_notes
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.text = "tiny"
+        mock_get.return_value = resp
+
+        result = _fetch_taric_notes("0101", wiki_en_fallback="Horses")
+        assert result == "Horses"
+
+    @patch("lib.knowledge_enrichment.requests.get")
+    def test_http_error_falls_back(self, mock_get):
+        from lib.knowledge_enrichment import _fetch_taric_notes
+        resp = MagicMock()
+        resp.status_code = 500
+        mock_get.return_value = resp
+
+        result = _fetch_taric_notes("0101", wiki_en_fallback="fallback text")
+        assert result == "fallback text"
+
+    @patch("lib.knowledge_enrichment.requests.get")
+    def test_network_error_falls_back(self, mock_get):
+        from lib.knowledge_enrichment import _fetch_taric_notes
+        mock_get.side_effect = Exception("timeout")
+
+        result = _fetch_taric_notes("0101", wiki_en_fallback="fallback")
+        assert result == "fallback"
+
+
+# ═══════════════════════════════════════════════════════════
+#  TEST 11: FIX 4 — WIKI SEARCH TERM EXTRACTION
+# ═══════════════════════════════════════════════════════════
+
+class TestWikiSearchTermExtraction:
+
+    def test_extracts_meaningful_nouns(self):
+        from lib.knowledge_enrichment import _extract_wiki_search_term
+        assert _extract_wiki_search_term("Live horses, asses, mules and hinnies") == "horses asses mules"
+
+    def test_pumps_for_liquids(self):
+        from lib.knowledge_enrichment import _extract_wiki_search_term
+        result = _extract_wiki_search_term("Pumps for liquids, whether or not fitted with a measuring device")
+        assert "pumps" in result
+        assert "liquids" in result
+        assert "whether" not in result
+
+    def test_skips_tariff_jargon(self):
+        from lib.knowledge_enrichment import _extract_wiki_search_term
+        result = _extract_wiki_search_term("Other articles of iron or steel, not elsewhere specified")
+        assert "elsewhere" not in result
+        assert "specified" not in result
+        assert "iron" in result or "steel" in result
+
+    def test_empty_description(self):
+        from lib.knowledge_enrichment import _extract_wiki_search_term
+        assert _extract_wiki_search_term("") == ""
+        assert _extract_wiki_search_term(None) == ""
+
+    def test_short_description_fallback(self):
+        from lib.knowledge_enrichment import _extract_wiki_search_term
+        result = _extract_wiki_search_term("Xyz of the and for")
+        assert "xyz" in result
+
+    def test_max_3_words(self):
+        from lib.knowledge_enrichment import _extract_wiki_search_term
+        result = _extract_wiki_search_term("Aluminum copper zinc nickel tin lead bismuth")
+        words = result.split()
+        assert len(words) <= 3

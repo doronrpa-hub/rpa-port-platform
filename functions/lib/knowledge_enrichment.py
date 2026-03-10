@@ -89,7 +89,7 @@ _WIKI_EN_SUMMARY = "https://en.wikipedia.org/api/rest_v1/page/summary/{term}"
 _WIKI_HE_SUMMARY = "https://he.wikipedia.org/api/rest_v1/page/summary/{term}"
 _TARIC_URL = "https://ec.europa.eu/taxation_customs/dds2/taric/taric_consultation.jsp"
 
-_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+_USER_AGENT = "RCB-RPA-PORT/1.0 (rcb@rpa-port.co.il) python-requests"
 _HEADERS = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
 
 # XML namespace from CustomsItem.xml / CustomsItemDetailsHistory.xml
@@ -103,6 +103,20 @@ _STOP_WORDS = frozenset({
     "first", "may", "can", "used", "its", "these", "those", "after",
     "between", "each", "new", "often", "well", "however", "while",
     "about", "into", "over", "under", "being", "both", "through",
+})
+
+# FIX 4: Skip words for Wikipedia search term extraction
+_WIKI_SKIP_WORDS = frozenset({
+    "live", "other", "of", "and", "for", "the", "in", "or", "not",
+    "elsewhere", "specified", "included", "parts", "thereof", "articles",
+    "preparations", "made", "worked", "containing", "whether", "similar",
+    "kinds", "put", "up", "retail", "sale", "sets", "consisting",
+    "products", "goods", "materials", "n.e.s", "nes", "nesoi",
+    "heading", "subheading", "chapter", "note", "except", "including",
+    "type", "types", "form", "forms", "suitable", "use", "used",
+    "ready", "wholly", "partly", "new", "old", "fresh", "frozen",
+    "dried", "preserved", "crude", "refined", "raw", "processed",
+    "printed", "unprinted", "mounted", "unmounted", "having",
 })
 
 
@@ -120,6 +134,15 @@ def _xml_text(element, tag):
     if child is not None and child.text:
         return child.text.strip()
     return None
+
+
+def _ensure_str(val):
+    """Ensure value is a proper Python str, not bytes. Fixes mojibake."""
+    if val is None:
+        return ""
+    if isinstance(val, bytes):
+        return val.decode("utf-8", errors="replace")
+    return str(val)
 
 
 def _get_data_dir():
@@ -143,8 +166,10 @@ def load_xml_items(path=None):
     try:
         print(f"[ENRICHMENT] Loading CustomsItem.xml ...")
         t0 = time.time()
-        tree = ET.parse(path)
-        root = tree.getroot()
+        # FIX 2: Explicit UTF-8 encoding — read as text, parse from string
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        root = ET.fromstring(content)
 
         for elem in root.iter(f"{{{_XML_NS['ns']}}}CustomsItem"):
             item_id = _xml_text(elem, "ID")
@@ -153,11 +178,11 @@ def load_xml_items(path=None):
                 continue
             hs10 = fc.replace(".", "").replace(" ", "").ljust(10, "0")[:10]
             items[hs10] = {
-                "id": item_id,
-                "parent_id": _xml_text(elem, "Parent_CustomsItemID") or "",
-                "hierarchy_level": _xml_text(elem, "CustomsItemHierarchicLocationID") or "",
-                "check_digit": _xml_text(elem, "ComputedCheckDigit") or "",
-                "book_type": _xml_text(elem, "CustomsBookTypeID") or "",
+                "id": _ensure_str(item_id),
+                "parent_id": _ensure_str(_xml_text(elem, "Parent_CustomsItemID")),
+                "hierarchy_level": _ensure_str(_xml_text(elem, "CustomsItemHierarchicLocationID")),
+                "check_digit": _ensure_str(_xml_text(elem, "ComputedCheckDigit")),
+                "book_type": _ensure_str(_xml_text(elem, "CustomsBookTypeID")),
             }
         print(f"[ENRICHMENT] Loaded {len(items)} items in {time.time() - t0:.1f}s")
     except Exception as e:
@@ -183,8 +208,10 @@ def load_xml_descriptions(path=None):
     try:
         print(f"[ENRICHMENT] Loading CustomsItemDetailsHistory.xml ...")
         t0 = time.time()
-        tree = ET.parse(path)
-        root = tree.getroot()
+        # FIX 2: Explicit UTF-8 encoding — read as text, parse from string
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        root = ET.fromstring(content)
 
         for elem in root.iter(f"{{{_XML_NS['ns']}}}CustomsItemDetailsHistory"):
             item_id = _xml_text(elem, "CustomsItemID")
@@ -193,8 +220,8 @@ def load_xml_descriptions(path=None):
             # EntityStatusID: 2=active, 4=cancelled
             if _xml_text(elem, "EntityStatusID") == "4":
                 continue
-            he = _xml_text(elem, "GoodsDescription") or ""
-            en = _xml_text(elem, "EnglishGoodsDescription") or ""
+            he = _ensure_str(_xml_text(elem, "GoodsDescription"))
+            en = _ensure_str(_xml_text(elem, "EnglishGoodsDescription"))
             if not he and not en:
                 continue
             if en == "---":
@@ -242,8 +269,8 @@ def get_heading_structure(hs4):
             desc = descriptions.get(info["id"], {})
             results.append({
                 "hs10": hs10,
-                "description_he": desc.get("description_he", ""),
-                "description_en": desc.get("description_en", ""),
+                "description_he": _ensure_str(desc.get("description_he", "")),
+                "description_en": _ensure_str(desc.get("description_en", "")),
                 "hierarchy_level": info.get("hierarchy_level", ""),
                 "formatted": get_israeli_hs_format(hs10),
             })
@@ -256,13 +283,37 @@ def get_heading_structure(hs4):
 #  EXTERNAL FETCHERS
 # ═══════════════════════════════════════════════════════════
 
+def _extract_wiki_search_term(description):
+    """FIX 4: Extract meaningful nouns from tariff description for Wikipedia search.
+    E.g., 'Live horses, asses, mules and hinnies' → 'horses asses mules'
+    E.g., 'Pumps for liquids' → 'pumps liquids'"""
+    if not description or len(description.strip()) < 3:
+        return ""
+    # Extract English words (3+ chars)
+    words = re.findall(r'[a-zA-Z]{3,}', description.lower())
+    meaningful = [w for w in words if w not in _WIKI_SKIP_WORDS]
+    if meaningful:
+        return " ".join(meaningful[:3])
+    # Fallback: first 50 chars of description
+    return description.strip()[:50]
+
+
 def _fetch_wikipedia(description, lang="en"):
     """Search Wikipedia for description, fetch top result summary.
     Returns summary text (max 2000 chars) or empty string."""
     if not description or len(description.strip()) < 3:
         return ""
 
-    search_term = description.strip().rstrip(".:;-")
+    # FIX 4: Extract meaningful search terms instead of raw description
+    if lang == "en":
+        search_term = _extract_wiki_search_term(description)
+    else:
+        # Hebrew: use description as-is (no skip word filtering for Hebrew)
+        search_term = description.strip().rstrip(".:;-")
+
+    if not search_term or len(search_term) < 3:
+        return ""
+
     search_url = _WIKI_EN_SEARCH if lang == "en" else _WIKI_HE_SEARCH
     summary_base = _WIKI_EN_SUMMARY if lang == "en" else _WIKI_HE_SUMMARY
 
@@ -297,8 +348,10 @@ def _fetch_wikipedia(description, lang="en"):
         return ""
 
 
-def _fetch_taric_notes(hs4):
-    """Fetch TARIC consultation page for a 4-digit heading.
+def _fetch_taric_notes(hs4, wiki_en_fallback=""):
+    """FIX 3: Fetch TARIC consultation page for a 4-digit heading.
+    The TARIC JSP page is JS-rendered — if response is garbage (mostly
+    script/CSS), falls back to wiki_en content as notes.
     Returns cleaned text or empty string. NOT authoritative for Israeli customs."""
     hs4_clean = hs4.replace(".", "").replace(" ", "")[:4]
     try:
@@ -308,17 +361,28 @@ def _fetch_taric_notes(hs4):
             "offset": "0", "order": "num", "pageSize": "20",
         }, headers={"User-Agent": _USER_AGENT, "Accept": "text/html"}, timeout=15)
         if resp.status_code != 200:
-            return ""
+            return wiki_en_fallback
         text = resp.text
         if len(text) < 100:
-            return ""
+            return wiki_en_fallback
+
         # Strip HTML tags
         clean = re.sub(r'<[^>]+>', ' ', text)
         clean = re.sub(r'\s+', ' ', clean).strip()
-        return clean[:3000] if clean else ""
+
+        # FIX 3: Detect garbage — if clean text is mostly JS/CSS noise
+        # Real TARIC content has heading codes like "8413" in the text
+        if len(clean) < 200 or hs4_clean not in clean:
+            return wiki_en_fallback
+
+        # Check text-to-original ratio — if < 10% is real text, it's garbage
+        if len(clean) < len(text) * 0.10:
+            return wiki_en_fallback
+
+        return clean[:3000]
     except Exception as e:
         print(f"[ENRICHMENT] TARIC error for {hs4_clean}: {e}")
-        return ""
+        return wiki_en_fallback
 
 
 def _extract_synonyms(wiki_en, wiki_he):
@@ -340,6 +404,13 @@ def _extract_synonyms(wiki_en, wiki_he):
 #  CURSOR / STATE
 # ═══════════════════════════════════════════════════════════
 
+def _raw4_to_dotted_prefix(hs4):
+    """FIX 1: Convert raw 4-digit HS code to dotted prefix for tariff query.
+    '8411' → '84.11', '0101' → '01.01'"""
+    hs4 = hs4.ljust(4, "0")[:4]
+    return f"{hs4[:2]}.{hs4[2:4]}"
+
+
 def _load_state(db):
     """Read enrichment_state/cursor doc."""
     doc = db.collection("enrichment_state").document("cursor").get()
@@ -358,11 +429,22 @@ def _save_state(db, state):
 
 def _get_unenriched_headings(db, after_hs4, limit):
     """Get next batch of 4-digit headings from tariff that haven't been enriched.
+    FIX 1: Uses dotted prefix for cursor comparison — tariff hs_code field
+    uses dotted format (e.g., '84.13.100000'), so cursor must match.
     Returns list of {hs4, description_he, description_en}."""
     query = db.collection("tariff").order_by("hs_code")
     if after_hs4:
-        after_10 = after_hs4.ljust(10, "0")[:10]
-        query = query.where("hs_code", ">", after_10)
+        # FIX 1: Convert raw cursor to dotted format for correct string comparison
+        dotted_prefix = _raw4_to_dotted_prefix(after_hs4)
+        # Use next heading prefix to skip the current heading entirely
+        # "84.11" → next is "84.12" (increment last 2 digits)
+        ch = int(after_hs4[:2])
+        sub = int(after_hs4[2:4])
+        if sub < 99:
+            next_prefix = f"{ch:02d}.{sub + 1:02d}"
+        else:
+            next_prefix = f"{ch + 1:02d}.00"
+        query = query.where("hs_code", ">=", next_prefix)
     query = query.limit(500)  # read extra to find unique headings
 
     seen = set()
@@ -385,8 +467,8 @@ def _get_unenriched_headings(db, after_hs4, limit):
 
         headings.append({
             "hs4": hs4,
-            "description_he": data.get("description_he", "") or data.get("description", "") or "",
-            "description_en": data.get("description_en", "") or data.get("english_description", "") or "",
+            "description_he": _ensure_str(data.get("description_he", "") or data.get("description", "") or ""),
+            "description_en": _ensure_str(data.get("description_en", "") or data.get("english_description", "") or ""),
         })
         if len(headings) >= limit:
             break
@@ -401,8 +483,8 @@ def _get_unenriched_headings(db, after_hs4, limit):
 def _enrich_one(db, heading_info):
     """Enrich one 4-digit heading. Returns (success: bool, error_msg: str|None)."""
     hs4 = heading_info["hs4"]
-    desc_en = heading_info.get("description_en", "")
-    desc_he = heading_info.get("description_he", "")
+    desc_en = _ensure_str(heading_info.get("description_en", ""))
+    desc_he = _ensure_str(heading_info.get("description_he", ""))
 
     try:
         # 1. Official structure from local XML (instant, no HTTP)
@@ -414,8 +496,13 @@ def _enrich_one(db, heading_info):
                 if s.get("description_en"):
                     desc_en = s["description_en"]
                     break
+        if not desc_he and structure:
+            for s in structure:
+                if s.get("description_he"):
+                    desc_he = s["description_he"]
+                    break
 
-        # 2. Wikipedia EN
+        # 2. Wikipedia EN — use extracted search terms (FIX 4)
         wiki_en = _fetch_wikipedia(desc_en, lang="en")
         time.sleep(_FETCH_DELAY_SEC)
 
@@ -423,14 +510,14 @@ def _enrich_one(db, heading_info):
         wiki_he = _fetch_wikipedia(desc_he or desc_en, lang="he")
         time.sleep(_FETCH_DELAY_SEC)
 
-        # 4. TARIC notes
-        taric = _fetch_taric_notes(hs4)
+        # 4. TARIC notes — falls back to wiki_en if garbage (FIX 3)
+        taric = _fetch_taric_notes(hs4, wiki_en_fallback=wiki_en)
         time.sleep(_FETCH_DELAY_SEC)
 
         # 5. Synonym candidates
         synonyms = _extract_synonyms(wiki_en, wiki_he)
 
-        # 6. Write to heading_knowledge
+        # 6. Write to heading_knowledge — all strings ensured via _ensure_str
         formatted_hs4 = f"{hs4[:2]}.{hs4[2:4]}"
         doc = {
             "hs4": formatted_hs4,
@@ -443,8 +530,8 @@ def _enrich_one(db, heading_info):
             "official_structure": [
                 {
                     "hs10": s["hs10"],
-                    "description_he": s["description_he"],
-                    "description_en": s["description_en"],
+                    "description_he": _ensure_str(s["description_he"]),
+                    "description_en": _ensure_str(s["description_en"]),
                     "formatted": s["formatted"],
                 }
                 for s in structure
@@ -571,7 +658,7 @@ def enrich_headings_batch(db):
     }
     _log_run(db, run_id, summary)
 
-    print(f"[ENRICHMENT] === Done: {processed} processed, {len(errors)} errors, cursor→{last_hs4} ===")
+    print(f"[ENRICHMENT] === Done: {processed} processed, {len(errors)} errors, cursor->{last_hs4} ===")
     return {
         "status": "completed",
         "run_id": run_id,
