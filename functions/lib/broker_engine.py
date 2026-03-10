@@ -96,15 +96,34 @@ def _ensure_vocabulary():
 # Hebrew prefixes to strip when matching vocabulary
 _HE_PREFIXES = ("וה", "של", "מה", "לה", "בה", "כש", "מ", "ב", "ל", "ה", "ו", "כ", "ש")
 
-# Stop words to skip during vocabulary extraction
+# Stop words to skip during vocabulary extraction — common Hebrew verbs,
+# adjectives, pronouns, and adverbs that are NOT product nouns
 _VOCAB_STOP = frozenset({
+    # Hebrew function words / pronouns
     "יש", "לי", "את", "של", "על", "עם", "או", "גם", "כי", "אם", "לא", "זה",
     "מה", "הם", "הוא", "היא", "כל", "אני", "אנחנו", "רוצה", "צריך", "שרוצה",
     "שצריך", "לייבא", "לייצא", "ליבא", "ליצא", "יבוא", "יצוא", "לסווג",
     "סיווג", "פרט", "המכס", "מכס", "טובין", "שברצונך", "ברצונך",
+    # Hebrew verbs / tenses that slip through vocabulary as false positives
+    "יהיו", "יהיה", "היה", "היתה", "היו", "הייתי", "נהיה", "להיות",
+    "עושה", "עשיתי", "עושים", "לעשות", "צריכים", "רוצים", "יכול", "יכולה",
+    "אפשר", "נראה", "חושב", "חושבת", "יודע", "יודעת", "מבקש", "מבקשת",
+    "שולח", "שולחת", "מצורף", "מצורפת", "מצורפים", "נא", "בבקשה",
+    # Hebrew adjectives / descriptors that are NOT product names
+    "פרטי", "פרטית", "מיוחד", "מיוחדת", "חדש", "חדשה", "ישן", "ישנה",
+    "גדול", "גדולה", "קטן", "קטנה", "טוב", "טובה", "רע", "רעה",
+    "ראשון", "שני", "שלישי", "אחר", "אחרת", "אחרים", "שונה", "שונים",
+    "ישראל", "ישראלי", "ישראלית", "בינלאומי", "בינלאומית",
+    # Hebrew nouns that are NOT products
+    "דבר", "דברים", "עניין", "נושא", "שאלה", "תשובה", "בקשה", "הזמנה",
+    "חברה", "לקוח", "ספק", "משלוח", "עסקה", "מסמך", "מסמכים", "קובץ",
+    "תודה", "שלום", "בוקר", "ערב", "יום", "חודש", "שנה",
+    # English stop words
     "the", "a", "an", "of", "for", "and", "or", "with", "to", "from", "is",
     "in", "on", "by", "what", "how", "need", "want", "import", "export",
-    "classify", "tariff", "customs", "code", "attached",
+    "classify", "tariff", "customs", "code", "attached", "please", "hello",
+    "thank", "thanks", "would", "like", "about", "this", "that", "which",
+    "special", "private", "new", "old", "good", "bad", "first", "second",
 })
 
 
@@ -2285,6 +2304,19 @@ def process_case(email_text, attachments_text, db, get_secret_func,
                  "description": text[:500], "category": "commercial"}
                 for vp in vocab_products
             ]
+        elif vocab_chapters:
+            # Vocab extraction found nothing but smart_classify identified chapters.
+            # Use the email body itself as the product description with a chapter hint.
+            ch_hint = sorted(vocab_chapters)[0]
+            body_clean = re.sub(r'<[^>]+>', ' ', text).strip()
+            body_first_line = body_clean.split('\n')[0].strip()[:80] or body_clean[:80]
+            print(f"    Chapter hint fallback: ch.{ch_hint} from smart_classify, body='{body_first_line[:50]}'")
+            case_plan.items_to_classify = [{
+                "name": body_first_line,
+                "description": body_clean[:500],
+                "category": "commercial",
+                "chapter_hint": ch_hint,
+            }]
         else:
             return {
                 "status": "no_items",
@@ -2333,10 +2365,15 @@ def process_case(email_text, attachments_text, db, get_secret_func,
         # PHASE 2: Spare part check
         spare_chapter = _check_spare_part(item, text, db)
 
+        # Merge item-level chapter_hint into vocab_chapters
+        _vc = vocab_chapters
+        if item.get("chapter_hint"):
+            _vc = (vocab_chapters or set()) | {item["chapter_hint"]}
+
         # PHASES 3-6: Classify via elimination engine
         result = classify_single_item(item, operation_context, db,
                                       spare_chapter=spare_chapter,
-                                      vocab_chapters=vocab_chapters)
+                                      vocab_chapters=_vc)
 
         if not result:
             classified_items.append({
