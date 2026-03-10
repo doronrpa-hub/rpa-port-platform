@@ -10384,11 +10384,15 @@ def _decide_chapter_84(product):
     if _CH84_PUMP.search(text):
         if re.search(r'(?:compressor|air\s*compressor|gas\s*compressor|refrigerat)', text, re.IGNORECASE):
             result["candidates"].append({"heading": "84.14", "subheading_hint": None,
-                "confidence": 0.85, "reasoning": "Air/gas compressor → 84.14.",
+                "confidence": 0.90, "reasoning": "Air/gas compressor → 84.14.",
+                "rule_applied": "GIR 1 — heading 84.14"})
+        elif re.search(r'(?:fan\b|blower|מאוורר|ventilat)', text, re.IGNORECASE):
+            result["candidates"].append({"heading": "84.14", "subheading_hint": None,
+                "confidence": 0.90, "reasoning": "Fan / blower / ventilating hood → 84.14.",
                 "rule_applied": "GIR 1 — heading 84.14"})
         else:
             result["candidates"].append({"heading": "84.13", "subheading_hint": None,
-                "confidence": 0.85, "reasoning": "Liquid pump → 84.13.",
+                "confidence": 0.90, "reasoning": "Pump for liquids / liquid elevator → 84.13.",
                 "rule_applied": "GIR 1 — heading 84.13"})
         return result
 
@@ -10628,7 +10632,21 @@ _CH85_GENERAL = re.compile(
 )
 
 
+# Products that are mechanically defined (Ch.84) even when electrically powered.
+# "Electric pump" is a pump (84.13), not an electric motor (85.01).
+# Section XVI Note 3: machines with electric motor are classified by their function.
+_CH85_EXCLUDE_MECHANICAL = re.compile(
+    r'(?:משאבה|pump\b|מדחס|compressor\b|מאוורר|fan\b|blower\b|'
+    r'עגורן|crane\b|מלגזה|forklift\b|מכונת?\s*כביסה|washing\s*machine|'
+    r'מזגן|air\s*condition|מקרר|refrigerat|מכונת?\s*תפירה|sewing\s*machine)',
+    re.IGNORECASE
+)
+
+
 def _is_chapter_85_candidate(text):
+    # Exclude products whose function belongs to Ch.84 — "electric" is just power source.
+    if _CH85_EXCLUDE_MECHANICAL.search(text):
+        return False
     return bool(
         _CH85_MOTOR_GENERATOR.search(text) or _CH85_TRANSFORMER.search(text)
         or _CH85_BATTERY.search(text) or _CH85_VACUUM.search(text)
