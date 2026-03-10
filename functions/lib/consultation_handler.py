@@ -1325,6 +1325,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                 _broker_text, "", db, get_secret_func,
                 vocab_chapters=_sc_vocab_chapters,
             )
+            print(f"    Broker Engine result: status={broker_result.get('status') if broker_result else 'None'}, items={len(broker_result.get('items', [])) if broker_result else 0}")
             if broker_result and broker_result.get("status") == "completed":
                 items = broker_result.get("items", [])
                 classified_count = sum(
@@ -1364,7 +1365,7 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
                 print(f"    Broker Engine: no_items — vocab extraction found nothing")
                 # Fall through to composition pipeline (SIF will handle)
         except Exception as e:
-            print(f"    Broker Engine error: {e}")
+            print(f"    Broker Engine CRASH: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             # If broker already sent the email, do NOT fall through to legacy
