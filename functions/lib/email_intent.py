@@ -876,12 +876,13 @@ def _send_reply_safe(body_html, msg, access_token, rcb_email, subject_override=N
         else:
             subject = f"Re: {orig_subject}"
 
-    # Try threaded reply first, fallback to send
+    # Try threaded reply first, fallback to send with conversationId for threading
     sent = helper_graph_reply(access_token, rcb_email, msg_id, body_html,
                               to_email=from_email, subject=subject)
     if not sent:
+        conv_id = msg.get('conversationId')
         sent = helper_graph_send(access_token, rcb_email, from_email,
-                                 subject, body_html)
+                                 subject, body_html, conversation_id=conv_id)
     return sent
 
 

@@ -75,6 +75,102 @@ def _enforce_hs_format(raw_code):
     return get_israeli_hs_format(raw_code)
 
 
+# Customs vocabulary — for extracting products from conversational text
+_CUSTOMS_VOCABULARY = None
+
+def _ensure_vocabulary():
+    global _CUSTOMS_VOCABULARY
+    if _CUSTOMS_VOCABULARY is not None:
+        return
+    try:
+        from lib._customs_vocabulary import CUSTOMS_VOCABULARY
+        _CUSTOMS_VOCABULARY = CUSTOMS_VOCABULARY
+    except ImportError:
+        try:
+            from _customs_vocabulary import CUSTOMS_VOCABULARY
+            _CUSTOMS_VOCABULARY = CUSTOMS_VOCABULARY
+        except ImportError:
+            _CUSTOMS_VOCABULARY = False  # mark as unavailable
+
+
+# Hebrew prefixes to strip when matching vocabulary
+_HE_PREFIXES = ("וה", "של", "מה", "לה", "בה", "כש", "מ", "ב", "ל", "ה", "ו", "כ", "ש")
+
+# Stop words to skip during vocabulary extraction
+_VOCAB_STOP = frozenset({
+    "יש", "לי", "את", "של", "על", "עם", "או", "גם", "כי", "אם", "לא", "זה",
+    "מה", "הם", "הוא", "היא", "כל", "אני", "אנחנו", "רוצה", "צריך", "שרוצה",
+    "שצריך", "לייבא", "לייצא", "ליבא", "ליצא", "יבוא", "יצוא", "לסווג",
+    "סיווג", "פרט", "המכס", "מכס", "טובין", "שברצונך", "ברצונך",
+    "the", "a", "an", "of", "for", "and", "or", "with", "to", "from", "is",
+    "in", "on", "by", "what", "how", "need", "want", "import", "export",
+    "classify", "tariff", "customs", "code", "attached",
+})
+
+
+def _extract_products_from_vocab(text):
+    """Extract product terms from text using customs vocabulary.
+
+    Used as fallback when analyze_case() finds 0 items (conversational text).
+    Returns list of dicts: [{name, keywords, chapters}]
+    """
+    _ensure_vocabulary()
+    if not _CUSTOMS_VOCABULARY or _CUSTOMS_VOCABULARY is False:
+        return []
+
+    text_lower = text.lower().strip()
+    words = re.split(r'[\s,.\n;:!?()]+', text_lower)
+    words = [w for w in words if len(w) >= 2 and w not in _VOCAB_STOP]
+
+    found = []
+    seen_chapters = set()
+
+    # Check multi-word phrases first (longer = more specific)
+    for phrase_len in range(min(len(words), 4), 0, -1):
+        for i in range(len(words) - phrase_len + 1):
+            phrase = " ".join(words[i:i + phrase_len])
+            if phrase in _CUSTOMS_VOCABULARY:
+                entry = _CUSTOMS_VOCABULARY[phrase]
+                chapters = tuple(sorted(entry.get("chapters", [])))
+                if chapters and chapters not in seen_chapters:
+                    seen_chapters.add(chapters)
+                    official = entry.get("official", phrase)
+                    found.append({
+                        "name": official,
+                        "keywords": [phrase] + ([entry["official_en"]] if entry.get("official_en") else []),
+                        "chapters": list(chapters),
+                        "confidence": entry.get("confidence", "MEDIUM"),
+                    })
+
+    # Also check individual words with Hebrew prefix stripping
+    for word in words:
+        variants = [word]
+        if len(word) > 3:
+            for pfx in _HE_PREFIXES:
+                if word.startswith(pfx) and len(word) - len(pfx) >= 2:
+                    stripped = word[len(pfx):]
+                    if stripped not in variants:
+                        variants.append(stripped)
+        for variant in variants:
+            if variant in _CUSTOMS_VOCABULARY:
+                entry = _CUSTOMS_VOCABULARY[variant]
+                chapters = tuple(sorted(entry.get("chapters", [])))
+                if chapters and chapters not in seen_chapters:
+                    seen_chapters.add(chapters)
+                    official = entry.get("official", variant)
+                    found.append({
+                        "name": official,
+                        "keywords": [variant] + ([entry["official_en"]] if entry.get("official_en") else []),
+                        "chapters": list(chapters),
+                        "confidence": entry.get("confidence", "MEDIUM"),
+                    })
+                break  # First variant match wins
+
+    # Sort: HIGH confidence first, multi-word phrases first
+    found.sort(key=lambda x: (0 if x["confidence"] == "HIGH" else 1, -len(x["name"])))
+    return found[:5]  # Cap at 5 products
+
+
 # Elimination engine — heavy, lazy import in functions that need it
 _eliminate = None
 _make_product_info = None
@@ -2178,15 +2274,27 @@ def process_case(email_text, attachments_text, db, get_secret_func,
             case_plan.items_to_classify = url_items
 
     if not case_plan.items_to_classify:
-        return {
-            "status": "no_items",
-            "operation": case_plan.to_dict(),
-            "items": [],
-            "kram_questions": [{
-                "question_he": "לא זיהיתי פריטים לסיווג. מה הטובין שברצונך לסווג?",
-                "question_en": "No items detected. What goods would you like to classify?",
-            }],
-        }
+        # Fallback: extract products from conversational text via customs vocabulary
+        vocab_products = _extract_products_from_vocab(text)
+        if vocab_products:
+            print(f"    Vocab fallback: {len(vocab_products)} products extracted from text")
+            for vp in vocab_products:
+                print(f"      → {vp['name'][:60]} (chapters: {vp.get('chapters', [])})")
+            case_plan.items_to_classify = [
+                {"name": vp["name"], "keywords": vp["keywords"],
+                 "description": text[:500], "category": "commercial"}
+                for vp in vocab_products
+            ]
+        else:
+            return {
+                "status": "no_items",
+                "operation": case_plan.to_dict(),
+                "items": [],
+                "kram_questions": [{
+                    "question_he": "לא זיהיתי פריטים לסיווג. מה הטובין שברצונך לסווג?",
+                    "question_en": "No items detected. What goods would you like to classify?",
+                }],
+            }
 
     operation_context = {
         "direction": case_plan.direction,

@@ -722,7 +722,7 @@ def _is_internal_recipient(email: str) -> bool:
 
 def helper_graph_send(access_token, user_email, to_email, subject, body_html,
                       reply_to_id=None, attachments_data=None, internet_message_id=None,
-                      deal_id=None, alert_type=None, db=None):
+                      deal_id=None, alert_type=None, db=None, conversation_id=None):
     """Send email via Graph API.
 
     Note: internet_message_id is accepted for backward compatibility but
@@ -769,6 +769,8 @@ def helper_graph_send(access_token, user_email, to_email, subject, body_html,
             'body': {'contentType': 'HTML', 'content': body_html},
             'toRecipients': [{'emailAddress': {'address': to_email}}]
         }
+        if conversation_id:
+            message['conversationId'] = conversation_id
         if attachments_data:
             message['attachments'] = [
                 {
@@ -846,8 +848,8 @@ def helper_graph_reply(access_token, user_email, message_id, body_html, to_email
                 'body': {'contentType': 'HTML', 'content': body_html}
             }
         }
-        if subject:
-            payload['message']['subject'] = subject
+        # NOTE: Do NOT override subject — Graph API /reply inherits the thread
+        # subject automatically. Overriding it breaks Outlook conversation threading.
         if to_email:
             payload['message']['toRecipients'] = [{'emailAddress': {'address': to_email}}]
         if cc_emails:

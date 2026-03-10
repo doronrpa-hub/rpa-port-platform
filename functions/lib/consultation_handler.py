@@ -1360,6 +1360,9 @@ def handle_consultation(msg, db, firestore_module, access_token, rcb_email,
             elif broker_result and broker_result.get("status") == "kram":
                 print(f"    Broker Engine: kram — needs clarification")
                 # Fall through to composition pipeline with kram data
+            elif broker_result and broker_result.get("status") == "no_items":
+                print(f"    Broker Engine: no_items — vocab extraction found nothing")
+                # Fall through to composition pipeline (SIF will handle)
         except Exception as e:
             print(f"    Broker Engine error: {e}")
             import traceback

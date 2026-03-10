@@ -188,7 +188,8 @@ class TestEscalationLadder(unittest.TestCase):
     @patch('lib.consultation_handler._call_level1_gemini')
     @patch('lib.consultation_handler.detect_email_intent', return_value={"intent": "CUSTOMS_QUESTION"})
     @patch('lib.consultation_handler.prepare_context_package')
-    def test_level1_pass(self, mock_sif, mock_detect, mock_l1, mock_send):
+    @patch('lib.consultation_handler.broker_process_case', return_value=None)
+    def test_level1_pass(self, mock_broker, mock_sif, mock_detect, mock_l1, mock_send):
         """Gemini passes quality gate → Level 1 reply, no escalation."""
         from lib.consultation_handler import handle_consultation
 
@@ -217,7 +218,8 @@ class TestEscalationLadder(unittest.TestCase):
     @patch('lib.consultation_handler._call_level1_gemini', return_value=None)
     @patch('lib.consultation_handler.detect_email_intent', return_value={"intent": "CUSTOMS_QUESTION"})
     @patch('lib.consultation_handler.prepare_context_package')
-    def test_level1_fail_level2_agree(self, mock_sif, mock_detect, mock_l1,
+    @patch('lib.consultation_handler.broker_process_case', return_value=None)
+    def test_level1_fail_level2_agree(self, mock_broker, mock_sif, mock_detect, mock_l1,
                                       mock_l2, mock_compare, mock_synth, mock_send):
         """Gemini fails → ChatGPT agrees → Level 2 synthesis."""
         from lib.consultation_handler import handle_consultation
@@ -239,7 +241,8 @@ class TestEscalationLadder(unittest.TestCase):
     @patch('lib.consultation_handler._call_level1_gemini', return_value=None)
     @patch('lib.consultation_handler.detect_email_intent', return_value={"intent": "CUSTOMS_QUESTION"})
     @patch('lib.consultation_handler.prepare_context_package')
-    def test_level3_claude_arbiter(self, mock_sif, mock_detect, mock_l1,
+    @patch('lib.consultation_handler.broker_process_case', return_value=None)
+    def test_level3_claude_arbiter(self, mock_broker, mock_sif, mock_detect, mock_l1,
                                    mock_l2, mock_compare, mock_l3, mock_send):
         """Both disagree → Claude arbitrates → Level 3."""
         from lib.consultation_handler import handle_consultation
@@ -260,7 +263,8 @@ class TestEscalationLadder(unittest.TestCase):
     @patch('lib.consultation_handler._call_level1_gemini', return_value=None)
     @patch('lib.consultation_handler.detect_email_intent', return_value={"intent": "CUSTOMS_QUESTION"})
     @patch('lib.consultation_handler.prepare_context_package')
-    def test_all_levels_fail(self, mock_sif, mock_detect, mock_l1, mock_l2,
+    @patch('lib.consultation_handler.broker_process_case', return_value=None)
+    def test_all_levels_fail(self, mock_broker, mock_sif, mock_detect, mock_l1, mock_l2,
                               mock_compare, mock_l3):
         """All levels fail → all_levels_failed status."""
         from lib.consultation_handler import handle_consultation

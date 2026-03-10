@@ -93,6 +93,20 @@ try:
 except ImportError:
     _TARIFF_SUBTREE_AVAILABLE = False
 
+try:
+    from lib.knowledge_enrichment import enrich_headings_batch as _enrich_headings_batch
+    KNOWLEDGE_ENRICHMENT_AVAILABLE = True
+except ImportError as e:
+    print(f"Knowledge Enrichment not available: {e}")
+    KNOWLEDGE_ENRICHMENT_AVAILABLE = False
+
+try:
+    from lib.inbox_relearner import relearn_inbox_batch as _relearn_inbox_batch
+    INBOX_RELEARNER_AVAILABLE = True
+except ImportError as e:
+    print(f"Inbox Relearner not available: {e}")
+    INBOX_RELEARNER_AVAILABLE = False
+
 def get_secret(name):
     """Get secret from Google Cloud Secret Manager"""
     try:
@@ -2808,3 +2822,69 @@ def rcb_daily_backup(event: scheduler_fn.ScheduledEvent) -> None:
         print(f"⚠️ Daily backup PARTIAL: {total_collections} OK, {failed_collections} failed")
     else:
         print(f"✅ Daily backup complete: {total_docs} docs across {total_collections} collections")
+
+
+# ============================================================
+# KNOWLEDGE ENRICHMENT — Tier 2 heading enrichment (overnight)
+# ============================================================
+
+@https_fn.on_request(
+    region="europe-west1",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=540,
+)
+def enrich_headings_batch(req: https_fn.Request) -> https_fn.Response:
+    """Tier 2 heading enrichment — processes 50 HS headings per run.
+    Called by Cloud Scheduler every 30 min during 20:00-06:00 Israel time."""
+    if not KNOWLEDGE_ENRICHMENT_AVAILABLE:
+        return https_fn.Response(
+            json.dumps({"error": "Knowledge enrichment module not available"}),
+            status=503, content_type="application/json",
+        )
+    try:
+        db = firestore.client()
+        result = _enrich_headings_batch(db)
+        return https_fn.Response(
+            json.dumps(result, default=str),
+            status=200, content_type="application/json",
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=500, content_type="application/json",
+        )
+
+
+# ============================================================
+# INBOX RELEARNER — one-time cc@ mailbox scan (read-only)
+# ============================================================
+
+@https_fn.on_request(
+    region="europe-west1",
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=540,
+)
+def relearn_inbox_batch(req: https_fn.Request) -> https_fn.Response:
+    """One-time relearning from cc@rpa-port.co.il mailbox.
+    Processes 50 emails per run. Read only — no actions, no replies."""
+    if not INBOX_RELEARNER_AVAILABLE:
+        return https_fn.Response(
+            json.dumps({"error": "Inbox relearner module not available"}),
+            status=503, content_type="application/json",
+        )
+    try:
+        db = firestore.client()
+        result = _relearn_inbox_batch(db, get_secret)
+        return https_fn.Response(
+            json.dumps(result, default=str),
+            status=200, content_type="application/json",
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=500, content_type="application/json",
+        )
