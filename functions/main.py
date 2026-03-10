@@ -14,6 +14,7 @@ Functions:
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from firebase_functions import scheduler_fn, firestore_fn, https_fn, options
+from google.api_core.exceptions import AlreadyExists
 import json
 import os
 import re
@@ -1027,7 +1028,14 @@ def _rcb_check_email_inner(event) -> None:
         if '[DECL]' in subject.upper():
             import hashlib as _hl_decl
             safe_id_decl = _hl_decl.md5(msg_id.encode()).hexdigest()
-            if get_db().collection("rcb_processed").document(safe_id_decl).get().exists:
+            try:
+                get_db().collection("rcb_processed").document(safe_id_decl).create({
+                    "processed_at": firestore.SERVER_TIMESTAMP,
+                    "locked_by": "rcb_check_email",
+                    "type": "declaration_pending",
+                })
+            except AlreadyExists:
+                print(f"  RC-001: {safe_id_decl} already claimed (decl), skipping")
                 continue
             print(f"  📜 Declaration received: {subject[:50]} from {from_email}")
             try:
@@ -1067,7 +1075,14 @@ def _rcb_check_email_inner(event) -> None:
         if not is_direct:
             import hashlib as _hl
             safe_id_cc = _hl.md5(msg_id.encode()).hexdigest()
-            if get_db().collection("rcb_processed").document(safe_id_cc).get().exists:
+            try:
+                get_db().collection("rcb_processed").document(safe_id_cc).create({
+                    "processed_at": firestore.SERVER_TIMESTAMP,
+                    "locked_by": "rcb_check_email",
+                    "type": "cc_pending",
+                })
+            except AlreadyExists:
+                print(f"  RC-001: {safe_id_cc} already claimed (cc), skipping")
                 continue
 
             print(f"  👁️ CC observation: {subject[:50]} from {from_email}")
@@ -1165,11 +1180,18 @@ def _rcb_check_email_inner(event) -> None:
         else:
             print(f"    📬 rcb@ not sole TO recipient — classify only, no reply")
 
-        # Check if already processed
+        # Check if already processed — atomic claim via .create()
         import hashlib; safe_id = hashlib.md5(msg_id.encode()).hexdigest()
-        if get_db().collection("rcb_processed").document(safe_id).get().exists:
+        try:
+            get_db().collection("rcb_processed").document(safe_id).create({
+                "processed_at": firestore.SERVER_TIMESTAMP,
+                "locked_by": "rcb_check_email",
+                "type": "direct_pending",
+            })
+        except AlreadyExists:
+            print(f"  RC-001: {safe_id} already claimed (direct), skipping")
             continue
-        
+
         print(f"  📧 Processing: {subject[:50]} from {from_email}")
         
         # Get attachments
@@ -1552,12 +1574,12 @@ def _rcb_check_email_inner(event) -> None:
             rcb_id = "RCB-UNKNOWN-CLS"
         print(f"  🏷️ [{rcb_id}] Processing classification")
 
-        # Mark as processed immediately to prevent double-processing
-        get_db().collection("rcb_processed").document(safe_id).set({
-            "processed_at": firestore.SERVER_TIMESTAMP,
+        # Update claim doc with classification metadata (doc already created by atomic .create() above)
+        get_db().collection("rcb_processed").document(safe_id).update({
             "subject": subject,
             "from": from_email,
             "rcb_id": rcb_id,
+            "type": "classification",
         })
 
         try:
