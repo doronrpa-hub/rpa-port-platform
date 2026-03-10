@@ -770,6 +770,29 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
                                          {tc.get("hs_code") for tc in tree_candidates}]
             pre_result = pre_result or {}
             pre_result["candidates"] = merged[:15]  # Cap to avoid explosion
+    # Filter garbage candidates when decision tree provides a chapter anchor.
+    # Unified index substring matches (e.g. "תלת" matching "תלת כלורי") produce
+    # candidates 50+ chapters away from the correct chapter — remove them.
+    if tree_result and tree_result.get("chapter") and pre_result and pre_result.get("candidates"):
+        tree_ch = int(tree_result["chapter"])
+        filtered = []
+        for c in pre_result["candidates"]:
+            hs = str(c.get("hs_code", "")).replace(".", "").replace("/", "")
+            try:
+                cand_ch = int(hs[:2])
+            except (ValueError, IndexError):
+                filtered.append(c)  # Keep unparseable
+                continue
+            # Keep if within 15 chapters of tree result, or if from decision tree
+            if abs(cand_ch - tree_ch) <= 15 or c.get("source") == "decision_tree":
+                filtered.append(c)
+        dropped = len(pre_result["candidates"]) - len(filtered)
+        if dropped:
+            print(f"    Tree proximity filter: dropped {dropped} candidates "
+                  f">15 chapters from tree ch.{tree_ch}")
+        if filtered:  # Only apply if at least 1 survives
+            pre_result["candidates"] = filtered
+
     if not pre_result or not pre_result.get("candidates"):
         # Rescue: try external tariff sources (UK API + Shaarolami)
         if _EXTERNAL_SEARCH_AVAILABLE:
@@ -786,13 +809,20 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
         if not pre_result or not pre_result.get("candidates"):
             return None
 
+    # Normalize confidence to 0-100 scale (elimination engine's internal scale).
+    # Decision tree uses 0.0-1.0 — scale up. Unified index and pre_classify already 0-100.
+    for c in pre_result.get("candidates", []):
+        conf = c.get("confidence", 0)
+        if 0 < conf <= 1.0:
+            c["confidence"] = conf * 100.0
+
     # If spare part, boost parent chapter candidates
     candidates = _candidates_from_pre_classify(pre_result)
     if spare_chapter:
         for c in candidates:
             hs = str(c.get("hs_code", "")).replace(".", "").replace("/", "")
             if hs[:2].zfill(2) == spare_chapter.zfill(2):
-                c["confidence"] = min(1.0, c.get("confidence", 0.5) + 0.2)
+                c["confidence"] = min(100, c.get("confidence", 50) + 20)
 
     # Build product info for elimination engine
     product_info = _make_product_info({
@@ -816,20 +846,22 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     if not survivors:
         # All eliminated — use top pre_classify candidate as fallback
         top = pre_result["candidates"][0]
+        raw_conf = top.get("confidence", 30)
         return {
             "hs_code": top.get("hs_code", ""),
-            "confidence": top.get("confidence", 0.3),
+            "confidence": raw_conf / 100.0 if raw_conf > 1.0 else raw_conf,
             "description": top.get("description", ""),
             "duty_rate": top.get("duty_rate", ""),
             "elimination_result": elim_result,
             "source": "pre_classify_fallback",
         }
 
-    # Pick top survivor by confidence
+    # Pick top survivor by confidence (0-100 scale from elimination engine)
     best = max(survivors, key=lambda s: s.get("confidence", 0))
+    raw_conf = best.get("confidence", 50)
     return {
         "hs_code": best.get("hs_code", ""),
-        "confidence": best.get("confidence", 0.5),
+        "confidence": raw_conf / 100.0 if raw_conf > 1.0 else raw_conf,
         "description": best.get("description", best.get("description_en", "")),
         "duty_rate": best.get("duty_rate", ""),
         "elimination_result": elim_result,
