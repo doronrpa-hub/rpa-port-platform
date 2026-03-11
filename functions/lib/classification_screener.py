@@ -32,38 +32,63 @@ _TIMEOUT = 30  # seconds — Haiku is fast
 _MAX_CANDIDATES = 3
 _MAX_CHAPTERS = 5  # safety cap on chapter_notes reads
 
-# Attribute keys the AI may reference — normalized for cross-checking
+# Attribute key validation: snake_case, max 30 chars
+_ATTR_KEY_RE = re.compile(r'^[a-z][a-z0-9_]{0,29}$')
+
+# Common aliases → canonical forms for cross-checking.
+# Unknown keys pass through unchanged — the AI picks domain-specific keys.
 _KNOWN_ATTRIBUTE_ALIASES = {
-    # material
+    # material / composition
     'material': 'material', 'חומר': 'material', 'made_of': 'material',
     'composition': 'material', 'הרכב': 'material',
-    # function / use
-    'function': 'function', 'use': 'function', 'שימוש': 'function',
-    'purpose': 'function', 'ייעוד': 'function',
+    'primary_material': 'material', 'frame_material': 'frame_material',
+    # function / use / purpose
+    'function': 'primary_function', 'use': 'primary_function',
+    'שימוש': 'primary_function', 'purpose': 'primary_function',
+    'ייעוד': 'primary_function', 'intended_use': 'primary_function',
+    'primary_function': 'primary_function',
     # weight
-    'weight': 'weight', 'משקל': 'weight', 'mass': 'weight',
-    'weight_kg': 'weight',
+    'weight': 'gross_weight_kg', 'משקל': 'gross_weight_kg',
+    'mass': 'gross_weight_kg', 'weight_kg': 'gross_weight_kg',
+    'gross_weight_kg': 'gross_weight_kg', 'net_weight_kg': 'net_weight_kg',
     # dimensions
     'dimensions': 'dimensions', 'size': 'dimensions', 'מידות': 'dimensions',
-    # power
-    'power': 'power', 'wattage': 'power', 'הספק': 'power', 'voltage': 'power',
+    # power / electrical
+    'power': 'power_watts', 'wattage': 'power_watts', 'הספק': 'power_watts',
+    'voltage': 'voltage', 'power_watts': 'power_watts',
     # origin
-    'origin': 'origin', 'country': 'origin', 'מקור': 'origin',
-    'country_of_origin': 'origin',
-    # form / state
-    'form': 'form', 'state': 'form', 'צורה': 'form', 'מצב': 'form',
-    'condition': 'form', 'raw': 'form', 'processed': 'form',
+    'origin': 'country_of_origin', 'country': 'country_of_origin',
+    'מקור': 'country_of_origin', 'country_of_origin': 'country_of_origin',
+    # form / state / condition
+    'form': 'physical_form', 'state': 'physical_form', 'צורה': 'physical_form',
+    'מצב': 'physical_form', 'condition': 'physical_form',
+    'physical_form': 'physical_form',
+    'raw': 'processing_state', 'processed': 'processing_state',
+    'processing_state': 'processing_state',
     # quantity
     'quantity': 'quantity', 'count': 'quantity', 'כמות': 'quantity',
-    # frequency (for electronics)
-    'frequency': 'frequency', 'תדר': 'frequency', 'ghz': 'frequency',
-    'mhz': 'frequency',
-    # capacity
-    'capacity': 'capacity', 'volume': 'capacity', 'נפח': 'capacity',
-    'liters': 'capacity',
-    # motor / engine
-    'motor': 'motor', 'engine': 'motor', 'מנוע': 'motor',
-    'engine_type': 'motor', 'cc': 'motor', 'displacement': 'motor',
+    # frequency (electronics)
+    'frequency': 'operating_frequency', 'תדר': 'operating_frequency',
+    'ghz': 'operating_frequency', 'mhz': 'operating_frequency',
+    'operating_frequency': 'operating_frequency',
+    # capacity / volume
+    'capacity': 'capacity_liters', 'volume': 'capacity_liters',
+    'נפח': 'capacity_liters', 'liters': 'capacity_liters',
+    'capacity_liters': 'capacity_liters',
+    # engine / motor
+    'motor': 'engine_type', 'engine': 'engine_type', 'מנוע': 'engine_type',
+    'engine_type': 'engine_type', 'cc': 'engine_cc',
+    'displacement': 'engine_cc', 'engine_cc': 'engine_cc',
+    # vehicle-specific
+    'fuel_type': 'fuel_type', 'דלק': 'fuel_type', 'סוג_דלק': 'fuel_type',
+    'seating_capacity': 'seating_capacity', 'מספר_מושבים': 'seating_capacity',
+    'gross_vehicle_weight': 'gross_vehicle_weight',
+    # food / agriculture
+    'preparation_method': 'preparation_method', 'cooking_state': 'cooking_state',
+    'species': 'species', 'fat_content': 'fat_content',
+    # textiles
+    'fiber_content': 'fiber_content', 'weave_type': 'weave_type',
+    'fabric_weight_gsm': 'fabric_weight_gsm',
 }
 
 
@@ -149,7 +174,7 @@ JSON format:
     {
       "question": "the screening question in English",
       "question_he": "the same question in Hebrew",
-      "attribute_key": "one of: material, function, weight, dimensions, power, origin, form, quantity, frequency, capacity, motor",
+      "attribute_key": "a_snake_case_key",
       "distinguishes_between": ["HHHH", "HHHH"],
       "why": "one sentence explaining why this matters for classification"
     }
@@ -158,7 +183,10 @@ JSON format:
 
 Rules:
 - Maximum 5 questions
-- attribute_key must be from the allowed list above
+- attribute_key must be snake_case (lowercase letters, digits, underscores), max 30 chars
+- attribute_key must be specific to the product category. Examples:
+  Good: "fuel_type", "engine_cc", "seating_capacity", "fiber_content", "fat_content", "frame_material"
+  Bad: "weight" (use "gross_weight_kg"), "power" (use "power_watts"), "motor" (use "engine_type")
 - distinguishes_between must contain 4-digit heading codes from the candidates
 - If the chapter notes already make the classification obvious, return {"questions": []}
 - Focus on physical characteristics, material composition, and intended use
@@ -260,7 +288,14 @@ def _parse_ai_response(raw_text):
             continue
         if not q.get('question'):
             continue
-        if not q.get('attribute_key'):
+        raw_key = str(q.get('attribute_key', '')).lower().strip()
+        if not raw_key:
+            continue
+        # Enforce snake_case: letters, digits, underscores only, max 30 chars
+        # Auto-fix common AI mistakes: spaces→underscores, strip non-alphanum
+        attr_key = re.sub(r'[^a-z0-9_]', '_', raw_key)
+        attr_key = re.sub(r'_+', '_', attr_key).strip('_')  # collapse/strip
+        if not attr_key or not _ATTR_KEY_RE.match(attr_key):
             continue
         dist = q.get('distinguishes_between', [])
         if not isinstance(dist, list):
@@ -270,7 +305,7 @@ def _parse_ai_response(raw_text):
         valid.append({
             'question': str(q['question']),
             'question_he': str(q.get('question_he', '')),
-            'attribute_key': str(q['attribute_key']).lower().strip(),
+            'attribute_key': attr_key,
             'distinguishes_between': dist,
             'why': str(q.get('why', '')),
         })

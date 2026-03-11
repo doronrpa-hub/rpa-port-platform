@@ -19,6 +19,7 @@ from lib.classification_screener import (
     _normalize_key,
     _SYSTEM_PROMPT,
     _KNOWN_ATTRIBUTE_ALIASES,
+    _ATTR_KEY_RE,
     _MAX_CANDIDATES,
 )
 
@@ -117,24 +118,45 @@ class TestNormalizeKey(unittest.TestCase):
 
     def test_hebrew_aliases(self):
         self.assertEqual(_normalize_key('חומר'), 'material')
-        self.assertEqual(_normalize_key('שימוש'), 'function')
-        self.assertEqual(_normalize_key('משקל'), 'weight')
+        self.assertEqual(_normalize_key('שימוש'), 'primary_function')
+        self.assertEqual(_normalize_key('משקל'), 'gross_weight_kg')
 
     def test_function_aliases(self):
-        self.assertEqual(_normalize_key('use'), 'function')
-        self.assertEqual(_normalize_key('purpose'), 'function')
-        self.assertEqual(_normalize_key('ייעוד'), 'function')
+        self.assertEqual(_normalize_key('use'), 'primary_function')
+        self.assertEqual(_normalize_key('purpose'), 'primary_function')
+        self.assertEqual(_normalize_key('ייעוד'), 'primary_function')
+
+    def test_specific_canonical_forms(self):
+        """New canonical forms are more specific than old generic ones."""
+        self.assertEqual(_normalize_key('weight'), 'gross_weight_kg')
+        self.assertEqual(_normalize_key('power'), 'power_watts')
+        self.assertEqual(_normalize_key('origin'), 'country_of_origin')
+        self.assertEqual(_normalize_key('motor'), 'engine_type')
+        self.assertEqual(_normalize_key('cc'), 'engine_cc')
+        self.assertEqual(_normalize_key('frequency'), 'operating_frequency')
+        self.assertEqual(_normalize_key('capacity'), 'capacity_liters')
+        self.assertEqual(_normalize_key('form'), 'physical_form')
 
     def test_unknown_passthrough(self):
+        """Unknown keys pass through unchanged — open set."""
         self.assertEqual(_normalize_key('color'), 'color')
         self.assertEqual(_normalize_key('CUSTOM'), 'custom')
+        self.assertEqual(_normalize_key('fiber_content'), 'fiber_content')
+        self.assertEqual(_normalize_key('seating_capacity'), 'seating_capacity')
 
     def test_case_insensitive(self):
         self.assertEqual(_normalize_key('Material'), 'material')
-        self.assertEqual(_normalize_key('WEIGHT'), 'weight')
+        self.assertEqual(_normalize_key('WEIGHT'), 'gross_weight_kg')
 
     def test_whitespace_stripped(self):
         self.assertEqual(_normalize_key('  material  '), 'material')
+
+    def test_domain_specific_keys_exist(self):
+        """Domain-specific aliases for vehicles, food, textiles."""
+        self.assertEqual(_normalize_key('fuel_type'), 'fuel_type')
+        self.assertEqual(_normalize_key('seating_capacity'), 'seating_capacity')
+        self.assertEqual(_normalize_key('species'), 'species')
+        self.assertEqual(_normalize_key('fiber_content'), 'fiber_content')
 
 
 # ═══════════════════════════════════════════
@@ -300,12 +322,63 @@ class TestParseAiResponse(unittest.TestCase):
              'distinguishes_between': ['9401']},  # empty question
             {'question': 'Valid?', 'attribute_key': '',
              'distinguishes_between': ['9401']},  # empty key
-            {'question': 'Good one?', 'attribute_key': 'weight',
+            {'question': 'Good one?', 'attribute_key': 'gross_weight_kg',
              'distinguishes_between': ['9401', '7326']},  # valid
         ])
         result = _parse_ai_response(raw)
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]['attribute_key'], 'weight')
+        self.assertEqual(result[0]['attribute_key'], 'gross_weight_kg')
+
+    def test_accepts_domain_specific_keys(self):
+        """Open set: any valid snake_case key is accepted."""
+        raw = _make_ai_response([
+            {'question': 'Fuel?', 'attribute_key': 'fuel_type',
+             'distinguishes_between': ['8703', '8704']},
+            {'question': 'Seats?', 'attribute_key': 'seating_capacity',
+             'distinguishes_between': ['8703', '8704']},
+            {'question': 'Fiber?', 'attribute_key': 'fiber_content',
+             'distinguishes_between': ['5208', '5209']},
+        ])
+        result = _parse_ai_response(raw)
+        self.assertEqual(len(result), 3)
+        keys = [q['attribute_key'] for q in result]
+        self.assertEqual(keys, ['fuel_type', 'seating_capacity', 'fiber_content'])
+
+    def test_rejects_non_snake_case_keys(self):
+        """Keys with spaces, special chars, or uppercase are rejected."""
+        raw = _make_ai_response([
+            {'question': 'Q?', 'attribute_key': 'Fuel Type',
+             'distinguishes_between': ['8703', '8704']},  # has space+uppercase → auto-fixed
+        ])
+        result = _parse_ai_response(raw)
+        # 'Fuel Type' → 'fuel_type' after auto-fix (space→underscore, lowercase)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['attribute_key'], 'fuel_type')
+
+    def test_autofixes_spaces_to_underscores(self):
+        raw = _make_ai_response([
+            {'question': 'Q?', 'attribute_key': 'engine displacement',
+             'distinguishes_between': ['8703', '8704']},
+        ])
+        result = _parse_ai_response(raw)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['attribute_key'], 'engine_displacement')
+
+    def test_rejects_key_over_30_chars(self):
+        raw = _make_ai_response([
+            {'question': 'Q?', 'attribute_key': 'a' * 31,
+             'distinguishes_between': ['9401', '9403']},
+        ])
+        result = _parse_ai_response(raw)
+        self.assertEqual(len(result), 0)
+
+    def test_rejects_key_starting_with_digit(self):
+        raw = _make_ai_response([
+            {'question': 'Q?', 'attribute_key': '3phase_motor',
+             'distinguishes_between': ['8501', '8502']},
+        ])
+        result = _parse_ai_response(raw)
+        self.assertEqual(len(result), 0)
 
     def test_normalizes_heading_codes(self):
         raw = _make_ai_response([{
@@ -317,7 +390,7 @@ class TestParseAiResponse(unittest.TestCase):
         self.assertEqual(result[0]['distinguishes_between'], ['9401', '7326'])
 
     def test_extracts_json_from_text(self):
-        raw = 'Here is my analysis:\n{"questions": [{"question": "Q?", "attribute_key": "form", "distinguishes_between": ["9401", "9403"]}]}\nEnd.'
+        raw = 'Here is my analysis:\n{"questions": [{"question": "Q?", "attribute_key": "physical_form", "distinguishes_between": ["9401", "9403"]}]}\nEnd.'
         result = _parse_ai_response(raw)
         self.assertEqual(len(result), 1)
 
@@ -337,20 +410,21 @@ class TestCrossCheck(unittest.TestCase):
         }
 
     def test_all_answered(self):
-        questions = [self._q('material'), self._q('function')]
-        known = {'material': 'wood', 'function': 'seating'}
+        questions = [self._q('material'), self._q('primary_function')]
+        known = {'material': 'wood', 'primary_function': 'seating'}
         answered, missing = _cross_check(questions, known)
         self.assertEqual(len(answered), 2)
         self.assertEqual(len(missing), 0)
 
     def test_none_answered(self):
-        questions = [self._q('material'), self._q('function')]
+        questions = [self._q('material'), self._q('primary_function')]
         answered, missing = _cross_check(questions, {})
         self.assertEqual(len(answered), 0)
         self.assertEqual(len(missing), 2)
 
     def test_partial_answered(self):
-        questions = [self._q('material'), self._q('function'), self._q('weight')]
+        questions = [self._q('material'), self._q('primary_function'),
+                     self._q('gross_weight_kg')]
         known = {'material': 'steel'}
         answered, missing = _cross_check(questions, known)
         self.assertEqual(len(answered), 1)
@@ -456,7 +530,7 @@ class TestScreenCandidates(unittest.TestCase):
     @patch('lib.classification_screener._call_haiku')
     def test_few_missing_is_medium(self, mock_haiku):
         mock_haiku.return_value = _make_ai_response([
-            {'question': 'Q?', 'attribute_key': 'form',
+            {'question': 'Q?', 'attribute_key': 'physical_form',
              'distinguishes_between': ['9401', '7326']},
         ])
         cands = [_make_candidate('9401'), _make_candidate('7326')]
@@ -468,9 +542,9 @@ class TestScreenCandidates(unittest.TestCase):
         mock_haiku.return_value = _make_ai_response([
             {'question': 'Q1?', 'attribute_key': 'material',
              'distinguishes_between': ['9401', '7326']},
-            {'question': 'Q2?', 'attribute_key': 'function',
+            {'question': 'Q2?', 'attribute_key': 'primary_function',
              'distinguishes_between': ['9401', '7326']},
-            {'question': 'Q3?', 'attribute_key': 'weight',
+            {'question': 'Q3?', 'attribute_key': 'gross_weight_kg',
              'distinguishes_between': ['9401', '7326']},
         ])
         cands = [_make_candidate('9401'), _make_candidate('7326')]
@@ -533,10 +607,20 @@ class TestSystemPrompt(unittest.TestCase):
     def test_mentions_json(self):
         self.assertIn('JSON', _SYSTEM_PROMPT)
 
-    def test_mentions_attribute_keys(self):
-        self.assertIn('material', _SYSTEM_PROMPT)
-        self.assertIn('function', _SYSTEM_PROMPT)
-        self.assertIn('weight', _SYSTEM_PROMPT)
+    def test_mentions_snake_case(self):
+        self.assertIn('snake_case', _SYSTEM_PROMPT)
+
+    def test_shows_good_examples(self):
+        self.assertIn('fuel_type', _SYSTEM_PROMPT)
+        self.assertIn('engine_cc', _SYSTEM_PROMPT)
+        self.assertIn('seating_capacity', _SYSTEM_PROMPT)
+        self.assertIn('fiber_content', _SYSTEM_PROMPT)
+
+    def test_shows_bad_examples(self):
+        """Prompt discourages generic keys."""
+        self.assertIn('Bad:', _SYSTEM_PROMPT)
+        self.assertIn('gross_weight_kg', _SYSTEM_PROMPT)  # instead of "weight"
+        self.assertIn('power_watts', _SYSTEM_PROMPT)  # instead of "power"
 
     def test_caps_at_five_questions(self):
         self.assertIn('Maximum 5', _SYSTEM_PROMPT)
@@ -544,25 +628,54 @@ class TestSystemPrompt(unittest.TestCase):
     def test_requires_distinguishes_between(self):
         self.assertIn('distinguishes_between', _SYSTEM_PROMPT)
 
+    def test_no_fixed_list_constraint(self):
+        """Prompt should NOT say 'must be from the allowed list'."""
+        self.assertNotIn('must be from the allowed list', _SYSTEM_PROMPT)
+
 
 # ═══════════════════════════════════════════
 #  Test: Attribute alias coverage
 # ═══════════════════════════════════════════
 
 class TestAttributeAliases(unittest.TestCase):
-    def test_all_canonical_keys_covered(self):
-        canonical = {'material', 'function', 'weight', 'dimensions',
-                     'power', 'origin', 'form', 'quantity', 'frequency',
-                     'capacity', 'motor'}
+    def test_core_canonical_keys_covered(self):
+        """Core canonical forms that must exist in the alias map."""
+        canonical = {
+            'material', 'primary_function', 'gross_weight_kg', 'dimensions',
+            'power_watts', 'country_of_origin', 'physical_form', 'quantity',
+            'operating_frequency', 'capacity_liters', 'engine_type',
+        }
         mapped_values = set(_KNOWN_ATTRIBUTE_ALIASES.values())
         for c in canonical:
             self.assertIn(c, mapped_values, f'Canonical key {c} not in alias map')
 
+    def test_domain_specific_keys_in_aliases(self):
+        """Domain-specific keys exist for vehicles, food, textiles."""
+        mapped_values = set(_KNOWN_ATTRIBUTE_ALIASES.values())
+        for key in ['fuel_type', 'seating_capacity', 'engine_cc',
+                     'fiber_content', 'species', 'fat_content',
+                     'frame_material', 'processing_state']:
+            self.assertIn(key, mapped_values, f'Domain key {key} not in alias map')
+
     def test_hebrew_keys_exist(self):
         hebrew_keys = [k for k in _KNOWN_ATTRIBUTE_ALIASES if any(
             '\u0590' <= ch <= '\u05FF' for ch in k)]
-        self.assertGreaterEqual(len(hebrew_keys), 8,
-                                'Should have at least 8 Hebrew aliases')
+        self.assertGreaterEqual(len(hebrew_keys), 10,
+                                'Should have at least 10 Hebrew aliases')
+
+
+class TestAttrKeyRegex(unittest.TestCase):
+    """Test the snake_case validation regex."""
+
+    def test_valid_keys(self):
+        for key in ['material', 'fuel_type', 'engine_cc', 'gross_weight_kg',
+                     'a', 'x1', 'fiber_content_pct']:
+            self.assertTrue(_ATTR_KEY_RE.match(key), f'{key} should be valid')
+
+    def test_invalid_keys(self):
+        for key in ['', 'Fuel_Type', 'has space', '3phase', '_leading',
+                     'a' * 31, 'special!char', 'UPPER']:
+            self.assertIsNone(_ATTR_KEY_RE.match(key), f'{key} should be invalid')
 
 
 if __name__ == '__main__':
