@@ -80,6 +80,12 @@ def _enforce_hs_format(raw_code):
 # Customs vocabulary — for extracting products from conversational text
 _CUSTOMS_VOCABULARY = None
 
+_VOCAB_PATCHES = {
+    "פילטר": {"official": "פילטר", "chapters": ["84"], "confidence": "HIGH"},
+    "פילטרים": {"official": "פילטרים", "chapters": ["84"], "confidence": "HIGH"},
+}
+
+
 def _ensure_vocabulary():
     global _CUSTOMS_VOCABULARY
     if _CUSTOMS_VOCABULARY is not None:
@@ -93,6 +99,8 @@ def _ensure_vocabulary():
             _CUSTOMS_VOCABULARY = CUSTOMS_VOCABULARY
         except ImportError:
             _CUSTOMS_VOCABULARY = False  # mark as unavailable
+    if _CUSTOMS_VOCABULARY and _CUSTOMS_VOCABULARY is not False:
+        _CUSTOMS_VOCABULARY.update(_VOCAB_PATCHES)
 
 
 # Hebrew prefixes to strip when matching vocabulary
@@ -106,6 +114,8 @@ _VOCAB_STOP = frozenset({
     "מה", "הם", "הוא", "היא", "כל", "אני", "אנחנו", "רוצה", "צריך", "שרוצה",
     "שצריך", "לייבא", "לייצא", "ליבא", "ליצא", "יבוא", "יצוא", "לסווג",
     "סיווג", "פרט", "המכס", "מכס", "טובין", "שברצונך", "ברצונך",
+    # Hebrew preposition phrases that false-match after prefix stripping
+    "מבחינת", "מבחינה",
     # Hebrew verbs / tenses that slip through vocabulary as false positives
     "יהיו", "יהיה", "היה", "היתה", "היו", "הייתי", "נהיה", "להיות",
     "עושה", "עשיתי", "עושים", "לעשות", "צריכים", "רוצים", "יכול", "יכולה",
