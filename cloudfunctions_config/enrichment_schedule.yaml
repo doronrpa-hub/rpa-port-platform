@@ -1,0 +1,35 @@
+# Knowledge Enrichment — Cloud Scheduler configuration
+# Runs every 30 minutes between 20:00-06:00 Israel time (overnight)
+# Full cycle: ~1,200 headings in ~12 hours at 50/run
+
+scheduler:
+  name: enrich-headings-nightly
+  schedule: "*/30 20-23,0-6 * * *"
+  timezone: "Asia/Jerusalem"
+  region: europe-west1
+  description: "Tier 2 heading enrichment — 50 headings per batch, overnight only"
+
+function:
+  name: enrich_headings_batch
+  runtime: python312
+  region: europe-west1
+  memory: 512MB
+  timeout: 540s
+  trigger: http
+
+# Deploy commands:
+#
+# 1. Deploy Cloud Function (Firebase handles this via firebase deploy):
+#    firebase deploy --only functions:enrich_headings_batch
+#
+# 2. Create Cloud Scheduler job (manual, one-time):
+#    gcloud scheduler jobs create http enrich-headings-nightly \
+#      --schedule="*/30 20-23,0-6 * * *" \
+#      --uri=<FUNCTION_URL> \
+#      --time-zone="Asia/Jerusalem" \
+#      --location=europe-west1 \
+#      --oidc-service-account-email=<PROJECT>@appspot.gserviceaccount.com \
+#      --oidc-token-audience=<FUNCTION_URL>
+#
+# 3. Manual test trigger:
+#    curl -X POST <FUNCTION_URL>

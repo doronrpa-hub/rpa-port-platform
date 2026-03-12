@@ -10,7 +10,9 @@ Usage:
 Session 90 — broker_engine.py
 """
 
+import os
 import re
+import requests
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -125,6 +127,53 @@ _VOCAB_STOP = frozenset({
     "thank", "thanks", "would", "like", "about", "this", "that", "which",
     "special", "private", "new", "old", "good", "bad", "first", "second",
 })
+
+_EXTRACT_PRODUCT_PROMPT = """Extract the product name from this email.
+The user is asking about customs classification (HS code / tariff heading).
+Return ONLY the product name — no explanation, no quotes, no punctuation.
+If you cannot identify a product, return exactly: NONE
+
+Examples:
+- "יש לי לקוח שרוצה לייבא פילטרים. מה פרט המכס?" → פילטרים
+- "מה הסיווג של ספות מרופדות?" → ספות מרופדות
+- "classify steel pipes for construction" → steel pipes for construction
+- "שלום, מה שלומך?" → NONE"""
+
+
+def _extract_product_from_question(text, api_key=None):
+    """Extract product name from conversational email using AI."""
+    if not api_key or not text:
+        return None
+    body = re.sub(r'<[^>]+>', ' ', text).strip()
+    if len(body) < 5:
+        return None
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key.strip(),
+                "content-type": "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 100,
+                "messages": [{"role": "user",
+                              "content": f"{_EXTRACT_PRODUCT_PROMPT}\n\nEmail:\n{body[:500]}"}],
+            },
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            print(f"    [broker] product extraction API {resp.status_code}")
+            return None
+        result = resp.json().get("content", [{}])[0].get("text", "").strip()
+        if not result or result == "NONE" or len(result) < 2:
+            return None
+        print(f"    [broker] AI extracted product: '{result}'")
+        return result
+    except Exception as e:
+        print(f"    [broker] product extraction error: {e}")
+        return None
 
 
 def _extract_products_from_vocab(text):
@@ -252,6 +301,45 @@ def _ensure_unified():
     except Exception as e:
         _unified_search = {}
         print(f"    Unified index: not available ({e})")
+
+
+# Stage 1-3 reasoning pipeline (Session 110) — parallel identification + screening
+_STAGES_AVAILABLE = False
+_identify_product = None
+_screen_candidates = None
+_process_conversation_turn = None
+
+
+def _ensure_stages():
+    global _STAGES_AVAILABLE, _identify_product, _screen_candidates, _process_conversation_turn
+    if _identify_product is not None:
+        return
+    try:
+        try:
+            from lib.classification_identifier import identify_product
+            from lib.classification_screener import screen_candidates
+            from lib.classification_conversation import process_conversation_turn
+        except ImportError:
+            from classification_identifier import identify_product
+            from classification_screener import screen_candidates
+            from classification_conversation import process_conversation_turn
+        _identify_product = identify_product
+        _screen_candidates = screen_candidates
+        _process_conversation_turn = process_conversation_turn
+        _STAGES_AVAILABLE = True
+        print("    Stages 1-3: loaded")
+    except ImportError as e:
+        _identify_product = False  # sentinel: attempted but failed
+        _STAGES_AVAILABLE = False
+        print(f"    Stages 1-3: not available ({e})")
+
+
+# Attribute keys to extract from item dict for Stage 2 screening
+_SCREEN_ATTR_KEYS = frozenset({
+    "physical", "essence", "function", "material", "weight",
+    "dimensions", "frequency", "power", "voltage", "capacity",
+    "category", "processing_state", "transformation_stage",
+})
 
 
 # Chapter decision trees (Session 98) — deterministic chapter routing
@@ -837,17 +925,95 @@ def _unified_to_candidate(result, source_label):
     }
 
 
-def _build_candidates_for_item(item, db, vocab_chapters=None):
+def _convert_stage1_candidates(s1_candidates):
+    """Convert Stage 1 HSCandidate dicts to pre_classify candidate format."""
+    results = []
+    for c in s1_candidates[:15]:
+        hs = str(c.get("hs_code", "")).replace(".", "").replace("/", "")
+        results.append({
+            "hs_code": hs,
+            "confidence": c.get("confidence", 50),
+            "description": c.get("desc_he") or c.get("desc_en", ""),
+            "source": "stage1_" + ",".join(c.get("sources", [])),
+            "duty_rate": c.get("duty_rate", ""),
+        })
+    return results
+
+
+def _build_candidates_for_item(item, db, vocab_chapters=None,
+                               conversation_id=None, email_body=None,
+                               api_key=None):
     """Search tariff DB for candidate HS codes matching item description.
+
+    Pipeline: Stage 1 (identify) → Stage 2 (screen) → Stage 3 (conversation).
+    Falls back to _smart_tariff_search if stages unavailable or return empty.
 
     Returns:
         pre_classify result dict with candidates list.
     """
+    # --- NEW: Stage 1-3 pipeline ---
+    _ensure_stages()
+    if _STAGES_AVAILABLE:
+        try:
+            product_name = item.get("name", "")
+            if product_name:
+                # Stage 1: use cached result if verification loop re-entered
+                s1_candidates = item.get("_s1_candidates")
+                if s1_candidates is None:
+                    s1_candidates = _identify_product(product_name, db)
+                    if s1_candidates:
+                        item["_s1_candidates"] = s1_candidates  # cache for re-entry
+                else:
+                    print(f"    Stage 1: using cached {len(s1_candidates)} candidates")
+                if s1_candidates:
+                    # Stage 2: screen candidates for readiness
+                    known_attrs = {k: v for k, v in item.items()
+                                   if k in _SCREEN_ATTR_KEYS and v}
+                    s2_result = _screen_candidates(
+                        product_name, s1_candidates, known_attrs, db, api_key)
+
+                    if s2_result and s2_result.get("ready_for_traversal"):
+                        # Ready — convert and proceed to elimination engine
+                        converted = _convert_stage1_candidates(s1_candidates)
+                        if converted:
+                            print(f"    Stage 1-3: READY ({len(converted)} candidates)")
+                            return {"candidates": converted,
+                                    "source": "stage1_identifier"}
+
+                    elif s2_result and not s2_result.get("ready_for_traversal"):
+                        # Stage 3: conversation turn (if we have thread context)
+                        if conversation_id:
+                            s3_result = _process_conversation_turn(
+                                conversation_id, product_name, s2_result,
+                                email_body or "", db, api_key)
+                            if s3_result and s3_result.get("ready_for_traversal"):
+                                converted = _convert_stage1_candidates(s1_candidates)
+                                if converted:
+                                    print(f"    Stage 1-3: READY after conversation ({len(converted)} candidates)")
+                                    return {"candidates": converted,
+                                            "source": "stage1_after_conversation"}
+                            # Not ready — store questions on item for caller
+                            if s3_result and s3_result.get("questions_to_ask"):
+                                item["_pending_questions"] = s3_result["questions_to_ask"]
+                                item["_conversation_id"] = conversation_id
+
+                    # Use Stage 1 candidates even if not fully screened
+                    # (better than nothing — elimination engine will filter)
+                    converted = _convert_stage1_candidates(s1_candidates)
+                    if converted:
+                        print(f"    Stage 1-3: unscreened ({len(converted)} candidates)")
+                        return {"candidates": converted,
+                                "source": "stage1_unscreened"}
+        except Exception as e:
+            print(f"    Stage 1-3 pipeline error: {e}")
+
+    # --- Legacy fallback ---
     return _smart_tariff_search(item, db, vocab_chapters=vocab_chapters)
 
 
 def classify_single_item(item, operation_context, db, spare_chapter=None,
-                         vocab_chapters=None):
+                         vocab_chapters=None, conversation_id=None,
+                         email_body=None, api_key=None):
     """Classify one item via decision_tree -> pre_classify -> eliminate (GIR 1-6).
 
     Decision tree path (Session 98): If a chapter decision tree exists for the
@@ -861,6 +1027,9 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
         db: Firestore client
         spare_chapter: optional parent chapter code for spare parts
         vocab_chapters: optional set of 2-digit chapter codes from smart_classify
+        conversation_id: optional email thread ID for Stage 3 conversation
+        email_body: optional current email text for Stage 3 answer extraction
+        api_key: optional Anthropic API key for Stage 2/3 AI calls
 
     Returns:
         dict with hs_code, confidence, description, duty_rate, elimination_result,
@@ -888,8 +1057,12 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
             print(f"    Decision tree REDIRECT: ch.{tree_result.get('chapter', '?')} → ch.{redirect_ch} "
                   f"({tree_result['redirect'].get('reason', '')[:80]})")
 
-    # Build candidates from tariff search
-    pre_result = _build_candidates_for_item(item, db, vocab_chapters=vocab_chapters)
+    # Build candidates from tariff search (Stage 1-3 first, legacy fallback)
+    pre_result = _build_candidates_for_item(
+        item, db, vocab_chapters=vocab_chapters,
+        conversation_id=conversation_id, email_body=email_body,
+        api_key=api_key)
+    print(f"    [broker] candidate source: {pre_result.get('source', 'legacy') if pre_result else 'none'}")
 
     # Merge decision tree candidates into pre_classify results
     if tree_result and tree_result.get("candidates") and not tree_result.get("redirect"):
@@ -1863,7 +2036,8 @@ def _determine_preference_doc(fta_code):
 #  PHASE 9: Verification loop
 # ---------------------------------------------------------------------------
 
-def verify_and_loop(result, item, operation_context, db, max_loops=3):
+def verify_and_loop(result, item, operation_context, db, max_loops=3,
+                    api_key=None):
     """Self-verification loop. Re-runs classification if errors found.
 
     6 checks per iteration:
@@ -1891,7 +2065,8 @@ def verify_and_loop(result, item, operation_context, db, max_loops=3):
               f"{len(errors)} errors — {[e['check'] for e in errors]}")
 
         # Try to fix by reclassifying with constraints
-        result = _reclassify_with_constraints(item, operation_context, db, errors, result)
+        result = _reclassify_with_constraints(
+            item, operation_context, db, errors, result, api_key=api_key)
         if not result:
             return _generate_kram_result(None, errors, item)
 
@@ -2090,7 +2265,8 @@ def _run_verification_checks(result, item, operation_context, db):
     return errors
 
 
-def _reclassify_with_constraints(item, operation_context, db, errors, prev_result):
+def _reclassify_with_constraints(item, operation_context, db, errors, prev_result,
+                                 api_key=None):
     """Re-run classification with knowledge from verification errors.
 
     Modifies the item description to include constraints from errors,
@@ -2124,7 +2300,7 @@ def _reclassify_with_constraints(item, operation_context, db, errors, prev_resul
         augmented_desc = f"{augmented_desc} [{'; '.join(constraints)}]"
 
     pre_result = _build_candidates_for_item(
-        {**item, "name": augmented_desc}, db,
+        {**item, "name": augmented_desc}, db, api_key=api_key,
     )
     if not pre_result or not pre_result.get("candidates"):
         return None
@@ -2274,6 +2450,20 @@ def process_case(email_text, attachments_text, db, get_secret_func,
 
     text = f"{email_text or ''}\n{attachments_text or ''}"
 
+    # Fetch Anthropic API key early — needed for conversational extraction + Stage 2/3
+    _anthropic_key = None
+    if get_secret_func:
+        try:
+            _anthropic_key = get_secret_func("ANTHROPIC_API_KEY")
+        except Exception as e:
+            print(f"    [broker] ANTHROPIC_API_KEY fetch failed: {e}")
+    # Fallback: environment variable (local dev / testing)
+    if not _anthropic_key:
+        _anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    if _anthropic_key:
+        _anthropic_key = _anthropic_key.strip()
+    print(f"    [broker] API key available: {bool(_anthropic_key)}")
+
     # PHASE 0: Analyze case
     case_plan = analyze_case("", text)
 
@@ -2318,15 +2508,26 @@ def process_case(email_text, attachments_text, db, get_secret_func,
                 "chapter_hint": ch_hint,
             }]
         else:
-            return {
-                "status": "no_items",
-                "operation": case_plan.to_dict(),
-                "items": [],
-                "kram_questions": [{
-                    "question_he": "לא זיהיתי פריטים לסיווג. מה הטובין שברצונך לסווג?",
-                    "question_en": "No items detected. What goods would you like to classify?",
-                }],
-            }
+            # Last resort: AI extraction from conversational question
+            print(f"    [broker] AI product extraction on {len(text)} chars")
+            conv_product = _extract_product_from_question(text, api_key=_anthropic_key)
+            if conv_product:
+                print(f"    Conversational fallback: '{conv_product}'")
+                case_plan.items_to_classify = [{
+                    "name": conv_product,
+                    "description": text[:500],
+                    "category": "commercial",
+                }]
+            else:
+                return {
+                    "status": "no_items",
+                    "operation": case_plan.to_dict(),
+                    "items": [],
+                    "kram_questions": [{
+                        "question_he": "לא זיהיתי פריטים לסיווג. מה הטובין שברצונך לסווג?",
+                        "question_en": "No items detected. What goods would you like to classify?",
+                    }],
+                }
 
     operation_context = {
         "direction": case_plan.direction,
@@ -2357,6 +2558,8 @@ def process_case(email_text, attachments_text, db, get_secret_func,
                         item["source_url"] = spec["url"]
                     break  # One URL per item
 
+    # _anthropic_key already fetched at top of process_case
+
     # Process each item
     classified_items = []
     verification_log = []
@@ -2373,7 +2576,9 @@ def process_case(email_text, attachments_text, db, get_secret_func,
         # PHASES 3-6: Classify via elimination engine
         result = classify_single_item(item, operation_context, db,
                                       spare_chapter=spare_chapter,
-                                      vocab_chapters=_vc)
+                                      vocab_chapters=_vc,
+                                      email_body=text,
+                                      api_key=_anthropic_key)
 
         if not result:
             classified_items.append({
@@ -2411,7 +2616,8 @@ def process_case(email_text, attachments_text, db, get_secret_func,
         _post_classification_cascade(result, item, operation_context, db)
 
         # PHASE 9: Verification loop
-        verified = verify_and_loop(result, item, operation_context, db)
+        verified = verify_and_loop(result, item, operation_context, db,
+                                   api_key=_anthropic_key)
         verification_log.append({
             "item": item.get("name", ""),
             "hs_code": verified.get("hs_code", ""),
