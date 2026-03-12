@@ -1302,6 +1302,9 @@ def _drill_to_subheading(hs_code, item, db):
     if not sub_codes:
         return None
 
+    # Sort by HS code ascending (official tariff order)
+    sub_codes.sort(key=lambda sc: sc.get("hs_code", ""))
+
     # Enrich sub_codes with supplement rate + statistical unit from XML data
     _enrich_subcodes_with_supplements(sub_codes)
 
@@ -1331,7 +1334,7 @@ def _drill_to_subheading(hs_code, item, db):
 
     # Can't determine — return all sub-codes + clarification options
     options = []
-    for sc in sub_codes[:8]:  # Limit to 8 options
+    for sc in sub_codes:
         desc = sc.get("description", "") or sc.get("description_en", "")
         if desc:
             options.append({
