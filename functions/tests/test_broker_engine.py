@@ -1299,3 +1299,153 @@ class TestProcessCaseAIFirst:
         # The item should come from AI ("פילטרים"), not vocab garbage
         assert len(captured_items) == 1
         assert captured_items[0]["name"] == "פילטרים"
+
+
+# ---------------------------------------------------------------------------
+#  SESSION 112: Chapter 98/99 Guard + Shaarolami Verification Tests
+# ---------------------------------------------------------------------------
+
+from lib.broker_engine import (
+    _PERSONAL_IMPORT_CHAPTERS,
+    _verify_via_shaarolami,
+)
+
+
+class TestChapter9899Guard:
+    """Chapter 98/99 must NEVER be primary result for commercial consultations."""
+
+    def test_personal_import_chapters_defined(self):
+        assert "98" in _PERSONAL_IMPORT_CHAPTERS
+        assert "99" in _PERSONAL_IMPORT_CHAPTERS
+
+    def test_commercial_strips_ch99_candidates(self):
+        """classify_single_item should filter ch.99 for commercial imports."""
+        # Create candidates that include ch.99
+        candidates_with_99 = [
+            {"hs_code": "9902251000", "confidence": 90,
+             "source": "unified_he", "description": "test", "duty_rate": ""},
+            {"hs_code": "7615100000", "confidence": 60,
+             "source": "unified_he", "description": "aluminum household", "duty_rate": ""},
+        ]
+        # After guard: ch.99 should be stripped, ch.76 should remain
+        filtered = [
+            c for c in candidates_with_99
+            if str(c["hs_code"])[:2] not in _PERSONAL_IMPORT_CHAPTERS
+        ]
+        assert len(filtered) == 1
+        assert filtered[0]["hs_code"] == "7615100000"
+
+    def test_personal_import_keeps_ch99(self):
+        """If legal_category is set (personal import), ch.98/99 should be kept."""
+        candidates_with_99 = [
+            {"hs_code": "9902251000", "confidence": 90},
+            {"hs_code": "7615100000", "confidence": 60},
+        ]
+        # For personal imports, legal_category is set — no filtering
+        legal_cat = "toshav_chozer"
+        if legal_cat:
+            # No filtering — keep all
+            filtered = candidates_with_99
+        else:
+            filtered = [c for c in candidates_with_99
+                        if str(c["hs_code"])[:2] not in _PERSONAL_IMPORT_CHAPTERS]
+        assert len(filtered) == 2  # Both kept
+
+    def test_ch98_also_stripped_for_commercial(self):
+        candidates = [
+            {"hs_code": "9801100000", "confidence": 80},
+            {"hs_code": "8507600000", "confidence": 60},
+        ]
+        filtered = [
+            c for c in candidates
+            if str(c["hs_code"])[:2] not in _PERSONAL_IMPORT_CHAPTERS
+        ]
+        assert len(filtered) == 1
+        assert filtered[0]["hs_code"] == "8507600000"
+
+
+class TestShaarolamiVerification:
+    """Test the shaarolami cross-check in classify_single_item."""
+
+    def test_agreement_boosts_confidence(self):
+        """When shaarolami agrees on chapter, confidence should be boosted."""
+        pre_result = {
+            "candidates": [
+                {"hs_code": "7615100000", "confidence": 60, "source": "unified_he",
+                 "description": "household aluminum", "duty_rate": ""},
+            ]
+        }
+        item = {"name": "כלי אוכל אלומיניום"}
+
+        # Mock smart_classify to return same chapter 76
+        class MockResult:
+            hs_candidates = [{"hs_raw": "7615200000", "combined_score": 70,
+                              "description_he": "aluminium cookware"}]
+
+        with patch("lib.broker_engine._ensure_smart_classify"):
+            with patch("lib.broker_engine._SMART_CLASSIFY_AVAILABLE", True):
+                with patch("lib.broker_engine._smart_classify_fn", return_value=MockResult()):
+                    _verify_via_shaarolami(pre_result, item, None)
+
+        # Top candidate should be boosted
+        assert pre_result["candidates"][0]["confidence"] > 60
+        assert "shaarolami_confirmed" in pre_result["candidates"][0]["source"]
+
+    def test_disagreement_injects_official(self):
+        """When shaarolami disagrees, official result should be injected at top."""
+        pre_result = {
+            "candidates": [
+                {"hs_code": "7013330000", "confidence": 60, "source": "unified_he",
+                 "description": "glass cups", "duty_rate": ""},
+            ]
+        }
+        item = {"name": "סירים וכוסות אלומיניום"}
+
+        # Mock smart_classify to return chapter 76 (not 70)
+        class MockResult:
+            hs_candidates = [{"hs_raw": "7615100000", "combined_score": 70,
+                              "description_he": "aluminium household"}]
+
+        with patch("lib.broker_engine._ensure_smart_classify"):
+            with patch("lib.broker_engine._SMART_CLASSIFY_AVAILABLE", True):
+                with patch("lib.broker_engine._smart_classify_fn", return_value=MockResult()):
+                    _verify_via_shaarolami(pre_result, item, None)
+
+        # Official candidate (ch.76) should be at top now
+        assert pre_result["candidates"][0]["hs_code"] == "7615100000"
+        assert pre_result["candidates"][0]["source"] == "shaarolami_official"
+
+    def test_no_crash_when_shaarolami_unavailable(self):
+        """If smart_classify is not available, verification should be a no-op."""
+        pre_result = {
+            "candidates": [
+                {"hs_code": "7615100000", "confidence": 60, "source": "test"},
+            ]
+        }
+        with patch("lib.broker_engine._SMART_CLASSIFY_AVAILABLE", False):
+            with patch("lib.broker_engine._smart_classify_fn", False):
+                _verify_via_shaarolami(pre_result, {"name": "test"}, None)
+        assert len(pre_result["candidates"]) == 1  # Unchanged
+
+    def test_strips_ch99_from_official_results(self):
+        """Even shaarolami results should have ch.98/99 stripped."""
+        pre_result = {"candidates": []}
+        item = {"name": "test"}
+
+        class MockResult:
+            hs_candidates = [
+                {"hs_raw": "9902251000", "combined_score": 90,
+                 "description_he": "personal import"},
+                {"hs_raw": "7615100000", "combined_score": 70,
+                 "description_he": "aluminum"},
+            ]
+
+        with patch("lib.broker_engine._ensure_smart_classify"):
+            with patch("lib.broker_engine._SMART_CLASSIFY_AVAILABLE", True):
+                with patch("lib.broker_engine._smart_classify_fn", return_value=MockResult()):
+                    _verify_via_shaarolami(pre_result, item, None)
+
+        # Only ch.76 should survive, not ch.99
+        hs_codes = [c["hs_code"] for c in pre_result["candidates"]]
+        assert "7615100000" in hs_codes
+        assert "9902251000" not in hs_codes

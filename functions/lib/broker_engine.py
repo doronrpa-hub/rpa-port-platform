@@ -881,6 +881,11 @@ def _smart_tariff_search(item, db, vocab_chapters=None):
     return result_he
 
 
+# Chapters 98/99 are ONLY valid for personal imports (עולה חדש, תושב חוזר, etc.).
+# They must NEVER appear as primary classification for commercial consultations.
+_PERSONAL_IMPORT_CHAPTERS = frozenset({"98", "99"})
+
+
 def _search_via_unified(desc_he, desc_en, item):
     """Search via unified index, return candidates in pre_classify format."""
     find = _unified_search.get("find")
@@ -947,6 +952,108 @@ def _unified_to_candidate(result, source_label):
         "duty_rate": result.get("duty_rate", ""),
         "reasoning": f"Unified index: score={score}, weight={weight}, sources={result.get('sources', [])}",
     }
+
+
+# ---------------------------------------------------------------------------
+#  SHAAROLAMI VERIFICATION — cross-check via official Israeli customs API
+# ---------------------------------------------------------------------------
+
+_smart_classify_fn = None
+_SMART_CLASSIFY_AVAILABLE = False
+
+
+def _ensure_smart_classify():
+    global _smart_classify_fn, _SMART_CLASSIFY_AVAILABLE
+    if _smart_classify_fn is not None:
+        return
+    try:
+        try:
+            from lib.smart_classify import classify_product
+        except ImportError:
+            from smart_classify import classify_product
+        _smart_classify_fn = classify_product
+        _SMART_CLASSIFY_AVAILABLE = True
+    except ImportError:
+        _smart_classify_fn = False
+        _SMART_CLASSIFY_AVAILABLE = False
+
+
+def _verify_via_shaarolami(pre_result, item, db):
+    """Cross-check candidates via official shaarolami customs API.
+
+    Queries shaarolami in Hebrew AND English for the product name.
+    If the official source agrees with the top candidate → boost confidence.
+    If it disagrees → inject the official result and demote the tree result.
+
+    Modifies pre_result["candidates"] in-place.
+    """
+    _ensure_smart_classify()
+    if not _SMART_CLASSIFY_AVAILABLE or not _smart_classify_fn:
+        return
+
+    product_name = item.get("name", "")
+    if not product_name:
+        return
+
+    try:
+        sc_result = _smart_classify_fn(product_name, db=db)
+    except Exception as e:
+        print(f"    Shaarolami verify error: {e}")
+        return
+
+    if not sc_result or not sc_result.hs_candidates:
+        return
+
+    # Get chapters from official source
+    official_chapters = set()
+    official_candidates = []
+    for sc in sc_result.hs_candidates[:5]:
+        hs_raw = str(sc.get("hs_raw", sc.get("hs_code", ""))).replace(".", "").replace("/", "")
+        ch = hs_raw[:2]
+        # Skip ch.98/99 from official source too
+        if ch in _PERSONAL_IMPORT_CHAPTERS:
+            continue
+        official_chapters.add(ch)
+        official_candidates.append({
+            "hs_code": hs_raw,
+            "confidence": sc.get("combined_score", 50),
+            "source": "shaarolami_official",
+            "description": sc.get("description_he", sc.get("description_en", "")),
+            "duty_rate": "",
+        })
+
+    if not official_chapters:
+        return
+
+    # Compare: does the top tree candidate agree with official?
+    existing = pre_result.get("candidates", [])
+    if existing:
+        top_hs = str(existing[0].get("hs_code", "")).replace(".", "").replace("/", "")
+        top_ch = top_hs[:2]
+
+        if top_ch in official_chapters:
+            # Agreement — boost top candidate
+            existing[0]["confidence"] = min(98, existing[0].get("confidence", 50) + 15)
+            existing[0]["source"] = existing[0].get("source", "") + "+shaarolami_confirmed"
+            print(f"    Shaarolami: CONFIRMED chapter {top_ch} for '{product_name[:40]}'")
+        else:
+            # Disagreement — inject official candidates at top, demote existing
+            print(f"    Shaarolami: DISAGREES — tree ch.{top_ch} vs "
+                  f"official {','.join(sorted(official_chapters))} "
+                  f"for '{product_name[:40]}'")
+            for c in existing:
+                c["confidence"] = max(10, c.get("confidence", 50) - 20)
+            # Official candidates go first
+            seen = {str(c.get("hs_code", "")).replace(".", "").replace("/", "")
+                    for c in existing}
+            for oc in official_candidates:
+                if oc["hs_code"] not in seen:
+                    existing.insert(0, oc)
+                    seen.add(oc["hs_code"])
+            pre_result["candidates"] = existing[:15]
+    else:
+        # No existing candidates — use official
+        pre_result["candidates"] = official_candidates
 
 
 def _convert_stage1_candidates(s1_candidates):
@@ -1144,6 +1251,27 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
         conf = c.get("confidence", 0)
         if 0 < conf <= 1.0:
             c["confidence"] = conf * 100.0
+
+    # GUARD: Chapter 98/99 is ONLY for personal imports (עולה חדש, תושב חוזר, etc.)
+    # Commercial consultations must NEVER get ch.98/99 as primary classification.
+    legal_cat = operation_context.get("legal_category", "")
+    if not legal_cat:
+        # Commercial import — strip chapter 98/99 candidates entirely
+        before_count = len(pre_result.get("candidates", []))
+        pre_result["candidates"] = [
+            c for c in pre_result.get("candidates", [])
+            if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+            not in _PERSONAL_IMPORT_CHAPTERS
+        ]
+        dropped = before_count - len(pre_result.get("candidates", []))
+        if dropped:
+            print(f"    Chapter 98/99 guard: dropped {dropped} personal-import codes "
+                  f"(commercial consultation)")
+        if not pre_result.get("candidates"):
+            return None  # All candidates were ch.98/99 — need real search
+
+    # VERIFY: Cross-check top candidate via official shaarolami API
+    _verify_via_shaarolami(pre_result, item, db)
 
     # If spare part, boost parent chapter candidates
     candidates = _candidates_from_pre_classify(pre_result)

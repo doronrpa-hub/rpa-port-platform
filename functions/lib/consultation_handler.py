@@ -858,6 +858,26 @@ def _render_broker_result_html(broker_result):
 
             # Official 6-column tariff table
             sub_codes = cls.get("sub_codes", [])
+            # Safety: enrich duty_rate from supplements if missing
+            if sub_codes:
+                try:
+                    from lib._tariff_supplements import get_supplement_rate, get_unit_for_hs
+                    for _sc in sub_codes:
+                        _sc_hs = str(_sc.get("hs_code", "")).replace(".", "").replace("/", "")
+                        _sc_supp = get_supplement_rate(_sc_hs)
+                        if _sc_supp:
+                            if not _sc.get("duty_rate"):
+                                _sc["duty_rate"] = _sc_supp.get("customs_en", "") or _sc_supp.get("customs_rate", "")
+                            if not _sc.get("purchase_tax"):
+                                _sc["purchase_tax"] = _sc_supp.get("purchase_tax_en", "") or _sc_supp.get("purchase_tax", "")
+                            if not _sc.get("supplement_rate"):
+                                _sc["supplement_rate"] = _sc_supp.get("customs_en", "") or _sc_supp.get("customs_rate", "")
+                        if not _sc.get("statistical_unit"):
+                            _sc_unit = get_unit_for_hs(_sc_hs)
+                            if _sc_unit:
+                                _sc["statistical_unit"] = _sc_unit.get("he", "") or _sc_unit.get("en", "")
+                except ImportError:
+                    pass
             if sub_codes:
                 parts.append("""<table width="100%" cellpadding="5" cellspacing="0" style="border:1px solid #ccc;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
                 <tr style="background:#2c3e50;color:#fff;font-weight:bold;">
@@ -898,6 +918,11 @@ def _render_broker_result_html(broker_result):
                     _supp = get_supplement_rate(_hs_raw)
                     if _supp:
                         _sr = _supp.get("customs_en", "") or _supp.get("customs_rate", "")
+                        # Fill duty_rate + purchase_tax from supplements when cls is empty
+                        if not duty:
+                            duty = _supp.get("customs_en", "") or _supp.get("customs_rate", "")
+                        if not pt:
+                            pt = _supp.get("purchase_tax_en", "") or _supp.get("purchase_tax", "")
                     _unit = get_unit_for_hs(_hs_raw)
                     if _unit:
                         _su = _unit.get("he", "") or _unit.get("en", "")
