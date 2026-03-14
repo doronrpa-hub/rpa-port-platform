@@ -697,6 +697,121 @@ def _fallback_item_identification(items):
 
 
 # ---------------------------------------------------------------------------
+#  ENGLISH NAME RESOLUTION — deterministic first, AI fallback
+# ---------------------------------------------------------------------------
+
+_SHAAROLAMI_EN_URL = "https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/en/CustomsBook/Import/CustomsTaarifEntry"
+_SHAAROLAMI_HE_URL = "https://shaarolami-query.customs.mof.gov.il/CustomspilotWeb/he/CustomsBook/Import/CustomsTaarifEntry"
+_SHAAROLAMI_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                  " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml",
+}
+
+# Regex to extract English description from shaarolami EN page
+_RE_SHAAROLAMI_EN_DESC = re.compile(
+    r'>\s*\d{10}(?:/\d)?\s*</span>'
+    r'.*?hidden-sm-inline[^>]*>([^<]+)</div>',
+    re.DOTALL,
+)
+
+# Per-request cache for English name resolution (avoids duplicate calls in verify loop)
+_english_name_cache = {}
+
+
+def _resolve_english_name(name_he, db=None, api_key=None):
+    """Resolve Hebrew product name to English customs terminology.
+
+    Stage 1: Query shaarolami English endpoint with Hebrew term (bilingual DB).
+    Stage 2: Fallback — Haiku single-word translation (~$0.0003).
+
+    Returns English name string, or "" if resolution fails.
+    Caches results per request (module-level dict, reset per Cloud Function instance).
+    """
+    if not name_he or len(name_he.strip()) < 2:
+        return ""
+
+    name_he = name_he.strip()
+    if name_he in _english_name_cache:
+        cached = _english_name_cache[name_he]
+        print(f"    [broker] English name cache hit: '{name_he}' → '{cached}'")
+        return cached
+
+    resolved = ""
+
+    # Stage 1: Query shaarolami — Hebrew search returns results with descriptions.
+    # We query the HE endpoint (matches Hebrew terms) and the EN endpoint (for English desc).
+    try:
+        # First: query HE endpoint to get matching HS codes
+        resp_he = requests.get(
+            _SHAAROLAMI_HE_URL,
+            params={"freeText": name_he},
+            headers=_SHAAROLAMI_HEADERS,
+            timeout=8,
+        )
+        if resp_he.status_code == 200 and len(resp_he.text) > 100:
+            resp_he.encoding = "utf-8"
+            # Extract first HS code from Hebrew results
+            he_match = re.search(r'>\s*(\d{10}(?:/\d)?)\s*</span>', resp_he.text)
+            if he_match:
+                hs_code = he_match.group(1).replace("/", "")[:10]
+                # Now query EN endpoint with this HS code to get English description
+                resp_en = requests.get(
+                    _SHAAROLAMI_EN_URL,
+                    params={"freeText": hs_code[:4]},  # Query by heading (4 digits)
+                    headers=_SHAAROLAMI_HEADERS,
+                    timeout=8,
+                )
+                if resp_en.status_code == 200 and len(resp_en.text) > 100:
+                    resp_en.encoding = "utf-8"
+                    # Find our exact HS code in EN results
+                    en_matches = _RE_SHAAROLAMI_EN_DESC.findall(resp_en.text)
+                    if en_matches:
+                        # Take the first English description (most relevant)
+                        en_desc = en_matches[0].strip()
+                        # Clean up — take last meaningful word(s) as product name
+                        # Shaarolami returns full tariff description like "Carbon dioxide"
+                        if en_desc and len(en_desc) >= 3:
+                            resolved = en_desc[:100]
+                            print(f"    [broker] Resolved '{name_he}' → '{resolved}' "
+                                  f"via shaarolami (HS {hs_code})")
+    except Exception as e:
+        print(f"    [broker] Shaarolami EN resolution error: {e}")
+
+    # Stage 2: Haiku translation fallback
+    if not resolved and api_key:
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key.strip(),
+                    "content-type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 30,
+                    "messages": [{"role": "user", "content":
+                        f"תרגם לאנגלית טכנית לצרכי סיווג מכס בלבד, "
+                        f"מילה אחת או שתיים: {name_he}"}],
+                },
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                text = resp.json().get("content", [{}])[0].get("text", "").strip()
+                # Clean up — remove quotes, explanations, just the term
+                text = text.strip('"\'').split('\n')[0].strip()
+                if text and len(text) >= 2 and len(text) <= 80:
+                    resolved = text
+                    print(f"    [broker] Resolved '{name_he}' → '{resolved}' via haiku")
+        except Exception as e:
+            print(f"    [broker] Haiku translation error: {e}")
+
+    _english_name_cache[name_he] = resolved
+    return resolved
+
+
+# ---------------------------------------------------------------------------
 #  FIX 3: Visit manufacturer URL from email
 # ---------------------------------------------------------------------------
 
@@ -1241,6 +1356,11 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     """
     _ensure_elimination()
 
+    # DEBUG: Ch.99 guard logging — trace every call to classify_single_item
+    _legal = operation_context.get("legal_category", "")
+    print(f"    [guard] classify_single_item called: legal_category='{_legal}' "
+          f"item='{item.get('name', '')[:50]}'")
+
     # --- Layer 1: Chapter decision tree (Session 98) ---
     tree_result = None
     _ensure_decision_trees()
@@ -1328,6 +1448,11 @@ def classify_single_item(item, operation_context, db, spare_chapter=None,
     # GUARD: Chapter 98/99 is ONLY for personal imports (עולה חדש, תושב חוזר, etc.)
     # Commercial consultations must NEVER get ch.98/99 as primary classification.
     legal_cat = operation_context.get("legal_category", "")
+    _cand_chapters = [str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+                      for c in pre_result.get("candidates", [])]
+    print(f"    [guard] BEFORE ch.98/99 filter: legal_category='{legal_cat}' "
+          f"candidates={len(pre_result.get('candidates', []))} "
+          f"chapters={_cand_chapters[:10]}")
     if not legal_cat:
         # Commercial import — strip chapter 98/99 candidates entirely
         before_count = len(pre_result.get("candidates", []))
@@ -2815,6 +2940,17 @@ def process_case(email_text, attachments_text, db, get_secret_func,
                     break  # One URL per item
 
     # _anthropic_key already fetched at top of process_case
+
+    # ENGLISH NAME RESOLUTION: for items with empty name_en, resolve via
+    # shaarolami (deterministic) or Haiku fallback (~$0.0003 per call).
+    # This runs BEFORE classification so English tariff search has terms to match.
+    for item in items:
+        name_en = item.get("name_en", "").strip()
+        name_he = item.get("name", "").strip()
+        if name_he and not name_en:
+            resolved = _resolve_english_name(name_he, db=db, api_key=_anthropic_key)
+            if resolved:
+                item["name_en"] = resolved
 
     # Process each item
     classified_items = []

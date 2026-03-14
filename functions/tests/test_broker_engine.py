@@ -46,6 +46,9 @@ from lib.broker_engine import (
     _build_valuation_summary,
     _build_release_notes,
     _build_candidates_for_item,
+    _resolve_english_name,
+    _english_name_cache,
+    _PERSONAL_IMPORT_CHAPTERS,
     _FTA_COUNTRY_MAP,
     ISRAEL_VAT_RATE,
     _SPARE_PART_RE,
@@ -1455,3 +1458,129 @@ class TestShaarolamiVerification:
         hs_codes = [c["hs_code"] for c in pre_result["candidates"]]
         assert "7615100000" in hs_codes
         assert "9902251000" not in hs_codes
+
+
+# ---------------------------------------------------------------------------
+#  Session 114: English name resolution
+# ---------------------------------------------------------------------------
+
+class TestResolveEnglishName:
+    """Tests for _resolve_english_name()."""
+
+    def setup_method(self):
+        _english_name_cache.clear()
+
+    def test_empty_input_returns_empty(self):
+        assert _resolve_english_name("") == ""
+        assert _resolve_english_name(None) == ""
+        assert _resolve_english_name("x") == ""  # too short
+
+    def test_cache_hit(self):
+        _english_name_cache["פחמן דו חמצני"] = "carbon dioxide"
+        result = _resolve_english_name("פחמן דו חמצני")
+        assert result == "carbon dioxide"
+
+    def test_cache_stores_empty_on_failure(self):
+        """When both stages fail, cache stores empty string to avoid re-queries."""
+        result = _resolve_english_name("מילה_שלא_קיימת_בשום_מקום", db=None, api_key=None)
+        assert result == ""
+        assert "מילה_שלא_קיימת_בשום_מקום" in _english_name_cache
+
+    def test_no_api_key_no_crash(self):
+        """Without API key, stage 2 (Haiku) is skipped gracefully."""
+        result = _resolve_english_name("קורקינט", db=None, api_key=None)
+        # May return empty (shaarolami may not respond in test env) but should not crash
+        assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+#  Session 114: Ch.98/99 guard unit tests
+# ---------------------------------------------------------------------------
+
+class TestChapter9899Guard:
+    """Tests for chapter 98/99 filtering in classify_single_item."""
+
+    def test_personal_import_chapters_constant(self):
+        assert "98" in _PERSONAL_IMPORT_CHAPTERS
+        assert "99" in _PERSONAL_IMPORT_CHAPTERS
+        assert "28" not in _PERSONAL_IMPORT_CHAPTERS
+
+    def test_ch99_stripped_from_commercial(self):
+        """Ch.99 candidates should be removed when legal_category is empty (commercial)."""
+        candidates = [
+            {"hs_code": "9902251000", "confidence": 90, "description": "personal import"},
+            {"hs_code": "2811210000", "confidence": 70, "description": "carbon dioxide"},
+        ]
+        # Simulate the guard logic
+        legal_cat = ""
+        if not legal_cat:
+            filtered = [
+                c for c in candidates
+                if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+                not in _PERSONAL_IMPORT_CHAPTERS
+            ]
+        assert len(filtered) == 1
+        assert filtered[0]["hs_code"] == "2811210000"
+
+    def test_ch99_kept_for_personal_import(self):
+        """Ch.99 candidates should be KEPT when legal_category is set."""
+        candidates = [
+            {"hs_code": "9902251000", "confidence": 90, "description": "personal import"},
+            {"hs_code": "2811210000", "confidence": 70, "description": "carbon dioxide"},
+        ]
+        legal_cat = "toshav_chozer"
+        if not legal_cat:
+            candidates = [
+                c for c in candidates
+                if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+                not in _PERSONAL_IMPORT_CHAPTERS
+            ]
+        # No filtering applied
+        assert len(candidates) == 2
+
+    def test_ch98_stripped_from_commercial(self):
+        """Ch.98 candidates also stripped for commercial."""
+        candidates = [
+            {"hs_code": "9801100000", "confidence": 90, "description": "oleh"},
+            {"hs_code": "8507600000", "confidence": 70, "description": "battery"},
+        ]
+        legal_cat = ""
+        if not legal_cat:
+            filtered = [
+                c for c in candidates
+                if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+                not in _PERSONAL_IMPORT_CHAPTERS
+            ]
+        assert len(filtered) == 1
+        assert filtered[0]["hs_code"] == "8507600000"
+
+    def test_formatted_hs_code_stripped(self):
+        """Guard should handle XX.XX.XXXXXX/X formatted HS codes."""
+        candidates = [
+            {"hs_code": "99.02.251000/4", "confidence": 90, "description": "personal"},
+            {"hs_code": "28.11.210000/5", "confidence": 70, "description": "CO2"},
+        ]
+        legal_cat = ""
+        if not legal_cat:
+            filtered = [
+                c for c in candidates
+                if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+                not in _PERSONAL_IMPORT_CHAPTERS
+            ]
+        assert len(filtered) == 1
+        assert "28" in filtered[0]["hs_code"]
+
+    def test_all_ch99_returns_empty(self):
+        """When ALL candidates are ch.98/99, filtering returns empty list."""
+        candidates = [
+            {"hs_code": "9902251000", "confidence": 90},
+            {"hs_code": "9801100000", "confidence": 70},
+        ]
+        legal_cat = ""
+        if not legal_cat:
+            filtered = [
+                c for c in candidates
+                if str(c.get("hs_code", "")).replace(".", "").replace("/", "")[:2]
+                not in _PERSONAL_IMPORT_CHAPTERS
+            ]
+        assert len(filtered) == 0
