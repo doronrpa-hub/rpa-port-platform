@@ -797,13 +797,47 @@ def _render_broker_result_html(broker_result):
         </div>""")
 
         if status == "kram":
+            # Show the subtree tariff table when available (kram = ambiguous sub-heading)
+            sub_codes = cls.get("sub_codes", [])
+            if sub_codes:
+                parts.append("""<table width="100%" cellpadding="5" cellspacing="0" style="border:1px solid #ccc;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
+                <tr style="background:#2c3e50;color:#fff;font-weight:bold;">
+                    <td style="border:1px solid #555;width:15%;">פרט</td>
+                    <td style="border:1px solid #555;width:35%;">תיאור</td>
+                    <td style="border:1px solid #555;width:10%;">מכס כללי</td>
+                    <td style="border:1px solid #555;width:10%;">מס קנייה</td>
+                    <td style="border:1px solid #555;width:15%;">שיעור התוספות</td>
+                    <td style="border:1px solid #555;width:15%;">יחידה סטטיסטית</td>
+                </tr>""")
+                for sc in sub_codes:
+                    sc_hs = _format_hs(sc.get("hs_code", ""))
+                    sc_desc = sc.get("description", "") or sc.get("description_en", "")
+                    sc_duty = sc.get("duty_rate", "")
+                    sc_pt = sc.get("purchase_tax", "")
+                    sc_supp = sc.get("supplement_rate", "")
+                    sc_unit = sc.get("statistical_unit", "")
+                    parts.append(f"""<tr>
+                        <td style="border:1px solid #ddd;font-family:monospace;" dir="ltr">{sc_hs}</td>
+                        <td style="border:1px solid #ddd;">{sc_desc[:100]}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_duty or '—'}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_pt or '—'}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_supp or '—'}</td>
+                        <td style="border:1px solid #ddd;text-align:center;">{sc_unit or '—'}</td>
+                    </tr>""")
+                parts.append("</table>")
+            # Show clarifying questions
             kram_qs = ci.get("kram_questions", cls.get("kram_questions", []))
-            parts.append(f"""<div style="color:#c0392b;padding:8px;background:#fdf0f0;border-right:3px solid #c0392b;">
-                <b>נדרש מידע נוסף לסיווג פריט זה:</b>
-                <ul style="margin:4px 0;">""")
-            for q in kram_qs:
-                parts.append(f"<li>{q.get('question_he', '')}</li>")
-            parts.append("</ul></div>")
+            if kram_qs:
+                parts.append(f"""<div style="color:#c0392b;padding:8px;background:#fdf0f0;border-right:3px solid #c0392b;">
+                    <b>נדרש מידע נוסף לסיווג פריט זה — איזה מהפרטים הבאים מתאים?</b>
+                    <ul style="margin:4px 0;">""")
+                for q in kram_qs:
+                    parts.append(f"<li>{q.get('question_he', '')}</li>")
+                parts.append("</ul></div>")
+            else:
+                parts.append(f"""<div style="color:#c0392b;padding:8px;background:#fdf0f0;border-right:3px solid #c0392b;">
+                    <b>נדרש מידע נוסף לסיווג פריט זה</b>
+                </div>""")
         elif cls:
             hs_code = cls.get("hs_code", "")
             hs_fmt = _format_hs(hs_code)

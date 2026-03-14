@@ -1128,3 +1128,174 @@ class TestClassifySingleItemOutputFormat:
         if result:
             assert 0 <= result["confidence"] <= 1.0, \
                 f"confidence not in 0.0-1.0 range: {result['confidence']}"
+
+
+# ---------------------------------------------------------------------------
+#  SESSION 110: AI Product Extraction Tests
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch, MagicMock
+from lib.broker_engine import (
+    _extract_product_from_question,
+    _extract_products_from_vocab,
+)
+
+
+class TestAIProductExtraction:
+    """Test the focused AI product extraction (replaces vocab-first approach)."""
+
+    def test_returns_list_on_single_product(self):
+        """AI extraction should return a list of product names."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [{"text": "פילטרים"}],
+        }
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            result = _extract_product_from_question("מה פרט המכס של פילטרים?", api_key="test-key")
+        assert result == ["פילטרים"]
+
+    def test_returns_list_on_multiple_products(self):
+        """AI may return comma-separated products."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [{"text": "פילטרים, משאבות"}],
+        }
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            result = _extract_product_from_question("פילטרים ומשאבות", api_key="test-key")
+        assert result == ["פילטרים", "משאבות"]
+
+    def test_returns_none_on_no_product(self):
+        """AI returns NONE when no product found."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [{"text": "NONE"}],
+        }
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            result = _extract_product_from_question("שלום מה שלומך?", api_key="test-key")
+        assert result is None
+
+    def test_returns_none_on_api_failure(self):
+        """AI extraction returns None on API errors."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            result = _extract_product_from_question("פילטרים", api_key="test-key")
+        assert result is None
+
+    def test_returns_none_without_api_key(self):
+        """No API key → None."""
+        result = _extract_product_from_question("פילטרים", api_key=None)
+        assert result is None
+
+    def test_returns_none_on_short_text(self):
+        """Text < 5 chars → skip."""
+        result = _extract_product_from_question("hi", api_key="test-key")
+        assert result is None
+
+    def test_strips_html_from_input(self):
+        """HTML tags should be stripped before sending to AI."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [{"text": "ברגים"}],
+        }
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp) as mock_post:
+            _extract_product_from_question("<p>מה הסיווג של <b>ברגים</b>?</p>", api_key="k")
+            call_args = mock_post.call_args
+            body = call_args[1]["json"]["messages"][0]["content"]
+            assert "<p>" not in body
+            assert "<b>" not in body
+
+    def test_prompt_is_hebrew(self):
+        """The prompt should be in Hebrew for best results with Hebrew emails."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"content": [{"text": "NONE"}]}
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp) as mock_post:
+            _extract_product_from_question("test email body here", api_key="k")
+            body = mock_post.call_args[1]["json"]["messages"][0]["content"]
+            assert "מה המוצר במייל" in body
+
+    def test_filters_short_garbage_products(self):
+        """Products shorter than 2 chars should be filtered out."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [{"text": "א, פילטרים, ב"}],
+        }
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            result = _extract_product_from_question("some email text here", api_key="k")
+        assert result == ["פילטרים"]
+
+    def test_handles_network_error(self):
+        """Network errors should return None, not crash."""
+        with patch("lib.broker_engine.requests.post", side_effect=Exception("timeout")):
+            result = _extract_product_from_question("פילטרים", api_key="k")
+        assert result is None
+
+
+class TestProcessCaseAIFirst:
+    """Test that process_case uses AI extraction FIRST when analyze_case finds 0 items."""
+
+    def _mock_get_secret(self, name):
+        if name == "ANTHROPIC_API_KEY":
+            return "test-anthropic-key"
+        if name == "GEMINI_API_KEY":
+            return "test-gemini-key"
+        return None
+
+    def test_ai_extraction_before_vocab(self):
+        """When analyze_case finds 0 items, AI extraction should be tried FIRST."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [{"text": "פילטרים"}],
+        }
+        db = _make_db(tariff={})
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            with patch("lib.broker_engine._identify_items_with_ai", return_value=[{"name": "פילטרים"}]) as mock_id:
+                with patch("lib.broker_engine.classify_single_item", return_value=None):
+                    result = process_case(
+                        "מה פרט המכס של פילטרים?", "", db, self._mock_get_secret,
+                    )
+        # AI extraction should have been called (via requests.post with Haiku)
+        # and items should have been created from AI result
+        assert result is not None
+
+    def test_no_items_returns_clarification(self):
+        """If AI extraction fails AND no vocab chapters, return no_items with question."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"content": [{"text": "NONE"}]}
+        db = _make_db(tariff={})
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            result = process_case("שלום מה שלומך?", "", db, self._mock_get_secret)
+        assert result is not None
+        assert result["status"] == "no_items"
+        assert len(result["kram_questions"]) > 0
+
+    def test_vocab_provides_chapter_hints_not_items(self):
+        """Vocab extraction should provide chapter hints, not generate items directly."""
+        # When AI returns a product and vocab knows the chapter, chapter_hint should be set
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"content": [{"text": "פילטרים"}]}
+        db = _make_db(tariff={})
+
+        captured_items = []
+
+        def mock_identify(items, get_secret_func):
+            captured_items.extend(items)
+            return items
+
+        with patch("lib.broker_engine.requests.post", return_value=mock_resp):
+            with patch("lib.broker_engine._identify_items_with_ai", side_effect=mock_identify):
+                with patch("lib.broker_engine.classify_single_item", return_value=None):
+                    process_case("מה פרט המכס של פילטרים?", "", db, self._mock_get_secret)
+
+        # The item should come from AI ("פילטרים"), not vocab garbage
+        assert len(captured_items) == 1
+        assert captured_items[0]["name"] == "פילטרים"

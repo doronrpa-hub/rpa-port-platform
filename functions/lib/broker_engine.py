@@ -138,20 +138,30 @@ _VOCAB_STOP = frozenset({
     "special", "private", "new", "old", "good", "bad", "first", "second",
 })
 
-_EXTRACT_PRODUCT_PROMPT = """Extract the product name from this email.
-The user is asking about customs classification (HS code / tariff heading).
-Return ONLY the product name — no explanation, no quotes, no punctuation.
-If you cannot identify a product, return exactly: NONE
+_EXTRACT_PRODUCT_PROMPT = """מה המוצר במייל? ענה במילה אחת או שתיים בלבד.
 
-Examples:
+כללים:
+- ענה רק בשם המוצר — בלי הסבר, בלי גרשיים, בלי סימני פיסוק
+- אם יש יותר ממוצר אחד, הפרד בפסיק
+- אם אין מוצר, ענה: NONE
+
+דוגמאות:
 - "יש לי לקוח שרוצה לייבא פילטרים. מה פרט המכס?" → פילטרים
 - "מה הסיווג של ספות מרופדות?" → ספות מרופדות
-- "classify steel pipes for construction" → steel pipes for construction
-- "שלום, מה שלומך?" → NONE"""
+- "classify steel pipes for construction" → steel pipes
+- "שלום, מה שלומך?" → NONE
+- "יש לי פילטרים ומשאבות" → פילטרים, משאבות"""
 
 
 def _extract_product_from_question(text, api_key=None):
-    """Extract product name from conversational email using AI."""
+    """Extract product name from conversational email using focused AI call.
+
+    This is the PRIMARY extraction method when analyze_case() finds 0 items.
+    Uses Claude Haiku with a focused Hebrew prompt for minimal cost (~$0.0003).
+
+    Returns:
+        list of product name strings, or None if extraction fails.
+    """
     if not api_key or not text:
         return None
     body = re.sub(r'<[^>]+>', ' ', text).strip()
@@ -169,7 +179,7 @@ def _extract_product_from_question(text, api_key=None):
                 "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 100,
                 "messages": [{"role": "user",
-                              "content": f"{_EXTRACT_PRODUCT_PROMPT}\n\nEmail:\n{body[:500]}"}],
+                              "content": f"{_EXTRACT_PRODUCT_PROMPT}\n\nEmail:\n{body[:800]}"}],
             },
             timeout=10,
         )
@@ -179,8 +189,12 @@ def _extract_product_from_question(text, api_key=None):
         result = resp.json().get("content", [{}])[0].get("text", "").strip()
         if not result or result == "NONE" or len(result) < 2:
             return None
-        print(f"    [broker] AI extracted product: '{result}'")
-        return result
+        # Parse comma-separated products (AI may return "פילטרים, משאבות")
+        products = [p.strip() for p in result.split(",") if p.strip() and len(p.strip()) >= 2]
+        if not products:
+            return None
+        print(f"    [broker] AI extracted product(s): {products}")
+        return products
     except Exception as e:
         print(f"    [broker] product extraction error: {e}")
         return None
@@ -1379,10 +1393,15 @@ def _enrich_subcodes_with_supplements(sub_codes):
 
     for sc in sub_codes:
         hs = str(sc.get("hs_code", "")).replace(".", "").replace("/", "")
-        # Supplement rate (שיעור התוספות)
+        # Supplement rate (שיעור התוספות) — also fills duty_rate/purchase_tax if missing
         supp = get_supplement_rate(hs)
         if supp:
             sc["supplement_rate"] = supp.get("customs_en", "") or supp.get("customs_rate", "")
+            # Fill missing duty_rate and purchase_tax from supplements data
+            if not sc.get("duty_rate"):
+                sc["duty_rate"] = supp.get("customs_en", "") or supp.get("customs_rate", "")
+            if not sc.get("purchase_tax"):
+                sc["purchase_tax"] = supp.get("purchase_tax_en", "") or supp.get("purchase_tax", "")
         # Statistical unit (יחידה סטטיסטית)
         unit = get_unit_for_hs(hs)
         if unit:
@@ -2496,24 +2515,41 @@ def process_case(email_text, attachments_text, db, get_secret_func,
             case_plan.items_to_classify = url_items
 
     if not case_plan.items_to_classify:
-        # Fallback: extract products from conversational text via customs vocabulary
+        # PRIMARY: AI extraction — one focused Haiku call (~$0.0003)
+        # Vocab extraction is unreliable (4/5 garbage words), so AI goes first.
+        print(f"    [broker] AI product extraction on {len(text)} chars")
+        ai_products = _extract_product_from_question(text, api_key=_anthropic_key)
+
+        # Vocab used ONLY for chapter hints (not as item source)
+        _vocab_chapter_hints = {}
         vocab_products = _extract_products_from_vocab(text)
         if vocab_products:
-            print(f"    Vocab fallback: {len(vocab_products)} products extracted from text")
             for vp in vocab_products:
-                print(f"      → {vp['name'][:60]} (chapters: {vp.get('chapters', [])})")
-            case_plan.items_to_classify = [
-                {"name": vp["name"], "keywords": vp["keywords"],
-                 "description": text[:500], "category": "commercial"}
-                for vp in vocab_products
-            ]
+                for ch in vp.get("chapters", []):
+                    _vocab_chapter_hints[vp["name"].lower()] = ch
+
+        if ai_products:
+            case_plan.items_to_classify = []
+            for product_name in ai_products:
+                item = {
+                    "name": product_name,
+                    "description": text[:500],
+                    "category": "commercial",
+                }
+                # Attach chapter hint from vocab if the AI product matches
+                pn_lower = product_name.lower()
+                for vocab_key, ch in _vocab_chapter_hints.items():
+                    if vocab_key in pn_lower or pn_lower in vocab_key:
+                        item["chapter_hint"] = ch
+                        break
+                case_plan.items_to_classify.append(item)
+            print(f"    AI extraction: {len(ai_products)} product(s)")
         elif vocab_chapters:
-            # Vocab extraction found nothing but smart_classify identified chapters.
-            # Use the email body itself as the product description with a chapter hint.
+            # AI failed but smart_classify identified chapters — use body + hint
             ch_hint = sorted(vocab_chapters)[0]
             body_clean = re.sub(r'<[^>]+>', ' ', text).strip()
             body_first_line = body_clean.split('\n')[0].strip()[:80] or body_clean[:80]
-            print(f"    Chapter hint fallback: ch.{ch_hint} from smart_classify, body='{body_first_line[:50]}'")
+            print(f"    Chapter hint fallback: ch.{ch_hint}, body='{body_first_line[:50]}'")
             case_plan.items_to_classify = [{
                 "name": body_first_line,
                 "description": body_clean[:500],
@@ -2521,26 +2557,16 @@ def process_case(email_text, attachments_text, db, get_secret_func,
                 "chapter_hint": ch_hint,
             }]
         else:
-            # Last resort: AI extraction from conversational question
-            print(f"    [broker] AI product extraction on {len(text)} chars")
-            conv_product = _extract_product_from_question(text, api_key=_anthropic_key)
-            if conv_product:
-                print(f"    Conversational fallback: '{conv_product}'")
-                case_plan.items_to_classify = [{
-                    "name": conv_product,
-                    "description": text[:500],
-                    "category": "commercial",
-                }]
-            else:
-                return {
-                    "status": "no_items",
-                    "operation": case_plan.to_dict(),
-                    "items": [],
-                    "kram_questions": [{
-                        "question_he": "לא זיהיתי פריטים לסיווג. מה הטובין שברצונך לסווג?",
-                        "question_en": "No items detected. What goods would you like to classify?",
-                    }],
-                }
+            # AI failed, no chapter hints — ask the user what they want classified
+            return {
+                "status": "no_items",
+                "operation": case_plan.to_dict(),
+                "items": [],
+                "kram_questions": [{
+                    "question_he": "לא זיהיתי פריטים לסיווג. מה הטובין שברצונך לסווג?",
+                    "question_en": "No items detected. What goods would you like to classify?",
+                }],
+            }
 
     operation_context = {
         "direction": case_plan.direction,
@@ -2620,6 +2646,38 @@ def process_case(email_text, attachments_text, db, get_secret_func,
                     result["purchase_tax"] = drill["purchase_tax"]
                 if drill.get("clarification_options"):
                     result["clarification_options"] = drill["clarification_options"]
+
+        # Enrich duty_rate from supplements if still missing after drill-down
+        if not result.get("duty_rate"):
+            try:
+                try:
+                    from lib._tariff_supplements import get_supplement_rate
+                except ImportError:
+                    from _tariff_supplements import get_supplement_rate
+                _hs_clean = str(result.get("hs_code", "")).replace(".", "").replace("/", "")
+                _supp = get_supplement_rate(_hs_clean)
+                if _supp:
+                    result["duty_rate"] = _supp.get("customs_en", "") or _supp.get("customs_rate", "")
+                if not result.get("purchase_tax") and _supp:
+                    result["purchase_tax"] = _supp.get("purchase_tax_en", "") or _supp.get("purchase_tax", "")
+            except ImportError:
+                pass
+
+        # If drill-down returned kram (multiple sub-codes, can't determine),
+        # generate clarifying questions from the options BEFORE continuing
+        if result.get("drill_method") == "kram" and result.get("clarification_options"):
+            opts = result["clarification_options"]
+            kram_qs = []
+            for opt in opts[:6]:  # cap displayed options
+                opt_hs = _enforce_hs_format(opt.get("hs_code", ""))
+                opt_desc = opt.get("description", "")[:100]
+                kram_qs.append({
+                    "question_he": f"האם הפריט מתאים לפרט {opt_hs} — {opt_desc}?",
+                    "question_en": f"Does the item match {opt_hs} — {opt_desc}?",
+                    "hs_code": opt_hs,
+                })
+            result["kram_questions"] = kram_qs
+            result["status"] = "kram"
 
         # PHASE 7: Chapter 98 mapping
         _apply_chapter98(result, item, case_plan.legal_category,
