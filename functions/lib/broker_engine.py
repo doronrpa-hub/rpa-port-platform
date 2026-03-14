@@ -138,29 +138,54 @@ _VOCAB_STOP = frozenset({
     "special", "private", "new", "old", "good", "bad", "first", "second",
 })
 
-_EXTRACT_PRODUCT_PROMPT = """מה המוצר במייל? ענה במילה אחת או שתיים בלבד.
+_EXTRACT_PRODUCT_PROMPT = """מה המוצר במייל? ענה בפורמט: עברית|English
 
 כללים:
-- ענה רק בשם המוצר — בלי הסבר, בלי גרשיים, בלי סימני פיסוק
-- אם יש יותר ממוצר אחד, הפרד בפסיק
+- שורה אחת לכל מוצר בפורמט: שם בעברית|English name
+- אם יש יותר ממוצר אחד, שורה נפרדת לכל מוצר
+- אם המוצר רק בעברית, תרגם לאנגלית. אם רק באנגלית, תרגם לעברית.
 - אם אין מוצר, ענה: NONE
+- בלי הסבר, בלי גרשיים, בלי מספור
 
 דוגמאות:
-- "יש לי לקוח שרוצה לייבא פילטרים. מה פרט המכס?" → פילטרים
-- "מה הסיווג של ספות מרופדות?" → ספות מרופדות
-- "classify steel pipes for construction" → steel pipes
+- "יש לי לקוח שרוצה לייבא פילטרים" → פילטרים|filters
+- "מה הסיווג של ספות מרופדות?" → ספות מרופדות|upholstered sofas
+- "classify steel pipes for construction" → צינורות פלדה|steel pipes
 - "שלום, מה שלומך?" → NONE
-- "יש לי פילטרים ומשאבות" → פילטרים, משאבות"""
+- "יש לי פילטרים ומשאבות" →
+פילטרים|filters
+משאבות|pumps
+- "carbon dioxide in containers" → פחמן דו חמצני|carbon dioxide
+- "קורקינט חשמלי" → קורקינט חשמלי|electric scooter"""
+
+_EXTRACT_SPECS_PROMPT = """מה המפרט הטכני של המוצר במייל? ענה בפורמט key: value, שורה לכל מפרט.
+
+מפרטים לחפש: חומר/material, משקל/weight, מידות/dimensions, תדר/frequency, הספק/power, נפח/volume, ריכוז/concentration, שימוש/use
+
+כללים:
+- רק מידע שמופיע בפירוש במייל
+- אם אין מפרט, ענה: NONE
+- בלי הסבר, רק key: value
+
+דוגמאות:
+- "גלילי CO2 בנפח 50 ליטר, 99.9% טוהר" →
+material: carbon dioxide CO2
+volume: 50 liters
+concentration: 99.9%
+- "קורקינט חשמלי 350W, סוללת ליתיום 36V" →
+power: 350W
+material: lithium battery 36V"""
 
 
 def _extract_product_from_question(text, api_key=None):
-    """Extract product name from conversational email using focused AI call.
+    """Extract product name (Hebrew + English) from email using focused AI call.
 
     This is the PRIMARY extraction method when analyze_case() finds 0 items.
-    Uses Claude Haiku with a focused Hebrew prompt for minimal cost (~$0.0003).
+    Uses Claude Haiku with a bilingual prompt: returns "עברית|English" per product.
+    Also extracts technical specs from the email body in a second question.
 
     Returns:
-        list of product name strings, or None if extraction fails.
+        list of product dicts [{name, name_en}], or None if extraction fails.
     """
     if not api_key or not text:
         return None
@@ -168,6 +193,11 @@ def _extract_product_from_question(text, api_key=None):
     if len(body) < 5:
         return None
     try:
+        # Combined prompt: product names + specs in one call
+        combined_prompt = (
+            f"{_EXTRACT_PRODUCT_PROMPT}\n\nEmail:\n{body[:800]}\n\n---\n\n"
+            f"{_EXTRACT_SPECS_PROMPT}\n\nEmail:\n{body[:800]}"
+        )
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -177,9 +207,8 @@ def _extract_product_from_question(text, api_key=None):
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 100,
-                "messages": [{"role": "user",
-                              "content": f"{_EXTRACT_PRODUCT_PROMPT}\n\nEmail:\n{body[:800]}"}],
+                "max_tokens": 300,
+                "messages": [{"role": "user", "content": combined_prompt}],
             },
             timeout=10,
         )
@@ -189,11 +218,50 @@ def _extract_product_from_question(text, api_key=None):
         result = resp.json().get("content", [{}])[0].get("text", "").strip()
         if not result or result == "NONE" or len(result) < 2:
             return None
-        # Parse comma-separated products (AI may return "פילטרים, משאבות")
-        products = [p.strip() for p in result.split(",") if p.strip() and len(p.strip()) >= 2]
+
+        # Parse bilingual products (lines with "עברית|English" format)
+        products = []
+        email_specs = {}
+        in_specs = False
+        for line in result.split("\n"):
+            line = line.strip()
+            if not line or line == "NONE":
+                continue
+            # Check for specs section (key: value lines)
+            if ":" in line and "|" not in line:
+                in_specs = True
+                parts = line.split(":", 1)
+                if len(parts) == 2:
+                    key = parts[0].strip().lower()
+                    val = parts[1].strip()
+                    if val and val != "NONE":
+                        email_specs[key] = val
+                continue
+            if in_specs:
+                continue
+            # Parse "עברית|English" format
+            if "|" in line:
+                parts = line.split("|", 1)
+                name_he = parts[0].strip()
+                name_en = parts[1].strip() if len(parts) > 1 else ""
+                if name_he and len(name_he) >= 2:
+                    products.append({"name": name_he, "name_en": name_en})
+            else:
+                # Fallback: no pipe separator — use as Hebrew name
+                if len(line) >= 2:
+                    products.append({"name": line, "name_en": ""})
+
         if not products:
             return None
-        print(f"    [broker] AI extracted product(s): {products}")
+
+        # Store specs on first product for attachment
+        if email_specs and products:
+            products[0]["_email_specs"] = email_specs
+
+        names_str = ", ".join(f"{p['name']}|{p.get('name_en','')}" for p in products)
+        print(f"    [broker] AI extracted product(s): {names_str}")
+        if email_specs:
+            print(f"    [broker] AI extracted specs: {email_specs}")
         return products
     except Exception as e:
         print(f"    [broker] product extraction error: {e}")
@@ -819,6 +887,7 @@ def _smart_tariff_search(item, db, vocab_chapters=None):
     _ensure_unified()
 
     name_he = item.get("name", "")
+    name_en = item.get("name_en", "")
     essence = item.get("essence", "")
     function = item.get("function", "")
     physical = item.get("physical", "")
@@ -831,7 +900,8 @@ def _smart_tariff_search(item, db, vocab_chapters=None):
     if physical:
         desc_he = f"{desc_he} ({physical})"
 
-    desc_en = " ".join(filter(None, [essence, function, physical]))
+    # English: prefer AI-translated name, fall back to essence/function/physical
+    desc_en = name_en or " ".join(filter(None, [essence, function, physical]))
 
     # --- Try unified index first (instant) ---
     if _UNIFIED_AVAILABLE:
@@ -1087,11 +1157,14 @@ def _build_candidates_for_item(item, db, vocab_chapters=None,
     if _STAGES_AVAILABLE:
         try:
             product_name = item.get("name", "")
+            product_name_en = item.get("name_en", "")
+            # Use combined name for better search (Hebrew + English)
+            search_name = f"{product_name} {product_name_en}".strip() if product_name_en else product_name
             if product_name:
                 # Stage 1: use cached result if verification loop re-entered
                 s1_candidates = item.get("_s1_candidates")
                 if s1_candidates is None:
-                    s1_candidates = _identify_product(product_name, db)
+                    s1_candidates = _identify_product(search_name, db)
                     if s1_candidates:
                         item["_s1_candidates"] = s1_candidates  # cache for re-entry
                 else:
@@ -2658,12 +2731,28 @@ def process_case(email_text, attachments_text, db, get_secret_func,
 
         if ai_products:
             case_plan.items_to_classify = []
-            for product_name in ai_products:
+            for product in ai_products:
+                # product is dict {name, name_en, _email_specs?} or str (legacy)
+                if isinstance(product, str):
+                    product_name = product
+                    product_name_en = ""
+                    email_specs = {}
+                else:
+                    product_name = product.get("name", "")
+                    product_name_en = product.get("name_en", "")
+                    email_specs = product.get("_email_specs", {})
                 item = {
                     "name": product_name,
+                    "name_en": product_name_en,
                     "description": text[:500],
                     "category": "commercial",
                 }
+                # Attach email-extracted specs (weight, dimensions, etc.)
+                if email_specs:
+                    for sk, sv in email_specs.items():
+                        if sk in ("weight", "dimensions", "frequency", "power",
+                                  "material", "volume", "concentration", "use"):
+                            item[sk] = sv
                 # Attach chapter hint from vocab if the AI product matches
                 pn_lower = product_name.lower()
                 for vocab_key, ch in _vocab_chapter_hints.items():

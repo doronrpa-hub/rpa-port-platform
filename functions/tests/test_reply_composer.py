@@ -159,8 +159,10 @@ class TestBlockTariffTable:
         assert "3902" in html
 
     def test_empty(self):
+        """Empty candidates should show a placeholder message, not empty string."""
         html = _block_tariff_table(None)
-        assert html == ""
+        assert "נדרש מידע נוסף" in html
+        assert "סיווג מכס" in html
 
     def test_six_column_headers(self):
         """Verify all 6 official columns are present."""

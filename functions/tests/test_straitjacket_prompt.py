@@ -204,10 +204,11 @@ class TestDynamicSchema:
         result = build_straitjacket_prompt(b)
         assert "hs_candidates" in result["system"]
 
-    def test_no_hs_candidates_without_tariff(self):
+    def test_hs_candidates_always_present(self):
+        """hs_candidates MUST always be in schema — even without tariff entries."""
         b = _bundle()
         result = build_straitjacket_prompt(b)
-        assert "hs_candidates" not in result["system"]
+        assert "hs_candidates" in result["system"]
 
     def test_regulatory_only_with_data(self):
         b = _bundle(regulatory_requirements=[{"authority": "MOH"}])

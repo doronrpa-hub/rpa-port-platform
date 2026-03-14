@@ -207,13 +207,19 @@ def _block_tariff_table(hs_candidates):
     """Official 6-column tariff table: פרט / תיאור / מכס כללי / מס קנייה / שיעור התוספות / יחידה.
 
     Same schema as _render_broker_result_html() in consultation_handler.py.
+    ALWAYS renders — shows placeholder message if no candidates (never empty).
 
     Args:
         hs_candidates: list of dicts with code, description, confidence,
                        duty, purchase_tax, supplement_rate, statistical_unit
     """
     if not hs_candidates:
-        return ""
+        return f"""
+<div class="section-title">סיווג מכס</div>
+<div style="padding:8px 12px;background:#fff3cd;border-right:3px solid #ffc107;font-size:13px;color:#856404;">
+    לא נמצאו פרטי מכס מתאימים — נדרש מידע נוסף על המוצר לצורך סיווג מדויק.
+</div>
+"""
 
     rows = []
     for c in hs_candidates:

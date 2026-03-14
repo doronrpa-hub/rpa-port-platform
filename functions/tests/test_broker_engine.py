@@ -1010,11 +1010,11 @@ class TestRenderBrokerBlocks:
         assert "רפורמת CE" in html
 
     def test_empty_url_shows_message(self):
-        """When no URL visited, Block 2 should say so."""
+        """When no URL visited and no specs, Block 2 should say so."""
         result = self._make_result()
         result["items"][0]["item"]["source_url"] = ""
         html = _render_broker_result_html(result)
-        assert "לא נמצאו קישורים" in html
+        assert "בוצעה בדיקה" in html
 
     def test_html_starts_with_doctype(self):
         html = _render_broker_result_html(self._make_result())
@@ -1145,26 +1145,31 @@ class TestAIProductExtraction:
     """Test the focused AI product extraction (replaces vocab-first approach)."""
 
     def test_returns_list_on_single_product(self):
-        """AI extraction should return a list of product names."""
+        """AI extraction should return a list of product dicts with name + name_en."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "content": [{"text": "פילטרים"}],
+            "content": [{"text": "פילטרים|filters"}],
         }
         with patch("lib.broker_engine.requests.post", return_value=mock_resp):
             result = _extract_product_from_question("מה פרט המכס של פילטרים?", api_key="test-key")
-        assert result == ["פילטרים"]
+        assert len(result) == 1
+        assert result[0]["name"] == "פילטרים"
+        assert result[0]["name_en"] == "filters"
 
     def test_returns_list_on_multiple_products(self):
-        """AI may return comma-separated products."""
+        """AI returns one product per line in bilingual format."""
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "content": [{"text": "פילטרים, משאבות"}],
+            "content": [{"text": "פילטרים|filters\nמשאבות|pumps"}],
         }
         with patch("lib.broker_engine.requests.post", return_value=mock_resp):
             result = _extract_product_from_question("פילטרים ומשאבות", api_key="test-key")
-        assert result == ["פילטרים", "משאבות"]
+        assert len(result) == 2
+        assert result[0]["name"] == "פילטרים"
+        assert result[1]["name"] == "משאבות"
+        assert result[1]["name_en"] == "pumps"
 
     def test_returns_none_on_no_product(self):
         """AI returns NONE when no product found."""
@@ -1200,7 +1205,7 @@ class TestAIProductExtraction:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "content": [{"text": "ברגים"}],
+            "content": [{"text": "ברגים|screws"}],
         }
         with patch("lib.broker_engine.requests.post", return_value=mock_resp) as mock_post:
             _extract_product_from_question("<p>מה הסיווג של <b>ברגים</b>?</p>", api_key="k")
@@ -1224,11 +1229,12 @@ class TestAIProductExtraction:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "content": [{"text": "א, פילטרים, ב"}],
+            "content": [{"text": "א\nפילטרים|filters\nב"}],
         }
         with patch("lib.broker_engine.requests.post", return_value=mock_resp):
             result = _extract_product_from_question("some email text here", api_key="k")
-        assert result == ["פילטרים"]
+        assert len(result) == 1
+        assert result[0]["name"] == "פילטרים"
 
     def test_handles_network_error(self):
         """Network errors should return None, not crash."""

@@ -354,19 +354,19 @@ def _get_output_schema(bundle, case_plan=None):
         ],
     }
 
-    # Add tariff section if tariff data exists
-    if bundle.tariff_entries:
-        schema["hs_candidates"] = [
-            {
-                "code": "XX.XX.XXXXXX",
-                "description": "תיאור בעברית",
-                "confidence": "high / medium / low",
-                "duty": "שיעור מכס",
-                "purchase_tax": "מס קניה",
-                "vat": "מע\"מ",
-                "source_ref": "פרט XX.XX",
-            }
-        ]
+    # ALWAYS include tariff section — HS table is MANDATORY in every reply.
+    # Legal warnings, regulatory flags, etc. are ADDITIONAL blocks after the table.
+    schema["hs_candidates"] = [
+        {
+            "code": "XX.XX.XXXXXX",
+            "description": "תיאור בעברית",
+            "confidence": "high / medium / low",
+            "duty": "שיעור מכס",
+            "purchase_tax": "מס קניה",
+            "vat": "מע\"מ",
+            "source_ref": "פרט XX.XX",
+        }
+    ]
 
     # Add regulatory section if regulatory data exists
     if bundle.regulatory_requirements:

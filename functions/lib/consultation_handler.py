@@ -744,27 +744,35 @@ def _render_broker_result_html(broker_result):
     # --- Block 2: URL visit results (what website was visited, what was found) ---
     parts.append(f"""<tr><td style="padding:12px 24px;">
     <div style="font-size:14px;font-weight:bold;color:{_RPA_BLUE};border-bottom:2px solid {_RPA_BLUE};padding-bottom:4px;margin-bottom:8px;">
-        מידע שנאסף מאתר היצרן
+        מידע טכני שנאסף
     </div>""")
-    _has_url_visit = False
+    _has_info = False
+    _SPEC_LABELS = {"weight": "משקל", "dimensions": "מידות", "frequency": "תדר",
+                    "power": "הספק", "material": "חומר", "volume": "נפח",
+                    "concentration": "ריכוז", "use": "שימוש"}
     for ci in items:
         item = ci.get("item", {})
         source_url = item.get("source_url", "")
+        # Collect all specs (from URL fetch OR email body extraction)
+        specs_found = []
+        for field, label in _SPEC_LABELS.items():
+            val = item.get(field)
+            if val:
+                specs_found.append(f"{label}: {val}")
         if source_url:
-            _has_url_visit = True
-            specs_found = []
-            for field in ("weight", "dimensions", "frequency", "power"):
-                val = item.get(field)
-                if val:
-                    label = {"weight": "משקל", "dimensions": "מידות", "frequency": "תדר", "power": "הספק"}[field]
-                    specs_found.append(f"{label}: {val}")
+            _has_info = True
             parts.append(f"""<div style="font-size:13px;margin-bottom:6px;padding:8px;background:#eaf2f8;border-right:3px solid {_RPA_BLUE};">
                 ביקרתי באתר <a href="{source_url}" dir="ltr" style="color:{_RPA_BLUE};unicode-bidi:embed;">{source_url[:60]}</a>
                 {f' ומצאתי: <b>{", ".join(specs_found)}</b>' if specs_found else ' — לא נמצאו מפרטים טכניים'}
             </div>""")
-    if not _has_url_visit:
+        elif specs_found:
+            _has_info = True
+            parts.append(f"""<div style="font-size:13px;margin-bottom:6px;padding:8px;background:#eaf2f8;border-right:3px solid {_RPA_BLUE};">
+                מתוך גוף ההודעה זיהיתי: <b>{", ".join(specs_found)}</b>
+            </div>""")
+    if not _has_info:
         parts.append("""<div style="font-size:13px;color:#666;">
-            לא נמצאו קישורים לאתרי יצרן בגוף ההודעה. לשיפור הסיווג, ניתן לצרף קישור לדף המוצר.
+            בוצעה בדיקה — לא נמצאו מפרטים טכניים בגוף ההודעה או באתרי יצרן.
         </div>""")
     parts.append("</td></tr>")
 
