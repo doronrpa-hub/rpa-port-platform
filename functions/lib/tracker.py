@@ -1709,32 +1709,223 @@ def _handle_command(command, msg, db, firestore_module, access_token, rcb_email,
 # ════════════════════════════════════════════════════════
 
 class TaskYamClient:
-    """Client for Israel Ports TaskYam API"""
+    """Client for Israel Ports TaskYam API.
+
+    Full authentication flow:
+        1. POST api/Account/Login  → get Token
+        2. If IsSfaRequired=true   → POST api/Account/VerifySecondFactor
+        3. If NeedToChangePassword → POST api/Account/ChangePassword
+        4. Use X-Session-Token header for all subsequent requests
+
+    Login response structure (from live probe 2026-03-14):
+        IsSuccess, Message, Token, NeedToChangePassword, IsSfaRequired,
+        MaskedMobile, MaskedEmail, InvalidLogins, InvalidLoginType,
+        AzureToken, User, RedirectUrl, AuthorizedMenu
+    """
 
     def __init__(self, get_secret_func, use_pilot=False):
         self.base_url = "https://pilot.israports.co.il/TaskYamWebAPI/" if use_pilot else "https://taskyam.israports.co.il/TaskYamWebAPI/"
         self.get_secret = get_secret_func
         self.token = None
+        self.login_message = None  # Last login response message (for diagnostics)
 
     def login(self):
-        """Login and get session token"""
+        """Login and get session token. Handles 2FA and password change.
+
+        Returns True on success, False on failure.
+        Sets self.login_message with the API response message for diagnostics.
+        """
         import requests
         try:
             username = self.get_secret("TASKYAM_USERNAME")
             password = self.get_secret("TASKYAM_PASSWORD")
+            if not username or not password:
+                print("TaskYam login: missing credentials in Secret Manager")
+                return False
+
             resp = requests.post(
                 self.base_url + "api/Account/Login",
                 json={"UserName": username, "Password": password},
                 timeout=15
             )
             data = resp.json()
+            self.login_message = data.get("Message", "")
+
+            # Happy path: direct success
             if data.get("IsSuccess"):
                 self.token = data.get("Token")
+                print(f"TaskYam login: success (user={username})")
                 return True
+
+            token = data.get("Token")
+
+            # Path 2: Password change required — generate new password and change it
+            if data.get("NeedToChangePassword") and token:
+                print(f"TaskYam login: NeedToChangePassword=true, changing password")
+                return self._handle_password_change(token, password)
+
+            # Path 3: Second factor authentication required (SMS/email OTP)
+            if data.get("IsSfaRequired") and token:
+                masked = data.get("MaskedMobile") or data.get("MaskedEmail") or "?"
+                print(f"TaskYam login: IsSfaRequired=true (sent to {masked})")
+                return self._handle_second_factor(token)
+
+            # Auth failed — log the reason
+            msg = data.get("Message", "unknown")
+            inv = data.get("InvalidLogins", 0)
+            print(f"TaskYam login failed: {msg} (invalidLogins={inv}, user={username})")
             return False
+
         except Exception as e:
             print(f"TaskYam login error: {e}")
             return False
+
+    def _handle_password_change(self, token, old_password):
+        """Handle NeedToChangePassword by generating a new password and storing it.
+
+        Generates a strong random password, calls ChangePassword API,
+        then updates the TASKYAM_PASSWORD secret in Secret Manager.
+        """
+        import requests
+        import secrets
+        import string
+
+        # Generate strong password: 16 chars with letters, digits, specials
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        new_password = ''.join(secrets.choice(alphabet) for _ in range(16))
+
+        try:
+            resp = requests.post(
+                self.base_url + "api/Account/ChangePassword",
+                headers={"X-Session-Token": token},
+                json={
+                    "OldPassword": old_password,
+                    "NewPassword": new_password,
+                    "ConfirmPassword": new_password,
+                },
+                timeout=15,
+            )
+            data = resp.json() if resp.status_code == 200 else {}
+
+            if isinstance(data, dict) and data.get("IsSuccess"):
+                self.token = data.get("Token") or token
+                print("TaskYam: password changed successfully")
+                # Store new password in Secret Manager
+                self._update_secret("TASKYAM_PASSWORD", new_password)
+                return True
+
+            msg = data.get("Message", resp.text[:200]) if isinstance(data, dict) else str(data)[:200]
+            print(f"TaskYam ChangePassword failed: {msg}")
+            return False
+
+        except Exception as e:
+            print(f"TaskYam ChangePassword error: {e}")
+            return False
+
+    def _handle_second_factor(self, token):
+        """Handle IsSfaRequired by reading OTP code from Firestore.
+
+        Writes a pending_sfa request to Firestore 'taskyam_sfa' collection.
+        Polls for up to 90 seconds for an operator to enter the code.
+        Then calls VerifySecondFactor to complete auth.
+
+        If no Firestore available (local dev), logs and fails gracefully.
+        """
+        import requests
+        import time
+
+        # Try to get Firestore client for SFA code exchange
+        db = None
+        try:
+            import firebase_admin
+            from firebase_admin import firestore as fs_module
+            db = fs_module.client()
+        except Exception:
+            pass
+
+        if not db:
+            print("TaskYam SFA: no Firestore — cannot receive OTP code. "
+                  "Manual login required.")
+            return False
+
+        # Write pending SFA request so operator can enter the code
+        sfa_doc_id = "pending"
+        try:
+            from datetime import datetime, timezone
+            db.collection("taskyam_sfa").document(sfa_doc_id).set({
+                "status": "waiting_for_code",
+                "token": token,
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+                "code": "",
+            })
+            print("TaskYam SFA: waiting for OTP code in taskyam_sfa/pending ...")
+        except Exception as e:
+            print(f"TaskYam SFA: Firestore write error: {e}")
+            return False
+
+        # Poll for code (operator enters it via admin UI or direct Firestore write)
+        code = None
+        for _ in range(18):  # 18 × 5s = 90s max wait
+            time.sleep(5)
+            try:
+                doc = db.collection("taskyam_sfa").document(sfa_doc_id).get()
+                if doc.exists:
+                    doc_data = doc.to_dict()
+                    code = doc_data.get("code", "").strip()
+                    if code and len(code) >= 4:
+                        break
+            except Exception:
+                pass
+
+        if not code:
+            print("TaskYam SFA: timeout — no OTP code entered within 90s")
+            return False
+
+        # Verify the code
+        try:
+            resp = requests.post(
+                self.base_url + "api/Account/VerifySecondFactor",
+                headers={"X-Session-Token": token},
+                json={"Code": code},
+                timeout=15,
+            )
+            data = resp.json() if resp.status_code == 200 else {}
+            if isinstance(data, dict) and data.get("IsSuccess"):
+                self.token = data.get("Token") or token
+                print("TaskYam SFA: verified successfully")
+                # Mark SFA as completed
+                try:
+                    db.collection("taskyam_sfa").document(sfa_doc_id).set({
+                        "status": "verified",
+                        "verified_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception:
+                    pass
+                return True
+
+            msg = data.get("Message", "") if isinstance(data, dict) else str(data)[:200]
+            print(f"TaskYam SFA: verification failed: {msg}")
+            return False
+        except Exception as e:
+            print(f"TaskYam SFA verify error: {e}")
+            return False
+
+    def _update_secret(self, secret_name, new_value):
+        """Update a secret in Google Cloud Secret Manager."""
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            parent = f"projects/rpa-port-customs/secrets/{secret_name}"
+            client.add_secret_version(
+                request={
+                    "parent": parent,
+                    "payload": {"data": new_value.encode("UTF-8")},
+                }
+            )
+            print(f"Secret Manager: updated {secret_name}")
+        except Exception as e:
+            print(f"Secret Manager: FAILED to update {secret_name}: {e}")
+            print(f"  ⚠️  New password must be manually stored: {new_value}")
 
     def logout(self):
         """Logout and release session"""
@@ -1764,6 +1955,9 @@ class TaskYamClient:
             )
             if resp.status_code == 200:
                 return resp.json()
+            if resp.status_code in (401, 403):
+                print(f"TaskYam GET {resp.status_code} ({endpoint}): "
+                      f"token may be expired or SFA incomplete")
             return None
         except Exception as e:
             print(f"TaskYam GET error ({endpoint}): {e}")
@@ -1848,8 +2042,10 @@ def tracker_poll_active_deals(db, firestore_module, get_secret_func, access_toke
         # Login to TaskYam once
         client = TaskYamClient(get_secret_func)
         if not client.login():
-            print("❌ Tracker poll: TaskYam login failed")
-            return {"status": "error", "error": "taskyam_login_failed"}
+            msg = client.login_message or "unknown"
+            print(f"❌ Tracker poll: TaskYam login failed — {msg}")
+            return {"status": "error", "error": "taskyam_login_failed",
+                    "message": msg}
 
         updated_deals = 0
         total_containers = 0
