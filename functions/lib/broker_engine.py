@@ -126,10 +126,11 @@ _VOCAB_STOP = frozenset({
     "גדול", "גדולה", "קטן", "קטנה", "טוב", "טובה", "רע", "רעה",
     "ראשון", "שני", "שלישי", "אחר", "אחרת", "אחרים", "שונה", "שונים",
     "ישראל", "ישראלי", "ישראלית", "בינלאומי", "בינלאומית",
-    # Hebrew nouns that are NOT products
+    # Hebrew nouns that are NOT products (or too ambiguous for chapter hints)
     "דבר", "דברים", "עניין", "נושא", "שאלה", "תשובה", "בקשה", "הזמנה",
     "חברה", "לקוח", "ספק", "משלוח", "עסקה", "מסמך", "מסמכים", "קובץ",
     "תודה", "שלום", "בוקר", "ערב", "יום", "חודש", "שנה",
+    "סודה",  # ambiguous: soda water / sodium bicarbonate / sodium carbonate
     # English stop words
     "the", "a", "an", "of", "for", "and", "or", "with", "to", "from", "is",
     "in", "on", "by", "what", "how", "need", "want", "import", "export",
@@ -2951,6 +2952,10 @@ def process_case(email_text, attachments_text, db, get_secret_func,
             resolved = _resolve_english_name(name_he, db=db, api_key=_anthropic_key)
             if resolved:
                 item["name_en"] = resolved
+        # English name is more reliable than vocab chapter hint —
+        # drop hint so tariff search uses the resolved name instead.
+        if item.get("name_en"):
+            item.pop("chapter_hint", None)
 
     # Process each item
     classified_items = []

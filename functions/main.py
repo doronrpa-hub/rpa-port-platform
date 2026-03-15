@@ -947,7 +947,7 @@ def _run_port_intelligence_alerts(db, firestore_module, access_token, rcb_email)
     }
 
 
-@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_1, timeout_sec=540)
+@scheduler_fn.on_schedule(schedule="every 2 minutes", memory=options.MemoryOption.GB_2, timeout_sec=540)
 def rcb_check_email(event: scheduler_fn.ScheduledEvent) -> None:
     """Check rcb@rpa-port.co.il inbox - process emails from last 2 days"""
     try:

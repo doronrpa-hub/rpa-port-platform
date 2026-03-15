@@ -247,8 +247,10 @@ _DOMAIN_LABELS = {
 # Sub-intents that should delegate to legacy email_intent handlers.
 # NON_WORK is NOT here — triage already filtered casual/non-work via CASUAL/SKIP.
 # If triage said CONSULTATION, we trust triage over sub-intent re-classification.
+# INSTRUCTION removed: "classify X" emails were mis-tagged as INSTRUCTION
+# and bypassed the broker engine (ch.99 guard never ran). Session 115 fix.
 _DELEGATE_INTENTS = {
-    "ADMIN_INSTRUCTION", "CORRECTION", "INSTRUCTION",
+    "ADMIN_INSTRUCTION", "CORRECTION",
     "STATUS_REQUEST",
 }
 
